@@ -2,6 +2,7 @@ import type { AccountSummary, ThreadSummary } from "../types";
 
 interface ThreadListProps {
   accounts: AccountSummary[];
+  mailboxLabel: string;
   threads: ThreadSummary[];
   selectedThreadId?: string | null;
   onSelectThread: (threadId: string) => void;
@@ -17,6 +18,7 @@ function formatTime(value: string) {
 
 export function ThreadList({
   accounts,
+  mailboxLabel,
   threads,
   selectedThreadId,
   onSelectThread,
@@ -26,7 +28,7 @@ export function ThreadList({
     <section className="thread-list">
       <header className="thread-list__header">
         <div>
-          <h2>Inbox</h2>
+          <h2>{mailboxLabel}</h2>
           <p>Sorted by latest activity</p>
         </div>
         <button className="toolbar-button" onClick={onRefresh}>
@@ -56,7 +58,9 @@ export function ThreadList({
                 </div>
                 <div className="thread-row__subject">
                   {thread.subject}
-                  {thread.hasAttachments ? <span className="thread-row__attachment">⎙</span> : null}
+                  {thread.hasAttachments ? (
+                    <span className="thread-row__attachment">[file]</span>
+                  ) : null}
                 </div>
                 <div className="thread-row__snippet">{thread.snippet}</div>
                 <div className="thread-row__account">{account?.email}</div>

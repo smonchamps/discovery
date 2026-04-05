@@ -28,6 +28,9 @@ function App() {
 
   const activeThreadId = snapshot?.selectedThreadId ?? null;
   const activeMailboxId = snapshot?.selectedMailboxId ?? "mail_unified";
+  const activeMailboxLabel =
+    snapshot?.mailboxes.find((mailbox) => mailbox.id === activeMailboxId)?.label ??
+    "Inbox";
 
   const activeDraft = useMemo(() => snapshot?.activeDraft ?? null, [snapshot]);
 
@@ -119,6 +122,7 @@ function App() {
       />
       <ThreadList
         accounts={snapshot.accounts}
+        mailboxLabel={activeMailboxLabel}
         threads={snapshot.threads}
         selectedThreadId={activeThreadId}
         onSelectThread={handleThreadSelect}

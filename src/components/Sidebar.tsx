@@ -9,11 +9,11 @@ interface SidebarProps {
 }
 
 const mailboxIcons: Record<string, string> = {
-  unified_inbox: "◉",
-  inbox: "⌂",
-  drafts: "✎",
-  sent: "↗",
-  archive: "⌵",
+  unified_inbox: "U",
+  inbox: "I",
+  drafts: "D",
+  sent: "S",
+  archive: "A",
   spam: "!",
 };
 

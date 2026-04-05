@@ -15,6 +15,24 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function buildMessageDocument(htmlBody: string) {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <base target="_blank" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #ffffff;
+      }
+    </style>
+  </head>
+  <body>${htmlBody}</body>
+</html>`;
+}
+
 export function ReaderPane({ threadDetail, onArchive, onSpam }: ReaderPaneProps) {
   if (!threadDetail) {
     return (
@@ -28,16 +46,13 @@ export function ReaderPane({ threadDetail, onArchive, onSpam }: ReaderPaneProps)
   }
 
   const latestMessage = threadDetail.messages[threadDetail.messages.length - 1];
-  const sanitizedHtml = latestMessage?.htmlBody
-    ?.replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
-    .replace(/\son\w+="[^"]*"/gi, "");
 
   return (
     <section className="reader">
       <header className="reader__header">
         <div>
           <h1>{threadDetail.subject}</h1>
-          <p>{threadDetail.participants.map((participant) => participant.email).join(" · ")}</p>
+          <p>{threadDetail.participants.map((participant) => participant.email).join(" | ")}</p>
         </div>
         <div className="reader__toolbar">
           <button className="toolbar-button" onClick={onArchive}>
@@ -61,9 +76,11 @@ export function ReaderPane({ threadDetail, onArchive, onSpam }: ReaderPaneProps)
           </div>
 
           {latestMessage.htmlBody ? (
-            <div
-              className="reader__html"
-              dangerouslySetInnerHTML={{ __html: sanitizedHtml ?? "" }}
+            <iframe
+              className="reader__html-frame"
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              srcDoc={buildMessageDocument(latestMessage.htmlBody)}
+              title={threadDetail.subject}
             />
           ) : (
             <pre className="reader__text">{latestMessage.textBody}</pre>

@@ -1,11 +1,23 @@
-import { useEffect, useEffectEvent, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import type { DraftDetail } from "../types";
 
 interface ComposePanelProps {
   draft?: DraftDetail | null;
   onCreateDraft: () => void;
-  onSaveDraft: (draft: DraftDetail) => void;
+  onSaveDraft: (draft: DraftDetail) => Promise<void>;
   onSendDraft: (draftId: string) => void;
+}
+
+function draftSignature(draft: DraftDetail) {
+  return JSON.stringify({
+    id: draft.envelope.id,
+    to: draft.envelope.to,
+    cc: draft.envelope.cc,
+    bcc: draft.envelope.bcc,
+    subject: draft.envelope.subject,
+    textBody: draft.content.textBody,
+    htmlBody: draft.content.htmlBody,
+  });
 }
 
 export function ComposePanel({
@@ -15,12 +27,28 @@ export function ComposePanel({
   onSendDraft,
 }: ComposePanelProps) {
   const [localDraft, setLocalDraft] = useState<DraftDetail | null>(draft ?? null);
+  const lastPersistedSignature = useRef(draft ? draftSignature(draft) : "");
+
   const saveDraft = useEffectEvent((nextDraft: DraftDetail) => {
-    onSaveDraft(nextDraft);
+    const signature = draftSignature(nextDraft);
+    if (signature === lastPersistedSignature.current) {
+      return;
+    }
+
+    lastPersistedSignature.current = signature;
+    void onSaveDraft(nextDraft);
   });
 
   useEffect(() => {
-    setLocalDraft(draft ?? null);
+    if (!draft) {
+      setLocalDraft(null);
+      lastPersistedSignature.current = "";
+      return;
+    }
+
+    const incomingSignature = draftSignature(draft);
+    lastPersistedSignature.current = incomingSignature;
+    setLocalDraft((current) => (current?.envelope.id === draft.envelope.id ? current : draft));
   }, [draft]);
 
   useEffect(() => {
