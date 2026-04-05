@@ -184,3 +184,25 @@ pub struct DraftUpdateInput {
     pub html_body: Option<String>,
     pub text_body: String,
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GmailEnrollmentPhase {
+    Idle,
+    ConfigurationRequired,
+    WaitingForBrowser,
+    WaitingForCallback,
+    ExchangingCode,
+    Success,
+    Error,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GmailEnrollmentStatus {
+    pub phase: GmailEnrollmentPhase,
+    pub message: String,
+    pub authorize_url: Option<String>,
+    pub callback_url: Option<String>,
+    pub enrolled_email: Option<String>,
+}

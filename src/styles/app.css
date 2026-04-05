@@ -105,6 +105,45 @@ button {
   letter-spacing: 0.12em;
 }
 
+.sidebar__connect {
+  padding: 14px 18px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.sidebar__status {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+}
+
+.sidebar__status strong {
+  text-transform: capitalize;
+  font-size: 12px;
+}
+
+.sidebar__status p,
+.sidebar__status code {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.sidebar__status--error,
+.sidebar__status--configuration_required {
+  border-color: rgba(244, 63, 94, 0.28);
+}
+
+.sidebar__status--success {
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
 .sidebar__account {
   display: flex;
   flex-direction: column;

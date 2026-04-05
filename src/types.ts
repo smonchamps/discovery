@@ -121,3 +121,20 @@ export interface DraftUpdateInput {
   htmlBody?: string | null;
   textBody: string;
 }
+
+export type GmailEnrollmentPhase =
+  | "idle"
+  | "configuration_required"
+  | "waiting_for_browser"
+  | "waiting_for_callback"
+  | "exchanging_code"
+  | "success"
+  | "error";
+
+export interface GmailEnrollmentStatus {
+  phase: GmailEnrollmentPhase;
+  message: string;
+  authorizeUrl?: string | null;
+  callbackUrl?: string | null;
+  enrolledEmail?: string | null;
+}

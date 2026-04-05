@@ -8,22 +8,43 @@ import {
   selectMailbox,
   selectThread,
   sendDraft,
+  startGmailEnrollment,
+  subscribeToGmailEnrollmentUpdates,
+  subscribeToSnapshotUpdates,
   updateDraft,
 } from "./lib/backend";
 import { ComposePanel } from "./components/ComposePanel";
 import { ReaderPane } from "./components/ReaderPane";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadList } from "./components/ThreadList";
-import type { AppSnapshot, DraftDetail } from "./types";
+import type { AppSnapshot, DraftDetail, GmailEnrollmentStatus } from "./types";
 
 function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [enrollmentStatus, setEnrollmentStatus] = useState<GmailEnrollmentStatus | null>(null);
 
   useEffect(() => {
     loadAppState()
       .then(setSnapshot)
       .catch((reason) => setError(String(reason)));
+  }, []);
+
+  useEffect(() => {
+    let unlistenEnrollment: (() => void) | undefined;
+    let unlistenSnapshot: (() => void) | undefined;
+
+    const setup = async () => {
+      unlistenEnrollment = await subscribeToGmailEnrollmentUpdates(setEnrollmentStatus);
+      unlistenSnapshot = await subscribeToSnapshotUpdates(setSnapshot);
+    };
+
+    void setup();
+
+    return () => {
+      unlistenEnrollment?.();
+      unlistenSnapshot?.();
+    };
   }, []);
 
   const activeThreadId = snapshot?.selectedThreadId ?? null;
@@ -103,6 +124,12 @@ function App() {
     setSnapshot(await sendDraft(draftId));
   }
 
+  async function handleConnectGmail() {
+    setEnrollmentStatus(await startGmailEnrollment());
+    const latest = await loadAppState();
+    setSnapshot(latest);
+  }
+
   if (error) {
     return <main className="app-shell">{error}</main>;
   }
@@ -118,7 +145,9 @@ function App() {
         mailboxes={snapshot.mailboxes}
         selectedMailboxId={activeMailboxId}
         syncStatus={snapshot.syncStatus}
+        enrollmentStatus={enrollmentStatus}
         onSelectMailbox={handleMailboxSelect}
+        onConnectGmail={handleConnectGmail}
       />
       <ThreadList
         accounts={snapshot.accounts}

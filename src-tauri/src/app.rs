@@ -1,6 +1,6 @@
 use crate::domain::*;
 use crate::error::DiscoveryError;
-use crate::gmail_client::GmailClient;
+use crate::gmail_client::{GmailAccountProfile, GmailClient};
 use crate::local_store::{InMemoryStore, LocalStore};
 use crate::mock::seed_snapshot;
 use crate::secure_store::{InMemorySecretStore, SecretStore};
@@ -75,6 +75,60 @@ impl DiscoveryApp {
         snapshot.accounts.push(account.clone());
         self.store.save_snapshot(snapshot)?;
         Ok(account)
+    }
+
+    pub fn connect_google_account(
+        &self,
+        profile: GmailAccountProfile,
+        refresh_token: String,
+    ) -> Result<AppSnapshot, DiscoveryError> {
+        let mut snapshot = self.store.load_snapshot()?;
+        let account_id = account_id_from_email(&profile.email);
+
+        self.secret_store
+            .save_refresh_token(&account_id, &refresh_token)?;
+
+        if let Some(account) = snapshot.accounts.iter_mut().find(|account| account.id.0 == account_id) {
+            account.display_name = profile.display_name.clone();
+            account.email = profile.email.clone();
+            account.status = AccountStatus::Connected;
+        } else {
+            let account = AccountSummary {
+                id: AccountId(account_id.clone()),
+                email: profile.email.clone(),
+                display_name: profile.display_name.clone(),
+                color: color_for_email(&profile.email),
+                status: AccountStatus::Connected,
+                unread_count: 0,
+            };
+
+            snapshot.accounts.push(account.clone());
+            for label in self.gmail_client.system_labels() {
+                let mailbox_id = format!(
+                    "mail_{}_{}",
+                    label.name.to_lowercase(),
+                    account.id.0
+                );
+                snapshot.mailboxes.push(MailboxRef {
+                    id: MailboxId(mailbox_id),
+                    account_id: Some(account.id.clone()),
+                    kind: label.kind,
+                    label: label.name,
+                    unread_count: 0,
+                });
+            }
+        }
+
+        snapshot.sync_status.insert(
+            account_id.clone(),
+            SyncStatus {
+                state: SyncState::Idle,
+                last_successful_sync_at: Some(Utc::now()),
+                detail: Some("Gmail account connected via Google OAuth.".into()),
+            },
+        );
+        self.store.save_snapshot(snapshot.clone())?;
+        Ok(snapshot)
     }
 
     pub fn load_threads(&self, mailbox_id: &str) -> Result<AppSnapshot, DiscoveryError> {
@@ -355,6 +409,25 @@ fn mailbox(account_id: &AccountId, kind: MailboxKind, id: String, label: &str) -
     }
 }
 
+fn account_id_from_email(email: &str) -> String {
+    format!(
+        "acc_{}",
+        email
+            .chars()
+            .map(|character| match character {
+                'a'..='z' | 'A'..='Z' | '0'..='9' => character.to_ascii_lowercase(),
+                _ => '_',
+            })
+            .collect::<String>()
+    )
+}
+
+fn color_for_email(email: &str) -> String {
+    let palette = ["#22C55E", "#F97316", "#06B6D4", "#A855F7", "#EAB308"];
+    let index = email.bytes().fold(0usize, |acc, value| acc + value as usize) % palette.len();
+    palette[index].to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,5 +458,29 @@ mod tests {
             .find(|thread| thread.id.0 == "thread_masterclass")
             .unwrap();
         assert_eq!(thread.mailbox_id.0, "mail_archive_primary");
+    }
+
+    #[test]
+    fn connect_google_account_adds_mailboxes_and_sync_status() {
+        let app = DiscoveryApp::new();
+        let snapshot = app
+            .connect_google_account(
+                GmailAccountProfile {
+                    email: "new.account@gmail.com".into(),
+                    display_name: "New Account".into(),
+                },
+                "refresh-token".into(),
+            )
+            .unwrap();
+
+        assert!(snapshot
+            .accounts
+            .iter()
+            .any(|account| account.email == "new.account@gmail.com"));
+        assert!(snapshot
+            .mailboxes
+            .iter()
+            .any(|mailbox| mailbox.account_id.as_ref().is_some_and(|id| id.0 == "acc_new_account_gmail_com")));
+        assert!(snapshot.sync_status.contains_key("acc_new_account_gmail_com"));
     }
 }

@@ -1,8 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AppSnapshot, DraftDetail, DraftUpdateInput } from "../types";
+import { listen, type Event } from "@tauri-apps/api/event";
+import type {
+  AppSnapshot,
+  DraftDetail,
+  DraftUpdateInput,
+  GmailEnrollmentStatus,
+} from "../types";
 import { mockSnapshot } from "./mockData";
 
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+export const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 let browserState: AppSnapshot = structuredClone(mockSnapshot);
 
@@ -71,6 +77,74 @@ export async function loadAppState(): Promise<AppSnapshot> {
   }
 
   return browserState;
+}
+
+export async function startGmailEnrollment(): Promise<GmailEnrollmentStatus> {
+  if (isTauri) {
+    return invoke<GmailEnrollmentStatus>("start_gmail_enrollment");
+  }
+
+  const nextAccountId = `acc_demo_${browserState.accounts.length + 1}`;
+  browserState = {
+    ...browserState,
+    accounts: [
+      ...browserState.accounts,
+      {
+        id: nextAccountId,
+        email: `demo${browserState.accounts.length + 1}@gmail.com`,
+        displayName: `Demo Gmail ${browserState.accounts.length + 1}`,
+        color: "#22C55E",
+        status: "connected",
+        unreadCount: 0,
+      },
+    ],
+    mailboxes: [
+      ...browserState.mailboxes,
+      { id: `mail_inbox_${nextAccountId}`, accountId: nextAccountId, kind: "inbox", label: "Inbox", unreadCount: 0 },
+      { id: `mail_drafts_${nextAccountId}`, accountId: nextAccountId, kind: "drafts", label: "Drafts", unreadCount: 0 },
+      { id: `mail_sent_${nextAccountId}`, accountId: nextAccountId, kind: "sent", label: "Sent", unreadCount: 0 },
+      { id: `mail_archive_${nextAccountId}`, accountId: nextAccountId, kind: "archive", label: "Archive", unreadCount: 0 },
+      { id: `mail_spam_${nextAccountId}`, accountId: nextAccountId, kind: "spam", label: "Spam", unreadCount: 0 },
+    ],
+    syncStatus: {
+      ...browserState.syncStatus,
+      [nextAccountId]: {
+        state: "idle",
+        detail: "Mock Gmail enrollment completed.",
+        lastSuccessfulSyncAt: new Date().toISOString(),
+      },
+    },
+  };
+
+  return {
+    phase: "success",
+    message: "Mock Gmail enrollment completed.",
+    enrolledEmail: `demo${browserState.accounts.length}@gmail.com`,
+  };
+}
+
+export async function subscribeToGmailEnrollmentUpdates(
+  callback: (status: GmailEnrollmentStatus) => void,
+) {
+  if (!isTauri) {
+    return () => {};
+  }
+
+  return listen("discovery://gmail-enrollment-updated", (event: Event<GmailEnrollmentStatus>) => {
+    callback(event.payload);
+  });
+}
+
+export async function subscribeToSnapshotUpdates(
+  callback: (snapshot: AppSnapshot) => void,
+) {
+  if (!isTauri) {
+    return () => {};
+  }
+
+  return listen("discovery://snapshot-updated", (event: Event<AppSnapshot>) => {
+    callback(event.payload);
+  });
 }
 
 export async function selectMailbox(mailboxId: string): Promise<AppSnapshot> {
