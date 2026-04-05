@@ -1,9 +1,3 @@
-[package]
-name = "discovery"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-imap = "3.0.0-alpha.14"
-rustls = { version = "0.23", features = ["ring"] }
-rustls-connector = "0.21"
+[workspace]
+members = ["src-tauri"]
+resolver = "2"
