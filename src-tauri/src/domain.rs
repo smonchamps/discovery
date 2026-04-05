@@ -46,6 +46,7 @@ pub enum SyncState {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SyncStatus {
     pub state: SyncState,
     pub last_successful_sync_at: Option<DateTime<Utc>>,
@@ -53,6 +54,7 @@ pub struct SyncStatus {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AccountSummary {
     pub id: AccountId,
     pub email: String,
@@ -63,6 +65,7 @@ pub struct AccountSummary {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MailboxRef {
     pub id: MailboxId,
     pub account_id: Option<AccountId>,
@@ -72,12 +75,14 @@ pub struct MailboxRef {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Participant {
     pub name: String,
     pub email: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Attachment {
     pub id: String,
     pub filename: String,
@@ -86,6 +91,7 @@ pub struct Attachment {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageView {
     pub id: MessageId,
     pub from: Participant,
@@ -97,6 +103,7 @@ pub struct MessageView {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ThreadSummary {
     pub id: ThreadId,
     pub account_id: AccountId,
@@ -111,6 +118,7 @@ pub struct ThreadSummary {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ThreadDetail {
     pub id: ThreadId,
     pub account_id: AccountId,
@@ -123,6 +131,7 @@ pub struct ThreadDetail {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DraftEnvelope {
     pub id: DraftId,
     pub account_id: AccountId,
@@ -135,6 +144,7 @@ pub struct DraftEnvelope {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DraftContent {
     pub html_body: Option<String>,
     pub text_body: String,
@@ -142,12 +152,14 @@ pub struct DraftContent {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DraftDetail {
     pub envelope: DraftEnvelope,
     pub content: DraftContent,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSnapshot {
     pub accounts: Vec<AccountSummary>,
     pub mailboxes: Vec<MailboxRef>,
@@ -162,6 +174,7 @@ pub struct AppSnapshot {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DraftUpdateInput {
     pub draft_id: String,
     pub to: Vec<String>,
