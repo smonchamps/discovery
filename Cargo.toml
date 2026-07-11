@@ -1,9 +1,19 @@
-[package]
-name = "discovery"
+[workspace]
+resolver = "2"
+members = ["crates/mail-core", "apps/desktop"]
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
-imap = "3.0.0-alpha.14"
-rustls = { version = "0.23", features = ["ring"] }
-rustls-connector = "0.21"
+[workspace.dependencies]
+mail-core = { path = "crates/mail-core" }
+anyhow = "1"
+thiserror = "2"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
