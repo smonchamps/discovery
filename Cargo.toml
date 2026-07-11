@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/mail-core", "apps/desktop"]
+members = ["crates/mail-core", "apps/desktop", "spikes/oauth-gmail"]
 
 [workspace.package]
 version = "0.1.0"
