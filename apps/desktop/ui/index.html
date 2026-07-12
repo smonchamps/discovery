@@ -6,10 +6,18 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main>
+<header>
   <h1>discovery</h1>
-  <p id="status">démarrage…</p>
+  <span id="account" hidden></span>
+  <span id="status">démarrage…</span>
+  <button id="connect" hidden>Connecter Gmail</button>
+  <button id="refresh" hidden>Synchroniser</button>
+</header>
+<main>
+  <ul id="list"></ul>
+  <p id="empty" hidden>Aucun message pour l'instant.</p>
 </main>
+<footer id="perf"></footer>
 <script src="app.js"></script>
 </body>
 </html>

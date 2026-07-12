@@ -7,7 +7,10 @@ edition.workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+mail-auth.workspace = true
 mail-core.workspace = true
+mail-imap.workspace = true
+serde.workspace = true
 tauri = { version = "2", features = [] }
 
 [lints]

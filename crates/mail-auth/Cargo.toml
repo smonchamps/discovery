@@ -1,0 +1,15 @@
+[package]
+name = "mail-auth"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+keyring.workspace = true
+oauth2.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+webbrowser.workspace = true
+
+[lints]
+workspace = true

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/mail-core",
     "crates/mail-imap",
+    "crates/mail-auth",
     "apps/desktop",
     "spikes/oauth-gmail",
     "spikes/sync-engine",
@@ -15,15 +16,22 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace.dependencies]
+mail-auth = { path = "crates/mail-auth" }
 mail-core = { path = "crates/mail-core" }
 mail-imap = { path = "crates/mail-imap" }
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 imap = "3.0.0-alpha.14"
 imap-proto = "0.16"
+keyring = { version = "3", features = ["windows-native"] }
 mail-parser = "0.11"
+oauth2 = { version = "5", default-features = false, features = ["reqwest-blocking", "rustls-tls"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 thiserror = "2"
+url = "2"
+webbrowser = "1"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
