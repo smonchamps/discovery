@@ -93,13 +93,30 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     Ok(summary)
 }
 
+#[derive(Serialize)]
+pub struct MessagePage {
+    pub total: u64,
+    pub offset: usize,
+    pub rows: Vec<MessageRow>,
+    pub elapsed_us: u64,
+}
+
+/// Une page de la liste virtualisée : l'UI ne matérialise que les lignes
+/// visibles et demande les pages au fil du défilement.
 #[tauri::command]
-pub fn list_messages(app: AppHandle, limit: usize) -> Result<Vec<MessageRow>, String> {
+pub fn list_messages(app: AppHandle, offset: usize, limit: usize) -> Result<MessagePage, String> {
+    let timer = Instant::now();
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let total = store
+        .sync_state(MAILBOX)
+        .map_err(|err| err.to_string())?
+        .map(|state| store.count(state.mailbox_id))
+        .transpose()
+        .map_err(|err| err.to_string())?
+        .unwrap_or(0);
     let rows = store
-        .recent(MAILBOX, limit.min(LIST_LIMIT_MAX))
-        .map_err(|err| err.to_string())?;
-    Ok(rows
+        .recent(MAILBOX, offset, limit.min(LIST_LIMIT_MAX))
+        .map_err(|err| err.to_string())?
         .into_iter()
         .map(|envelope| MessageRow {
             uid: envelope.uid,
@@ -115,7 +132,13 @@ pub fn list_messages(app: AppHandle, limit: usize) -> Result<Vec<MessageRow>, St
                 .unwrap_or_default(),
             seen: envelope.seen,
         })
-        .collect())
+        .collect();
+    Ok(MessagePage {
+        total,
+        offset,
+        rows,
+        elapsed_us: timer.elapsed().as_micros() as u64,
+    })
 }
 
 #[derive(Serialize)]

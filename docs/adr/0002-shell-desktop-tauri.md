@@ -1,6 +1,6 @@
 # ADR 0002 — Shell desktop : Tauri 2 validé au gate squelette
 
-Date : 2026-07-12 · Statut : accepté (à re-mesurer au gate 1)
+Date : 2026-07-12 · Statut : accepté · **Gate 1 re-mesuré : tenu (voir bas de page)**
 
 ## Contexte
 
@@ -38,6 +38,30 @@ WebView2 déjà présent sur Windows 11, et l'UI web réutilisable en Phase 4.
   budget casse, le plan B documenté reste Slint/egui — d'où l'importance
   de garder l'UI « bête » et le domaine dans `mail-core`.
 - La CSP du shell est `default-src 'self'` dès le squelette : aucun script
-  ni style inline, même pour nous.
+  ni style inline, même pour nous. (Assouplie ensuite pour `img-src` et
+  `style-src` : un document `srcdoc` hérite de la CSP de son hôte — voir
+  `mail_render::email_document` ; les scripts restent `'self'` seul.)
 - L'icône est un placeholder généré (32×32) ; une vraie identité visuelle
   viendra avec la Phase 5.
+
+## Re-mesure au gate 1 — 50 000 messages (2026-07-12)
+
+Liste virtualisée (~40 lignes DOM quel que soit le volume, pages de 200
+servies par SQLite au défilement) sur une INBOX synthétique de 50 000
+enveloppes (`examples/seed_inbox`, base de 5,4 Mo écrite en 0,9 s) :
+
+| Métrique | Base vide | 50 000 messages | Budget |
+|---|---|---|---|
+| Mémoire privée **résidente** | 85,0 Mo | **84,5 Mo** | < 200 Mo ✅ |
+| Démarrage → fenêtre utilisable | — | **348 ms** | < 1 s ✅ |
+
+**Le volume ne coûte rien en RAM** (delta −0,5 Mo) : la virtualisation
+isole complètement la mémoire du nombre de messages.
+
+Correction de méthodologie : la mesure du squelette utilisait les octets
+privés **committés** (`PrivateMemorySize64`), que Chromium gonfle de
+réservations jamais résidentes (variance observée : 250-375 Mo sur charge
+identique). La mesure qui fait foi est le **working set privé** (WMI
+`WorkingSetPrivate`, moyenné après 30 s de stabilisation) — c'est ce que
+l'utilisateur voit dans le Gestionnaire des tâches. Sur cette base, la
+marge réelle est de ~115 Mo, pas 36.

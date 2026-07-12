@@ -42,7 +42,7 @@ fn main() -> anyhow::Result<()> {
     server.logout();
 
     let timer = Instant::now();
-    let recent = store.recent("INBOX", 10)?;
+    let recent = store.recent("INBOX", 0, 10)?;
     println!(
         "Les 10 plus récents (lus depuis SQLite en {:?}) :",
         timer.elapsed()

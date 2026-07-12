@@ -86,14 +86,16 @@ main.split {
   background: #fff;
 }
 
-#list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  background: #fff;
+#scroll-space {
+  position: relative;
 }
 
-#list li {
+.row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 56px;
+  box-sizing: border-box;
   display: grid;
   grid-template-columns: 78px 1fr;
   grid-template-areas: "date sender" "subject subject";
@@ -103,46 +105,52 @@ main.split {
   border-bottom: 1px solid #f0f0f0;
   font-size: 13.5px;
   cursor: pointer;
+  overflow: hidden;
+  background: #fff;
 }
 
-#list .date { grid-area: date; }
-#list .sender { grid-area: sender; }
-#list .subject {
+.row .date { grid-area: date; }
+.row .sender { grid-area: sender; }
+.row .subject {
   grid-area: subject;
   color: #555;
 }
 
-#list li.selected {
-  background: #e8f0fe;
-}
-
-#list li:hover {
+.row:hover {
   background: #f6f9ff;
 }
 
-#list .date {
+.row.selected {
+  background: #e8f0fe;
+}
+
+.row.loading {
+  background: #fafafa;
+}
+
+.row .date {
   color: var(--muted);
   font-size: 12.5px;
   white-space: nowrap;
 }
 
-#list .sender,
-#list .subject {
+.row .sender,
+.row .subject {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-#list li.unread {
+.row.unread {
   font-weight: 600;
 }
 
-#list li.unread .sender {
+.row.unread .sender {
   position: relative;
   padding-left: 14px;
 }
 
-#list li.unread .sender::before {
+.row.unread .sender::before {
   content: "";
   position: absolute;
   left: 0;

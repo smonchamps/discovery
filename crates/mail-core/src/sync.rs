@@ -236,7 +236,7 @@ mod tests {
 
         assert_eq!(report.fetched, 2);
         assert_eq!(server.fetch_batches.last(), Some(&vec![4, 3]));
-        assert_eq!(store.recent("INBOX", 10).unwrap().len(), 4);
+        assert_eq!(store.recent("INBOX", 0, 10).unwrap().len(), 4);
     }
 
     #[test]
@@ -254,7 +254,7 @@ mod tests {
 
         assert_eq!(report.deleted, 1);
         let uids: Vec<Uid> = store
-            .recent("INBOX", 10)
+            .recent("INBOX", 0, 10)
             .unwrap()
             .iter()
             .map(|e| e.uid)
@@ -274,7 +274,7 @@ mod tests {
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.fetched, 1);
-        assert!(store.recent("INBOX", 1).unwrap()[0].seen);
+        assert!(store.recent("INBOX", 0, 1).unwrap()[0].seen);
     }
 
     #[test]
@@ -289,7 +289,7 @@ mod tests {
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.fetched, 1);
-        assert_eq!(store.recent("INBOX", 10).unwrap().len(), 2);
+        assert_eq!(store.recent("INBOX", 0, 10).unwrap().len(), 2);
     }
 
     /// Limite connue et assumée : sans CONDSTORE, un flag changé côté serveur
@@ -306,7 +306,7 @@ mod tests {
         server.mark_seen(1);
         synced(&mut server, &mut store, &engine);
 
-        assert!(!store.recent("INBOX", 1).unwrap()[0].seen);
+        assert!(!store.recent("INBOX", 0, 1).unwrap()[0].seen);
     }
 
     #[test]
@@ -324,7 +324,7 @@ mod tests {
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.mode, SyncMode::Initial);
-        let rows = store.recent("INBOX", 10).unwrap();
+        let rows = store.recent("INBOX", 0, 10).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].uid, 10);
         assert_eq!(rows[0].subject.as_deref(), Some("après"));

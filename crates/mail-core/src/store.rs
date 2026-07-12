@@ -200,17 +200,23 @@ impl Store {
         Ok(())
     }
 
-    /// Les enveloppes les plus récentes d'abord (date, puis UID en repli).
-    pub fn recent(&self, mailbox: &str, limit: usize) -> Result<Vec<Envelope>, Error> {
+    /// Une page d'enveloppes, les plus récentes d'abord (date, puis UID en
+    /// repli). `offset` permet la virtualisation de la liste côté UI.
+    pub fn recent(
+        &self,
+        mailbox: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<Envelope>, Error> {
         let mut stmt = self.0.prepare(
             "SELECT e.uid, e.subject, e.sender, e.date_epoch, e.seen
              FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.name = ?1
              ORDER BY e.date_epoch DESC, e.uid DESC
-             LIMIT ?2",
+             LIMIT ?2 OFFSET ?3",
         )?;
         let rows = stmt
-            .query_map(params![mailbox, limit as i64], |row| {
+            .query_map(params![mailbox, limit as i64, offset as i64], |row| {
                 Ok(Envelope {
                     uid: row.get(0)?,
                     subject: row.get(1)?,
@@ -273,7 +279,7 @@ mod tests {
         store
             .upsert_envelopes(id, std::slice::from_ref(&original))
             .unwrap();
-        assert_eq!(store.recent("INBOX", 10).unwrap(), vec![original]);
+        assert_eq!(store.recent("INBOX", 0, 10).unwrap(), vec![original]);
     }
 
     #[test]
@@ -289,7 +295,7 @@ mod tests {
         store
             .upsert_envelopes(id, std::slice::from_ref(&bare))
             .unwrap();
-        assert_eq!(store.recent("INBOX", 10).unwrap(), vec![bare]);
+        assert_eq!(store.recent("INBOX", 0, 10).unwrap(), vec![bare]);
     }
 
     #[test]
@@ -301,7 +307,7 @@ mod tests {
         store
             .upsert_envelopes(id, &[envelope(1, "après", 100, true)])
             .unwrap();
-        let rows = store.recent("INBOX", 10).unwrap();
+        let rows = store.recent("INBOX", 0, 10).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].subject.as_deref(), Some("après"));
         assert!(rows[0].seen);
@@ -321,7 +327,7 @@ mod tests {
             )
             .unwrap();
         let uids: Vec<Uid> = store
-            .recent("INBOX", 2)
+            .recent("INBOX", 0, 2)
             .unwrap()
             .iter()
             .map(|e| e.uid)
@@ -390,6 +396,27 @@ mod tests {
     fn max_uid_is_zero_for_empty_mailbox() {
         let (store, id) = store_with_mailbox();
         assert_eq!(store.max_uid(id).unwrap(), 0);
+    }
+
+    #[test]
+    fn recent_pages_with_offset() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &(1..=5)
+                    .map(|uid| envelope(uid, "sujet", 100 * i64::from(uid), false))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap();
+        let page: Vec<Uid> = store
+            .recent("INBOX", 2, 2)
+            .unwrap()
+            .iter()
+            .map(|e| e.uid)
+            .collect();
+        assert_eq!(page, vec![3, 2], "offset 2 saute les deux plus récents");
+        assert!(store.recent("INBOX", 10, 5).unwrap().is_empty());
     }
 
     #[test]
