@@ -20,6 +20,7 @@ mail-imap = { path = "crates/mail-imap" }
 mail-render = { path = "crates/mail-render" }
 ammonia = "4.1"
 anyhow = "1"
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 imap = "3.0.0-alpha.14"
 imap-proto = "0.16"

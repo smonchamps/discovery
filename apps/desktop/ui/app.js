@@ -4,6 +4,7 @@ const invoke = window.__TAURI__.core.invoke;
 const el = (id) => document.getElementById(id);
 
 let selectedRow = null;
+let currentMessage = null;
 
 async function init() {
   invoke('startup_report').then((report) => { el('perf').textContent = report; });
@@ -70,24 +71,30 @@ async function openMessage(message, row) {
   if (selectedRow) selectedRow.classList.remove('selected');
   selectedRow = row;
   row.classList.add('selected');
+  currentMessage = message;
 
   el('detail-placeholder').hidden = true;
   el('detail').hidden = false;
   el('detail-subject').textContent = message.subject;
   el('detail-meta').textContent = `${message.sender} — ${message.date}`;
-  const note = el('detail-note');
-  note.hidden = true;
-  const frame = el('detail-frame');
-  frame.setAttribute('srcdoc', '');
+  el('detail-note').hidden = true;
+  el('detail-frame').setAttribute('srcdoc', '');
   setStatus('chargement du message…');
+  await loadBody(message, false);
+}
 
+async function loadBody(message, showImages) {
   try {
-    const view = await invoke('message_body', { uid: message.uid });
-    frame.setAttribute('srcdoc', view.document);
-    if (view.remote_images_blocked > 0) {
-      note.textContent = `${view.remote_images_blocked} image(s) distante(s) `
+    const view = await invoke('message_body', { uid: message.uid, showImages });
+    if (currentMessage !== message) return; // l'utilisateur a changé de message
+    el('detail-frame').setAttribute('srcdoc', view.document);
+    const note = el('detail-note');
+    if (!showImages && view.remote_images_blocked > 0) {
+      el('note-text').textContent = `${view.remote_images_blocked} image(s) distante(s) `
         + 'bloquée(s) pour protéger votre vie privée.';
       note.hidden = false;
+    } else {
+      note.hidden = true;
     }
     setStatus('');
   } catch (err) {
@@ -112,5 +119,11 @@ el('connect').addEventListener('click', async () => {
 });
 
 el('refresh').addEventListener('click', refresh);
+
+el('show-images').addEventListener('click', async () => {
+  if (!currentMessage) return;
+  setStatus('affichage des images…');
+  await loadBody(currentMessage, true);
+});
 
 init();

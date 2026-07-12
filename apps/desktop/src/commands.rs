@@ -127,11 +127,13 @@ pub struct BodyView {
 /// Corps d'un message : cache local d'abord (aucun réseau), serveur sinon.
 /// Le document retourné embarque sa propre CSP et se charge dans une iframe
 /// `sandbox` côté UI — les trois couches de défense de la Phase 0.
+/// `show_images` est le choix explicite de l'utilisateur, par message.
 #[tauri::command]
 pub async fn message_body(
     app: AppHandle,
     state: State<'_, AppState>,
     uid: u32,
+    show_images: bool,
 ) -> Result<BodyView, String> {
     let path = db_path(&app)?;
     let cached = Store::open(&path)
@@ -150,9 +152,14 @@ pub async fn message_body(
         }
     };
 
-    let sanitized = mail_render::sanitize(&html);
+    let policy = if show_images {
+        mail_render::ImagePolicy::AllowRemote
+    } else {
+        mail_render::ImagePolicy::BlockRemote
+    };
+    let sanitized = mail_render::sanitize_with(&html, policy);
     Ok(BodyView {
-        document: mail_render::email_document(&sanitized.html),
+        document: mail_render::email_document(&sanitized.html, policy),
         remote_images_blocked: sanitized.remote_images_blocked,
     })
 }

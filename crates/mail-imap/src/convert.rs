@@ -89,11 +89,43 @@ fn sender_display(address: &Address<'_>) -> Option<String> {
 
 /// Extrait le corps HTML d'un message brut. `mail-parser` convertit lui-même
 /// les messages texte-seul en HTML sûr (enseignement de Phase 0) — `None`
-/// seulement si le message est inanalysable.
+/// seulement si le message est inanalysable. Les images embarquées (`cid:`)
+/// sont inlinées en `data:` URIs : elles font partie du message, leur
+/// affichage ne déclenche aucun chargement réseau.
 pub(crate) fn extract_html(raw: &[u8]) -> Option<String> {
-    mail_parser::MessageParser::new()
-        .parse(raw)
-        .and_then(|message| message.body_html(0).map(|body| body.into_owned()))
+    let message = mail_parser::MessageParser::new().parse(raw)?;
+    let html = message.body_html(0)?.into_owned();
+    Some(inline_cid_images(html, &message))
+}
+
+fn inline_cid_images(html: String, message: &mail_parser::Message<'_>) -> String {
+    use base64::Engine;
+    use mail_parser::MimeHeaders;
+
+    let mut result = html;
+    for part in message.attachments() {
+        let Some(content_id) = part.content_id() else {
+            continue;
+        };
+        let Some(content_type) = part.content_type() else {
+            continue;
+        };
+        let mime = format!(
+            "{}/{}",
+            content_type.ctype(),
+            content_type.subtype().unwrap_or("octet-stream")
+        );
+        if !mime.starts_with("image/") {
+            continue;
+        }
+        let data_uri = format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(part.contents())
+        );
+        let reference = format!("cid:{}", content_id.trim_matches(['<', '>']));
+        result = result.replace(&reference, &data_uri);
+    }
+    result
 }
 
 /// Décode un en-tête RFC 2047 en le présentant à `mail-parser` comme un
@@ -213,6 +245,19 @@ mod tests {
         let raw = b"From: a@b.c\r\nSubject: t\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bonjour <b>monde</b></p>";
         let html = extract_html(raw).expect("corps html attendu");
         assert!(html.contains("<b>monde</b>"));
+    }
+
+    #[test]
+    fn inlines_embedded_cid_images_as_data_uris() {
+        let raw = b"From: a@b.c\r\nSubject: t\r\nMIME-Version: 1.0\r\n\
+Content-Type: multipart/related; boundary=\"B\"\r\n\r\n\
+--B\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
+<p>logo : <img src=\"cid:logo123\"></p>\r\n\
+--B\r\nContent-Type: image/png\r\nContent-ID: <logo123>\r\n\
+Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--B--\r\n";
+        let html = extract_html(raw).expect("corps html attendu");
+        assert!(html.contains("data:image/png;base64,"));
+        assert!(!html.contains("cid:logo123"));
     }
 
     #[test]

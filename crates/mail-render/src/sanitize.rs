@@ -16,6 +16,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub const BLOCKED_PIXEL: &str =
     "data:image/gif;base64,R0lGODlhAQABAIAAAMLCwgAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==";
 
+/// Sort des images distantes. Le blocage est le défaut non négociable ;
+/// l'affichage est un choix explicite de l'utilisateur, par message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImagePolicy {
+    BlockRemote,
+    AllowRemote,
+}
+
 pub struct Sanitized {
     pub html: String,
     pub remote_images_blocked: usize,
@@ -23,6 +31,10 @@ pub struct Sanitized {
 }
 
 pub fn sanitize(html: &str) -> Sanitized {
+    sanitize_with(html, ImagePolicy::BlockRemote)
+}
+
+pub fn sanitize_with(html: &str, policy: ImagePolicy) -> Sanitized {
     let remote_images = Arc::new(AtomicUsize::new(0));
     let styles_cleaned = Arc::new(AtomicUsize::new(0));
     let images_counter = Arc::clone(&remote_images);
@@ -46,7 +58,14 @@ pub fn sanitize(html: &str) -> Sanitized {
             "http", "https", "mailto", "tel", "cid", "data",
         ]))
         .attribute_filter(move |element, attribute, value| {
-            filter_attribute(element, attribute, value, &images_counter, &styles_counter)
+            filter_attribute(
+                element,
+                attribute,
+                value,
+                policy,
+                &images_counter,
+                &styles_counter,
+            )
         })
         .clean(html)
         .to_string();
@@ -62,13 +81,16 @@ fn filter_attribute<'a>(
     element: &str,
     attribute: &str,
     value: &'a str,
+    policy: ImagePolicy,
     remote_images: &AtomicUsize,
     styles_cleaned: &AtomicUsize,
 ) -> Option<Cow<'a, str>> {
     if element == "img" && attribute == "src" {
         let lower = value.trim().to_ascii_lowercase();
-        if lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("//")
-        {
+        let remote = lower.starts_with("http://")
+            || lower.starts_with("https://")
+            || lower.starts_with("//");
+        if remote && policy == ImagePolicy::BlockRemote {
             remote_images.fetch_add(1, Ordering::Relaxed);
             return Some(Cow::Borrowed(BLOCKED_PIXEL));
         }
@@ -142,6 +164,17 @@ mod tests {
         assert_eq!(out.remote_images_blocked, 1);
         assert!(out.html.contains(BLOCKED_PIXEL));
         assert!(!out.html.contains("tracker.example.com"));
+    }
+
+    #[test]
+    fn allow_remote_keeps_images_but_still_strips_scripts() {
+        let out = sanitize_with(
+            r#"<img src="https://cdn.example.com/photo.jpg"><script>alert(1)</script>"#,
+            ImagePolicy::AllowRemote,
+        );
+        assert_eq!(out.remote_images_blocked, 0);
+        assert!(out.html.contains("https://cdn.example.com/photo.jpg"));
+        assert!(!out.html.contains("script"));
     }
 
     #[test]
