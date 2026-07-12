@@ -1,7 +1,9 @@
-// Règle absolue : les données du mail entrent dans le DOM par textContent,
-// jamais par innerHTML.
+// Règle absolue : les données du mail entrent dans le DOM par textContent
+// (ou par l'attribut srcdoc d'une iframe sandbox), jamais par innerHTML.
 const invoke = window.__TAURI__.core.invoke;
 const el = (id) => document.getElementById(id);
+
+let selectedRow = null;
 
 async function init() {
   invoke('startup_report').then((report) => { el('perf').textContent = report; });
@@ -59,7 +61,37 @@ async function renderList() {
       span.textContent = text;
       li.appendChild(span);
     }
+    li.addEventListener('click', () => openMessage(message, li));
     list.appendChild(li);
+  }
+}
+
+async function openMessage(message, row) {
+  if (selectedRow) selectedRow.classList.remove('selected');
+  selectedRow = row;
+  row.classList.add('selected');
+
+  el('detail-placeholder').hidden = true;
+  el('detail').hidden = false;
+  el('detail-subject').textContent = message.subject;
+  el('detail-meta').textContent = `${message.sender} — ${message.date}`;
+  const note = el('detail-note');
+  note.hidden = true;
+  const frame = el('detail-frame');
+  frame.setAttribute('srcdoc', '');
+  setStatus('chargement du message…');
+
+  try {
+    const view = await invoke('message_body', { uid: message.uid });
+    frame.setAttribute('srcdoc', view.document);
+    if (view.remote_images_blocked > 0) {
+      note.textContent = `${view.remote_images_blocked} image(s) distante(s) `
+        + 'bloquée(s) pour protéger votre vie privée.';
+      note.hidden = false;
+    }
+    setStatus('');
+  } catch (err) {
+    setStatus(`impossible de charger le message : ${err}`, true);
   }
 }
 

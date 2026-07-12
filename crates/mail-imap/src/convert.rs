@@ -87,6 +87,15 @@ fn sender_display(address: &Address<'_>) -> Option<String> {
     ))
 }
 
+/// Extrait le corps HTML d'un message brut. `mail-parser` convertit lui-même
+/// les messages texte-seul en HTML sûr (enseignement de Phase 0) — `None`
+/// seulement si le message est inanalysable.
+pub(crate) fn extract_html(raw: &[u8]) -> Option<String> {
+    mail_parser::MessageParser::new()
+        .parse(raw)
+        .and_then(|message| message.body_html(0).map(|body| body.into_owned()))
+}
+
 /// Décode un en-tête RFC 2047 en le présentant à `mail-parser` comme un
 /// message synthétique. Retourne `None` pour un en-tête vide.
 fn decode_header(raw: &[u8]) -> Option<String> {
@@ -197,5 +206,23 @@ mod tests {
         let proto = proto_envelope(b"   ", address(None, Some(b"a"), Some(b"b.c")));
         let envelope = envelope_from_parts(1, Some(&proto), None, false);
         assert_eq!(envelope.subject, None);
+    }
+
+    #[test]
+    fn extracts_html_body_from_raw_message() {
+        let raw = b"From: a@b.c\r\nSubject: t\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bonjour <b>monde</b></p>";
+        let html = extract_html(raw).expect("corps html attendu");
+        assert!(html.contains("<b>monde</b>"));
+    }
+
+    #[test]
+    fn converts_plain_text_message_to_html() {
+        let raw = b"From: a@b.c\r\nSubject: t\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nBonjour <chevron>";
+        let html = extract_html(raw).expect("conversion texte vers html attendue");
+        assert!(html.contains("Bonjour"));
+        assert!(
+            !html.contains("<chevron>"),
+            "le texte doit être échappé, pas interprété"
+        );
     }
 }

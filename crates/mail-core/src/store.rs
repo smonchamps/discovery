@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS envelopes (
     PRIMARY KEY (mailbox_id, uid)
 );
 CREATE INDEX IF NOT EXISTS idx_envelopes_date ON envelopes(mailbox_id, date_epoch DESC);
+CREATE TABLE IF NOT EXISTS bodies (
+    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    uid        INTEGER NOT NULL,
+    html       TEXT NOT NULL,
+    PRIMARY KEY (mailbox_id, uid)
+);
 ";
 
 /// État de synchro persisté d'une boîte.
@@ -87,8 +93,11 @@ impl Store {
         Ok(self.0.last_insert_rowid())
     }
 
-    /// Repart de zéro pour une boîte dont l'UIDVALIDITY a changé.
+    /// Repart de zéro pour une boîte dont l'UIDVALIDITY a changé :
+    /// les UIDs ne veulent plus rien dire, corps compris.
     pub fn reset_mailbox(&self, mailbox_id: i64, uid_validity: u32) -> Result<(), Error> {
+        self.0
+            .execute("DELETE FROM bodies WHERE mailbox_id = ?1", [mailbox_id])?;
         self.0
             .execute("DELETE FROM envelopes WHERE mailbox_id = ?1", [mailbox_id])?;
         self.0.execute(
@@ -157,14 +166,38 @@ impl Store {
             .collect();
         let tx = self.0.transaction()?;
         {
-            let mut stmt =
+            let mut envelopes =
                 tx.prepare("DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
+            let mut bodies = tx.prepare("DELETE FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
             for uid in &stale {
-                stmt.execute(params![mailbox_id, uid])?;
+                envelopes.execute(params![mailbox_id, uid])?;
+                bodies.execute(params![mailbox_id, uid])?;
             }
         }
         tx.commit()?;
         Ok(stale.len())
+    }
+
+    /// Corps HTML brut (pré-assainissement) d'un message, s'il est en cache.
+    pub fn body(&self, mailbox: &str, uid: Uid) -> Result<Option<String>, Error> {
+        let body = self
+            .0
+            .query_row(
+                "SELECT b.html FROM bodies b JOIN mailboxes m ON m.id = b.mailbox_id
+                 WHERE m.name = ?1 AND b.uid = ?2",
+                params![mailbox, uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(body)
+    }
+
+    pub fn save_body(&self, mailbox_id: i64, uid: Uid, html: &str) -> Result<(), Error> {
+        self.0.execute(
+            "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html) VALUES (?1, ?2, ?3)",
+            params![mailbox_id, uid, html],
+        )?;
+        Ok(())
     }
 
     /// Les enveloppes les plus récentes d'abord (date, puis UID en repli).
@@ -357,5 +390,35 @@ mod tests {
     fn max_uid_is_zero_for_empty_mailbox() {
         let (store, id) = store_with_mailbox();
         assert_eq!(store.max_uid(id).unwrap(), 0);
+    }
+
+    #[test]
+    fn body_roundtrips_and_is_none_when_absent() {
+        let (store, id) = store_with_mailbox();
+        assert_eq!(store.body("INBOX", 1).unwrap(), None);
+        store.save_body(id, 1, "<p>bonjour</p>").unwrap();
+        assert_eq!(
+            store.body("INBOX", 1).unwrap().as_deref(),
+            Some("<p>bonjour</p>")
+        );
+    }
+
+    #[test]
+    fn reset_mailbox_clears_bodies_too() {
+        let (store, id) = store_with_mailbox();
+        store.save_body(id, 1, "<p>x</p>").unwrap();
+        store.reset_mailbox(id, 2).unwrap();
+        assert_eq!(store.body("INBOX", 1).unwrap(), None);
+    }
+
+    #[test]
+    fn remove_absent_drops_orphaned_bodies() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(id, &[envelope(1, "a", 100, false)])
+            .unwrap();
+        store.save_body(id, 1, "<p>x</p>").unwrap();
+        assert_eq!(store.remove_absent(id, &HashSet::new()).unwrap(), 1);
+        assert_eq!(store.body("INBOX", 1).unwrap(), None);
     }
 }

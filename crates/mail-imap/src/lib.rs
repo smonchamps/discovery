@@ -121,6 +121,17 @@ impl MailServer for ImapServer {
         // le repli par différentiel d'UIDs du moteur.
         Ok(None)
     }
+
+    fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<String>, Error> {
+        self.ensure_selected(mailbox)?;
+        let fetches = self
+            .session
+            .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+            .map_err(server_err)?;
+        Ok(fetches
+            .iter()
+            .find_map(|fetch| convert::extract_html(fetch.body()?)))
+    }
 }
 
 fn server_err(err: imap::Error) -> Error {

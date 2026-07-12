@@ -1,0 +1,10 @@
+[package]
+name = "mail-render"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ammonia.workspace = true
+
+[lints]
+workspace = true

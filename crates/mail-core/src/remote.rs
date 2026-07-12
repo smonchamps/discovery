@@ -31,4 +31,8 @@ pub trait MailServer {
     /// bascule alors sur la détection par différentiel d'UIDs.
     fn changes_since(&mut self, mailbox: &str, modseq: u64)
     -> Result<Option<Vec<Envelope>>, Error>;
+
+    /// Corps HTML d'un message, prêt à assainir (l'extraction MIME est la
+    /// responsabilité de l'adaptateur). `None` si le message n'existe plus.
+    fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<String>, Error>;
 }

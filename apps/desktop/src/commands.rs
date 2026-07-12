@@ -118,6 +118,54 @@ pub fn list_messages(app: AppHandle, limit: usize) -> Result<Vec<MessageRow>, St
         .collect())
 }
 
+#[derive(Serialize)]
+pub struct BodyView {
+    pub document: String,
+    pub remote_images_blocked: usize,
+}
+
+/// Corps d'un message : cache local d'abord (aucun réseau), serveur sinon.
+/// Le document retourné embarque sa propre CSP et se charge dans une iframe
+/// `sandbox` côté UI — les trois couches de défense de la Phase 0.
+#[tauri::command]
+pub async fn message_body(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    uid: u32,
+) -> Result<BodyView, String> {
+    let path = db_path(&app)?;
+    let cached = Store::open(&path)
+        .and_then(|store| store.body(MAILBOX, uid))
+        .map_err(|err| err.to_string())?;
+
+    let html = match cached {
+        Some(html) => html,
+        None => {
+            let account = lock_account(&state)?
+                .clone()
+                .ok_or_else(|| "aucun compte connecté".to_string())?;
+            tauri::async_runtime::spawn_blocking(move || fetch_body(&account, &path, uid))
+                .await
+                .map_err(|err| err.to_string())??
+        }
+    };
+
+    let sanitized = mail_render::sanitize(&html);
+    Ok(BodyView {
+        document: mail_render::email_document(&sanitized.html),
+        remote_images_blocked: sanitized.remote_images_blocked,
+    })
+}
+
+fn fetch_body(account: &Authenticated, db_path: &Path, uid: u32) -> Result<String, String> {
+    let (mut server, _refreshed) = connect_imap(account)?;
+    let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
+    let body = mail_core::load_body(&mut server, &mut store, MAILBOX, uid)
+        .map_err(|err| err.to_string())?;
+    server.logout();
+    body.ok_or_else(|| "message introuvable sur le serveur".to_string())
+}
+
 fn run_sync(
     account: &Authenticated,
     db_path: &Path,

@@ -90,8 +90,8 @@ fn filter_attribute<'a>(
 
 /// Filtrage CSS par déclaration : supprime tout chargement ou exécution.
 /// Volontairement naïf (les échappements CSS type `\75rl(` passeraient) :
-/// c'est la CSP de l'iframe qui sert de filet de sécurité. La production
-/// utilisera un vrai parseur CSS (lightningcss) — voir README.
+/// c'est la CSP de l'iframe qui sert de filet de sécurité (doc du crate).
+/// La fidélité des blocs `<style>` viendra avec un vrai parseur CSS.
 fn clean_style(value: &str) -> String {
     value
         .split(';')

@@ -4,8 +4,8 @@ members = [
     "crates/mail-core",
     "crates/mail-imap",
     "crates/mail-auth",
+    "crates/mail-render",
     "apps/desktop",
-    "spikes/html-render",
     "spikes/web-bridge",
 ]
 
@@ -17,6 +17,8 @@ edition = "2024"
 mail-auth = { path = "crates/mail-auth" }
 mail-core = { path = "crates/mail-core" }
 mail-imap = { path = "crates/mail-imap" }
+mail-render = { path = "crates/mail-render" }
+ammonia = "4.1"
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 imap = "3.0.0-alpha.14"

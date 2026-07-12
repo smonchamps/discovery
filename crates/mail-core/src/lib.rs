@@ -6,13 +6,17 @@
 //! [`MailServer`] ; l'adaptateur IMAP réel vit hors du noyau.
 
 mod address;
+mod body;
 mod envelope;
 mod error;
 mod remote;
 mod store;
 mod sync;
+#[cfg(test)]
+mod test_support;
 
 pub use address::EmailAddress;
+pub use body::load_body;
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use remote::{MailServer, MailboxSnapshot};

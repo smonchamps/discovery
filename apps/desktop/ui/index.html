@@ -13,9 +13,22 @@
   <button id="connect" hidden>Connecter Gmail</button>
   <button id="refresh" hidden>Synchroniser</button>
 </header>
-<main>
-  <ul id="list"></ul>
-  <p id="empty" hidden>Aucun message pour l'instant.</p>
+<main class="split">
+  <section id="pane-list">
+    <ul id="list"></ul>
+    <p id="empty" hidden>Aucun message pour l'instant.</p>
+  </section>
+  <section id="pane-detail">
+    <p id="detail-placeholder">Sélectionnez un message pour le lire.</p>
+    <article id="detail" hidden>
+      <header id="detail-header">
+        <h2 id="detail-subject"></h2>
+        <p id="detail-meta"></p>
+        <p id="detail-note" hidden></p>
+      </header>
+      <iframe id="detail-frame" sandbox title="Contenu du message"></iframe>
+    </article>
+  </section>
 </main>
 <footer id="perf"></footer>
 <script src="app.js"></script>

@@ -651,6 +651,7 @@ dependencies = [
  "mail-auth",
  "mail-core",
  "mail-imap",
+ "mail-render",
  "serde",
  "tauri",
  "tauri-build",
@@ -2004,6 +2005,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47785d444be4d32c1709171c6219a90f667c0ad0ffe68b4b179e794f31f4f9e8"
 dependencies = [
  "hashify",
+]
+
+[[package]]
+name = "mail-render"
+version = "0.1.0"
+dependencies = [
+ "ammonia",
 ]
 
 [[package]]
@@ -3575,19 +3583,6 @@ dependencies = [
  "gobject-sys",
  "libc",
  "system-deps",
-]
-
-[[package]]
-name = "spike-html-render"
-version = "0.1.0"
-dependencies = [
- "ammonia",
- "anyhow",
- "imap",
- "keyring",
- "mail-parser",
- "oauth2",
- "serde_json",
 ]
 
 [[package]]

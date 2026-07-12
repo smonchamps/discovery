@@ -27,6 +27,7 @@ fn main() {
             commands::connect_account,
             commands::sync_inbox,
             commands::list_messages,
+            commands::message_body,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {
