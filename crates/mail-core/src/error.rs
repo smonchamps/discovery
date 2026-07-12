@@ -11,4 +11,8 @@ pub enum Error {
     /// (réseau, protocole, authentification…).
     #[error("serveur : {0}")]
     Server(String),
+
+    /// Donnée locale inattendue (base modifiée hors de l'application).
+    #[error("donnée locale invalide : {0}")]
+    Corrupt(String),
 }

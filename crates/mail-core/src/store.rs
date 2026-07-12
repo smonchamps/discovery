@@ -10,6 +10,7 @@ use std::path::Path;
 use chrono::DateTime;
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::action::{Action, PendingAction};
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
 
@@ -37,6 +38,12 @@ CREATE TABLE IF NOT EXISTS bodies (
     uid        INTEGER NOT NULL,
     html       TEXT NOT NULL,
     PRIMARY KEY (mailbox_id, uid)
+);
+CREATE TABLE IF NOT EXISTS pending_actions (
+    id         INTEGER PRIMARY KEY,
+    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    uid        INTEGER NOT NULL,
+    kind       TEXT NOT NULL
 );
 ";
 
@@ -93,9 +100,14 @@ impl Store {
         Ok(self.0.last_insert_rowid())
     }
 
-    /// Repart de zéro pour une boîte dont l'UIDVALIDITY a changé :
-    /// les UIDs ne veulent plus rien dire, corps compris.
+    /// Repart de zéro pour une boîte dont l'UIDVALIDITY a changé : les UIDs
+    /// ne veulent plus rien dire — corps et actions en attente compris (une
+    /// intention sur un UID invalidé est irréalisable par construction).
     pub fn reset_mailbox(&self, mailbox_id: i64, uid_validity: u32) -> Result<(), Error> {
+        self.0.execute(
+            "DELETE FROM pending_actions WHERE mailbox_id = ?1",
+            [mailbox_id],
+        )?;
         self.0
             .execute("DELETE FROM bodies WHERE mailbox_id = ?1", [mailbox_id])?;
         self.0
@@ -169,13 +181,61 @@ impl Store {
             let mut envelopes =
                 tx.prepare("DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
             let mut bodies = tx.prepare("DELETE FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
+            let mut actions =
+                tx.prepare("DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2")?;
             for uid in &stale {
                 envelopes.execute(params![mailbox_id, uid])?;
                 bodies.execute(params![mailbox_id, uid])?;
+                actions.execute(params![mailbox_id, uid])?;
             }
         }
         tx.commit()?;
         Ok(stale.len())
+    }
+
+    /// Applique localement un changement lu/non-lu (optimisme UI).
+    /// Retourne `false` si l'enveloppe était déjà dans cet état.
+    pub fn set_seen_local(&self, mailbox_id: i64, uid: Uid, seen: bool) -> Result<bool, Error> {
+        let changed = self.0.execute(
+            "UPDATE envelopes SET seen = ?3
+             WHERE mailbox_id = ?1 AND uid = ?2 AND seen != ?3",
+            params![mailbox_id, uid, seen],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// Journalise une intention à rejouer vers le serveur.
+    pub fn enqueue_action(&self, mailbox_id: i64, uid: Uid, action: Action) -> Result<(), Error> {
+        self.0.execute(
+            "INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (?1, ?2, ?3)",
+            params![mailbox_id, uid, action.as_str()],
+        )?;
+        Ok(())
+    }
+
+    /// La file d'actions, dans l'ordre d'émission.
+    pub fn pending_actions(&self, mailbox_id: i64) -> Result<Vec<PendingAction>, Error> {
+        let mut stmt = self.0.prepare(
+            "SELECT id, uid, kind FROM pending_actions WHERE mailbox_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt
+            .query_map([mailbox_id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get(1)?, row.get::<_, String>(2)?))
+            })?
+            .collect::<Result<Vec<(i64, Uid, String)>, _>>()?;
+        rows.into_iter()
+            .map(|(id, uid, kind)| {
+                let action = Action::parse(&kind)
+                    .ok_or_else(|| Error::Corrupt(format!("action inconnue : {kind}")))?;
+                Ok(PendingAction { id, uid, action })
+            })
+            .collect()
+    }
+
+    pub fn remove_action(&self, action_id: i64) -> Result<(), Error> {
+        self.0
+            .execute("DELETE FROM pending_actions WHERE id = ?1", [action_id])?;
+        Ok(())
     }
 
     /// Corps HTML brut (pré-assainissement) d'un message, s'il est en cache.
@@ -417,6 +477,44 @@ mod tests {
             .collect();
         assert_eq!(page, vec![3, 2], "offset 2 saute les deux plus récents");
         assert!(store.recent("INBOX", 10, 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn action_queue_roundtrips_in_emission_order() {
+        let (store, id) = store_with_mailbox();
+        store.enqueue_action(id, 5, Action::MarkSeen).unwrap();
+        store.enqueue_action(id, 3, Action::MarkUnseen).unwrap();
+
+        let queued = store.pending_actions(id).unwrap();
+        assert_eq!(queued.len(), 2);
+        assert_eq!((queued[0].uid, queued[0].action), (5, Action::MarkSeen));
+        assert_eq!((queued[1].uid, queued[1].action), (3, Action::MarkUnseen));
+
+        store.remove_action(queued[0].id).unwrap();
+        assert_eq!(store.pending_actions(id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn set_seen_local_updates_and_reports_actual_change() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(id, &[envelope(1, "a", 100, false)])
+            .unwrap();
+
+        assert!(store.set_seen_local(id, 1, true).unwrap());
+        assert!(store.recent("INBOX", 0, 1).unwrap()[0].seen);
+        assert!(
+            !store.set_seen_local(id, 1, true).unwrap(),
+            "déjà lu : aucun changement à journaliser"
+        );
+    }
+
+    #[test]
+    fn reset_mailbox_clears_pending_actions() {
+        let (store, id) = store_with_mailbox();
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
+        store.reset_mailbox(id, 2).unwrap();
+        assert!(store.pending_actions(id).unwrap().is_empty());
     }
 
     #[test]

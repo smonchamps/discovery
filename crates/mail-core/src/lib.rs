@@ -5,6 +5,7 @@
 //! Tauri, ni le web, ni IMAP. Sa seule frontière abstraite est le trait
 //! [`MailServer`] ; l'adaptateur IMAP réel vit hors du noyau.
 
+mod action;
 mod address;
 mod body;
 mod envelope;
@@ -15,6 +16,7 @@ mod sync;
 #[cfg(test)]
 mod test_support;
 
+pub use action::{Action, PendingAction};
 pub use address::EmailAddress;
 pub use body::load_body;
 pub use envelope::{Envelope, Uid};

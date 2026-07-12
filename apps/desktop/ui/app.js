@@ -42,8 +42,9 @@ async function refresh() {
   setStatus('synchronisation…');
   try {
     const report = await invoke('sync_inbox');
+    const actions = report.replayed > 0 ? `, ${report.replayed} action(s) envoyée(s)` : '';
     setStatus(`synchro ${report.mode} : ${report.fetched} récupéré(s), `
-      + `${report.deleted} supprimé(s) — ${report.total} messages, en ${report.elapsed_ms} ms`);
+      + `${report.deleted} supprimé(s)${actions} — ${report.total} messages, en ${report.elapsed_ms} ms`);
   } catch (err) {
     setStatus(`erreur de synchronisation : ${err}`, true);
   }
@@ -149,6 +150,14 @@ async function openMessage(message, row) {
   selectedRow = row;
   row.classList.add('selected');
   currentMessage = message;
+
+  // Ouvrir un message le marque lu : localement tout de suite, le serveur
+  // suivra à la prochaine synchro via la file d'actions.
+  if (!message.seen) {
+    message.seen = true;
+    row.classList.remove('unread');
+    invoke('mark_seen', { uid: message.uid, seen: true }).catch(() => {});
+  }
 
   el('detail-placeholder').hidden = true;
   el('detail').hidden = false;

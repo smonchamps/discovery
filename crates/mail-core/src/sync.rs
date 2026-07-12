@@ -10,6 +10,7 @@
 
 use std::collections::HashSet;
 
+use crate::action::Action;
 use crate::envelope::Uid;
 use crate::error::Error;
 use crate::remote::MailServer;
@@ -30,6 +31,8 @@ pub struct SyncReport {
     pub fetched: usize,
     /// Enveloppes locales supprimées car disparues du serveur.
     pub deleted: usize,
+    /// Actions locales rejouées vers le serveur en tête de synchro.
+    pub replayed: usize,
 }
 
 pub struct SyncEngine {
@@ -81,11 +84,16 @@ impl SyncEngine {
             }
         };
 
-        let report = if state.last_uid == 0 {
+        // Les intentions locales d'abord : la synchro qui suit reflète
+        // ainsi leur effet (le rejeu bump le modseq côté serveur).
+        let replayed = replay_actions(server, store, mailbox, state.mailbox_id)?;
+
+        let mut report = if state.last_uid == 0 {
             self.initial_sync(server, store, mailbox, state.mailbox_id)?
         } else {
             self.incremental_sync(server, store, mailbox, &state)?
         };
+        report.replayed = replayed;
 
         let last_uid = store.max_uid(state.mailbox_id)?;
         store.update_state(state.mailbox_id, last_uid, snapshot.highest_modseq)?;
@@ -112,6 +120,7 @@ impl SyncEngine {
             mode: SyncMode::Initial,
             fetched,
             deleted: 0,
+            replayed: 0,
         })
     }
 
@@ -160,8 +169,35 @@ impl SyncEngine {
             mode: SyncMode::Incremental,
             fetched,
             deleted,
+            replayed: 0,
         })
     }
+}
+
+/// Rejoue la file d'actions vers le serveur, dans l'ordre d'émission.
+/// Au premier échec, le rejeu s'arrête et le reste de la file survit :
+/// il sera retenté à la synchro suivante — aucune intention n'est perdue.
+fn replay_actions(
+    server: &mut dyn MailServer,
+    store: &mut Store,
+    mailbox: &str,
+    mailbox_id: i64,
+) -> Result<usize, Error> {
+    let mut replayed = 0;
+    for pending in store.pending_actions(mailbox_id)? {
+        let outcome = match pending.action {
+            Action::MarkSeen => server.set_seen(mailbox, pending.uid, true),
+            Action::MarkUnseen => server.set_seen(mailbox, pending.uid, false),
+        };
+        match outcome {
+            Ok(()) => {
+                store.remove_action(pending.id)?;
+                replayed += 1;
+            }
+            Err(_) => break,
+        }
+    }
+    Ok(replayed)
 }
 
 #[cfg(test)]
@@ -307,6 +343,79 @@ mod tests {
         synced(&mut server, &mut store, &engine);
 
         assert!(!store.recent("INBOX", 0, 1).unwrap()[0].seen);
+    }
+
+    fn mailbox_id(store: &Store) -> i64 {
+        store.sync_state("INBOX").unwrap().unwrap().mailbox_id
+    }
+
+    #[test]
+    fn replay_pushes_queued_actions_to_server_in_order() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        server.add(2, "b");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        let id = mailbox_id(&store);
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
+        store.enqueue_action(id, 2, Action::MarkSeen).unwrap();
+        store.enqueue_action(id, 1, Action::MarkUnseen).unwrap();
+
+        let report = synced(&mut server, &mut store, &engine);
+
+        assert_eq!(report.replayed, 3);
+        assert_eq!(
+            server.set_seen_calls,
+            vec![(1, true), (2, true), (1, false)],
+            "le rejeu doit préserver l'ordre d'émission"
+        );
+        assert!(store.pending_actions(id).unwrap().is_empty());
+    }
+
+    /// Le gate de la Phase 2 : une coupure pendant le rejeu ne perd rien —
+    /// la file survit et repart à la synchro suivante.
+    #[test]
+    fn failed_replay_keeps_actions_queued_for_next_sync() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        let id = mailbox_id(&store);
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
+
+        server.flags_fail = true;
+        let cut = synced(&mut server, &mut store, &engine);
+        assert_eq!(cut.replayed, 0);
+        assert_eq!(store.pending_actions(id).unwrap().len(), 1);
+
+        server.flags_fail = false;
+        let recovered = synced(&mut server, &mut store, &engine);
+        assert_eq!(recovered.replayed, 1);
+        assert!(store.pending_actions(id).unwrap().is_empty());
+        assert!(server.messages[&1].0.seen);
+    }
+
+    #[test]
+    fn uid_validity_reset_drops_now_meaningless_actions() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        let id = mailbox_id(&store);
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
+        server.bump_uid_validity();
+
+        let report = synced(&mut server, &mut store, &engine);
+
+        assert_eq!(report.replayed, 0);
+        assert!(server.set_seen_calls.is_empty());
+        assert!(store.pending_actions(id).unwrap().is_empty());
     }
 
     #[test]

@@ -132,6 +132,19 @@ impl MailServer for ImapServer {
             .iter()
             .find_map(|fetch| convert::extract_html(fetch.body()?)))
     }
+
+    fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error> {
+        self.ensure_selected(mailbox)?;
+        let query = if seen {
+            "+FLAGS.SILENT (\\Seen)"
+        } else {
+            "-FLAGS.SILENT (\\Seen)"
+        };
+        self.session
+            .uid_store(uid.to_string(), query)
+            .map_err(server_err)?;
+        Ok(())
+    }
 }
 
 fn server_err(err: imap::Error) -> Error {

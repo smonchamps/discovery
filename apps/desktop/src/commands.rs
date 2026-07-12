@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use mail_auth::{Authenticated, GmailAuth};
-use mail_core::{Store, SyncEngine, SyncMode};
+use mail_core::{Action, Store, SyncEngine, SyncMode};
 use mail_imap::ImapServer;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -30,6 +30,7 @@ pub struct SyncSummary {
     pub mode: String,
     pub fetched: usize,
     pub deleted: usize,
+    pub replayed: usize,
     pub total: u64,
     pub elapsed_ms: u64,
 }
@@ -224,10 +225,35 @@ fn run_sync(
         .to_string(),
         fetched: report.fetched,
         deleted: report.deleted,
+        replayed: report.replayed,
         total,
         elapsed_ms: timer.elapsed().as_millis() as u64,
     };
     Ok((summary, refreshed))
+}
+
+/// Marque lu/non-lu : application locale immédiate (optimisme UI) +
+/// journalisation dans la file — la prochaine synchro rejoue vers le serveur.
+#[tauri::command]
+pub fn mark_seen(app: AppHandle, uid: u32, seen: bool) -> Result<(), String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let Some(state) = store.sync_state(MAILBOX).map_err(|err| err.to_string())? else {
+        return Ok(());
+    };
+    let changed = store
+        .set_seen_local(state.mailbox_id, uid, seen)
+        .map_err(|err| err.to_string())?;
+    if changed {
+        let action = if seen {
+            Action::MarkSeen
+        } else {
+            Action::MarkUnseen
+        };
+        store
+            .enqueue_action(state.mailbox_id, uid, action)
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(())
 }
 
 /// L'access token expire (~1 h) : en cas d'échec de connexion, une

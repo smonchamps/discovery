@@ -18,6 +18,10 @@ pub(crate) struct FakeServer {
     pub(crate) bodies: BTreeMap<Uid, String>,
     pub(crate) fetch_batches: Vec<Vec<Uid>>,
     pub(crate) body_fetches: usize,
+    /// Journal des changements de flags reçus, dans l'ordre.
+    pub(crate) set_seen_calls: Vec<(Uid, bool)>,
+    /// Simule une coupure sur les changements de flags (test « zéro perte »).
+    pub(crate) flags_fail: bool,
 }
 
 impl FakeServer {
@@ -30,6 +34,8 @@ impl FakeServer {
             bodies: BTreeMap::new(),
             fetch_batches: Vec::new(),
             body_fetches: 0,
+            set_seen_calls: Vec::new(),
+            flags_fail: false,
         }
     }
 
@@ -114,5 +120,18 @@ impl MailServer for FakeServer {
     fn fetch_body_html(&mut self, _mailbox: &str, uid: Uid) -> Result<Option<String>, Error> {
         self.body_fetches += 1;
         Ok(self.bodies.get(&uid).cloned())
+    }
+
+    fn set_seen(&mut self, _mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error> {
+        if self.flags_fail {
+            return Err(Error::Server("coupure simulée".to_string()));
+        }
+        self.set_seen_calls.push((uid, seen));
+        self.modseq += 1;
+        if let Some((envelope, modseq)) = self.messages.get_mut(&uid) {
+            envelope.seen = seen;
+            *modseq = self.modseq;
+        }
+        Ok(())
     }
 }

@@ -35,4 +35,7 @@ pub trait MailServer {
     /// Corps HTML d'un message, prêt à assainir (l'extraction MIME est la
     /// responsabilité de l'adaptateur). `None` si le message n'existe plus.
     fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<String>, Error>;
+
+    /// Applique (ou retire) le flag `\Seen` côté serveur.
+    fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error>;
 }
