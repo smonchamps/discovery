@@ -1992,11 +1992,9 @@ dependencies = [
  "chrono",
  "imap",
  "imap-proto",
- "keyring",
+ "mail-auth",
  "mail-core",
  "mail-parser",
- "oauth2",
- "serde_json",
 ]
 
 [[package]]
@@ -3589,32 +3587,6 @@ dependencies = [
  "keyring",
  "mail-parser",
  "oauth2",
- "serde_json",
-]
-
-[[package]]
-name = "spike-oauth-gmail"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "imap",
- "keyring",
- "oauth2",
- "serde_json",
- "url",
- "webbrowser",
-]
-
-[[package]]
-name = "spike-sync-engine"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "imap",
- "keyring",
- "mail-parser",
- "oauth2",
- "rusqlite",
  "serde_json",
 ]
 

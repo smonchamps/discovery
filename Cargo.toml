@@ -5,8 +5,6 @@ members = [
     "crates/mail-imap",
     "crates/mail-auth",
     "apps/desktop",
-    "spikes/oauth-gmail",
-    "spikes/sync-engine",
     "spikes/html-render",
     "spikes/web-bridge",
 ]

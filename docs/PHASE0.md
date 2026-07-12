@@ -9,8 +9,8 @@ hypothèses restantes sont nommées avec leur échéance.
 
 | Spike | Question | Verdict | Mesure clé |
 |---|---|---|---|
-| [oauth-gmail](../spikes/oauth-gmail/README.md) | Authentifier sans jamais voir un mot de passe ? | ✅ Oui | PKCE loopback + Credential Manager, reconnexion silencieuse |
-| [sync-engine](../spikes/sync-engine/README.md) | Synchro incrémentale avec liste offline instantanée ? | ✅ Oui | Lecture offline ~180 µs (budget < 1 s tenu ×5000) |
+| oauth-gmail *(retiré → [mail-auth](../crates/mail-auth/src/lib.rs))* | Authentifier sans jamais voir un mot de passe ? | ✅ Oui | PKCE loopback + Credential Manager, reconnexion silencieuse |
+| sync-engine *(retiré → [mail-core](../crates/mail-core/src/sync.rs))* | Synchro incrémentale avec liste offline instantanée ? | ✅ Oui | Lecture offline ~180 µs (budget < 1 s tenu ×5000) |
 | [html-render](../spikes/html-render/README.md) | Afficher l'HTML réel sûrement sans le casser ? | ✅ Sécurité acquise | 3 couches, 10 tests ; fidélité 0/20/0 → chantier CSS compris |
 | [web-bridge](../spikes/web-bridge/README.md) | Que coûte le pont web (« un seul cerveau ») ? | ✅ Viable | 0,36 ms serveur, insensible au volume (5 → 501 msgs) |
 
@@ -54,6 +54,12 @@ Amendement au plan initial (« suppression à la clôture ») : chaque spike est
 supprimé **lorsque son équivalent de production existe** dans `mail-core`,
 pas avant — leur code sert de référence d'implémentation à la Phase 1.
 Les verdicts, eux, vivent dans les README et dans ce document.
+
+Retirés le 2026-07-12, squelette marchant validé sur compte réel :
+`oauth-gmail` (→ `crates/mail-auth`) et `sync-engine` (→ `crates/mail-core` +
+`crates/mail-imap`). Leurs README restent lisibles dans l'historique git
+(commits `6e23aaa` et `85bfa2e`). Restent en place : `html-render` (jusqu'à
+l'écran de lecture) et `web-bridge` (jusqu'au sync-server de Phase 4).
 
 ## 6. Décision
 

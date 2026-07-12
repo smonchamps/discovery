@@ -12,9 +12,7 @@ mail-parser.workspace = true
 
 [dev-dependencies]
 anyhow.workspace = true
-keyring = { version = "3", features = ["windows-native"] }
-oauth2 = { version = "5", default-features = false, features = ["reqwest-blocking", "rustls-tls"] }
-serde_json = "1"
+mail-auth.workspace = true
 
 [lints]
 workspace = true
