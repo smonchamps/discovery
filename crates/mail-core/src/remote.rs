@@ -1,0 +1,34 @@
+//! Le « port » réseau du moteur : la seule frontière abstraite de `mail-core`.
+//!
+//! Le moteur de synchro ne connaît ni IMAP, ni OAuth, ni TLS — uniquement ce
+//! trait. L'adaptateur IMAP réel l'implémentera (module protocoles) ; les
+//! tests utilisent un serveur simulé qui rejoue les bizarreries du terrain.
+
+use crate::envelope::{Envelope, Uid};
+use crate::error::Error;
+
+/// État d'une boîte au moment de sa sélection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MailboxSnapshot {
+    /// Change quand le serveur invalide tous les UIDs connus → resynchro complète.
+    pub uid_validity: u32,
+    /// `Some` si le serveur supporte CONDSTORE (décision gelée : PHASE0.md §2.2).
+    pub highest_modseq: Option<u64>,
+}
+
+pub trait MailServer {
+    /// Sélectionne une boîte et retourne son état courant.
+    fn select(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error>;
+
+    /// Tous les UIDs présents dans la boîte (ordre quelconque).
+    fn list_uids(&mut self, mailbox: &str) -> Result<Vec<Uid>, Error>;
+
+    /// Enveloppes des messages demandés ; les UIDs inconnus sont ignorés.
+    fn fetch_envelopes(&mut self, mailbox: &str, uids: &[Uid]) -> Result<Vec<Envelope>, Error>;
+
+    /// Messages nouveaux ou modifiés (flags) depuis `modseq` — CONDSTORE.
+    /// Retourne `None` si le serveur ne supporte pas l'extension ; le moteur
+    /// bascule alors sur la détection par différentiel d'UIDs.
+    fn changes_since(&mut self, mailbox: &str, modseq: u64)
+    -> Result<Option<Vec<Envelope>>, Error>;
+}

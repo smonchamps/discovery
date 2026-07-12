@@ -16,6 +16,8 @@ edition = "2024"
 [workspace.dependencies]
 mail-core = { path = "crates/mail-core" }
 anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
 thiserror = "2"
 
 [workspace.lints.rust]
