@@ -1970,6 +1970,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "mail-imap"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "imap",
+ "imap-proto",
+ "keyring",
+ "mail-core",
+ "mail-parser",
+ "oauth2",
+ "serde_json",
+]
+
+[[package]]
 name = "mail-parser"
 version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"

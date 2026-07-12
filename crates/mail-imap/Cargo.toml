@@ -1,0 +1,20 @@
+[package]
+name = "mail-imap"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chrono.workspace = true
+imap.workspace = true
+imap-proto.workspace = true
+mail-core.workspace = true
+mail-parser.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+keyring = { version = "3", features = ["windows-native"] }
+oauth2 = { version = "5", default-features = false, features = ["reqwest-blocking", "rustls-tls"] }
+serde_json = "1"
+
+[lints]
+workspace = true

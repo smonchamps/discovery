@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/mail-core",
+    "crates/mail-imap",
     "apps/desktop",
     "spikes/oauth-gmail",
     "spikes/sync-engine",
@@ -15,8 +16,12 @@ edition = "2024"
 
 [workspace.dependencies]
 mail-core = { path = "crates/mail-core" }
+mail-imap = { path = "crates/mail-imap" }
 anyhow = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+imap = "3.0.0-alpha.14"
+imap-proto = "0.16"
+mail-parser = "0.11"
 rusqlite = { version = "0.37", features = ["bundled"] }
 thiserror = "2"
 
