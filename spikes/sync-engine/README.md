@@ -68,7 +68,10 @@ Enseignements :
 1. **L'architecture « enveloppes d'abord + SQLite » tient la promesse produit.**
    La vitesse perçue vient du cache local ; le réseau devient un raffinement.
 2. **Le protocole UID suffit au spike, pas à la production.** Le diff complet
-   des UIDs pour détecter les suppressions croît linéairement ; trancher
-   CONDSTORE/QRESYNC en Phase 1 selon les capabilities observées.
+   des UIDs pour détecter les suppressions croît linéairement. Capabilities
+   observées chez Gmail (2026-07-12) : **CONDSTORE présent, QRESYNC absent**
+   → décision Phase 1 : détection des changements via CONDSTORE
+   (HIGHESTMODSEQ), diff UID complet en repli pour les serveurs sans
+   extension, QRESYNC en optimisation opportuniste là où il existe.
 3. **Inverser l'ordre de synchro initiale en Phase 1** : du plus récent au plus
    ancien, pour que les premiers lots soient ceux que l'utilisateur regarde.
