@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>discovery — pont web</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #fafafa; color: #222; }
+  header { display: flex; align-items: baseline; gap: 16px; padding: 14px 20px; background: #fff; border-bottom: 1px solid #e3e3e3; }
+  h1 { font-size: 18px; margin: 0; }
+  #status { font-size: 13px; color: #666; flex: 1; }
+  button { border: 1px solid #c8c8c8; background: #fff; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #f0f0f0; }
+  table { border-collapse: collapse; width: 100%; max-width: 1000px; margin: 16px auto; background: #fff; border: 1px solid #eee; }
+  td, th { border-bottom: 1px solid #eee; padding: 8px 12px; text-align: left; font-size: 14px; white-space: nowrap; }
+  td.subject { white-space: normal; }
+  th { color: #888; font-weight: 600; font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>discovery — pont web</h1>
+  <div id="status">chargement…</div>
+  <button id="sync">Synchroniser</button>
+</header>
+<table>
+  <thead><tr><th>Date</th><th>Expéditeur</th><th>Sujet</th></tr></thead>
+  <tbody id="list"></tbody>
+</table>
+<script>
+// Règle absolue : les données du mail passent par textContent, jamais innerHTML.
+async function load() {
+  const t0 = performance.now();
+  const data = await (await fetch('/api/messages')).json();
+  const clientMs = performance.now() - t0;
+  const tbody = document.getElementById('list');
+  tbody.replaceChildren();
+  for (const m of data.messages) {
+    const tr = document.createElement('tr');
+    for (const text of [m.date.slice(0, 10), m.sender, m.subject]) {
+      const td = document.createElement('td');
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    tr.lastChild.className = 'subject';
+    tbody.appendChild(tr);
+  }
+  setStatus(data.total + ' messages — liste servie en ' + clientMs.toFixed(1)
+    + ' ms côté client (' + (data.server_elapsed_us / 1000).toFixed(2) + ' ms côté serveur)');
+}
+function setStatus(text) { document.getElementById('status').textContent = text; }
+document.getElementById('sync').addEventListener('click', async () => {
+  setStatus('synchronisation…');
+  const t0 = performance.now();
+  const report = await (await fetch('/api/sync', { method: 'POST' })).json();
+  const ms = (performance.now() - t0).toFixed(0);
+  setStatus('synchro ' + report.mode + ' : ' + report.fetched + ' nouveau(x), '
+    + report.deleted + ' supprimé(s), en ' + ms + ' ms');
+  await load();
+});
+load();
+</script>
+</body>
+</html>

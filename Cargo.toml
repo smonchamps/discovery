@@ -6,6 +6,7 @@ members = [
     "spikes/oauth-gmail",
     "spikes/sync-engine",
     "spikes/html-render",
+    "spikes/web-bridge",
 ]
 
 [workspace.package]
