@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Fenêtre principale : accès aux commandes du noyau uniquement.","local":true,"windows":["main"],"permissions":["core:default"]}}
