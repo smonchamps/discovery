@@ -3,9 +3,12 @@ name = "discovery-desktop"
 version.workspace = true
 edition.workspace = true
 
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
 [dependencies]
 mail-core.workspace = true
-anyhow.workspace = true
+tauri = { version = "2", features = [] }
 
 [lints]
 workspace = true

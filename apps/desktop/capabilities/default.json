@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Fenêtre principale : accès aux commandes du noyau uniquement.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
