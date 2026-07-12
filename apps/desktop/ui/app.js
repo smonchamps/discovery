@@ -3,6 +3,7 @@
 //
 // Liste virtualisée : seules les lignes visibles existent dans le DOM ;
 // les pages d'enveloppes arrivent du noyau au fil du défilement.
+// Actions de triage : optimistes localement, rejouées au prochain sync.
 const invoke = window.__TAURI__.core.invoke;
 const el = (id) => document.getElementById(id);
 
@@ -13,8 +14,8 @@ const OVERSCAN = 8;
 let total = 0;
 let pages = new Map();      // index de page -> lignes
 let pending = new Set();    // pages en cours de chargement
-let selectedRow = null;
 let currentMessage = null;
+let currentIndex = null;
 
 async function init() {
   invoke('startup_report').then((report) => { el('perf').textContent = report; });
@@ -129,7 +130,6 @@ function buildRow(index) {
   if (!message.seen) row.classList.add('unread');
   if (currentMessage && message.uid === currentMessage.uid) {
     row.classList.add('selected');
-    selectedRow = row;
   }
   for (const [cls, text] of [
     ['date', message.date],
@@ -141,23 +141,21 @@ function buildRow(index) {
     span.textContent = text;
     row.appendChild(span);
   }
-  row.addEventListener('click', () => openMessage(message, row));
+  row.addEventListener('click', () => openMessage(message, index));
   return row;
 }
 
-async function openMessage(message, row) {
-  if (selectedRow) selectedRow.classList.remove('selected');
-  selectedRow = row;
-  row.classList.add('selected');
+async function openMessage(message, index) {
   currentMessage = message;
+  currentIndex = index;
 
   // Ouvrir un message le marque lu : localement tout de suite, le serveur
   // suivra à la prochaine synchro via la file d'actions.
   if (!message.seen) {
     message.seen = true;
-    row.classList.remove('unread');
     invoke('mark_seen', { uid: message.uid, seen: true }).catch(() => {});
   }
+  renderVisible();
 
   el('detail-placeholder').hidden = true;
   el('detail').hidden = false;
@@ -167,6 +165,59 @@ async function openMessage(message, row) {
   el('detail-frame').setAttribute('srcdoc', '');
   setStatus('chargement du message…');
   await loadBody(message, false);
+}
+
+async function openMessageAt(index) {
+  if (index < 0 || index >= total) return;
+  let message = rowAt(index);
+  if (!message) {
+    try {
+      const page = await invoke('list_messages', { offset: index, limit: 1 });
+      message = page.rows[0];
+    } catch {
+      return;
+    }
+  }
+  if (!message) return;
+  scrollToIndex(index);
+  await openMessage(message, index);
+}
+
+function scrollToIndex(index) {
+  const pane = el('pane-list');
+  const top = index * ROW_HEIGHT;
+  if (top < pane.scrollTop) {
+    pane.scrollTop = top;
+  } else if (top + ROW_HEIGHT > pane.scrollTop + pane.clientHeight) {
+    pane.scrollTop = top + ROW_HEIGHT - pane.clientHeight;
+  }
+}
+
+function closeDetail() {
+  currentMessage = null;
+  el('detail').hidden = true;
+  el('detail-placeholder').hidden = false;
+}
+
+/// Archive ou supprime le message ouvert, puis avance au suivant.
+async function performAction(kind) {
+  if (!currentMessage) return;
+  const index = currentIndex;
+  const uid = currentMessage.uid;
+  try {
+    await invoke(kind === 'archive' ? 'archive_message' : 'delete_message', { uid });
+  } catch (err) {
+    setStatus(`action impossible : ${err}`, true);
+    return;
+  }
+  setStatus(kind === 'archive'
+    ? 'archivé — le serveur suivra au prochain sync'
+    : 'supprimé — le serveur suivra au prochain sync');
+  closeDetail();
+  await reloadList();
+  if (total > 0 && index !== null) {
+    await openMessageAt(Math.min(index, total - 1));
+  }
 }
 
 async function loadBody(message, showImages) {
@@ -205,11 +256,35 @@ el('connect').addEventListener('click', async () => {
 });
 
 el('refresh').addEventListener('click', refresh);
+el('archive').addEventListener('click', () => performAction('archive'));
+el('delete').addEventListener('click', () => performAction('delete'));
 
 el('show-images').addEventListener('click', async () => {
   if (!currentMessage) return;
   setStatus('affichage des images…');
   await loadBody(currentMessage, true);
+});
+
+// Raccourcis de triage : e (archiver), Suppr (supprimer), j/k (naviguer).
+document.addEventListener('keydown', (event) => {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  switch (event.key) {
+    case 'e':
+      performAction('archive');
+      break;
+    case 'Delete':
+      performAction('delete');
+      break;
+    case 'j':
+      if (currentIndex !== null) openMessageAt(currentIndex + 1);
+      break;
+    case 'k':
+      if (currentIndex !== null) openMessageAt(currentIndex - 1);
+      break;
+    default:
+      return;
+  }
+  event.preventDefault();
 });
 
 init();

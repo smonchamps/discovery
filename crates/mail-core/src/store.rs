@@ -193,6 +193,20 @@ impl Store {
         Ok(stale.len())
     }
 
+    /// Retire localement une enveloppe et son corps (archivage/suppression
+    /// optimiste) ; le serveur suivra via la file d'actions.
+    pub fn remove_local(&self, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
+        self.0.execute(
+            "DELETE FROM bodies WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid],
+        )?;
+        self.0.execute(
+            "DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid],
+        )?;
+        Ok(())
+    }
+
     /// Applique localement un changement lu/non-lu (optimisme UI).
     /// Retourne `false` si l'enveloppe était déjà dans cet état.
     pub fn set_seen_local(&self, mailbox_id: i64, uid: Uid, seen: bool) -> Result<bool, Error> {
@@ -507,6 +521,20 @@ mod tests {
             !store.set_seen_local(id, 1, true).unwrap(),
             "déjà lu : aucun changement à journaliser"
         );
+    }
+
+    #[test]
+    fn remove_local_drops_envelope_and_body() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(id, &[envelope(1, "a", 100, false)])
+            .unwrap();
+        store.save_body(id, 1, "<p>x</p>").unwrap();
+
+        store.remove_local(id, 1).unwrap();
+
+        assert!(store.recent("INBOX", 0, 10).unwrap().is_empty());
+        assert_eq!(store.body("INBOX", 1).unwrap(), None);
     }
 
     #[test]

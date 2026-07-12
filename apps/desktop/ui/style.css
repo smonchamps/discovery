@@ -185,6 +185,12 @@ main.split {
   border-bottom: 1px solid var(--border);
 }
 
+#detail-actions {
+  float: right;
+  display: flex;
+  gap: 8px;
+}
+
 #detail-header h2 {
   margin: 0 0 4px;
   font-size: 17px;

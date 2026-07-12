@@ -232,6 +232,33 @@ fn run_sync(
     Ok((summary, refreshed))
 }
 
+/// Archive : disparition locale immédiate + journalisation, le serveur
+/// suivra au prochain sync (chez Gmail : reste dans « Tous les messages »).
+#[tauri::command]
+pub fn archive_message(app: AppHandle, uid: u32) -> Result<(), String> {
+    queue_removal(&app, uid, Action::Archive)
+}
+
+/// Suppression : disparition locale immédiate + journalisation, mise à la
+/// corbeille du serveur au prochain sync.
+#[tauri::command]
+pub fn delete_message(app: AppHandle, uid: u32) -> Result<(), String> {
+    queue_removal(&app, uid, Action::Delete)
+}
+
+fn queue_removal(app: &AppHandle, uid: u32, action: Action) -> Result<(), String> {
+    let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
+    let Some(state) = store.sync_state(MAILBOX).map_err(|err| err.to_string())? else {
+        return Ok(());
+    };
+    store
+        .remove_local(state.mailbox_id, uid)
+        .map_err(|err| err.to_string())?;
+    store
+        .enqueue_action(state.mailbox_id, uid, action)
+        .map_err(|err| err.to_string())
+}
+
 /// Marque lu/non-lu : application locale immédiate (optimisme UI) +
 /// journalisation dans la file — la prochaine synchro rejoue vers le serveur.
 #[tauri::command]

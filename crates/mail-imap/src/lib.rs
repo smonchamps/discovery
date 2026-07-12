@@ -11,6 +11,7 @@
 
 mod convert;
 
+use imap_proto::NameAttribute;
 use mail_core::{Envelope, Error, MailServer, MailboxSnapshot, Uid};
 
 /// Chaîne SASL XOAUTH2 (Gmail, Microsoft) : jamais de mot de passe.
@@ -33,6 +34,7 @@ impl imap::Authenticator for XOAuth2 {
 pub struct ImapServer {
     session: imap::Session<Box<dyn imap::ImapConnection>>,
     selected: Option<(String, MailboxSnapshot)>,
+    trash: Option<String>,
 }
 
 impl ImapServer {
@@ -56,6 +58,7 @@ impl ImapServer {
         Ok(Self {
             session,
             selected: None,
+            trash: None,
         })
     }
 
@@ -80,6 +83,38 @@ impl ImapServer {
         };
         self.selected = Some((mailbox.to_string(), snapshot));
         Ok(snapshot)
+    }
+
+    /// Découvre le dossier corbeille via ses attributs RFC 6154 — jamais de
+    /// nom en dur : « [Gmail]/Corbeille » sur un compte français, « Trash »
+    /// ailleurs. Résultat mémorisé pour la session.
+    fn trash_folder(&mut self) -> Result<String, Error> {
+        if let Some(name) = &self.trash {
+            return Ok(name.clone());
+        }
+        let names = self.session.list(None, Some("*")).map_err(server_err)?;
+        let trash = names
+            .iter()
+            .find(|name| {
+                name.attributes()
+                    .iter()
+                    .any(|attribute| matches!(attribute, NameAttribute::Trash))
+            })
+            .map(|name| name.name().to_string())
+            .ok_or_else(|| Error::Server("dossier corbeille introuvable (RFC 6154)".to_string()))?;
+        self.trash = Some(trash.clone());
+        Ok(trash)
+    }
+
+    /// Marque `\Deleted` puis expunge le seul UID visé (UIDPLUS).
+    fn expunge_uid(&mut self, uid: Uid) -> Result<(), Error> {
+        self.session
+            .uid_store(uid.to_string(), "+FLAGS.SILENT (\\Deleted)")
+            .map_err(server_err)?;
+        self.session
+            .uid_expunge(uid.to_string())
+            .map_err(server_err)?;
+        Ok(())
     }
 }
 
@@ -144,6 +179,22 @@ impl MailServer for ImapServer {
             .uid_store(uid.to_string(), query)
             .map_err(server_err)?;
         Ok(())
+    }
+
+    /// Chez Gmail, l'expunge d'INBOX retire le label sans supprimer :
+    /// le message reste dans « Tous les messages » — c'est l'archivage.
+    fn archive(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error> {
+        self.ensure_selected(mailbox)?;
+        self.expunge_uid(uid)
+    }
+
+    fn delete(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error> {
+        let trash = self.trash_folder()?;
+        self.ensure_selected(mailbox)?;
+        self.session
+            .uid_copy(uid.to_string(), &trash)
+            .map_err(server_err)?;
+        self.expunge_uid(uid)
     }
 }
 

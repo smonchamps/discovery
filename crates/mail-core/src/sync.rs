@@ -188,6 +188,8 @@ fn replay_actions(
         let outcome = match pending.action {
             Action::MarkSeen => server.set_seen(mailbox, pending.uid, true),
             Action::MarkUnseen => server.set_seen(mailbox, pending.uid, false),
+            Action::Archive => server.archive(mailbox, pending.uid),
+            Action::Delete => server.delete(mailbox, pending.uid),
         };
         match outcome {
             Ok(()) => {
@@ -367,11 +369,42 @@ mod tests {
 
         assert_eq!(report.replayed, 3);
         assert_eq!(
-            server.set_seen_calls,
-            vec![(1, true), (2, true), (1, false)],
+            server.action_calls,
+            vec!["seen:1:true", "seen:2:true", "seen:1:false"],
             "le rejeu doit préserver l'ordre d'émission"
         );
         assert!(store.pending_actions(id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn replay_archives_and_deletes_on_server() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "à archiver");
+        server.add(2, "à supprimer");
+        server.add(3, "à garder");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        let id = mailbox_id(&store);
+        store.remove_local(id, 1).unwrap();
+        store.remove_local(id, 2).unwrap();
+        store.enqueue_action(id, 1, Action::Archive).unwrap();
+        store.enqueue_action(id, 2, Action::Delete).unwrap();
+
+        let report = synced(&mut server, &mut store, &engine);
+
+        assert_eq!(report.replayed, 2);
+        assert_eq!(server.action_calls, vec!["archive:1", "delete:2"]);
+        assert!(!server.messages.contains_key(&1));
+        assert!(!server.messages.contains_key(&2));
+        let uids: Vec<Uid> = store
+            .recent("INBOX", 0, 10)
+            .unwrap()
+            .iter()
+            .map(|e| e.uid)
+            .collect();
+        assert_eq!(uids, vec![3], "seul le message gardé reste localement");
     }
 
     /// Le gate de la Phase 2 : une coupure pendant le rejeu ne perd rien —
@@ -387,12 +420,12 @@ mod tests {
         let id = mailbox_id(&store);
         store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
 
-        server.flags_fail = true;
+        server.actions_fail = true;
         let cut = synced(&mut server, &mut store, &engine);
         assert_eq!(cut.replayed, 0);
         assert_eq!(store.pending_actions(id).unwrap().len(), 1);
 
-        server.flags_fail = false;
+        server.actions_fail = false;
         let recovered = synced(&mut server, &mut store, &engine);
         assert_eq!(recovered.replayed, 1);
         assert!(store.pending_actions(id).unwrap().is_empty());
@@ -414,7 +447,7 @@ mod tests {
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.replayed, 0);
-        assert!(server.set_seen_calls.is_empty());
+        assert!(server.action_calls.is_empty());
         assert!(store.pending_actions(id).unwrap().is_empty());
     }
 

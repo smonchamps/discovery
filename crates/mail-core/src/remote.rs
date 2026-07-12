@@ -38,4 +38,10 @@ pub trait MailServer {
 
     /// Applique (ou retire) le flag `\Seen` côté serveur.
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error>;
+
+    /// Sort le message de la boîte sans le supprimer (archivage).
+    fn archive(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error>;
+
+    /// Met le message à la corbeille du serveur.
+    fn delete(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error>;
 }

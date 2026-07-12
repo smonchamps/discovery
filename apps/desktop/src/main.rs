@@ -29,6 +29,8 @@ fn main() {
             commands::list_messages,
             commands::message_body,
             commands::mark_seen,
+            commands::archive_message,
+            commands::delete_message,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {
