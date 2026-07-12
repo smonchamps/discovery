@@ -20,6 +20,12 @@ pub use sanitize::{BLOCKED_PIXEL, ImagePolicy, Sanitized, sanitize, sanitize_wit
 /// le modèle de production est « une CSP par message », embarquée dans le
 /// document lui-même. La CSP suit la politique d'images : elle n'ouvre
 /// `https:` que si l'utilisateur a demandé les images distantes.
+///
+/// **Contrainte d'hébergement (prouvée par l'expérience, 2026-07-12)** : un
+/// document `srcdoc` hérite de la CSP de la page hôte, et une CSP ne peut que
+/// se resserrer. L'hôte doit donc autoriser `img-src data: https: http:` et
+/// `style-src 'unsafe-inline'` — c'est CE document qui reste la couche
+/// restrictive par message (images distantes bloquées par défaut).
 pub fn email_document(sanitized_html: &str, policy: ImagePolicy) -> String {
     let img_sources = match policy {
         ImagePolicy::BlockRemote => "data: cid:",
