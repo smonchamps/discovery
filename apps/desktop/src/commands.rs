@@ -62,6 +62,15 @@ pub async fn connect_account(
     state: State<'_, AppState>,
     interactive: bool,
 ) -> Result<AccountInfo, String> {
+    // Crochet E2E : compte factice au jeton invalide par construction —
+    // hors ligne garanti, jamais de vrai OAuth pendant un test piloté.
+    if let Ok(email) = std::env::var("DISCOVERY_E2E_ACCOUNT") {
+        *lock_account(&state)? = Some(Authenticated {
+            email: email.clone(),
+            access_token: "jeton-e2e-invalide".to_string(),
+        });
+        return Ok(AccountInfo { email });
+    }
     let account = tauri::async_runtime::spawn_blocking(move || {
         let auth = GmailAuth::from_env().map_err(|err| err.to_string())?;
         let result = if interactive {
@@ -682,6 +691,11 @@ fn lock_account<'a>(
 }
 
 fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
+    // Crochet E2E : base isolée fournie par le pilote de test — la vraie
+    // base de l'utilisateur ne doit jamais être touchée par un test.
+    if let Ok(path) = std::env::var("DISCOVERY_DB_PATH") {
+        return Ok(PathBuf::from(path));
+    }
     let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     Ok(dir.join("discovery.db"))

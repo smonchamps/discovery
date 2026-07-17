@@ -1,5 +1,7 @@
 //! Outil du gate Phase 1 : remplit une base avec N enveloppes synthétiques
-//! pour mesurer la liste virtualisée (PLAN.md §4, ADR 0002).
+//! pour mesurer la liste virtualisée (PLAN.md §4, ADR 0002). Sert aussi de
+//! décor aux E2E : les 500 messages les plus récents reçoivent un corps,
+//! pour que lire et citer se testent entièrement hors ligne.
 //!
 //! ```powershell
 //! cargo run -p mail-core --example seed_inbox --release -- <chemin.db> [nombre]
@@ -80,6 +82,17 @@ fn main() -> Result<(), mail_core::Error> {
     }
     if !batch.is_empty() {
         store.upsert_envelopes(mailbox_id, &batch)?;
+    }
+
+    // Un corps pour les plus récents seulement : suffisant pour les E2E,
+    // sans alourdir l'outil de mesure quand on seed 50 000 messages.
+    let body_from = count.saturating_sub(500) + 1;
+    for uid in body_from..=count {
+        store.save_body(
+            mailbox_id,
+            uid,
+            &format!("<p>Corps du message n°{uid} : contenu de démonstration.</p>"),
+        )?;
     }
     store.update_state(mailbox_id, count, None)?;
 
