@@ -1,0 +1,13 @@
+[package]
+name = "spike-search-engine"
+version = "0.1.0"
+edition = "2024"
+
+# Spike jetable, volontairement HORS du workspace : Tantivy et ses
+# dépendances ne doivent pas entrer dans le lock de production.
+[workspace]
+
+[dependencies]
+anyhow = "1"
+rusqlite = { version = "0.37", features = ["bundled"] }
+tantivy = "0.22"
