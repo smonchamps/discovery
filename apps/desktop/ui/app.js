@@ -399,7 +399,18 @@ function setStatus(text, isError = false) {
   status.classList.toggle('error', isError);
 }
 
+// La voie silencieuse d'abord : après un démarrage hors ligne, le coffre
+// contient souvent un refresh token encore valide — le navigateur ne doit
+// s'ouvrir qu'en dernier recours (friction observée en validation Phase 2).
 el('connect').addEventListener('click', async () => {
+  setStatus('reconnexion…');
+  try {
+    const account = await invoke('connect_account', { interactive: false });
+    await onConnected(account.email);
+    return;
+  } catch {
+    // pas de session récupérable sans interaction : parcours complet
+  }
   setStatus('autorisation en cours dans votre navigateur…');
   try {
     const account = await invoke('connect_account', { interactive: true });
