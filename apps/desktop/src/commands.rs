@@ -756,20 +756,9 @@ fn run_draft_sync(
         }
     }
 
-    for uid in store.draft_tombstones().map_err(|err| err.to_string())? {
-        match server.delete_draft_remote(uid) {
-            Ok(()) => {
-                store
-                    .clear_draft_tombstone(uid)
-                    .map_err(|err| err.to_string())?;
-                summary.purged += 1;
-            }
-            Err(err) => {
-                summary.error = Some(err.to_string());
-                server.logout();
-                return Ok((summary, refreshed));
-            }
-        }
+    if !purge_draft_tombstones(&mut server, &store, &mut summary)? {
+        server.logout();
+        return Ok((summary, refreshed));
     }
 
     for draft in store.drafts_to_push().map_err(|err| err.to_string())? {
@@ -800,8 +789,41 @@ fn run_draft_sync(
             }
         }
     }
+
+    // Les remplacements de CE cycle viennent de créer leurs tombstones :
+    // les purger tout de suite, sinon l'ancienne copie reste visible dans
+    // Gmail jusqu'au cycle suivant (défaut observé en validation terrain —
+    // « un deuxième brouillon » après un Synchroniser en cours d'édition).
+    if summary.error.is_none() {
+        purge_draft_tombstones(&mut server, &store, &mut summary)?;
+    }
     server.logout();
     Ok((summary, refreshed))
+}
+
+/// Purge les copies distantes en tombstone (brouillons supprimés ou
+/// remplacés). Retourne `false` si le réseau a lâché en route — le bilan
+/// porte l'erreur, la dette reste enregistrée, le cycle suivant reprendra.
+fn purge_draft_tombstones(
+    server: &mut ImapServer,
+    store: &Store,
+    summary: &mut DraftSyncSummary,
+) -> Result<bool, String> {
+    for uid in store.draft_tombstones().map_err(|err| err.to_string())? {
+        match server.delete_draft_remote(uid) {
+            Ok(()) => {
+                store
+                    .clear_draft_tombstone(uid)
+                    .map_err(|err| err.to_string())?;
+                summary.purged += 1;
+            }
+            Err(err) => {
+                summary.error = Some(err.to_string());
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
 }
 
 /// Même stratégie que [`connect_imap`] : un échec d'ouverture déclenche

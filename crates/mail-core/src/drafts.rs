@@ -60,9 +60,12 @@ impl Store {
         match id {
             Some(id) => {
                 // MAX(…, +1) : l'horodatage avance STRICTEMENT à chaque
-                // sauvegarde — une édition dans la même milliseconde que la
-                // photo d'une poussée resterait sinon invisible (maille du
-                // filet, attrapée par test).
+                // vraie modification — une édition dans la même milliseconde
+                // que la photo d'une poussée resterait sinon invisible
+                // (maille du filet, attrapée par test). Et le WHERE : une
+                // sauvegarde au contenu IDENTIQUE ne touche à rien, sinon
+                // chaque fermeture re-pousserait une copie identique vers
+                // Gmail (churn observé en validation terrain).
                 self.conn().execute(
                     "INSERT INTO drafts (id, to_raw, subject, body, reply_to_uid, updated_epoch)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6)
@@ -71,7 +74,11 @@ impl Store {
                        subject = excluded.subject,
                        body = excluded.body,
                        reply_to_uid = excluded.reply_to_uid,
-                       updated_epoch = MAX(excluded.updated_epoch, drafts.updated_epoch + 1)",
+                       updated_epoch = MAX(excluded.updated_epoch, drafts.updated_epoch + 1)
+                     WHERE drafts.to_raw IS NOT excluded.to_raw
+                        OR drafts.subject IS NOT excluded.subject
+                        OR drafts.body IS NOT excluded.body
+                        OR drafts.reply_to_uid IS NOT excluded.reply_to_uid",
                     params![id, to_raw, subject, body, reply_to_uid, now],
                 )?;
                 Ok(id)
@@ -325,6 +332,28 @@ mod tests {
             store.drafts_to_push().unwrap().len(),
             1,
             "édité = de nouveau à pousser"
+        );
+    }
+
+    /// Une sauvegarde au contenu identique ne marque rien à pousser :
+    /// sinon chaque fermeture de composition re-pousserait une copie
+    /// octet pour octet identique vers Gmail (churn observé au terrain).
+    #[test]
+    fn identical_resave_does_not_mark_dirty_again() {
+        let store = store();
+        let id = store
+            .save_draft(None, "a@b.fr", "s", "texte", Some(1))
+            .unwrap();
+        let epoch = store.drafts_to_push().unwrap()[0].updated_epoch;
+        store.record_draft_pushed(id, Some(101), epoch).unwrap();
+
+        store
+            .save_draft(Some(id), "a@b.fr", "s", "texte", Some(1))
+            .unwrap();
+
+        assert!(
+            store.drafts_to_push().unwrap().is_empty(),
+            "contenu identique : rien à re-pousser"
         );
     }
 
