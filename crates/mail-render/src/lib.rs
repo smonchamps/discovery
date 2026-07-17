@@ -16,6 +16,62 @@ mod sanitize;
 
 pub use sanitize::{BLOCKED_PIXEL, ImagePolicy, Sanitized, sanitize, sanitize_with};
 
+/// Corps d'un message réduit à son texte — la matière première d'une
+/// citation (répondre, transférer — Phase 2).
+///
+/// Assainissement D'ABORD : `ammonia` élimine scripts et styles avec leur
+/// contenu, pour qu'aucun code ne puisse se déguiser en texte cité. La
+/// conversion est déléguée à `mail-parser` (décision Phase 0), qui ne coupe
+/// que sur `<p>` et `<br>` (mesuré) : une pré-passe traduit donc les fins de
+/// blocs en `<br>` — heuristique d'affichage sur du HTML déjà assaini, pas
+/// du parsing de sécurité.
+pub fn body_text(html: &str) -> String {
+    let sanitized = sanitize(html);
+    let text = mail_parser::decoders::html::html_to_text(&block_ends_to_breaks(&sanitized.html));
+    collapse_blank_lines(text.trim())
+}
+
+/// Fins de blocs → sauts de ligne, cellules de tableau → espaces.
+/// `ammonia` émet des balises en minuscules : la casse est déjà normalisée.
+fn block_ends_to_breaks(html: &str) -> String {
+    const BLOCK_ENDS: [&str; 12] = [
+        "</div>",
+        "</tr>",
+        "</li>",
+        "</blockquote>",
+        "</h1>",
+        "</h2>",
+        "</h3>",
+        "</h4>",
+        "</h5>",
+        "</h6>",
+        "</table>",
+        "</ul>",
+    ];
+    let mut result = html.replace("</td>", "</td> ").replace("</th>", "</th> ");
+    for tag in BLOCK_ENDS {
+        result = result.replace(tag, &format!("{tag}<br>"));
+    }
+    result
+}
+
+/// Jamais plus d'une ligne vide d'affilée : les emboîtements de blocs
+/// produisent des rafales de sauts sans valeur pour une citation.
+fn collapse_blank_lines(text: &str) -> String {
+    let mut lines = Vec::new();
+    let mut previous_blank = false;
+    for line in text.lines() {
+        let line = line.trim_end();
+        let blank = line.is_empty();
+        if blank && previous_blank {
+            continue;
+        }
+        lines.push(line);
+        previous_blank = blank;
+    }
+    lines.join("\n")
+}
+
 /// Document complet à charger dans une iframe `sandbox` (via `srcdoc`) :
 /// le modèle de production est « une CSP par message », embarquée dans le
 /// document lui-même. La CSP suit la politique d'images : elle n'ouvre
@@ -44,6 +100,46 @@ pub fn email_document(sanitized_html: &str, policy: ImagePolicy) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn body_text_strips_tags_and_decodes_entities() {
+        let text = body_text("<p>Bonjour &amp; bienvenue&nbsp;!</p><p>À demain.</p>");
+        assert!(text.contains("Bonjour & bienvenue"));
+        assert!(text.contains("À demain."));
+        assert!(!text.contains('<'));
+    }
+
+    #[test]
+    fn body_text_separates_block_elements_with_line_breaks() {
+        let text = body_text("<div>ligne 1</div><div>ligne 2</div>");
+        assert_eq!(text.lines().count(), 2, "{text:?}");
+    }
+
+    /// Les newsletters sont des soupes de tableaux : les cellules doivent
+    /// rester séparées, les lignes aussi.
+    #[test]
+    fn body_text_keeps_table_structure_readable() {
+        let text = body_text(
+            "<table><tr><td>gauche</td><td>droite</td></tr><tr><td>bas</td></tr></table>",
+        );
+        assert!(text.contains("gauche droite"), "{text:?}");
+        assert!(text.lines().count() >= 2, "{text:?}");
+    }
+
+    #[test]
+    fn body_text_never_stacks_blank_lines() {
+        let text = body_text("<div><p>haut</p></div><div></div><div><p>bas</p></div>");
+        assert!(!text.contains("\n\n\n"), "{text:?}");
+    }
+
+    /// Le contenu d'un script ne doit jamais se retrouver dans une citation.
+    #[test]
+    fn body_text_drops_script_content_entirely() {
+        let text = body_text("<p>visible</p><script>alert('caché')</script>");
+        assert!(text.contains("visible"));
+        assert!(!text.contains("alert"));
+        assert!(!text.contains("caché"));
+    }
 
     #[test]
     fn email_document_embeds_csp_and_content() {

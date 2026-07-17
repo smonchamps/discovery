@@ -78,6 +78,70 @@ pub fn reply_subject(original: Option<&str>) -> String {
     }
 }
 
+/// Sujet pré-rempli d'un transfert : « Fwd: » sans empilement, tolérant
+/// aux variantes du terrain (« Tr : » d'Outlook français, « Fw: »…).
+pub fn forward_subject(original: Option<&str>) -> String {
+    match original
+        .map(str::trim)
+        .filter(|subject| !subject.is_empty())
+    {
+        Some(subject) => {
+            let lower = subject.to_lowercase();
+            let already = ["fwd:", "fwd :", "fw:", "fw :", "tr:", "tr :"]
+                .iter()
+                .any(|prefix| lower.starts_with(prefix));
+            if already {
+                subject.to_string()
+            } else {
+                format!("Fwd: {subject}")
+            }
+        }
+        None => "Fwd:".to_string(),
+    }
+}
+
+/// Bloc de citation d'une réponse, à placer SOUS le curseur (top-posting) :
+/// une ligne d'attribution puis chaque ligne du texte préfixée de « > ».
+pub fn quote_reply(sender: Option<&str>, date: Option<&str>, body_text: &str) -> String {
+    if body_text.trim().is_empty() {
+        return String::new();
+    }
+    let sender = sender.unwrap_or("(expéditeur inconnu)");
+    let attribution = match date {
+        Some(date) => format!("Le {date}, {sender} a écrit :"),
+        None => format!("{sender} a écrit :"),
+    };
+    let quoted: String = body_text
+        .lines()
+        .map(|line| format!("> {line}\n"))
+        .collect();
+    format!("\n\n{attribution}\n{}", quoted.trim_end())
+}
+
+/// Bloc d'un transfert : l'en-tête d'origine (De/Date/Objet) puis le texte
+/// tel quel — un transfert transmet, il ne commente pas ligne à ligne.
+pub fn quote_forward(
+    sender: Option<&str>,
+    date: Option<&str>,
+    subject: Option<&str>,
+    body_text: &str,
+) -> String {
+    let mut block = String::from("\n\n---------- Message transféré ----------\n");
+    block.push_str(&format!(
+        "De : {}\n",
+        sender.unwrap_or("(expéditeur inconnu)")
+    ));
+    if let Some(date) = date {
+        block.push_str(&format!("Date : {date}\n"));
+    }
+    block.push_str(&format!(
+        "Objet : {}\n\n{}",
+        subject.unwrap_or("(sans objet)"),
+        body_text.trim_end(),
+    ));
+    block
+}
+
 /// Un sujet vit sur une seule ligne : tout caractère de contrôle devient
 /// une espace — la voie de l'injection d'en-têtes est coupée à la source.
 fn single_line(subject: &str) -> String {
@@ -202,5 +266,71 @@ mod tests {
         assert_eq!(reply_subject(Some("RE : Réunion")), "RE : Réunion");
         assert_eq!(reply_subject(Some("  ")), "Re:");
         assert_eq!(reply_subject(None), "Re:");
+    }
+
+    #[test]
+    fn forward_subject_prefixes_exactly_once() {
+        assert_eq!(forward_subject(Some("Réunion")), "Fwd: Réunion");
+        assert_eq!(forward_subject(Some("Fwd: Réunion")), "Fwd: Réunion");
+        assert_eq!(forward_subject(Some("TR : Réunion")), "TR : Réunion");
+        assert_eq!(forward_subject(Some("Fw: Réunion")), "Fw: Réunion");
+        assert_eq!(forward_subject(None), "Fwd:");
+    }
+
+    /// Un « Re: » n'est pas un « Fwd: » : transférer une réponse préfixe.
+    #[test]
+    fn forward_subject_still_prefixes_a_reply_subject() {
+        assert_eq!(forward_subject(Some("Re: Réunion")), "Fwd: Re: Réunion");
+    }
+
+    #[test]
+    fn quote_reply_attributes_and_prefixes_every_line() {
+        let quote = quote_reply(
+            Some("Alice Martin"),
+            Some("2026-07-17 10:23"),
+            "première ligne\n\nseconde ligne",
+        );
+        assert!(quote.starts_with("\n\nLe 2026-07-17 10:23, Alice Martin a écrit :\n"));
+        assert!(quote.contains("> première ligne"));
+        assert!(quote.contains("> seconde ligne"));
+        assert!(
+            !quote.contains("\n\n>"),
+            "les lignes vides restent citées : {quote:?}"
+        );
+    }
+
+    #[test]
+    fn quote_reply_degrades_gracefully_without_metadata() {
+        let quote = quote_reply(None, None, "texte");
+        assert!(quote.contains("(expéditeur inconnu) a écrit :"));
+        assert!(quote.contains("> texte"));
+    }
+
+    #[test]
+    fn quote_reply_of_empty_body_is_empty() {
+        assert_eq!(quote_reply(Some("Alice"), None, "  \n "), "");
+    }
+
+    #[test]
+    fn quote_forward_carries_original_headers_and_text() {
+        let block = quote_forward(
+            Some("Alice Martin"),
+            Some("2026-07-17 10:23"),
+            Some("Réunion"),
+            "le corps\nsur deux lignes\n",
+        );
+        assert!(block.contains("---------- Message transféré ----------"));
+        assert!(block.contains("De : Alice Martin"));
+        assert!(block.contains("Date : 2026-07-17 10:23"));
+        assert!(block.contains("Objet : Réunion"));
+        assert!(block.ends_with("le corps\nsur deux lignes"));
+    }
+
+    #[test]
+    fn quote_forward_uses_placeholders_for_missing_metadata() {
+        let block = quote_forward(None, None, None, "corps");
+        assert!(block.contains("De : (expéditeur inconnu)"));
+        assert!(!block.contains("Date :"));
+        assert!(block.contains("Objet : (sans objet)"));
     }
 }

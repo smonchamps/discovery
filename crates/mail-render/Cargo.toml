@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 ammonia.workspace = true
+mail-parser.workspace = true
 
 [lints]
 workspace = true

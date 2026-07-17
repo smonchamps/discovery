@@ -2053,6 +2053,7 @@ name = "mail-render"
 version = "0.1.0"
 dependencies = [
  "ammonia",
+ "mail-parser",
 ]
 
 [[package]]
