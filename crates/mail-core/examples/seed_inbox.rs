@@ -74,6 +74,7 @@ fn main() -> Result<(), mail_core::Error> {
                 .timestamp_opt(1_600_000_000 + i64::from(uid) * 60, 0)
                 .single(),
             seen: uid % 3 != 0,
+            flagged: uid.is_multiple_of(7),
         });
         if batch.len() == BATCH {
             store.upsert_envelopes(mailbox_id, &batch)?;

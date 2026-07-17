@@ -46,8 +46,18 @@ pub(crate) fn fetch_to_envelope(fetch: &imap::types::Fetch) -> Option<Envelope> 
         .flags()
         .iter()
         .any(|flag| matches!(flag, imap::types::Flag::Seen));
+    let flagged = fetch
+        .flags()
+        .iter()
+        .any(|flag| matches!(flag, imap::types::Flag::Flagged));
     let date = fetch.internal_date().map(|d| d.with_timezone(&Utc));
-    Some(envelope_from_parts(uid, fetch.envelope(), date, seen))
+    Some(envelope_from_parts(
+        uid,
+        fetch.envelope(),
+        date,
+        seen,
+        flagged,
+    ))
 }
 
 /// Cœur du mapping, séparé de `Fetch` (non constructible) pour être testable.
@@ -56,6 +66,7 @@ pub(crate) fn envelope_from_parts(
     proto: Option<&ProtoEnvelope<'_>>,
     date: Option<chrono::DateTime<Utc>>,
     seen: bool,
+    flagged: bool,
 ) -> Envelope {
     let subject = proto
         .and_then(|envelope| envelope.subject.as_deref())
@@ -74,6 +85,7 @@ pub(crate) fn envelope_from_parts(
         message_id,
         date,
         seen,
+        flagged,
     }
 }
 
@@ -218,7 +230,7 @@ mod tests {
             b"=?UTF-8?Q?R=C3=A9union_de_demain?=",
             address(None, Some(b"seb"), Some(b"example.com")),
         );
-        let envelope = envelope_from_parts(1, Some(&proto), None, false);
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
         assert_eq!(envelope.subject.as_deref(), Some("R\u{e9}union de demain"));
     }
 
@@ -232,21 +244,21 @@ mod tests {
                 Some(b"example.com"),
             ),
         );
-        let envelope = envelope_from_parts(1, Some(&proto), None, false);
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
         assert_eq!(envelope.sender.as_deref(), Some("S\u{e9}bastien"));
     }
 
     #[test]
     fn sender_falls_back_to_mailbox_at_host() {
         let proto = proto_envelope(b"sujet", address(None, Some(b"seb"), Some(b"example.com")));
-        let envelope = envelope_from_parts(1, Some(&proto), None, false);
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
         assert_eq!(envelope.sender.as_deref(), Some("seb@example.com"));
     }
 
     #[test]
     fn missing_envelope_yields_bare_fields() {
         let date = Utc.timestamp_opt(1_700_000_000, 0).unwrap();
-        let envelope = envelope_from_parts(42, None, Some(date), true);
+        let envelope = envelope_from_parts(42, None, Some(date), true, true);
         assert_eq!(envelope.uid, 42);
         assert_eq!(envelope.subject, None);
         assert_eq!(envelope.sender, None);
@@ -254,6 +266,7 @@ mod tests {
         assert_eq!(envelope.message_id, None);
         assert_eq!(envelope.date, Some(date));
         assert!(envelope.seen);
+        assert!(envelope.flagged, "l'étoile suit les flags du FETCH");
     }
 
     /// L'adresse brute doit rester disponible même quand un nom d'affichage
@@ -268,7 +281,7 @@ mod tests {
                 Some(b"example.com"),
             ),
         );
-        let envelope = envelope_from_parts(1, Some(&proto), None, false);
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
         assert_eq!(envelope.sender.as_deref(), Some("S\u{e9}bastien"));
         assert_eq!(envelope.sender_address.as_deref(), Some("seb@example.com"));
     }
@@ -277,7 +290,7 @@ mod tests {
     fn extracts_message_id_for_threading() {
         let mut proto = proto_envelope(b"sujet", address(None, Some(b"a"), Some(b"b.c")));
         proto.message_id = Some(Cow::Borrowed(b" <abc.123@mail.example.com> ".as_slice()));
-        let envelope = envelope_from_parts(1, Some(&proto), None, false);
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
         assert_eq!(
             envelope.message_id.as_deref(),
             Some("<abc.123@mail.example.com>")
@@ -287,7 +300,7 @@ mod tests {
     #[test]
     fn blank_subject_becomes_none() {
         let proto = proto_envelope(b"   ", address(None, Some(b"a"), Some(b"b.c")));
-        let envelope = envelope_from_parts(1, Some(&proto), None, false);
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
         assert_eq!(envelope.subject, None);
     }
 

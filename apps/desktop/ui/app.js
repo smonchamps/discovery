@@ -138,6 +138,7 @@ function buildRow(index) {
     return row;
   }
   if (!message.seen) row.classList.add('unread');
+  if (message.flagged) row.classList.add('flagged');
   if (currentMessage && message.uid === currentMessage.uid) {
     row.classList.add('selected');
   }
@@ -171,6 +172,7 @@ async function openMessage(message, index) {
   // Une composition en cours reste au premier plan : le brouillon ne
   // disparaît pas parce qu'on a cliqué sur la liste.
   if (el('compose').hidden) el('detail').hidden = false;
+  updateStarButton();
   el('detail-subject').textContent = message.subject;
   el('detail-meta').textContent = `${message.sender} — ${message.date}`;
   el('detail-note').hidden = true;
@@ -209,6 +211,29 @@ function closeDetail() {
   currentMessage = null;
   el('detail').hidden = true;
   el('detail-placeholder').hidden = false;
+}
+
+function updateStarButton() {
+  const star = el('star');
+  const on = Boolean(currentMessage && currentMessage.flagged);
+  star.textContent = on ? '★' : '☆';
+  star.title = on ? "Retirer l'étoile (s)" : 'Étoiler (s)';
+}
+
+/// Étoile : optimiste localement, le serveur suivra au prochain sync.
+async function toggleStar() {
+  if (!currentMessage) return;
+  currentMessage.flagged = !currentMessage.flagged;
+  updateStarButton();
+  renderVisible();
+  try {
+    await invoke('mark_flagged', {
+      uid: currentMessage.uid,
+      flagged: currentMessage.flagged,
+    });
+  } catch (err) {
+    setStatus(`étoile impossible : ${err}`, true);
+  }
 }
 
 /// Archive ou supprime le message ouvert, puis avance au suivant.
@@ -563,6 +588,7 @@ el('refresh').addEventListener('click', refresh);
 el('archive').addEventListener('click', () => performAction('archive'));
 el('delete').addEventListener('click', () => performAction('delete'));
 el('compose-btn').addEventListener('click', () => startCompose());
+el('star').addEventListener('click', toggleStar);
 el('reply').addEventListener('click', replyToCurrent);
 el('forward').addEventListener('click', forwardCurrent);
 el('compose-send').addEventListener('click', sendCompose);
@@ -600,6 +626,9 @@ document.addEventListener('keydown', (event) => {
       break;
     case 'f':
       forwardCurrent();
+      break;
+    case 's':
+      toggleStar();
       break;
     case 'e':
       performAction('archive');

@@ -44,6 +44,16 @@ test('trier : « e » archive le message ouvert, la liste et le compte suivent',
   await expect(page.locator('#detail-subject')).toContainText('n°199');
 });
 
+test("étoiler : « s » pose l'étoile — visible en liste — puis la retire", async () => {
+  await page.keyboard.press('s');
+  await expect(page.locator('#star')).toHaveText('★');
+  await expect(page.locator('.row').first()).toHaveClass(/flagged/);
+
+  await page.keyboard.press('s');
+  await expect(page.locator('#star')).toHaveText('☆');
+  await expect(page.locator('.row').first()).not.toHaveClass(/flagged/);
+});
+
 test('répondre : destinataire, « Re: » et citation pré-remplis — envoi hors ligne journalisé, jamais perdu', async () => {
   await page.keyboard.press('r');
 

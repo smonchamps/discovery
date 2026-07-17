@@ -45,6 +45,7 @@ pub struct MessageRow {
     pub sender: String,
     pub date: String,
     pub seen: bool,
+    pub flagged: bool,
 }
 
 #[tauri::command]
@@ -144,6 +145,7 @@ pub fn list_messages(app: AppHandle, offset: usize, limit: usize) -> Result<Mess
                 .map(|date| date.format("%Y-%m-%d").to_string())
                 .unwrap_or_default(),
             seen: envelope.seen,
+            flagged: envelope.flagged,
         })
         .collect();
     Ok(MessagePage {
@@ -297,6 +299,30 @@ pub fn mark_seen(app: AppHandle, uid: u32, seen: bool) -> Result<(), String> {
             Action::MarkSeen
         } else {
             Action::MarkUnseen
+        };
+        store
+            .enqueue_action(state.mailbox_id, uid, action)
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
+/// Étoile/désétoile : application locale immédiate (optimisme UI) +
+/// journalisation — même contrat que lu/non-lu, même file rejouable.
+#[tauri::command]
+pub fn mark_flagged(app: AppHandle, uid: u32, flagged: bool) -> Result<(), String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let Some(state) = store.sync_state(MAILBOX).map_err(|err| err.to_string())? else {
+        return Ok(());
+    };
+    let changed = store
+        .set_flagged_local(state.mailbox_id, uid, flagged)
+        .map_err(|err| err.to_string())?;
+    if changed {
+        let action = if flagged {
+            Action::MarkFlagged
+        } else {
+            Action::MarkUnflagged
         };
         store
             .enqueue_action(state.mailbox_id, uid, action)

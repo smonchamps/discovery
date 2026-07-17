@@ -181,6 +181,19 @@ impl MailServer for ImapServer {
         Ok(())
     }
 
+    fn set_flagged(&mut self, mailbox: &str, uid: Uid, flagged: bool) -> Result<(), Error> {
+        self.ensure_selected(mailbox)?;
+        let query = if flagged {
+            "+FLAGS.SILENT (\\Flagged)"
+        } else {
+            "-FLAGS.SILENT (\\Flagged)"
+        };
+        self.session
+            .uid_store(uid.to_string(), query)
+            .map_err(server_err)?;
+        Ok(())
+    }
+
     /// Chez Gmail, l'expunge d'INBOX retire le label sans supprimer :
     /// le message reste dans « Tous les messages » — c'est l'archivage.
     fn archive(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error> {

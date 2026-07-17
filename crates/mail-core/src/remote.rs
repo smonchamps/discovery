@@ -39,6 +39,9 @@ pub trait MailServer {
     /// Applique (ou retire) le flag `\Seen` côté serveur.
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error>;
 
+    /// Applique (ou retire) le flag `\Flagged` — l'étoile.
+    fn set_flagged(&mut self, mailbox: &str, uid: Uid, flagged: bool) -> Result<(), Error>;
+
     /// Sort le message de la boîte sans le supprimer (archivage).
     fn archive(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error>;
 

@@ -53,6 +53,7 @@ impl FakeServer {
                     .unwrap(),
             ),
             seen: false,
+            flagged: false,
         };
         self.messages.insert(uid, (envelope, self.modseq));
     }
@@ -72,6 +73,14 @@ impl FakeServer {
         self.modseq += 1;
         if let Some((envelope, modseq)) = self.messages.get_mut(&uid) {
             envelope.seen = true;
+            *modseq = self.modseq;
+        }
+    }
+
+    pub(crate) fn mark_flagged(&mut self, uid: Uid) {
+        self.modseq += 1;
+        if let Some((envelope, modseq)) = self.messages.get_mut(&uid) {
+            envelope.flagged = true;
             *modseq = self.modseq;
         }
     }
@@ -132,6 +141,19 @@ impl MailServer for FakeServer {
         self.modseq += 1;
         if let Some((envelope, modseq)) = self.messages.get_mut(&uid) {
             envelope.seen = seen;
+            *modseq = self.modseq;
+        }
+        Ok(())
+    }
+
+    fn set_flagged(&mut self, _mailbox: &str, uid: Uid, flagged: bool) -> Result<(), Error> {
+        if self.actions_fail {
+            return Err(Error::Server("coupure simulée".to_string()));
+        }
+        self.action_calls.push(format!("flag:{uid}:{flagged}"));
+        self.modseq += 1;
+        if let Some((envelope, modseq)) = self.messages.get_mut(&uid) {
+            envelope.flagged = flagged;
             *modseq = self.modseq;
         }
         Ok(())

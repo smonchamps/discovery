@@ -22,4 +22,6 @@ pub struct Envelope {
     pub message_id: Option<String>,
     pub date: Option<DateTime<Utc>>,
     pub seen: bool,
+    /// `\Flagged` — l'étoile chez Gmail.
+    pub flagged: bool,
 }

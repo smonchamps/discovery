@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS envelopes (
     message_id     TEXT,
     date_epoch     INTEGER,
     seen           INTEGER NOT NULL DEFAULT 0,
+    flagged        INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (mailbox_id, uid)
 );
 CREATE INDEX IF NOT EXISTS idx_envelopes_date ON envelopes(mailbox_id, date_epoch DESC);
@@ -177,8 +178,8 @@ impl Store {
             let mut stmt = tx.prepare(
                 "INSERT OR REPLACE INTO envelopes
                  (mailbox_id, uid, subject, sender, sender_address, message_id,
-                  date_epoch, seen)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                  date_epoch, seen, flagged)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             )?;
             for envelope in envelopes {
                 stmt.execute(params![
@@ -190,6 +191,7 @@ impl Store {
                     envelope.message_id,
                     envelope.date.map(|d| d.timestamp()),
                     envelope.seen,
+                    envelope.flagged,
                 ])?;
             }
         }
@@ -250,6 +252,22 @@ impl Store {
             "UPDATE envelopes SET seen = ?3
              WHERE mailbox_id = ?1 AND uid = ?2 AND seen != ?3",
             params![mailbox_id, uid, seen],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// Applique localement l'étoile (optimisme UI).
+    /// Retourne `false` si l'enveloppe était déjà dans cet état.
+    pub fn set_flagged_local(
+        &self,
+        mailbox_id: i64,
+        uid: Uid,
+        flagged: bool,
+    ) -> Result<bool, Error> {
+        let changed = self.0.execute(
+            "UPDATE envelopes SET flagged = ?3
+             WHERE mailbox_id = ?1 AND uid = ?2 AND flagged != ?3",
+            params![mailbox_id, uid, flagged],
         )?;
         Ok(changed > 0)
     }
@@ -320,7 +338,7 @@ impl Store {
     ) -> Result<Vec<Envelope>, Error> {
         let mut stmt = self.0.prepare(
             "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
-                    e.date_epoch, e.seen
+                    e.date_epoch, e.seen, e.flagged
              FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.name = ?1
              ORDER BY e.date_epoch DESC, e.uid DESC
@@ -341,7 +359,7 @@ impl Store {
             .0
             .query_row(
                 "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
-                        e.date_epoch, e.seen
+                        e.date_epoch, e.seen, e.flagged
                  FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
                  WHERE m.name = ?1 AND e.uid = ?2",
                 params![mailbox, uid],
@@ -377,10 +395,14 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
     let existing: HashSet<String> = stmt
         .query_map([], |row| row.get(1))?
         .collect::<Result<_, _>>()?;
-    for column in ["sender_address", "message_id"] {
+    for (column, ddl) in [
+        ("sender_address", "TEXT"),
+        ("message_id", "TEXT"),
+        ("flagged", "INTEGER NOT NULL DEFAULT 0"),
+    ] {
         if !existing.contains(column) {
             conn.execute(
-                &format!("ALTER TABLE envelopes ADD COLUMN {column} TEXT"),
+                &format!("ALTER TABLE envelopes ADD COLUMN {column} {ddl}"),
                 [],
             )?;
         }
@@ -401,6 +423,7 @@ fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
             .get::<_, Option<i64>>(5)?
             .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
         seen: row.get(6)?,
+        flagged: row.get(7)?,
     })
 }
 
@@ -419,6 +442,7 @@ mod tests {
             message_id: Some(format!("<m{uid}@example.com>")),
             date: Some(Utc.timestamp_opt(epoch, 0).unwrap()),
             seen,
+            flagged: uid.is_multiple_of(2),
         }
     }
 
@@ -449,6 +473,7 @@ mod tests {
             message_id: None,
             date: None,
             seen: false,
+            flagged: false,
         };
         store
             .upsert_envelopes(id, std::slice::from_ref(&bare))
@@ -608,6 +633,21 @@ mod tests {
     }
 
     #[test]
+    fn set_flagged_local_updates_and_reports_actual_change() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(id, &[envelope(1, "a", 100, false)])
+            .unwrap();
+
+        assert!(store.set_flagged_local(id, 1, true).unwrap());
+        assert!(store.recent("INBOX", 0, 1).unwrap()[0].flagged);
+        assert!(
+            !store.set_flagged_local(id, 1, true).unwrap(),
+            "déjà étoilé : aucun changement à journaliser"
+        );
+    }
+
+    #[test]
     fn remove_local_drops_envelope_and_body() {
         let (mut store, id) = store_with_mailbox();
         store
@@ -703,6 +743,10 @@ mod tests {
         assert_eq!(
             rows[0].sender_address, None,
             "colonne ajoutée par migration : valeur inconnue pour l'existant"
+        );
+        assert!(
+            !rows[0].flagged,
+            "étoile absente par défaut après migration"
         );
 
         drop(store);

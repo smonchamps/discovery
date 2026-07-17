@@ -183,6 +183,17 @@ main.split {
   white-space: nowrap;
 }
 
+.row.flagged .subject::before {
+  content: '★ ';
+  color: #f4b400;
+}
+
+#star {
+  color: #f4b400;
+  font-size: 15px;
+  padding: 6px 10px;
+}
+
 .row.unread {
   font-weight: 600;
 }

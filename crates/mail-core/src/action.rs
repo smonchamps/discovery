@@ -11,6 +11,10 @@ use crate::envelope::Uid;
 pub enum Action {
     MarkSeen,
     MarkUnseen,
+    /// Poser l'étoile (`\Flagged`).
+    MarkFlagged,
+    /// Retirer l'étoile.
+    MarkUnflagged,
     /// Sortir de la boîte sans supprimer (chez Gmail : reste dans
     /// « Tous les messages »).
     Archive,
@@ -23,6 +27,8 @@ impl Action {
         match self {
             Action::MarkSeen => "mark_seen",
             Action::MarkUnseen => "mark_unseen",
+            Action::MarkFlagged => "mark_flagged",
+            Action::MarkUnflagged => "mark_unflagged",
             Action::Archive => "archive",
             Action::Delete => "delete",
         }
@@ -32,6 +38,8 @@ impl Action {
         match kind {
             "mark_seen" => Some(Action::MarkSeen),
             "mark_unseen" => Some(Action::MarkUnseen),
+            "mark_flagged" => Some(Action::MarkFlagged),
+            "mark_unflagged" => Some(Action::MarkUnflagged),
             "archive" => Some(Action::Archive),
             "delete" => Some(Action::Delete),
             _ => None,

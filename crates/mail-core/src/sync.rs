@@ -188,6 +188,8 @@ fn replay_actions(
         let outcome = match pending.action {
             Action::MarkSeen => server.set_seen(mailbox, pending.uid, true),
             Action::MarkUnseen => server.set_seen(mailbox, pending.uid, false),
+            Action::MarkFlagged => server.set_flagged(mailbox, pending.uid, true),
+            Action::MarkUnflagged => server.set_flagged(mailbox, pending.uid, false),
             Action::Archive => server.archive(mailbox, pending.uid),
             Action::Delete => server.delete(mailbox, pending.uid),
         };
@@ -374,6 +376,40 @@ mod tests {
             "le rejeu doit préserver l'ordre d'émission"
         );
         assert!(store.pending_actions(id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn replay_stars_and_unstars_on_server() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "à étoiler");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        let id = mailbox_id(&store);
+        store.enqueue_action(id, 1, Action::MarkFlagged).unwrap();
+        store.enqueue_action(id, 1, Action::MarkUnflagged).unwrap();
+
+        let report = synced(&mut server, &mut store, &engine);
+
+        assert_eq!(report.replayed, 2);
+        assert_eq!(server.action_calls, vec!["flag:1:true", "flag:1:false"]);
+        assert!(!server.messages[&1].0.flagged);
+    }
+
+    #[test]
+    fn condstore_propagates_star_changes() {
+        let mut server = FakeServer::new(true);
+        server.add(1, "étoilé ailleurs");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        server.mark_flagged(1);
+        let report = synced(&mut server, &mut store, &engine);
+
+        assert_eq!(report.fetched, 1);
+        assert!(store.recent("INBOX", 0, 1).unwrap()[0].flagged);
     }
 
     #[test]
