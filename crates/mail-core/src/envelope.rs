@@ -15,6 +15,11 @@ pub struct Envelope {
     pub uid: Uid,
     pub subject: Option<String>,
     pub sender: Option<String>,
+    /// Adresse brute de l'expéditeur (`mailbox@host`) — pour répondre,
+    /// là où `sender` est la chaîne d'affichage (nom décodé).
+    pub sender_address: Option<String>,
+    /// `Message-ID` RFC 5322 — pour répondre dans le fil (`In-Reply-To`).
+    pub message_id: Option<String>,
     pub date: Option<DateTime<Utc>>,
     pub seen: bool,
 }

@@ -60,14 +60,18 @@ pub(crate) fn envelope_from_parts(
     let subject = proto
         .and_then(|envelope| envelope.subject.as_deref())
         .and_then(decode_header);
-    let sender = proto
+    let from = proto
         .and_then(|envelope| envelope.from.as_ref())
-        .and_then(|from| from.first())
-        .and_then(sender_display);
+        .and_then(|from| from.first());
+    let message_id = proto
+        .and_then(|envelope| envelope.message_id.as_deref())
+        .and_then(text_header);
     Envelope {
         uid,
         subject,
-        sender,
+        sender: from.and_then(sender_display),
+        sender_address: from.and_then(address_literal),
+        message_id,
         date,
         seen,
     }
@@ -78,6 +82,11 @@ fn sender_display(address: &Address<'_>) -> Option<String> {
     if let Some(name) = address.name.as_deref().and_then(decode_header) {
         return Some(name);
     }
+    address_literal(address)
+}
+
+/// Adresse brute `mailbox@host` — la cible d'une réponse (Phase 2).
+fn address_literal(address: &Address<'_>) -> Option<String> {
     let mailbox = address.mailbox.as_deref()?;
     let host = address.host.as_deref()?;
     Some(format!(
@@ -85,6 +94,18 @@ fn sender_display(address: &Address<'_>) -> Option<String> {
         String::from_utf8_lossy(mailbox),
         String::from_utf8_lossy(host)
     ))
+}
+
+/// En-tête textuel brut (Message-ID) : ASCII en pratique, jamais encodé
+/// RFC 2047 — pas de décodage, juste un nettoyage.
+fn text_header(raw: &[u8]) -> Option<String> {
+    let value = String::from_utf8_lossy(raw);
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
 }
 
 /// Extrait le corps HTML d'un message brut. `mail-parser` convertit lui-même
@@ -229,8 +250,38 @@ mod tests {
         assert_eq!(envelope.uid, 42);
         assert_eq!(envelope.subject, None);
         assert_eq!(envelope.sender, None);
+        assert_eq!(envelope.sender_address, None);
+        assert_eq!(envelope.message_id, None);
         assert_eq!(envelope.date, Some(date));
         assert!(envelope.seen);
+    }
+
+    /// L'adresse brute doit rester disponible même quand un nom d'affichage
+    /// existe : c'est elle qu'on met dans le « À » d'une réponse.
+    #[test]
+    fn keeps_raw_sender_address_alongside_display_name() {
+        let proto = proto_envelope(
+            b"sujet",
+            address(
+                Some(b"=?UTF-8?Q?S=C3=A9bastien?="),
+                Some(b"seb"),
+                Some(b"example.com"),
+            ),
+        );
+        let envelope = envelope_from_parts(1, Some(&proto), None, false);
+        assert_eq!(envelope.sender.as_deref(), Some("S\u{e9}bastien"));
+        assert_eq!(envelope.sender_address.as_deref(), Some("seb@example.com"));
+    }
+
+    #[test]
+    fn extracts_message_id_for_threading() {
+        let mut proto = proto_envelope(b"sujet", address(None, Some(b"a"), Some(b"b.c")));
+        proto.message_id = Some(Cow::Borrowed(b" <abc.123@mail.example.com> ".as_slice()));
+        let envelope = envelope_from_parts(1, Some(&proto), None, false);
+        assert_eq!(
+            envelope.message_id.as_deref(),
+            Some("<abc.123@mail.example.com>")
+        );
     }
 
     #[test]

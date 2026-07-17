@@ -63,6 +63,11 @@ fn main() -> Result<(), mail_core::Error> {
             uid,
             subject: Some(format!("{} n°{uid}", TOPICS[index % TOPICS.len()])),
             sender: Some(SENDERS[(index * 7) % SENDERS.len()].to_string()),
+            sender_address: Some(format!(
+                "expediteur{}@exemple.fr",
+                (index * 7) % SENDERS.len()
+            )),
+            message_id: Some(format!("<seed-{uid}@exemple.fr>")),
             date: Utc
                 .timestamp_opt(1_600_000_000 + i64::from(uid) * 60, 0)
                 .single(),

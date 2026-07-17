@@ -45,6 +45,8 @@ impl FakeServer {
             uid,
             subject: Some(subject.to_string()),
             sender: Some("alice@example.com".to_string()),
+            sender_address: Some("alice@example.com".to_string()),
+            message_id: Some(format!("<fake-{uid}@example.com>")),
             // La date suit l'UID : plus l'UID est grand, plus c'est récent.
             date: Some(
                 Utc.timestamp_opt(1_700_000_000 + i64::from(uid), 0)

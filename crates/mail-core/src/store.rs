@@ -24,12 +24,14 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     highest_modseq INTEGER
 );
 CREATE TABLE IF NOT EXISTS envelopes (
-    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
-    uid        INTEGER NOT NULL,
-    subject    TEXT,
-    sender     TEXT,
-    date_epoch INTEGER,
-    seen       INTEGER NOT NULL DEFAULT 0,
+    mailbox_id     INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    uid            INTEGER NOT NULL,
+    subject        TEXT,
+    sender         TEXT,
+    sender_address TEXT,
+    message_id     TEXT,
+    date_epoch     INTEGER,
+    seen           INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (mailbox_id, uid)
 );
 CREATE INDEX IF NOT EXISTS idx_envelopes_date ON envelopes(mailbox_id, date_epoch DESC);
@@ -45,6 +47,19 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     uid        INTEGER NOT NULL,
     kind       TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS outbox (
+    id           INTEGER PRIMARY KEY,
+    message_id   TEXT NOT NULL,
+    sender       TEXT NOT NULL,
+    recipients   TEXT NOT NULL,
+    subject      TEXT NOT NULL,
+    body_text    TEXT NOT NULL,
+    in_reply_to  TEXT,
+    state        TEXT NOT NULL DEFAULT 'queued',
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    last_error   TEXT,
+    queued_epoch INTEGER NOT NULL
+);
 ";
 
 /// État de synchro persisté d'une boîte.
@@ -59,6 +74,12 @@ pub struct SyncState {
 pub struct Store(Connection);
 
 impl Store {
+    /// Accès réservé aux modules du crate qui étendent le stockage
+    /// (boîte d'envoi, dans `outbox.rs`) sans grossir ce fichier.
+    pub(crate) fn conn(&self) -> &Connection {
+        &self.0
+    }
+
     pub fn open(path: &Path) -> Result<Self, Error> {
         Self::init(Connection::open(path)?)
     }
@@ -68,7 +89,11 @@ impl Store {
     }
 
     fn init(conn: Connection) -> Result<Self, Error> {
+        // Plusieurs commandes ouvrent chacune leur connexion : patienter
+        // plutôt que d'échouer en SQLITE_BUSY sur une écriture concurrente.
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;
+        migrate(&conn)?;
         Ok(Self(conn))
     }
 
@@ -143,8 +168,9 @@ impl Store {
         {
             let mut stmt = tx.prepare(
                 "INSERT OR REPLACE INTO envelopes
-                 (mailbox_id, uid, subject, sender, date_epoch, seen)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                 (mailbox_id, uid, subject, sender, sender_address, message_id,
+                  date_epoch, seen)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             )?;
             for envelope in envelopes {
                 stmt.execute(params![
@@ -152,6 +178,8 @@ impl Store {
                     envelope.uid,
                     envelope.subject,
                     envelope.sender,
+                    envelope.sender_address,
+                    envelope.message_id,
                     envelope.date.map(|d| d.timestamp()),
                     envelope.seen,
                 ])?;
@@ -283,7 +311,8 @@ impl Store {
         limit: usize,
     ) -> Result<Vec<Envelope>, Error> {
         let mut stmt = self.0.prepare(
-            "SELECT e.uid, e.subject, e.sender, e.date_epoch, e.seen
+            "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
+                    e.date_epoch, e.seen
              FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.name = ?1
              ORDER BY e.date_epoch DESC, e.uid DESC
@@ -291,18 +320,27 @@ impl Store {
         )?;
         let rows = stmt
             .query_map(params![mailbox, limit as i64, offset as i64], |row| {
-                Ok(Envelope {
-                    uid: row.get(0)?,
-                    subject: row.get(1)?,
-                    sender: row.get(2)?,
-                    date: row
-                        .get::<_, Option<i64>>(3)?
-                        .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
-                    seen: row.get(4)?,
-                })
+                row_to_envelope(row)
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
+    }
+
+    /// Une enveloppe précise — le contexte nécessaire pour répondre
+    /// (adresse brute de l'expéditeur, Message-ID du fil).
+    pub fn envelope(&self, mailbox: &str, uid: Uid) -> Result<Option<Envelope>, Error> {
+        let envelope = self
+            .0
+            .query_row(
+                "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
+                        e.date_epoch, e.seen
+                 FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
+                 WHERE m.name = ?1 AND e.uid = ?2",
+                params![mailbox, uid],
+                row_to_envelope,
+            )
+            .optional()?;
+        Ok(envelope)
     }
 
     pub fn count(&self, mailbox_id: i64) -> Result<u64, Error> {
@@ -324,6 +362,40 @@ impl Store {
     }
 }
 
+/// Fait évoluer en place une base d'une phase précédente : les colonnes de
+/// réponse (Phase 2) s'ajoutent sans perdre les enveloppes déjà synchronisées.
+fn migrate(conn: &Connection) -> Result<(), Error> {
+    let mut stmt = conn.prepare("PRAGMA table_info(envelopes)")?;
+    let existing: HashSet<String> = stmt
+        .query_map([], |row| row.get(1))?
+        .collect::<Result<_, _>>()?;
+    for column in ["sender_address", "message_id"] {
+        if !existing.contains(column) {
+            conn.execute(
+                &format!("ALTER TABLE envelopes ADD COLUMN {column} TEXT"),
+                [],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+/// Mapping partagé par toutes les lectures d'enveloppes — l'ordre des
+/// colonnes est celui des SELECT ci-dessus.
+fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
+    Ok(Envelope {
+        uid: row.get(0)?,
+        subject: row.get(1)?,
+        sender: row.get(2)?,
+        sender_address: row.get(3)?,
+        message_id: row.get(4)?,
+        date: row
+            .get::<_, Option<i64>>(5)?
+            .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
+        seen: row.get(6)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::{TimeZone, Utc};
@@ -334,7 +406,9 @@ mod tests {
         Envelope {
             uid,
             subject: Some(subject.to_string()),
-            sender: Some("alice@example.com".to_string()),
+            sender: Some("Alice Martin".to_string()),
+            sender_address: Some("alice@example.com".to_string()),
+            message_id: Some(format!("<m{uid}@example.com>")),
             date: Some(Utc.timestamp_opt(epoch, 0).unwrap()),
             seen,
         }
@@ -363,6 +437,8 @@ mod tests {
             uid: 1,
             subject: None,
             sender: None,
+            sender_address: None,
+            message_id: None,
             date: None,
             seen: false,
         };
@@ -562,6 +638,67 @@ mod tests {
         store.save_body(id, 1, "<p>x</p>").unwrap();
         store.reset_mailbox(id, 2).unwrap();
         assert_eq!(store.body("INBOX", 1).unwrap(), None);
+    }
+
+    #[test]
+    fn envelope_returns_reply_context_fields() {
+        let (mut store, id) = store_with_mailbox();
+        let original = envelope(7, "sujet", 100, false);
+        store
+            .upsert_envelopes(id, std::slice::from_ref(&original))
+            .unwrap();
+
+        assert_eq!(store.envelope("INBOX", 7).unwrap(), Some(original));
+        assert_eq!(store.envelope("INBOX", 99).unwrap(), None);
+    }
+
+    /// Une base Phase 1 (sans les colonnes de réponse) doit s'ouvrir et
+    /// s'enrichir sans perdre les enveloppes déjà synchronisées.
+    #[test]
+    fn opens_and_migrates_a_phase1_database() {
+        let path = std::env::temp_dir().join(format!(
+            "discovery-test-migration-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE mailboxes (
+                    id             INTEGER PRIMARY KEY,
+                    name           TEXT NOT NULL UNIQUE,
+                    uid_validity   INTEGER NOT NULL,
+                    last_uid       INTEGER NOT NULL DEFAULT 0,
+                    highest_modseq INTEGER
+                );
+                CREATE TABLE envelopes (
+                    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+                    uid        INTEGER NOT NULL,
+                    subject    TEXT,
+                    sender     TEXT,
+                    date_epoch INTEGER,
+                    seen       INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (mailbox_id, uid)
+                );
+                INSERT INTO mailboxes (id, name, uid_validity) VALUES (1, 'INBOX', 1);
+                INSERT INTO envelopes (mailbox_id, uid, subject, sender, date_epoch, seen)
+                VALUES (1, 42, 'hérité de la phase 1', 'Alice', 100, 1);",
+            )
+            .unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        let rows = store.recent("INBOX", 0, 10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].uid, 42);
+        assert_eq!(rows[0].subject.as_deref(), Some("hérité de la phase 1"));
+        assert_eq!(
+            rows[0].sender_address, None,
+            "colonne ajoutée par migration : valeur inconnue pour l'existant"
+        );
+
+        drop(store);
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]
