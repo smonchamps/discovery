@@ -23,7 +23,12 @@ let composeDraftId = null;  // id du brouillon en cours d'édition, sinon null
 let draftSaveTimer = null;  // autosauvegarde debouncée pendant la frappe
 
 async function init() {
-  invoke('startup_report').then((report) => { el('perf').textContent = report; });
+  invoke('startup_report').then((report) => {
+    el('perf').textContent = report;
+    // Conservé après écrasement par la liste : lu par l'outil de mesure
+    // des revues de phase (e2e/mesure.mjs).
+    el('perf').dataset.startup = report;
+  });
   el('pane-list').addEventListener('scroll', onScroll);
   refreshDrafts(); // les brouillons sont locaux : visibles même sans compte
   try {
