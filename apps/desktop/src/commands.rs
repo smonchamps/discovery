@@ -666,6 +666,144 @@ pub fn delete_draft(app: AppHandle, id: i64) -> Result<(), String> {
     store.delete_draft(id).map_err(|err| err.to_string())
 }
 
+#[derive(Serialize)]
+pub struct DraftSyncSummary {
+    /// Copies poussées (nouvelles versions) dans le dossier Brouillons.
+    pub pushed: usize,
+    /// Copies distantes purgées (brouillons supprimés ou remplacés).
+    pub purged: usize,
+    /// Brouillons non poussables en l'état (aucun destinataire valide) —
+    /// ils restent locaux, rien n'est perdu.
+    pub kept_local: usize,
+    /// Réseau indisponible — rien de changé, le cycle suivant retentera.
+    pub error: Option<String>,
+}
+
+/// Reflète les brouillons locaux dans le dossier Brouillons Gmail
+/// (poussée seule, v1 — le tirage viendra avec la Phase 3). Sans travail
+/// en attente, aucun réseau n'est touché. Réentrance interdite (verrou) :
+/// deux poussées concurrentes créeraient des copies en double.
+#[tauri::command]
+pub async fn sync_drafts(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<DraftSyncSummary, String> {
+    let account = lock_account(&state)?
+        .clone()
+        .ok_or_else(|| "aucun compte connecté".to_string())?;
+    let path = db_path(&app)?;
+    let lock = state.drafts_push.clone();
+
+    let (summary, refreshed) =
+        tauri::async_runtime::spawn_blocking(move || run_draft_sync(&account, &path, &lock))
+            .await
+            .map_err(|err| err.to_string())??;
+
+    if let Some(fresh) = refreshed {
+        *lock_account(&state)? = Some(fresh);
+    }
+    Ok(summary)
+}
+
+fn run_draft_sync(
+    account: &Authenticated,
+    db_path: &Path,
+    lock: &Mutex<()>,
+) -> Result<(DraftSyncSummary, Option<Authenticated>), String> {
+    let _guard = lock
+        .lock()
+        .map_err(|_| "poussée précédente interrompue".to_string())?;
+    let store = Store::open(db_path).map_err(|err| err.to_string())?;
+    let mut summary = DraftSyncSummary {
+        pushed: 0,
+        purged: 0,
+        kept_local: 0,
+        error: None,
+    };
+
+    let nothing_to_do = store
+        .drafts_to_push()
+        .map_err(|err| err.to_string())?
+        .is_empty()
+        && store
+            .draft_tombstones()
+            .map_err(|err| err.to_string())?
+            .is_empty();
+    if nothing_to_do {
+        return Ok((summary, None));
+    }
+
+    let (mut server, refreshed) = match connect_imap(account) {
+        Ok(pair) => pair,
+        // Hors ligne : rien de changé, le cycle suivant retentera.
+        Err(reason) => {
+            summary.error = Some(reason);
+            return Ok((summary, None));
+        }
+    };
+
+    // La garde des repères : UIDVALIDITY d'abord, toute purge ensuite.
+    match server.drafts_uidvalidity() {
+        Ok(validity) => {
+            store
+                .align_drafts_uidvalidity(validity)
+                .map_err(|err| err.to_string())?;
+        }
+        Err(err) => {
+            summary.error = Some(err.to_string());
+            server.logout();
+            return Ok((summary, refreshed));
+        }
+    }
+
+    for uid in store.draft_tombstones().map_err(|err| err.to_string())? {
+        match server.delete_draft_remote(uid) {
+            Ok(()) => {
+                store
+                    .clear_draft_tombstone(uid)
+                    .map_err(|err| err.to_string())?;
+                summary.purged += 1;
+            }
+            Err(err) => {
+                summary.error = Some(err.to_string());
+                server.logout();
+                return Ok((summary, refreshed));
+            }
+        }
+    }
+
+    for draft in store.drafts_to_push().map_err(|err| err.to_string())? {
+        let bytes = match mail_smtp::draft_bytes(
+            &account.email,
+            &draft.to_raw,
+            &draft.subject,
+            &draft.body,
+        ) {
+            Ok(bytes) => bytes,
+            // Pas poussable en l'état (ex. aucun destinataire valide) :
+            // le local reste la référence, on n'insiste pas.
+            Err(_) => {
+                summary.kept_local += 1;
+                continue;
+            }
+        };
+        match server.append_draft(&bytes) {
+            Ok(remote_uid) => {
+                store
+                    .record_draft_pushed(draft.id, remote_uid, draft.updated_epoch)
+                    .map_err(|err| err.to_string())?;
+                summary.pushed += 1;
+            }
+            Err(err) => {
+                summary.error = Some(err.to_string());
+                break;
+            }
+        }
+    }
+    server.logout();
+    Ok((summary, refreshed))
+}
+
 /// Même stratégie que [`connect_imap`] : un échec d'ouverture déclenche
 /// une ré-authentification silencieuse puis une seconde tentative —
 /// ainsi un token expiré ne peut jamais être confondu avec un refus

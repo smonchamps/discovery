@@ -54,7 +54,16 @@ CREATE TABLE IF NOT EXISTS drafts (
     subject       TEXT NOT NULL,
     body          TEXT NOT NULL,
     reply_to_uid  INTEGER,
-    updated_epoch INTEGER NOT NULL
+    updated_epoch INTEGER NOT NULL,
+    remote_uid    INTEGER,
+    pushed_epoch  INTEGER
+);
+CREATE TABLE IF NOT EXISTS draft_tombstones (
+    remote_uid INTEGER PRIMARY KEY
+);
+CREATE TABLE IF NOT EXISTS drafts_remote (
+    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    uid_validity INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS outbox (
     id           INTEGER PRIMARY KEY,
@@ -388,21 +397,38 @@ impl Store {
     }
 }
 
-/// Fait évoluer en place une base d'une phase précédente : les colonnes de
-/// réponse (Phase 2) s'ajoutent sans perdre les enveloppes déjà synchronisées.
+/// Fait évoluer en place une base d'une version précédente : les colonnes
+/// s'ajoutent sans perdre ce qui est déjà là.
 fn migrate(conn: &Connection) -> Result<(), Error> {
-    let mut stmt = conn.prepare("PRAGMA table_info(envelopes)")?;
+    add_missing_columns(
+        conn,
+        "envelopes",
+        &[
+            ("sender_address", "TEXT"),
+            ("message_id", "TEXT"),
+            ("flagged", "INTEGER NOT NULL DEFAULT 0"),
+        ],
+    )?;
+    add_missing_columns(
+        conn,
+        "drafts",
+        &[("remote_uid", "INTEGER"), ("pushed_epoch", "INTEGER")],
+    )
+}
+
+fn add_missing_columns(
+    conn: &Connection,
+    table: &str,
+    columns: &[(&str, &str)],
+) -> Result<(), Error> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
     let existing: HashSet<String> = stmt
         .query_map([], |row| row.get(1))?
         .collect::<Result<_, _>>()?;
-    for (column, ddl) in [
-        ("sender_address", "TEXT"),
-        ("message_id", "TEXT"),
-        ("flagged", "INTEGER NOT NULL DEFAULT 0"),
-    ] {
-        if !existing.contains(column) {
+    for (column, ddl) in columns {
+        if !existing.contains(*column) {
             conn.execute(
-                &format!("ALTER TABLE envelopes ADD COLUMN {column} {ddl}"),
+                &format!("ALTER TABLE {table} ADD COLUMN {column} {ddl}"),
                 [],
             )?;
         }

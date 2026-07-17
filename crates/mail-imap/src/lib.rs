@@ -12,6 +12,7 @@
 mod convert;
 
 use imap_proto::NameAttribute;
+use imap_proto::types::UidSetMember;
 use mail_core::{Envelope, Error, MailServer, MailboxSnapshot, Uid};
 
 /// Chaîne SASL XOAUTH2 (Gmail, Microsoft) : jamais de mot de passe.
@@ -35,6 +36,7 @@ pub struct ImapServer {
     session: imap::Session<Box<dyn imap::ImapConnection>>,
     selected: Option<(String, MailboxSnapshot)>,
     trash: Option<String>,
+    drafts: Option<String>,
 }
 
 impl ImapServer {
@@ -59,6 +61,7 @@ impl ImapServer {
             session,
             selected: None,
             trash: None,
+            drafts: None,
         })
     }
 
@@ -104,6 +107,63 @@ impl ImapServer {
             .ok_or_else(|| Error::Server("dossier corbeille introuvable (RFC 6154)".to_string()))?;
         self.trash = Some(trash.clone());
         Ok(trash)
+    }
+
+    /// Découvre le dossier Brouillons via RFC 6154 — jamais de nom en dur,
+    /// comme la corbeille. Mémorisé pour la session.
+    fn drafts_folder(&mut self) -> Result<String, Error> {
+        if let Some(name) = &self.drafts {
+            return Ok(name.clone());
+        }
+        let names = self.session.list(None, Some("*")).map_err(server_err)?;
+        let drafts = names
+            .iter()
+            .find(|name| {
+                name.attributes()
+                    .iter()
+                    .any(|attribute| matches!(attribute, NameAttribute::Drafts))
+            })
+            .map(|name| name.name().to_string())
+            .ok_or_else(|| {
+                Error::Server("dossier brouillons introuvable (RFC 6154)".to_string())
+            })?;
+        self.drafts = Some(drafts.clone());
+        Ok(drafts)
+    }
+
+    /// UIDVALIDITY du dossier Brouillons — la garde des repères distants :
+    /// si elle change, les UIDs enregistrés ne veulent plus rien dire.
+    pub fn drafts_uidvalidity(&mut self) -> Result<u32, Error> {
+        let folder = self.drafts_folder()?;
+        Ok(self.ensure_selected(&folder)?.uid_validity)
+    }
+
+    /// Pousse une copie de brouillon (`\Draft`) ; retourne son UID quand le
+    /// serveur l'annonce (APPENDUID/UIDPLUS — Gmail le fait). Sans UID,
+    /// la copie ne pourra pas être remplacée : doublon possible, assumé.
+    pub fn append_draft(&mut self, message: &[u8]) -> Result<Option<Uid>, Error> {
+        let folder = self.drafts_folder()?;
+        let appended = self
+            .session
+            .append(&folder, message)
+            .flag(imap::types::Flag::Draft)
+            .finish()
+            .map_err(server_err)?;
+        let uid = appended.uids.and_then(|uids| {
+            uids.into_iter().next().map(|member| match member {
+                UidSetMember::Uid(uid) => uid,
+                UidSetMember::UidRange(range) => *range.start(),
+            })
+        });
+        Ok(uid)
+    }
+
+    /// Purge une copie distante de brouillon — uniquement des UIDs que le
+    /// stockage a lui-même enregistrés (invariant anti-mauvaise-suppression).
+    pub fn delete_draft_remote(&mut self, uid: Uid) -> Result<(), Error> {
+        let folder = self.drafts_folder()?;
+        self.ensure_selected(&folder)?;
+        self.expunge_uid(uid)
     }
 
     /// Marque `\Deleted` puis expunge le seul UID visé (UIDPLUS).

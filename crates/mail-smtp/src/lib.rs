@@ -80,6 +80,34 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
         .map_err(|err| SendError::Permanent(format!("construction du message : {err}")))
 }
 
+/// Message RFC 5322 d'un brouillon, prêt pour un APPEND `\Draft` — la
+/// poussée vers le dossier Brouillons Gmail (Phase 2).
+///
+/// Un brouillon porte du texte brut : les destinataires invalides sont
+/// omis (une adresse à moitié tapée reste locale) ; si le message n'est
+/// pas constructible en l'état, il n'est simplement pas poussé — le
+/// local reste la référence, rien n'est perdu.
+pub fn draft_bytes(
+    from: &str,
+    to_raw: &str,
+    subject: &str,
+    body: &str,
+) -> Result<Vec<u8>, SendError> {
+    let mut builder = Message::builder()
+        .from(parse_mailbox(from)?)
+        .subject(subject)
+        .date_now();
+    for candidate in to_raw.split([',', ';']) {
+        if let Ok(mailbox) = candidate.trim().parse::<Mailbox>() {
+            builder = builder.to(mailbox);
+        }
+    }
+    builder
+        .body(body.to_string())
+        .map(|message| message.formatted())
+        .map_err(|err| SendError::Permanent(format!("construction du brouillon : {err}")))
+}
+
 fn parse_mailbox(address: &str) -> Result<Mailbox, SendError> {
     address
         .parse()
@@ -148,6 +176,29 @@ mod tests {
         let raw = formatted(&outbox_message(None));
         assert!(raw.contains("Premier essai."));
         assert!(raw.contains("Deuxi=C3=A8me ligne.") || raw.contains("Deuxième ligne."));
+    }
+
+    #[test]
+    fn draft_bytes_keeps_valid_recipients_and_omits_the_rest() {
+        let raw = draft_bytes(
+            "moi@exemple.fr",
+            "valide@exemple.fr, adresse-en-cours-de-fra",
+            "Brouillon",
+            "corps",
+        )
+        .expect("brouillon constructible");
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("valide@exemple.fr"));
+        assert!(!text.contains("adresse-en-cours-de-fra"));
+        assert!(text.contains("Subject: Brouillon"));
+    }
+
+    /// Un brouillon sans destinataire (encore) valide n'est pas poussable :
+    /// il reste local, rien n'est perdu — comportement documenté par test.
+    #[test]
+    fn draft_without_any_valid_recipient_stays_local() {
+        let result = draft_bytes("moi@exemple.fr", "pas encore d'adresse", "s", "c");
+        assert!(result.is_err(), "attendu : non poussable en l'état");
     }
 
     #[test]

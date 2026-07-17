@@ -16,6 +16,9 @@ pub(crate) struct AppState {
     /// Sérialise les vidanges de la boîte d'envoi : deux pompes
     /// concurrentes mettraient en quarantaine les envois l'une de l'autre.
     pub outbox_flush: Arc<Mutex<()>>,
+    /// Sérialise la poussée des brouillons vers Gmail : deux poussées
+    /// concurrentes créeraient des copies distantes en double.
+    pub drafts_push: Arc<Mutex<()>>,
 }
 
 fn main() {
@@ -23,6 +26,7 @@ fn main() {
         started_at: Instant::now(),
         account: Mutex::new(None),
         outbox_flush: Arc::new(Mutex::new(())),
+        drafts_push: Arc::new(Mutex::new(())),
     };
     let result = tauri::Builder::default()
         .manage(state)
@@ -46,6 +50,7 @@ fn main() {
             commands::save_draft,
             commands::list_drafts,
             commands::delete_draft,
+            commands::sync_drafts,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

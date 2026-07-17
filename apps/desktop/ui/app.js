@@ -58,8 +58,22 @@ async function refresh() {
     setStatus(`erreur de synchronisation : ${err}`, true);
   }
   await reloadList();
-  // Le réseau est peut-être revenu : la boîte d'envoi retente sa chance.
+  // Le réseau est peut-être revenu : la boîte d'envoi retente sa chance,
+  // et les brouillons se reflètent dans Gmail.
   await flushOutbox();
+  pushDrafts();
+}
+
+/// Poussée des brouillons vers Gmail — silencieuse : hors ligne, le
+/// cycle suivant retentera, rien à dire ; on ne parle qu'en cas de succès.
+function pushDrafts() {
+  invoke('sync_drafts')
+    .then((summary) => {
+      if (summary.pushed > 0 || summary.purged > 0) {
+        setStatus(`brouillons Gmail : ${summary.pushed} poussé(s), ${summary.purged} purgé(s)`);
+      }
+    })
+    .catch(() => {});
 }
 
 async function reloadList() {
@@ -329,6 +343,7 @@ async function closeCompose() {
   }
   hideCompose();
   await refreshDrafts();
+  pushDrafts();
 }
 
 function composeIsEmpty() {
@@ -421,6 +436,7 @@ async function sendCompose() {
   }
   await refreshDrafts();
   await flushOutbox();
+  pushDrafts(); // purge de la copie distante du brouillon réglé
 }
 
 async function flushOutbox() {
