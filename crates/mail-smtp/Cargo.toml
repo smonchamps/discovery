@@ -1,0 +1,15 @@
+[package]
+name = "mail-smtp"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lettre.workspace = true
+mail-core.workspace = true
+
+[dev-dependencies]
+anyhow.workspace = true
+mail-auth.workspace = true
+
+[lints]
+workspace = true

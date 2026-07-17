@@ -21,6 +21,16 @@ impl EmailAddress {
         if trimmed.is_empty() || trimmed.len() > Self::MAX_LEN {
             return Err(invalid());
         }
+        // Blancs, contrôles, séparateurs de listes et chevrons : soit de
+        // l'injection d'en-têtes, soit une liste mal découpée. Les refuser
+        // ici permet aussi de stocker des listes de destinataires avec un
+        // séparateur sûr (boîte d'envoi, Phase 2).
+        if trimmed
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || matches!(c, ',' | ';' | '<' | '>'))
+        {
+            return Err(invalid());
+        }
         let (local, domain) = trimmed.split_once('@').ok_or_else(invalid)?;
         if local.is_empty() || domain.is_empty() || domain.contains('@') {
             return Err(invalid());
@@ -92,6 +102,24 @@ mod tests {
     fn rejects_domain_with_leading_or_trailing_dot() {
         assert!(EmailAddress::parse("alice@.example.com").is_err());
         assert!(EmailAddress::parse("alice@example.com.").is_err());
+    }
+
+    #[test]
+    fn rejects_interior_whitespace_separators_and_angle_brackets() {
+        for bad in [
+            "a b@example.com",
+            "a\tb@example.com",
+            "a\nb@example.com",
+            "a,b@example.com",
+            "a;b@example.com",
+            "<a@example.com>",
+            "a@exam ple.com",
+        ] {
+            assert!(
+                EmailAddress::parse(bad).is_err(),
+                "{bad:?} devrait être refusée"
+            );
+        }
     }
 
     #[test]

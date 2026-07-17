@@ -5,6 +5,7 @@ members = [
     "crates/mail-imap",
     "crates/mail-auth",
     "crates/mail-render",
+    "crates/mail-smtp",
     "apps/desktop",
     "spikes/web-bridge",
 ]
@@ -18,6 +19,7 @@ mail-auth = { path = "crates/mail-auth" }
 mail-core = { path = "crates/mail-core" }
 mail-imap = { path = "crates/mail-imap" }
 mail-render = { path = "crates/mail-render" }
+mail-smtp = { path = "crates/mail-smtp" }
 ammonia = "4.1"
 anyhow = "1"
 base64 = "0.22"
@@ -25,6 +27,7 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 imap = "3.0.0-alpha.14"
 imap-proto = "0.16"
 keyring = { version = "3", features = ["windows-native"] }
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "rustls-tls", "builder"] }
 mail-parser = "0.11"
 oauth2 = { version = "5", default-features = false, features = ["reqwest-blocking", "rustls-tls"] }
 rusqlite = { version = "0.37", features = ["bundled"] }

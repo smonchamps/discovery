@@ -8,19 +8,25 @@
 mod action;
 mod address;
 mod body;
+mod compose;
 mod envelope;
 mod error;
+mod outbox;
 mod remote;
 mod store;
 mod sync;
 #[cfg(test)]
 mod test_support;
+mod transport;
 
 pub use action::{Action, PendingAction};
 pub use address::EmailAddress;
 pub use body::load_body;
+pub use compose::{Draft, compose, reply_subject};
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
+pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{MailServer, MailboxSnapshot};
 pub use store::{Store, SyncState};
 pub use sync::{SyncEngine, SyncMode, SyncReport};
+pub use transport::{MailTransport, SendError};
