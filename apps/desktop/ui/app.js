@@ -4,6 +4,8 @@
 // Liste virtualisée : seules les lignes visibles existent dans le DOM ;
 // les pages d'enveloppes arrivent du noyau au fil du défilement.
 // Actions de triage : optimistes localement, rejouées au prochain sync.
+// Envoi : journalisé dans la boîte d'envoi AVANT tout réseau, vidangé
+// ensuite — jamais d'envoi perdu, jamais d'envoi fantôme.
 const invoke = window.__TAURI__.core.invoke;
 const el = (id) => document.getElementById(id);
 
@@ -16,6 +18,7 @@ let pages = new Map();      // index de page -> lignes
 let pending = new Set();    // pages en cours de chargement
 let currentMessage = null;
 let currentIndex = null;
+let composeReplyUid = null; // UID du message auquel on répond, sinon null
 
 async function init() {
   invoke('startup_report').then((report) => { el('perf').textContent = report; });
@@ -27,6 +30,7 @@ async function init() {
     el('connect').hidden = false;
     setStatus('Connectez votre compte Gmail pour commencer.');
     await reloadList();
+    await refreshOutbox();
   }
 }
 
@@ -35,6 +39,7 @@ async function onConnected(email) {
   el('account').hidden = false;
   el('connect').hidden = true;
   el('refresh').hidden = false;
+  el('compose-btn').hidden = false;
   await reloadList();
   await refresh();
 }
@@ -50,6 +55,8 @@ async function refresh() {
     setStatus(`erreur de synchronisation : ${err}`, true);
   }
   await reloadList();
+  // Le réseau est peut-être revenu : la boîte d'envoi retente sa chance.
+  await flushOutbox();
 }
 
 async function reloadList() {
@@ -158,7 +165,9 @@ async function openMessage(message, index) {
   renderVisible();
 
   el('detail-placeholder').hidden = true;
-  el('detail').hidden = false;
+  // Une composition en cours reste au premier plan : le brouillon ne
+  // disparaît pas parce qu'on a cliqué sur la liste.
+  if (el('compose').hidden) el('detail').hidden = false;
   el('detail-subject').textContent = message.subject;
   el('detail-meta').textContent = `${message.sender} — ${message.date}`;
   el('detail-note').hidden = true;
@@ -239,6 +248,151 @@ async function loadBody(message, showImages) {
   }
 }
 
+// --- Composer, répondre, envoyer -----------------------------------------
+
+function openCompose({ to = '', subject = '', replyToUid = null, title = 'Nouveau message' } = {}) {
+  composeReplyUid = replyToUid;
+  el('compose-title').textContent = title;
+  el('compose-to').value = to;
+  el('compose-subject').value = subject;
+  el('compose-body').value = '';
+  el('detail').hidden = true;
+  el('detail-placeholder').hidden = true;
+  el('compose').hidden = false;
+  (to ? el('compose-body') : el('compose-to')).focus();
+}
+
+function closeCompose() {
+  composeReplyUid = null;
+  el('compose').hidden = true;
+  if (currentMessage) {
+    el('detail').hidden = false;
+  } else {
+    el('detail-placeholder').hidden = false;
+  }
+}
+
+async function replyToCurrent() {
+  if (!currentMessage) return;
+  try {
+    const context = await invoke('reply_context', { uid: currentMessage.uid });
+    openCompose({
+      to: context.to,
+      subject: context.subject,
+      replyToUid: context.uid,
+      title: 'Répondre',
+    });
+  } catch (err) {
+    setStatus(`réponse impossible : ${err}`, true);
+  }
+}
+
+/// Journalise l'envoi (retour immédiat, même hors ligne), puis vidange.
+async function sendCompose() {
+  const send = el('compose-send');
+  if (send.disabled) return; // double-clic = un seul envoi
+  send.disabled = true;
+  try {
+    await invoke('queue_send', {
+      to: el('compose-to').value,
+      subject: el('compose-subject').value.trim(),
+      body: el('compose-body').value,
+      replyToUid: composeReplyUid,
+    });
+  } catch (err) {
+    setStatus(`envoi impossible : ${err}`, true);
+    return;
+  } finally {
+    send.disabled = false;
+  }
+  closeCompose();
+  setStatus("remis à la boîte d'envoi…");
+  await flushOutbox();
+}
+
+async function flushOutbox() {
+  try {
+    const report = await invoke('flush_outbox');
+    if (report.error) {
+      setStatus(`hors ligne — ${report.queued} envoi(s) en attente, réessai au prochain sync`);
+    } else if (report.sent > 0) {
+      setStatus(`${report.sent} message(s) envoyé(s)`);
+    }
+  } catch (err) {
+    setStatus(`boîte d'envoi : ${err}`, true);
+  }
+  await refreshOutbox();
+}
+
+/// Le bandeau : rien à cacher — ce qui attend, ce qui est interrompu ou
+/// refusé est visible, avec la décision explicite laissée à l'utilisateur.
+async function refreshOutbox() {
+  let status;
+  try {
+    status = await invoke('outbox_status');
+  } catch {
+    return;
+  }
+  const bar = el('outbox-bar');
+  const total = status.queued + status.interrupted + status.rejected;
+  if (total === 0) {
+    bar.hidden = true;
+    return;
+  }
+  const parts = [];
+  if (status.queued > 0) parts.push(`${status.queued} en attente`);
+  if (status.interrupted > 0) parts.push(`${status.interrupted} interrompu(s)`);
+  if (status.rejected > 0) parts.push(`${status.rejected} refusé(s)`);
+  el('outbox-summary').textContent = `Boîte d'envoi : ${parts.join(', ')}`;
+
+  const problems = el('outbox-problems');
+  problems.replaceChildren();
+  for (const entry of status.entries) {
+    if (entry.state === 'interrupted' || entry.state === 'rejected') {
+      problems.appendChild(problemRow(entry));
+    }
+  }
+  bar.hidden = false;
+}
+
+function problemRow(entry) {
+  const row = document.createElement('div');
+  row.className = 'outbox-problem';
+  const label = document.createElement('span');
+  const kind = entry.state === 'interrupted'
+    ? 'interrompu en plein envoi — vérifiez le dossier Envoyés avant de renvoyer'
+    : `refusé : ${entry.error ?? 'raison inconnue'}`;
+  label.textContent = `« ${entry.subject || '(sans objet)'} » à ${entry.to} — ${kind}`;
+  label.title = label.textContent;
+
+  const resend = document.createElement('button');
+  resend.textContent = 'Renvoyer';
+  resend.addEventListener('click', async () => {
+    try {
+      await invoke('outbox_requeue', { id: entry.id });
+    } catch (err) {
+      setStatus(`renvoi impossible : ${err}`, true);
+      return;
+    }
+    await flushOutbox();
+  });
+
+  const abandon = document.createElement('button');
+  abandon.textContent = 'Abandonner';
+  abandon.addEventListener('click', async () => {
+    try {
+      await invoke('outbox_delete', { id: entry.id });
+    } catch (err) {
+      setStatus(`abandon impossible : ${err}`, true);
+      return;
+    }
+    await refreshOutbox();
+  });
+
+  row.append(label, resend, abandon);
+  return row;
+}
+
 function setStatus(text, isError = false) {
   const status = el('status');
   status.textContent = text;
@@ -258,6 +412,10 @@ el('connect').addEventListener('click', async () => {
 el('refresh').addEventListener('click', refresh);
 el('archive').addEventListener('click', () => performAction('archive'));
 el('delete').addEventListener('click', () => performAction('delete'));
+el('compose-btn').addEventListener('click', () => openCompose());
+el('reply').addEventListener('click', replyToCurrent);
+el('compose-send').addEventListener('click', sendCompose);
+el('compose-cancel').addEventListener('click', closeCompose);
 
 el('show-images').addEventListener('click', async () => {
   if (!currentMessage) return;
@@ -265,10 +423,25 @@ el('show-images').addEventListener('click', async () => {
   await loadBody(currentMessage, true);
 });
 
-// Raccourcis de triage : e (archiver), Suppr (supprimer), j/k (naviguer).
+// Raccourcis : c (écrire), r (répondre), e (archiver), Suppr (supprimer),
+// j/k (naviguer), Échap (fermer la composition). Dans un champ de saisie,
+// les lettres redeviennent des lettres — seul Échap garde un sens (sortir
+// du champ, sans jeter le brouillon).
 document.addEventListener('keydown', (event) => {
   if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const typing = event.target instanceof HTMLInputElement
+    || event.target instanceof HTMLTextAreaElement;
+  if (typing) {
+    if (event.key === 'Escape') event.target.blur();
+    return;
+  }
   switch (event.key) {
+    case 'c':
+      openCompose();
+      break;
+    case 'r':
+      replyToCurrent();
+      break;
     case 'e':
       performAction('archive');
       break;
@@ -280,6 +453,10 @@ document.addEventListener('keydown', (event) => {
       break;
     case 'k':
       if (currentIndex !== null) openMessageAt(currentIndex - 1);
+      break;
+    case 'Escape':
+      if (el('compose').hidden) return;
+      closeCompose();
       break;
     default:
       return;

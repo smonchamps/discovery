@@ -11,8 +11,13 @@
   <span id="account" hidden></span>
   <span id="status">démarrage…</span>
   <button id="connect" hidden>Connecter Gmail</button>
+  <button id="compose-btn" hidden title="Écrire (c)">Écrire</button>
   <button id="refresh" hidden>Synchroniser</button>
 </header>
+<div id="outbox-bar" hidden>
+  <span id="outbox-summary"></span>
+  <div id="outbox-problems"></div>
+</div>
 <main class="split">
   <section id="pane-list">
     <div id="scroll-space"><div id="rows"></div></div>
@@ -23,6 +28,7 @@
     <article id="detail" hidden>
       <header id="detail-header">
         <div id="detail-actions">
+          <button id="reply" title="Répondre (r)">Répondre</button>
           <button id="archive" title="Archiver (e)">Archiver</button>
           <button id="delete" title="Supprimer (Suppr)">Supprimer</button>
         </div>
@@ -35,6 +41,16 @@
       </header>
       <iframe id="detail-frame" sandbox title="Contenu du message"></iframe>
     </article>
+    <section id="compose" hidden>
+      <h2 id="compose-title">Nouveau message</h2>
+      <label>À <input id="compose-to" type="text" placeholder="destinataire@exemple.fr"></label>
+      <label>Objet <input id="compose-subject" type="text"></label>
+      <textarea id="compose-body" placeholder="Votre message…"></textarea>
+      <div id="compose-actions">
+        <button id="compose-send">Envoyer</button>
+        <button id="compose-cancel" title="Annuler (Échap)">Annuler</button>
+      </div>
+    </section>
   </section>
 </main>
 <footer id="perf"></footer>

@@ -7,18 +7,22 @@
 
 mod commands;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 pub(crate) struct AppState {
     pub started_at: Instant,
     pub account: Mutex<Option<mail_auth::Authenticated>>,
+    /// Sérialise les vidanges de la boîte d'envoi : deux pompes
+    /// concurrentes mettraient en quarantaine les envois l'une de l'autre.
+    pub outbox_flush: Arc<Mutex<()>>,
 }
 
 fn main() {
     let state = AppState {
         started_at: Instant::now(),
         account: Mutex::new(None),
+        outbox_flush: Arc::new(Mutex::new(())),
     };
     let result = tauri::Builder::default()
         .manage(state)
@@ -31,6 +35,12 @@ fn main() {
             commands::mark_seen,
             commands::archive_message,
             commands::delete_message,
+            commands::reply_context,
+            commands::queue_send,
+            commands::flush_outbox,
+            commands::outbox_status,
+            commands::outbox_requeue,
+            commands::outbox_delete,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

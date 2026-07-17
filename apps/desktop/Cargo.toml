@@ -11,6 +11,7 @@ mail-auth.workspace = true
 mail-core.workspace = true
 mail-imap.workspace = true
 mail-render.workspace = true
+mail-smtp.workspace = true
 serde.workspace = true
 tauri = { version = "2", features = [] }
 
