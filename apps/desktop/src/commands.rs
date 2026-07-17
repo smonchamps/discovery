@@ -162,22 +162,7 @@ pub async fn message_body(
     uid: u32,
     show_images: bool,
 ) -> Result<BodyView, String> {
-    let path = db_path(&app)?;
-    let cached = Store::open(&path)
-        .and_then(|store| store.body(MAILBOX, uid))
-        .map_err(|err| err.to_string())?;
-
-    let html = match cached {
-        Some(html) => html,
-        None => {
-            let account = lock_account(&state)?
-                .clone()
-                .ok_or_else(|| "aucun compte connecté".to_string())?;
-            tauri::async_runtime::spawn_blocking(move || fetch_body(&account, &path, uid))
-                .await
-                .map_err(|err| err.to_string())??
-        }
-    };
+    let html = raw_body(&app, &state, uid).await?;
 
     let policy = if show_images {
         mail_render::ImagePolicy::AllowRemote
@@ -198,6 +183,31 @@ fn fetch_body(account: &Authenticated, db_path: &Path, uid: u32) -> Result<Strin
         .map_err(|err| err.to_string())?;
     server.logout();
     body.ok_or_else(|| "message introuvable sur le serveur".to_string())
+}
+
+/// Corps HTML brut d'un message : cache local d'abord (aucun réseau),
+/// serveur sinon — le chemin partagé par la lecture, la réponse et le
+/// transfert.
+async fn raw_body(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    uid: u32,
+) -> Result<String, String> {
+    let path = db_path(app)?;
+    let cached = Store::open(&path)
+        .and_then(|store| store.body(MAILBOX, uid))
+        .map_err(|err| err.to_string())?;
+    match cached {
+        Some(html) => Ok(html),
+        None => {
+            let account = lock_account(state)?
+                .clone()
+                .ok_or_else(|| "aucun compte connecté".to_string())?;
+            tauri::async_runtime::spawn_blocking(move || fetch_body(&account, &path, uid))
+                .await
+                .map_err(|err| err.to_string())?
+        }
+    }
 }
 
 fn run_sync(
@@ -291,10 +301,15 @@ pub fn mark_seen(app: AppHandle, uid: u32, seen: bool) -> Result<(), String> {
 // ---------------------------------------------------------------------
 
 #[derive(Serialize)]
-pub struct ReplyContext {
+pub struct ComposeContext {
     pub uid: u32,
+    /// Vide pour un transfert : l'utilisateur choisit le destinataire.
     pub to: String,
     pub subject: String,
+    /// Citation pré-remplie ; l'utilisateur écrit au-dessus (top-posting).
+    pub body: String,
+    /// `true` : l'envoi portera In-Reply-To (réponse dans le fil).
+    pub reply: bool,
 }
 
 #[derive(Serialize)]
@@ -329,23 +344,78 @@ pub struct OutboxStatus {
 }
 
 /// Pré-remplissage d'une réponse : destinataire = adresse brute de
-/// l'expéditeur, sujet préfixé « Re: » une seule fois. Le fil de
-/// discussion (In-Reply-To) sera résolu à l'envoi, depuis le même UID.
+/// l'expéditeur, sujet « Re: » une seule fois, corps cité ligne à ligne.
+/// La citation est un confort : si le corps est inaccessible (hors ligne,
+/// jamais mis en cache), on répond sans elle plutôt que de bloquer.
+/// Le fil (In-Reply-To) sera résolu à l'envoi, depuis le même UID.
 #[tauri::command]
-pub fn reply_context(app: AppHandle, uid: u32) -> Result<ReplyContext, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let envelope = store
-        .envelope(MAILBOX, uid)
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| "message introuvable".to_string())?;
+pub async fn reply_context(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    uid: u32,
+) -> Result<ComposeContext, String> {
+    let envelope = envelope_of(&app, uid)?;
     let to = envelope
         .sender_address
+        .clone()
         .ok_or_else(|| "adresse de l'expéditeur inconnue — resynchronisez la boîte".to_string())?;
-    Ok(ReplyContext {
+    let body = match raw_body(&app, &state, uid).await {
+        Ok(html) => mail_core::quote_reply(
+            envelope.sender.as_deref(),
+            quote_date(&envelope).as_deref(),
+            &mail_render::body_text(&html),
+        ),
+        Err(_) => String::new(),
+    };
+    Ok(ComposeContext {
         uid,
         to,
         subject: mail_core::reply_subject(envelope.subject.as_deref()),
+        body,
+        reply: true,
     })
+}
+
+/// Pré-remplissage d'un transfert : sujet « Fwd: », bloc « Message
+/// transféré » (De/Date/Objet + texte). Sans corps, un transfert ne
+/// transmettrait rien : ici, corps inaccessible = échec — contrairement
+/// à la réponse. Un transfert ouvre un nouveau fil : pas d'In-Reply-To.
+/// Les pièces jointes ne suivent pas encore (Phase 3).
+#[tauri::command]
+pub async fn forward_context(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    uid: u32,
+) -> Result<ComposeContext, String> {
+    let envelope = envelope_of(&app, uid)?;
+    let html = raw_body(&app, &state, uid).await?;
+    Ok(ComposeContext {
+        uid,
+        to: String::new(),
+        subject: mail_core::forward_subject(envelope.subject.as_deref()),
+        body: mail_core::quote_forward(
+            envelope.sender.as_deref(),
+            quote_date(&envelope).as_deref(),
+            envelope.subject.as_deref(),
+            &mail_render::body_text(&html),
+        ),
+        reply: false,
+    })
+}
+
+fn envelope_of(app: &AppHandle, uid: u32) -> Result<mail_core::Envelope, String> {
+    let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
+    store
+        .envelope(MAILBOX, uid)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "message introuvable".to_string())
+}
+
+/// Date au format de la ligne d'attribution d'une citation.
+fn quote_date(envelope: &mail_core::Envelope) -> Option<String> {
+    envelope
+        .date
+        .map(|date| date.format("%Y-%m-%d %H:%M").to_string())
 }
 
 /// Journalise l'envoi dans la boîte d'envoi — AVANT toute tentative
@@ -505,6 +575,60 @@ pub fn outbox_requeue(app: AppHandle, id: i64) -> Result<(), String> {
 pub fn outbox_delete(app: AppHandle, id: i64) -> Result<(), String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     store.delete_outbox(id).map_err(|err| err.to_string())
+}
+
+// ---------------------------------------------------------------------
+// Brouillons locaux — plus jamais de texte perdu (Phase 2).
+// ---------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct DraftRow {
+    pub id: i64,
+    pub to: String,
+    pub subject: String,
+    pub body: String,
+    pub reply_to_uid: Option<u32>,
+}
+
+/// Sauvegarde un brouillon — texte brut, jamais validé : c'est un filet,
+/// pas une frontière. Retourne l'id à réutiliser pour les sauvegardes
+/// suivantes du même brouillon.
+#[tauri::command]
+pub fn save_draft(
+    app: AppHandle,
+    id: Option<i64>,
+    to: String,
+    subject: String,
+    body: String,
+    reply_to_uid: Option<u32>,
+) -> Result<i64, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store
+        .save_draft(id, &to, &subject, &body, reply_to_uid)
+        .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+pub fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    Ok(store
+        .drafts()
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .map(|draft| DraftRow {
+            id: draft.id,
+            to: draft.to_raw,
+            subject: draft.subject,
+            body: draft.body,
+            reply_to_uid: draft.reply_to_uid,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn delete_draft(app: AppHandle, id: i64) -> Result<(), String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store.delete_draft(id).map_err(|err| err.to_string())
 }
 
 /// Même stratégie que [`connect_imap`] : un échec d'ouverture déclenche

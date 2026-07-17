@@ -36,11 +36,15 @@ fn main() {
             commands::archive_message,
             commands::delete_message,
             commands::reply_context,
+            commands::forward_context,
             commands::queue_send,
             commands::flush_outbox,
             commands::outbox_status,
             commands::outbox_requeue,
             commands::outbox_delete,
+            commands::save_draft,
+            commands::list_drafts,
+            commands::delete_draft,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

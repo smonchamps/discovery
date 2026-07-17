@@ -19,10 +19,13 @@ let pending = new Set();    // pages en cours de chargement
 let currentMessage = null;
 let currentIndex = null;
 let composeReplyUid = null; // UID du message auquel on répond, sinon null
+let composeDraftId = null;  // id du brouillon en cours d'édition, sinon null
+let draftSaveTimer = null;  // autosauvegarde debouncée pendant la frappe
 
 async function init() {
   invoke('startup_report').then((report) => { el('perf').textContent = report; });
   el('pane-list').addEventListener('scroll', onScroll);
+  refreshDrafts(); // les brouillons sont locaux : visibles même sans compte
   try {
     const account = await invoke('connect_account', { interactive: false });
     await onConnected(account.email);
@@ -250,20 +253,34 @@ async function loadBody(message, showImages) {
 
 // --- Composer, répondre, envoyer -----------------------------------------
 
-function openCompose({ to = '', subject = '', replyToUid = null, title = 'Nouveau message' } = {}) {
+/// Ouvre une composition en conservant d'abord celle qui serait en cours :
+/// aucun chemin de l'application ne jette du texte.
+async function startCompose(options) {
+  await closeCompose();
+  openCompose(options);
+}
+
+function openCompose({ to = '', subject = '', body = '', replyToUid = null, draftId = null, title = 'Nouveau message' } = {}) {
   composeReplyUid = replyToUid;
+  composeDraftId = draftId;
   el('compose-title').textContent = title;
   el('compose-to').value = to;
   el('compose-subject').value = subject;
-  el('compose-body').value = '';
+  el('compose-body').value = body;
   el('detail').hidden = true;
   el('detail-placeholder').hidden = true;
   el('compose').hidden = false;
-  (to ? el('compose-body') : el('compose-to')).focus();
+  // Top-posting : le curseur se pose AU-DESSUS de la citation.
+  const field = to ? el('compose-body') : el('compose-to');
+  field.focus();
+  if (field === el('compose-body')) field.setSelectionRange(0, 0);
 }
 
-function closeCompose() {
+/// Masque le panneau sans rien décider du sort du brouillon (interne).
+function hideCompose() {
+  clearTimeout(draftSaveTimer);
   composeReplyUid = null;
+  composeDraftId = null;
   el('compose').hidden = true;
   if (currentMessage) {
     el('detail').hidden = false;
@@ -272,18 +289,83 @@ function closeCompose() {
   }
 }
 
-async function replyToCurrent() {
-  if (!currentMessage) return;
+/// Fermer = conserver : un contenu non vide devient (ou reste) un
+/// brouillon ; un brouillon vidé de son texte est jeté — c'est le seul
+/// cas où fermer supprime, et c'est l'utilisateur qui a effacé.
+async function closeCompose() {
+  if (el('compose').hidden) return;
+  if (composeIsEmpty()) {
+    if (composeDraftId !== null) {
+      await invoke('delete_draft', { id: composeDraftId }).catch(() => {});
+    }
+  } else {
+    await saveDraftNow();
+    setStatus('brouillon conservé');
+  }
+  hideCompose();
+  await refreshDrafts();
+}
+
+function composeIsEmpty() {
+  return !el('compose-to').value.trim()
+    && !el('compose-subject').value.trim()
+    && !el('compose-body').value.trim();
+}
+
+function scheduleDraftSave() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(saveDraftNow, 2000);
+}
+
+/// Le filet : un crash ne coûte que les deux dernières secondes de frappe.
+async function saveDraftNow() {
+  clearTimeout(draftSaveTimer);
+  if (el('compose').hidden || composeIsEmpty()) return;
   try {
-    const context = await invoke('reply_context', { uid: currentMessage.uid });
-    openCompose({
+    const id = await invoke('save_draft', {
+      id: composeDraftId,
+      to: el('compose-to').value,
+      subject: el('compose-subject').value,
+      body: el('compose-body').value,
+      replyToUid: composeReplyUid,
+    });
+    if (el('compose').hidden) {
+      // Le panneau s'est fermé pendant la sauvegarde (envoi parti) :
+      // ne pas ressusciter un brouillon déjà réglé.
+      await invoke('delete_draft', { id }).catch(() => {});
+    } else {
+      composeDraftId = id;
+    }
+  } catch {
+    // La prochaine frappe retentera — le filet n'alarme pas pour rien.
+  }
+}
+
+function replyToCurrent() {
+  return composeFromContext('reply_context', 'Répondre');
+}
+
+function forwardCurrent() {
+  return composeFromContext('forward_context', 'Transférer');
+}
+
+/// Réponse ou transfert : le noyau prépare destinataire, sujet et
+/// citation (corps depuis le cache local, serveur sinon — d'où l'attente).
+async function composeFromContext(command, title) {
+  if (!currentMessage) return;
+  setStatus('préparation…');
+  try {
+    const context = await invoke(command, { uid: currentMessage.uid });
+    setStatus('');
+    await startCompose({
       to: context.to,
       subject: context.subject,
-      replyToUid: context.uid,
-      title: 'Répondre',
+      body: context.body,
+      replyToUid: context.reply ? context.uid : null,
+      title,
     });
   } catch (err) {
-    setStatus(`réponse impossible : ${err}`, true);
+    setStatus(`${title} impossible : ${err}`, true);
   }
 }
 
@@ -305,8 +387,14 @@ async function sendCompose() {
   } finally {
     send.disabled = false;
   }
-  closeCompose();
+  // L'envoi est journalisé : le brouillon a rempli son office.
+  const draftId = composeDraftId;
+  hideCompose();
   setStatus("remis à la boîte d'envoi…");
+  if (draftId !== null) {
+    await invoke('delete_draft', { id: draftId }).catch(() => {});
+  }
+  await refreshDrafts();
   await flushOutbox();
 }
 
@@ -355,9 +443,60 @@ async function refreshOutbox() {
   bar.hidden = false;
 }
 
+/// Le bandeau des brouillons : reprendre où on s'était arrêté, ou jeter.
+async function refreshDrafts() {
+  let drafts;
+  try {
+    drafts = await invoke('list_drafts');
+  } catch {
+    return;
+  }
+  const bar = el('drafts-bar');
+  if (drafts.length === 0) {
+    bar.hidden = true;
+    return;
+  }
+  el('drafts-summary').textContent = `Brouillon(s) : ${drafts.length}`;
+  const list = el('drafts-list');
+  list.replaceChildren();
+  for (const draft of drafts) {
+    list.appendChild(draftRow(draft));
+  }
+  bar.hidden = false;
+}
+
+function draftRow(draft) {
+  const row = document.createElement('div');
+  row.className = 'bar-row';
+  const label = document.createElement('span');
+  label.textContent = `« ${draft.subject || '(sans objet)'} »${draft.to ? ` à ${draft.to}` : ''}`;
+  label.title = label.textContent;
+
+  const resume = document.createElement('button');
+  resume.textContent = 'Reprendre';
+  resume.addEventListener('click', () => startCompose({
+    to: draft.to,
+    subject: draft.subject,
+    body: draft.body,
+    replyToUid: draft.reply_to_uid,
+    draftId: draft.id,
+    title: 'Brouillon',
+  }));
+
+  const discard = document.createElement('button');
+  discard.textContent = 'Supprimer';
+  discard.addEventListener('click', async () => {
+    await invoke('delete_draft', { id: draft.id }).catch(() => {});
+    await refreshDrafts();
+  });
+
+  row.append(label, resume, discard);
+  return row;
+}
+
 function problemRow(entry) {
   const row = document.createElement('div');
-  row.className = 'outbox-problem';
+  row.className = 'bar-row';
   const label = document.createElement('span');
   const kind = entry.state === 'interrupted'
     ? 'interrompu en plein envoi — vérifiez le dossier Envoyés avant de renvoyer'
@@ -423,10 +562,16 @@ el('connect').addEventListener('click', async () => {
 el('refresh').addEventListener('click', refresh);
 el('archive').addEventListener('click', () => performAction('archive'));
 el('delete').addEventListener('click', () => performAction('delete'));
-el('compose-btn').addEventListener('click', () => openCompose());
+el('compose-btn').addEventListener('click', () => startCompose());
 el('reply').addEventListener('click', replyToCurrent);
+el('forward').addEventListener('click', forwardCurrent);
 el('compose-send').addEventListener('click', sendCompose);
 el('compose-cancel').addEventListener('click', closeCompose);
+
+// Chaque frappe (re)programme la sauvegarde du brouillon.
+for (const id of ['compose-to', 'compose-subject', 'compose-body']) {
+  el(id).addEventListener('input', scheduleDraftSave);
+}
 
 el('show-images').addEventListener('click', async () => {
   if (!currentMessage) return;
@@ -448,10 +593,13 @@ document.addEventListener('keydown', (event) => {
   }
   switch (event.key) {
     case 'c':
-      openCompose();
+      startCompose();
       break;
     case 'r':
       replyToCurrent();
+      break;
+    case 'f':
+      forwardCurrent();
       break;
     case 'e':
       performAction('archive');
