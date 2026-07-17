@@ -47,6 +47,14 @@ CREATE TABLE IF NOT EXISTS pending_actions (
     uid        INTEGER NOT NULL,
     kind       TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS drafts (
+    id            INTEGER PRIMARY KEY,
+    to_raw        TEXT NOT NULL,
+    subject       TEXT NOT NULL,
+    body          TEXT NOT NULL,
+    reply_to_uid  INTEGER,
+    updated_epoch INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS outbox (
     id           INTEGER PRIMARY KEY,
     message_id   TEXT NOT NULL,
