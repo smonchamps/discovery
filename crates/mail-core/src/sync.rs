@@ -58,11 +58,12 @@ impl SyncEngine {
         &self,
         server: &mut dyn MailServer,
         store: &mut Store,
+        account_id: i64,
         mailbox: &str,
     ) -> Result<SyncReport, Error> {
         let snapshot = server.select(mailbox)?;
 
-        let state = match store.sync_state(mailbox)? {
+        let state = match store.sync_state(account_id, mailbox)? {
             Some(state) if state.uid_validity == snapshot.uid_validity => state,
             Some(stale) => {
                 store.reset_mailbox(stale.mailbox_id, snapshot.uid_validity)?;
@@ -74,7 +75,8 @@ impl SyncEngine {
                 }
             }
             None => {
-                let mailbox_id = store.create_mailbox(mailbox, snapshot.uid_validity)?;
+                let mailbox_id =
+                    store.create_mailbox(account_id, mailbox, snapshot.uid_validity)?;
                 SyncState {
                     mailbox_id,
                     uid_validity: snapshot.uid_validity,
@@ -209,8 +211,20 @@ mod tests {
     use super::*;
     use crate::test_support::FakeServer;
 
+    fn test_account(store: &Store) -> i64 {
+        store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap()
+    }
+
     fn synced(server: &mut FakeServer, store: &mut Store, engine: &SyncEngine) -> SyncReport {
-        engine.sync(server, store, "INBOX").unwrap()
+        let account = test_account(store);
+        engine.sync(server, store, account, "INBOX").unwrap()
+    }
+
+    fn recent(store: &Store, offset: usize, limit: usize) -> Vec<crate::Envelope> {
+        let account = test_account(store);
+        store.recent(account, "INBOX", offset, limit).unwrap()
     }
 
     #[test]
@@ -276,7 +290,7 @@ mod tests {
 
         assert_eq!(report.fetched, 2);
         assert_eq!(server.fetch_batches.last(), Some(&vec![4, 3]));
-        assert_eq!(store.recent("INBOX", 0, 10).unwrap().len(), 4);
+        assert_eq!(recent(&store, 0, 10).len(), 4);
     }
 
     #[test]
@@ -293,12 +307,7 @@ mod tests {
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.deleted, 1);
-        let uids: Vec<Uid> = store
-            .recent("INBOX", 0, 10)
-            .unwrap()
-            .iter()
-            .map(|e| e.uid)
-            .collect();
+        let uids: Vec<Uid> = recent(&store, 0, 10).iter().map(|e| e.uid).collect();
         assert_eq!(uids, vec![3, 1]);
     }
 
@@ -314,7 +323,7 @@ mod tests {
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.fetched, 1);
-        assert!(store.recent("INBOX", 0, 1).unwrap()[0].seen);
+        assert!(recent(&store, 0, 1)[0].seen);
     }
 
     #[test]
@@ -329,7 +338,7 @@ mod tests {
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.fetched, 1);
-        assert_eq!(store.recent("INBOX", 0, 10).unwrap().len(), 2);
+        assert_eq!(recent(&store, 0, 10).len(), 2);
     }
 
     /// Limite connue et assumée : sans CONDSTORE, un flag changé côté serveur
@@ -346,11 +355,15 @@ mod tests {
         server.mark_seen(1);
         synced(&mut server, &mut store, &engine);
 
-        assert!(!store.recent("INBOX", 0, 1).unwrap()[0].seen);
+        assert!(!recent(&store, 0, 1)[0].seen);
     }
 
     fn mailbox_id(store: &Store) -> i64 {
-        store.sync_state("INBOX").unwrap().unwrap().mailbox_id
+        store
+            .sync_state(test_account(store), "INBOX")
+            .unwrap()
+            .unwrap()
+            .mailbox_id
     }
 
     #[test]
@@ -409,7 +422,7 @@ mod tests {
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.fetched, 1);
-        assert!(store.recent("INBOX", 0, 1).unwrap()[0].flagged);
+        assert!(recent(&store, 0, 1)[0].flagged);
     }
 
     #[test]
@@ -434,12 +447,7 @@ mod tests {
         assert_eq!(server.action_calls, vec!["archive:1", "delete:2"]);
         assert!(!server.messages.contains_key(&1));
         assert!(!server.messages.contains_key(&2));
-        let uids: Vec<Uid> = store
-            .recent("INBOX", 0, 10)
-            .unwrap()
-            .iter()
-            .map(|e| e.uid)
-            .collect();
+        let uids: Vec<Uid> = recent(&store, 0, 10).iter().map(|e| e.uid).collect();
         assert_eq!(uids, vec![3], "seul le message gardé reste localement");
     }
 
@@ -502,7 +510,7 @@ mod tests {
         let report = synced(&mut server, &mut store, &engine);
 
         assert_eq!(report.mode, SyncMode::Initial);
-        let rows = store.recent("INBOX", 0, 10).unwrap();
+        let rows = recent(&store, 0, 10);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].uid, 10);
         assert_eq!(rows[0].subject.as_deref(), Some("après"));

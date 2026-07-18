@@ -17,14 +17,17 @@ use mail_core::{OutboxState, Store};
 use mail_smtp::SmtpMailer;
 
 fn main() -> anyhow::Result<()> {
-    let account = GmailAuth::from_env()
-        .context("configuration OAuth")?
-        .authenticate_silent()
-        .context("connectez d'abord un compte via l'application Discovery")?;
+    let auth = GmailAuth::from_env().context("configuration OAuth")?;
+    let account = match std::env::var("DISCOVERY_ACCOUNT") {
+        Ok(email) => auth.authenticate_silent(&email),
+        Err(_) => auth.authenticate_silent_legacy(),
+    }
+    .context("connectez d'abord un compte via Discovery (ou définissez DISCOVERY_ACCOUNT)")?;
 
     // Le chemin complet du produit : journaliser d'abord, envoyer ensuite.
     let db_path = std::path::PathBuf::from("target/mail-smtp-example.db");
     let mut store = Store::open(&db_path)?;
+    let account_id = store.adopt_or_create_account(&account.email, "gmail")?;
     let draft = mail_core::compose(
         &account.email,
         &account.email,
@@ -33,7 +36,7 @@ fn main() -> anyhow::Result<()> {
          S'il arrive une seule fois, les deux règles d'or tiennent.",
         None,
     )?;
-    store.enqueue_outbox(&draft)?;
+    store.enqueue_outbox(account_id, &draft)?;
     println!("Journalisé : {}", draft.message_id);
 
     let timer = Instant::now();
@@ -43,7 +46,7 @@ fn main() -> anyhow::Result<()> {
     println!("Connecté ({}) en {:?}", account.email, timer.elapsed());
 
     let timer = Instant::now();
-    let report = mail_core::flush_outbox(&mut mailer, &mut store)?;
+    let report = mail_core::flush_outbox(&mut mailer, &mut store, account_id)?;
     println!(
         "Vidange en {:?} : {} envoyé(s), {} reporté(s), {} refusé(s), {} en quarantaine",
         timer.elapsed(),

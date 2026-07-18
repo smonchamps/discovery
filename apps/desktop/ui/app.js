@@ -19,8 +19,10 @@ let pending = new Set();    // pages en cours de chargement
 let currentMessage = null;
 let currentIndex = null;
 let composeReplyUid = null; // UID du message auquel on répond, sinon null
+let composeAccountId = null; // compte émetteur de la composition en cours
 let composeDraftId = null;  // id du brouillon en cours d'édition, sinon null
 let draftSaveTimer = null;  // autosauvegarde debouncée pendant la frappe
+let connectedAccounts = []; // comptes connectés {id, email} — l'ordre du registre
 
 async function init() {
   invoke('startup_report').then((report) => {
@@ -32,20 +34,54 @@ async function init() {
   el('pane-list').addEventListener('scroll', onScroll);
   refreshDrafts(); // les brouillons sont locaux : visibles même sans compte
   try {
-    const account = await invoke('connect_account', { interactive: false });
-    await onConnected(account.email);
+    connectedAccounts = await invoke('connect_accounts');
   } catch {
-    el('connect').hidden = false;
-    setStatus('Connectez votre compte Gmail pour commencer.');
+    connectedAccounts = [];
+  }
+  renderAccounts();
+  el('connect').hidden = false; // ajouter un compte est toujours possible
+  if (connectedAccounts.length > 0) {
+    await onConnected();
+  } else {
+    setStatus('Ajoutez un compte Gmail pour commencer.');
     await reloadList();
     await refreshOutbox();
   }
 }
 
-async function onConnected(email) {
-  el('account').textContent = email;
-  el('account').hidden = false;
-  el('connect').hidden = true;
+/// Couleur stable d'un compte, dérivée de son id — la même d'une
+/// session à l'autre, en liste comme dans les puces d'en-tête.
+function accountColor(id) {
+  return `hsl(${(id * 137) % 360} 60% 45%)`;
+}
+
+/// Puces des comptes connectés + options du sélecteur « De ».
+function renderAccounts() {
+  const container = el('accounts');
+  container.replaceChildren();
+  for (const account of connectedAccounts) {
+    const chip = document.createElement('span');
+    chip.className = 'account-chip';
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = accountColor(account.id);
+    const label = document.createElement('span');
+    label.textContent = account.email;
+    chip.append(dot, label);
+    container.appendChild(chip);
+  }
+  const from = el('compose-from');
+  from.replaceChildren();
+  for (const account of connectedAccounts) {
+    const option = document.createElement('option');
+    option.value = String(account.id);
+    option.textContent = account.email;
+    from.appendChild(option);
+  }
+  el('compose-from-row').hidden = connectedAccounts.length < 2;
+}
+
+async function onConnected() {
   el('refresh').hidden = false;
   el('compose-btn').hidden = false;
   await reloadList();
@@ -57,8 +93,10 @@ async function refresh() {
   try {
     const report = await invoke('sync_inbox');
     const actions = report.replayed > 0 ? `, ${report.replayed} action(s) envoyée(s)` : '';
-    setStatus(`synchro ${report.mode} : ${report.fetched} récupéré(s), `
-      + `${report.deleted} supprimé(s)${actions} — ${report.total} messages, en ${report.elapsed_ms} ms`);
+    const failures = report.errors.length > 0 ? ` — échecs : ${report.errors.join(' ; ')}` : '';
+    setStatus(`synchro de ${report.accounts} compte(s) : ${report.fetched} récupéré(s), `
+      + `${report.deleted} supprimé(s)${actions} — ${report.total} messages, `
+      + `en ${report.elapsed_ms} ms${failures}`, report.errors.length > 0 && report.accounts === 0);
   } catch (err) {
     setStatus(`erreur de synchronisation : ${err}`, true);
   }
@@ -158,7 +196,11 @@ function buildRow(index) {
   }
   if (!message.seen) row.classList.add('unread');
   if (message.flagged) row.classList.add('flagged');
-  if (currentMessage && message.uid === currentMessage.uid) {
+  // L'identité d'un message est (compte, uid) : deux comptes peuvent
+  // partager un même UID.
+  if (currentMessage
+    && message.uid === currentMessage.uid
+    && message.account_id === currentMessage.account_id) {
     row.classList.add('selected');
   }
   for (const [cls, text] of [
@@ -170,6 +212,13 @@ function buildRow(index) {
     span.className = cls;
     span.textContent = text;
     row.appendChild(span);
+  }
+  if (connectedAccounts.length > 1) {
+    const dot = document.createElement('span');
+    dot.className = 'dot account-dot';
+    dot.style.background = accountColor(message.account_id);
+    dot.title = message.account_email;
+    row.appendChild(dot);
   }
   row.addEventListener('click', () => openMessage(message, index));
   return row;
@@ -183,7 +232,11 @@ async function openMessage(message, index) {
   // suivra à la prochaine synchro via la file d'actions.
   if (!message.seen) {
     message.seen = true;
-    invoke('mark_seen', { uid: message.uid, seen: true }).catch(() => {});
+    invoke('mark_seen', {
+      accountId: message.account_id,
+      uid: message.uid,
+      seen: true,
+    }).catch(() => {});
   }
   renderVisible();
 
@@ -247,6 +300,7 @@ async function toggleStar() {
   renderVisible();
   try {
     await invoke('mark_flagged', {
+      accountId: currentMessage.account_id,
       uid: currentMessage.uid,
       flagged: currentMessage.flagged,
     });
@@ -259,9 +313,10 @@ async function toggleStar() {
 async function performAction(kind) {
   if (!currentMessage) return;
   const index = currentIndex;
+  const accountId = currentMessage.account_id;
   const uid = currentMessage.uid;
   try {
-    await invoke(kind === 'archive' ? 'archive_message' : 'delete_message', { uid });
+    await invoke(kind === 'archive' ? 'archive_message' : 'delete_message', { accountId, uid });
   } catch (err) {
     setStatus(`action impossible : ${err}`, true);
     return;
@@ -278,7 +333,11 @@ async function performAction(kind) {
 
 async function loadBody(message, showImages) {
   try {
-    const view = await invoke('message_body', { uid: message.uid, showImages });
+    const view = await invoke('message_body', {
+      accountId: message.account_id,
+      uid: message.uid,
+      showImages,
+    });
     if (currentMessage !== message) return; // l'utilisateur a changé de message
     el('detail-frame').setAttribute('srcdoc', view.document);
     const note = el('detail-note');
@@ -304,9 +363,15 @@ async function startCompose(options) {
   openCompose(options);
 }
 
-function openCompose({ to = '', subject = '', body = '', replyToUid = null, draftId = null, title = 'Nouveau message' } = {}) {
+function openCompose({ to = '', subject = '', body = '', replyToUid = null, draftId = null, accountId = null, title = 'Nouveau message' } = {}) {
   composeReplyUid = replyToUid;
   composeDraftId = draftId;
+  // Le compte émetteur : celui du message répondu/repris, sinon le premier.
+  composeAccountId = accountId
+    ?? (connectedAccounts.length > 0 ? connectedAccounts[0].id : null);
+  if (composeAccountId !== null) {
+    el('compose-from').value = String(composeAccountId);
+  }
   el('compose-title').textContent = title;
   el('compose-to').value = to;
   el('compose-subject').value = subject;
@@ -324,6 +389,7 @@ function openCompose({ to = '', subject = '', body = '', replyToUid = null, draf
 function hideCompose() {
   clearTimeout(draftSaveTimer);
   composeReplyUid = null;
+  composeAccountId = null;
   composeDraftId = null;
   el('compose').hidden = true;
   if (currentMessage) {
@@ -365,9 +431,10 @@ function scheduleDraftSave() {
 /// Le filet : un crash ne coûte que les deux dernières secondes de frappe.
 async function saveDraftNow() {
   clearTimeout(draftSaveTimer);
-  if (el('compose').hidden || composeIsEmpty()) return;
+  if (el('compose').hidden || composeIsEmpty() || composeAccountId === null) return;
   try {
     const id = await invoke('save_draft', {
+      accountId: composeAccountId,
       id: composeDraftId,
       to: el('compose-to').value,
       subject: el('compose-subject').value,
@@ -400,13 +467,17 @@ async function composeFromContext(command, title) {
   if (!currentMessage) return;
   setStatus('préparation…');
   try {
-    const context = await invoke(command, { uid: currentMessage.uid });
+    const context = await invoke(command, {
+      accountId: currentMessage.account_id,
+      uid: currentMessage.uid,
+    });
     setStatus('');
     await startCompose({
       to: context.to,
       subject: context.subject,
       body: context.body,
       replyToUid: context.reply ? context.uid : null,
+      accountId: context.account_id,
       title,
     });
   } catch (err) {
@@ -418,9 +489,14 @@ async function composeFromContext(command, title) {
 async function sendCompose() {
   const send = el('compose-send');
   if (send.disabled) return; // double-clic = un seul envoi
+  if (composeAccountId === null) {
+    setStatus('aucun compte émetteur — ajoutez un compte', true);
+    return;
+  }
   send.disabled = true;
   try {
     await invoke('queue_send', {
+      accountId: composeAccountId,
       to: el('compose-to').value,
       subject: el('compose-subject').value.trim(),
       body: el('compose-body').value,
@@ -526,6 +602,7 @@ function draftRow(draft) {
     body: draft.body,
     replyToUid: draft.reply_to_uid,
     draftId: draft.id,
+    accountId: draft.account_id,
     title: 'Brouillon',
   }));
 
@@ -584,22 +661,17 @@ function setStatus(text, isError = false) {
   status.classList.toggle('error', isError);
 }
 
-// La voie silencieuse d'abord : après un démarrage hors ligne, le coffre
-// contient souvent un refresh token encore valide — le navigateur ne doit
-// s'ouvrir qu'en dernier recours (friction observée en validation Phase 2).
+// Les reconnexions silencieuses ont eu lieu au démarrage
+// (connect_accounts) : ce bouton AJOUTE un compte — parcours navigateur.
 el('connect').addEventListener('click', async () => {
-  setStatus('reconnexion…');
-  try {
-    const account = await invoke('connect_account', { interactive: false });
-    await onConnected(account.email);
-    return;
-  } catch {
-    // pas de session récupérable sans interaction : parcours complet
-  }
   setStatus('autorisation en cours dans votre navigateur…');
   try {
-    const account = await invoke('connect_account', { interactive: true });
-    await onConnected(account.email);
+    const account = await invoke('add_account');
+    if (!connectedAccounts.some((known) => known.id === account.id)) {
+      connectedAccounts.push(account);
+    }
+    renderAccounts();
+    await onConnected();
   } catch (err) {
     setStatus(`connexion impossible : ${err}`, true);
   }
@@ -619,6 +691,12 @@ el('compose-cancel').addEventListener('click', closeCompose);
 for (const id of ['compose-to', 'compose-subject', 'compose-body']) {
   el(id).addEventListener('input', scheduleDraftSave);
 }
+
+// Changer de compte émetteur re-scope le brouillon en cours.
+el('compose-from').addEventListener('change', () => {
+  composeAccountId = Number(el('compose-from').value);
+  scheduleDraftSave();
+});
 
 el('show-images').addEventListener('click', async () => {
   if (!currentMessage) return;

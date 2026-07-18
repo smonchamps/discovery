@@ -27,6 +27,8 @@ use crate::store::Store;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedDraft {
     pub id: i64,
+    /// Le compte qui l'enverra (et dont le dossier Brouillons le reflète).
+    pub account_id: i64,
     /// Champ « À » brut, non validé (peut être vide ou incomplet).
     pub to_raw: String,
     pub subject: String,
@@ -50,6 +52,7 @@ impl Store {
     /// filet, il ne doit jamais avoir de maille manquante.
     pub fn save_draft(
         &self,
+        account_id: i64,
         id: Option<i64>,
         to_raw: &str,
         subject: &str,
@@ -67,8 +70,8 @@ impl Store {
                 // chaque fermeture re-pousserait une copie identique vers
                 // Gmail (churn observé en validation terrain).
                 self.conn().execute(
-                    "INSERT INTO drafts (id, to_raw, subject, body, reply_to_uid, updated_epoch)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                    "INSERT INTO drafts (id, account_id, to_raw, subject, body, reply_to_uid, updated_epoch)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                      ON CONFLICT(id) DO UPDATE SET
                        to_raw = excluded.to_raw,
                        subject = excluded.subject,
@@ -79,15 +82,15 @@ impl Store {
                         OR drafts.subject IS NOT excluded.subject
                         OR drafts.body IS NOT excluded.body
                         OR drafts.reply_to_uid IS NOT excluded.reply_to_uid",
-                    params![id, to_raw, subject, body, reply_to_uid, now],
+                    params![id, account_id, to_raw, subject, body, reply_to_uid, now],
                 )?;
                 Ok(id)
             }
             None => {
                 self.conn().execute(
-                    "INSERT INTO drafts (to_raw, subject, body, reply_to_uid, updated_epoch)
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
-                    params![to_raw, subject, body, reply_to_uid, now],
+                    "INSERT INTO drafts (account_id, to_raw, subject, body, reply_to_uid, updated_epoch)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![account_id, to_raw, subject, body, reply_to_uid, now],
                 )?;
                 Ok(self.conn().last_insert_rowid())
             }
@@ -105,16 +108,17 @@ impl Store {
         Ok(rows)
     }
 
-    /// Les brouillons dont Gmail n'a pas (ou plus) la dernière version,
-    /// dans l'ordre de création.
-    pub fn drafts_to_push(&self) -> Result<Vec<SavedDraft>, Error> {
+    /// Les brouillons d'UN compte dont son dossier Brouillons n'a pas
+    /// (ou plus) la dernière version, dans l'ordre de création.
+    pub fn drafts_to_push(&self, account_id: i64) -> Result<Vec<SavedDraft>, Error> {
         let mut stmt = self.conn().prepare(&format!(
             "{DRAFT_SELECT}
-             WHERE pushed_epoch IS NULL OR pushed_epoch < updated_epoch
+             WHERE account_id = ?1
+               AND (pushed_epoch IS NULL OR pushed_epoch < updated_epoch)
              ORDER BY id"
         ))?;
         let rows = stmt
-            .query_map([], row_to_draft)?
+            .query_map([account_id], row_to_draft)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -131,8 +135,8 @@ impl Store {
     ) -> Result<(), Error> {
         let tx = self.conn().unchecked_transaction()?;
         tx.execute(
-            "INSERT OR IGNORE INTO draft_tombstones (remote_uid)
-             SELECT remote_uid FROM drafts
+            "INSERT OR IGNORE INTO draft_tombstones (account_id, remote_uid)
+             SELECT account_id, remote_uid FROM drafts
              WHERE id = ?1 AND remote_uid IS NOT NULL AND remote_uid IS NOT ?2",
             params![id, remote_uid],
         )?;
@@ -150,8 +154,9 @@ impl Store {
     pub fn delete_draft(&self, id: i64) -> Result<(), Error> {
         let tx = self.conn().unchecked_transaction()?;
         tx.execute(
-            "INSERT OR IGNORE INTO draft_tombstones (remote_uid)
-             SELECT remote_uid FROM drafts WHERE id = ?1 AND remote_uid IS NOT NULL",
+            "INSERT OR IGNORE INTO draft_tombstones (account_id, remote_uid)
+             SELECT account_id, remote_uid FROM drafts
+             WHERE id = ?1 AND remote_uid IS NOT NULL",
             [id],
         )?;
         tx.execute("DELETE FROM drafts WHERE id = ?1", [id])?;
@@ -159,35 +164,42 @@ impl Store {
         Ok(())
     }
 
-    /// Copies distantes à purger (brouillons supprimés ou remplacés).
-    pub fn draft_tombstones(&self) -> Result<Vec<Uid>, Error> {
-        let mut stmt = self
-            .conn()
-            .prepare("SELECT remote_uid FROM draft_tombstones ORDER BY remote_uid")?;
+    /// Copies distantes d'UN compte à purger (supprimées ou remplacées) —
+    /// chaque tombstone se purge via la connexion de SON compte.
+    pub fn draft_tombstones(&self, account_id: i64) -> Result<Vec<Uid>, Error> {
+        let mut stmt = self.conn().prepare(
+            "SELECT remote_uid FROM draft_tombstones
+             WHERE account_id = ?1 ORDER BY remote_uid",
+        )?;
         let rows = stmt
-            .query_map([], |row| row.get(0))?
+            .query_map([account_id], |row| row.get(0))?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
-    pub fn clear_draft_tombstone(&self, remote_uid: Uid) -> Result<(), Error> {
+    pub fn clear_draft_tombstone(&self, account_id: i64, remote_uid: Uid) -> Result<(), Error> {
         self.conn().execute(
-            "DELETE FROM draft_tombstones WHERE remote_uid = ?1",
-            [remote_uid],
+            "DELETE FROM draft_tombstones WHERE account_id = ?1 AND remote_uid = ?2",
+            params![account_id, remote_uid],
         )?;
         Ok(())
     }
 
-    /// Aligne l'état distant sur l'UIDVALIDITY observée du dossier
-    /// Brouillons. Si elle a changé, tous les repères sont abandonnés :
-    /// on re-poussera (doublon possible — acceptable ; supprimer le
-    /// mauvais UID, jamais). Retourne `true` si réinitialisation.
-    pub fn align_drafts_uidvalidity(&self, uid_validity: u32) -> Result<bool, Error> {
+    /// Aligne l'état distant d'UN compte sur l'UIDVALIDITY observée de son
+    /// dossier Brouillons. Si elle a changé, les repères de CE compte sont
+    /// abandonnés : on re-poussera (doublon possible — acceptable ;
+    /// supprimer le mauvais UID, jamais). Retourne `true` si
+    /// réinitialisation. Les autres comptes ne sont pas touchés.
+    pub fn align_drafts_uidvalidity(
+        &self,
+        account_id: i64,
+        uid_validity: u32,
+    ) -> Result<bool, Error> {
         let known: Option<u32> = self
             .conn()
             .query_row(
-                "SELECT uid_validity FROM drafts_remote WHERE id = 1",
-                [],
+                "SELECT uid_validity FROM drafts_remote WHERE account_id = ?1",
+                [account_id],
                 |row| row.get(0),
             )
             .optional()?;
@@ -198,35 +210,40 @@ impl Store {
         let reset = known.is_some();
         if reset {
             tx.execute(
-                "UPDATE drafts SET remote_uid = NULL, pushed_epoch = NULL",
-                [],
+                "UPDATE drafts SET remote_uid = NULL, pushed_epoch = NULL
+                 WHERE account_id = ?1",
+                [account_id],
             )?;
-            tx.execute("DELETE FROM draft_tombstones", [])?;
+            tx.execute(
+                "DELETE FROM draft_tombstones WHERE account_id = ?1",
+                [account_id],
+            )?;
         }
         tx.execute(
-            "INSERT INTO drafts_remote (id, uid_validity) VALUES (1, ?1)
-             ON CONFLICT(id) DO UPDATE SET uid_validity = excluded.uid_validity",
-            [uid_validity],
+            "INSERT INTO drafts_remote (account_id, uid_validity) VALUES (?1, ?2)
+             ON CONFLICT(account_id) DO UPDATE SET uid_validity = excluded.uid_validity",
+            params![account_id, uid_validity],
         )?;
         tx.commit()?;
         Ok(reset)
     }
 }
 
-const DRAFT_SELECT: &str = "SELECT id, to_raw, subject, body, reply_to_uid, updated_epoch,
-        remote_uid, pushed_epoch
+const DRAFT_SELECT: &str = "SELECT id, account_id, to_raw, subject, body, reply_to_uid,
+        updated_epoch, remote_uid, pushed_epoch
  FROM drafts";
 
 fn row_to_draft(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedDraft> {
     Ok(SavedDraft {
         id: row.get(0)?,
-        to_raw: row.get(1)?,
-        subject: row.get(2)?,
-        body: row.get(3)?,
-        reply_to_uid: row.get(4)?,
-        updated_epoch: row.get(5)?,
-        remote_uid: row.get(6)?,
-        pushed_epoch: row.get(7)?,
+        account_id: row.get(1)?,
+        to_raw: row.get(2)?,
+        subject: row.get(3)?,
+        body: row.get(4)?,
+        reply_to_uid: row.get(5)?,
+        updated_epoch: row.get(6)?,
+        remote_uid: row.get(7)?,
+        pushed_epoch: row.get(8)?,
     })
 }
 
@@ -234,15 +251,20 @@ fn row_to_draft(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedDraft> {
 mod tests {
     use super::*;
 
-    fn store() -> Store {
-        Store::open_in_memory().unwrap()
+    fn store() -> (Store, i64) {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap();
+        (store, account)
     }
 
     #[test]
     fn saves_raw_unvalidated_content_and_roundtrips() {
-        let store = store();
+        let (store, account) = store();
         let id = store
             .save_draft(
+                account,
                 None,
                 "adresse-incomp",
                 "Sujet",
@@ -263,10 +285,12 @@ mod tests {
 
     #[test]
     fn save_with_id_updates_in_place() {
-        let store = store();
-        let id = store.save_draft(None, "", "v1", "texte", None).unwrap();
+        let (store, account) = store();
+        let id = store
+            .save_draft(account, None, "", "v1", "texte", None)
+            .unwrap();
         let same = store
-            .save_draft(Some(id), "a@b.fr", "v2", "texte enrichi", None)
+            .save_draft(account, Some(id), "a@b.fr", "v2", "texte enrichi", None)
             .unwrap();
 
         assert_eq!(same, id);
@@ -280,12 +304,14 @@ mod tests {
     /// (brouillon supprimé entre-temps) ré-insère au lieu de perdre.
     #[test]
     fn save_with_stale_id_still_persists_the_text() {
-        let store = store();
-        let id = store.save_draft(None, "", "s", "précieux", None).unwrap();
+        let (store, account) = store();
+        let id = store
+            .save_draft(account, None, "", "s", "précieux", None)
+            .unwrap();
         store.delete_draft(id).unwrap();
 
         store
-            .save_draft(Some(id), "", "s", "précieux", None)
+            .save_draft(account, Some(id), "", "s", "précieux", None)
             .unwrap();
 
         let drafts = store.drafts().unwrap();
@@ -295,9 +321,13 @@ mod tests {
 
     #[test]
     fn drafts_lists_most_recent_first() {
-        let store = store();
-        store.save_draft(None, "", "premier", "a", None).unwrap();
-        store.save_draft(None, "", "second", "b", None).unwrap();
+        let (store, account) = store();
+        store
+            .save_draft(account, None, "", "premier", "a", None)
+            .unwrap();
+        store
+            .save_draft(account, None, "", "second", "b", None)
+            .unwrap();
 
         let drafts = store.drafts().unwrap();
         let subjects: Vec<&str> = drafts.iter().map(|draft| draft.subject.as_str()).collect();
@@ -306,30 +336,38 @@ mod tests {
 
     #[test]
     fn delete_draft_removes_it() {
-        let store = store();
-        let id = store.save_draft(None, "", "s", "b", None).unwrap();
+        let (store, account) = store();
+        let id = store.save_draft(account, None, "", "s", "b", None).unwrap();
         store.delete_draft(id).unwrap();
         assert!(store.drafts().unwrap().is_empty());
     }
 
     #[test]
     fn fresh_and_edited_drafts_are_to_push_until_recorded() {
-        let store = store();
-        let id = store.save_draft(None, "", "s", "v1", None).unwrap();
-        assert_eq!(store.drafts_to_push().unwrap().len(), 1, "neuf = à pousser");
+        let (store, account) = store();
+        let id = store
+            .save_draft(account, None, "", "s", "v1", None)
+            .unwrap();
+        assert_eq!(
+            store.drafts_to_push(account).unwrap().len(),
+            1,
+            "neuf = à pousser"
+        );
 
-        let draft = &store.drafts_to_push().unwrap()[0];
+        let draft = &store.drafts_to_push(account).unwrap()[0];
         store
             .record_draft_pushed(id, Some(101), draft.updated_epoch)
             .unwrap();
         assert!(
-            store.drafts_to_push().unwrap().is_empty(),
+            store.drafts_to_push(account).unwrap().is_empty(),
             "poussé = propre"
         );
 
-        store.save_draft(Some(id), "", "s", "v2", None).unwrap();
+        store
+            .save_draft(account, Some(id), "", "s", "v2", None)
+            .unwrap();
         assert_eq!(
-            store.drafts_to_push().unwrap().len(),
+            store.drafts_to_push(account).unwrap().len(),
             1,
             "édité = de nouveau à pousser"
         );
@@ -340,19 +378,19 @@ mod tests {
     /// octet pour octet identique vers Gmail (churn observé au terrain).
     #[test]
     fn identical_resave_does_not_mark_dirty_again() {
-        let store = store();
+        let (store, account) = store();
         let id = store
-            .save_draft(None, "a@b.fr", "s", "texte", Some(1))
+            .save_draft(account, None, "a@b.fr", "s", "texte", Some(1))
             .unwrap();
-        let epoch = store.drafts_to_push().unwrap()[0].updated_epoch;
+        let epoch = store.drafts_to_push(account).unwrap()[0].updated_epoch;
         store.record_draft_pushed(id, Some(101), epoch).unwrap();
 
         store
-            .save_draft(Some(id), "a@b.fr", "s", "texte", Some(1))
+            .save_draft(account, Some(id), "a@b.fr", "s", "texte", Some(1))
             .unwrap();
 
         assert!(
-            store.drafts_to_push().unwrap().is_empty(),
+            store.drafts_to_push(account).unwrap().is_empty(),
             "contenu identique : rien à re-pousser"
         );
     }
@@ -361,75 +399,129 @@ mod tests {
     /// brouillon à pousser — le repère est une photo, pas un drapeau.
     #[test]
     fn edit_during_push_stays_dirty() {
-        let store = store();
-        let id = store.save_draft(None, "", "s", "v1", None).unwrap();
-        let snapshot = store.drafts_to_push().unwrap()[0].updated_epoch;
+        let (store, account) = store();
+        let id = store
+            .save_draft(account, None, "", "s", "v1", None)
+            .unwrap();
+        let snapshot = store.drafts_to_push(account).unwrap()[0].updated_epoch;
 
         // L'utilisateur édite pendant que la poussée est en vol — même
         // dans la même milliseconde, l'horodatage strictement croissant
         // rend l'édition détectable…
         store
-            .save_draft(Some(id), "", "s", "v2 éditée en vol", None)
+            .save_draft(account, Some(id), "", "s", "v2 éditée en vol", None)
             .unwrap();
         // …puis la poussée (de v1) aboutit et se consigne avec SA photo.
         store.record_draft_pushed(id, Some(101), snapshot).unwrap();
 
-        let to_push = store.drafts_to_push().unwrap();
+        let to_push = store.drafts_to_push(account).unwrap();
         assert_eq!(to_push.len(), 1, "v2 doit repartir au prochain cycle");
         assert_eq!(to_push[0].body, "v2 éditée en vol");
     }
 
     #[test]
     fn replacement_tombstones_the_previous_remote_copy() {
-        let store = store();
-        let id = store.save_draft(None, "", "s", "v1", None).unwrap();
+        let (store, account) = store();
+        let id = store
+            .save_draft(account, None, "", "s", "v1", None)
+            .unwrap();
         store.record_draft_pushed(id, Some(101), 1).unwrap();
 
         store.record_draft_pushed(id, Some(202), 2).unwrap();
 
-        assert_eq!(store.draft_tombstones().unwrap(), vec![101]);
-        store.clear_draft_tombstone(101).unwrap();
-        assert!(store.draft_tombstones().unwrap().is_empty());
+        assert_eq!(store.draft_tombstones(account).unwrap(), vec![101]);
+        store.clear_draft_tombstone(account, 101).unwrap();
+        assert!(store.draft_tombstones(account).unwrap().is_empty());
     }
 
     #[test]
     fn delete_tombstones_the_remote_copy_but_only_if_pushed() {
-        let store = store();
-        let pushed = store.save_draft(None, "", "poussé", "b", None).unwrap();
+        let (store, account) = store();
+        let pushed = store
+            .save_draft(account, None, "", "poussé", "b", None)
+            .unwrap();
         store.record_draft_pushed(pushed, Some(303), 1).unwrap();
-        let local_only = store.save_draft(None, "", "local", "b", None).unwrap();
+        let local_only = store
+            .save_draft(account, None, "", "local", "b", None)
+            .unwrap();
 
         store.delete_draft(pushed).unwrap();
         store.delete_draft(local_only).unwrap();
 
         assert_eq!(
-            store.draft_tombstones().unwrap(),
+            store.draft_tombstones(account).unwrap(),
             vec![303],
             "jamais de tombstone sans copie distante enregistrée"
         );
+    }
+
+    /// La garde UIDVALIDITY est PAR COMPTE : réinitialiser les repères
+    /// de A ne touche ni les repères ni les tombstones de B.
+    #[test]
+    fn align_resets_only_the_given_account() {
+        let (store, account) = store();
+        let other = store
+            .adopt_or_create_account("autre@exemple.fr", "gmail")
+            .unwrap();
+        let draft_a = store.save_draft(account, None, "", "a", "x", None).unwrap();
+        let draft_b = store.save_draft(other, None, "", "b", "y", None).unwrap();
+        let epoch_a = store.drafts_to_push(account).unwrap()[0].updated_epoch;
+        store
+            .record_draft_pushed(draft_a, Some(11), epoch_a)
+            .unwrap();
+        let epoch_b = store.drafts_to_push(other).unwrap()[0].updated_epoch;
+        store
+            .record_draft_pushed(draft_b, Some(22), epoch_b)
+            .unwrap();
+        store.align_drafts_uidvalidity(account, 5).unwrap();
+        store.align_drafts_uidvalidity(other, 7).unwrap();
+
+        assert!(
+            store.align_drafts_uidvalidity(account, 6).unwrap(),
+            "reset de A"
+        );
+
+        assert_eq!(
+            store.drafts_to_push(account).unwrap().len(),
+            1,
+            "A doit tout re-pousser"
+        );
+        assert!(
+            store.drafts_to_push(other).unwrap().is_empty(),
+            "B n'est pas concerné"
+        );
+        let drafts = store.drafts().unwrap();
+        let of_b = drafts.iter().find(|draft| draft.id == draft_b).unwrap();
+        assert_eq!(of_b.remote_uid, Some(22), "les repères de B survivent");
     }
 
     /// UIDVALIDITY changée : on abandonne tous les repères — un doublon
     /// est acceptable, supprimer le mauvais UID jamais.
     #[test]
     fn uidvalidity_change_resets_remote_state() {
-        let store = store();
-        assert!(!store.align_drafts_uidvalidity(7).unwrap(), "première vue");
-        let id = store.save_draft(None, "", "s", "b", None).unwrap();
+        let (store, account) = store();
+        assert!(
+            !store.align_drafts_uidvalidity(account, 7).unwrap(),
+            "première vue"
+        );
+        let id = store.save_draft(account, None, "", "s", "b", None).unwrap();
         store.record_draft_pushed(id, Some(404), 1).unwrap();
         store.record_draft_pushed(id, Some(505), 2).unwrap(); // 404 en tombstone
 
-        assert!(!store.align_drafts_uidvalidity(7).unwrap(), "inchangée");
         assert!(
-            store.align_drafts_uidvalidity(8).unwrap(),
+            !store.align_drafts_uidvalidity(account, 7).unwrap(),
+            "inchangée"
+        );
+        assert!(
+            store.align_drafts_uidvalidity(account, 8).unwrap(),
             "changée : reset"
         );
 
-        assert!(store.draft_tombstones().unwrap().is_empty());
+        assert!(store.draft_tombstones(account).unwrap().is_empty());
         let drafts = store.drafts().unwrap();
         assert_eq!(drafts[0].remote_uid, None);
         assert_eq!(
-            store.drafts_to_push().unwrap().len(),
+            store.drafts_to_push(account).unwrap().len(),
             1,
             "tout est à re-pousser"
         );

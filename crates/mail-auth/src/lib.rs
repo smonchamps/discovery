@@ -20,7 +20,10 @@ pub(crate) const SCOPE_MAIL: &str = "https://mail.google.com/";
 pub(crate) const SCOPE_EMAIL: &str = "https://www.googleapis.com/auth/userinfo.email";
 
 const KEYRING_SERVICE: &str = "discovery-mail";
-const KEYRING_REFRESH: &str = "gmail-refresh-token";
+/// Entrée héritée de la Phase 2 (un seul compte) — lue en repli puis
+/// migrée vers l'entrée par compte : pas de ré-authentification après
+/// la mise à jour multi-comptes.
+const KEYRING_REFRESH_LEGACY: &str = "gmail-refresh-token";
 
 /// Session authentifiée : de quoi ouvrir une connexion IMAP XOAUTH2.
 /// L'access token expire (~1 h) : ré-authentifier silencieusement au besoin.
@@ -58,18 +61,58 @@ impl GmailAuth {
         Ok(Self::new(client_id, client_secret))
     }
 
-    /// Reconnexion sans interaction : échoue s'il n'y a pas de refresh token
-    /// valide dans le coffre (→ passer par [`Self::authenticate_interactive`]).
-    pub fn authenticate_silent(&self) -> Result<Authenticated, AuthError> {
-        let refresh = vault()?.get_password().map_err(|err| match err {
+    /// Reconnexion sans interaction d'UN compte : lit son entrée du
+    /// coffre (une par email), avec repli sur l'entrée héritée de la
+    /// Phase 2 — migrée vers l'entrée par compte au passage. Échoue s'il
+    /// n'y a aucun jeton (→ [`Self::authenticate_interactive`]).
+    pub fn authenticate_silent(&self, email: &str) -> Result<Authenticated, AuthError> {
+        let (refresh, from_legacy) = match vault(email)?.get_password() {
+            Ok(token) => (token, false),
+            Err(keyring::Error::NoEntry) => {
+                let legacy = legacy_vault()?.get_password().map_err(|err| match err {
+                    keyring::Error::NoEntry => {
+                        AuthError::Vault(format!("aucun jeton pour {email}"))
+                    }
+                    other => AuthError::Vault(other.to_string()),
+                })?;
+                (legacy, true)
+            }
+            Err(other) => return Err(AuthError::Vault(other.to_string())),
+        };
+        let client = flow::oauth_client(&self.client_id, &self.client_secret)?;
+        let http = flow::http_client()?;
+        let tokens = flow::refresh_access_token(&client, &http, refresh.clone())?;
+        flow::ensure_mail_scope(&tokens)?;
+        let account = self.finish(&http, &tokens, None)?;
+        if from_legacy {
+            // Migration du coffre : l'entrée devient par-compte, sous
+            // l'email RÉEL du jeton (celui que Google vient de confirmer).
+            vault(&account.email)?
+                .set_password(&refresh)
+                .map_err(|err| AuthError::Vault(err.to_string()))?;
+            let _ = legacy_vault()?.delete_credential();
+        }
+        Ok(account)
+    }
+
+    /// Reconnexion héritée Phase 2 : quand la base ne connaît encore
+    /// aucun compte, l'entrée non-keyée du coffre peut en révéler un —
+    /// elle est alors migrée. L'email revient du jeton lui-même.
+    pub fn authenticate_silent_legacy(&self) -> Result<Authenticated, AuthError> {
+        let refresh = legacy_vault()?.get_password().map_err(|err| match err {
             keyring::Error::NoEntry => AuthError::Vault("aucun compte enregistré".to_string()),
             other => AuthError::Vault(other.to_string()),
         })?;
         let client = flow::oauth_client(&self.client_id, &self.client_secret)?;
         let http = flow::http_client()?;
-        let tokens = flow::refresh_access_token(&client, &http, refresh)?;
+        let tokens = flow::refresh_access_token(&client, &http, refresh.clone())?;
         flow::ensure_mail_scope(&tokens)?;
-        self.finish(&http, &tokens, None)
+        let account = self.finish(&http, &tokens, None)?;
+        vault(&account.email)?
+            .set_password(&refresh)
+            .map_err(|err| AuthError::Vault(err.to_string()))?;
+        let _ = legacy_vault()?.delete_credential();
+        Ok(account)
     }
 
     /// Parcours complet : navigateur → consentement Google → redirection
@@ -83,27 +126,29 @@ impl GmailAuth {
         self.finish(&http, &tokens, refresh)
     }
 
-    /// Oublie le compte : supprime le refresh token du coffre.
-    pub fn forget(&self) -> Result<(), AuthError> {
-        match vault()?.delete_credential() {
+    /// Oublie UN compte : supprime son refresh token du coffre.
+    pub fn forget(&self, email: &str) -> Result<(), AuthError> {
+        match vault(email)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(err) => Err(AuthError::Vault(err.to_string())),
         }
     }
 
+    /// L'email n'est connu qu'APRÈS l'échange de jetons : le refresh se
+    /// range donc dans l'entrée du compte une fois l'identité confirmée.
     fn finish(
         &self,
         http: &flow::HttpClient,
         tokens: &BasicTokenResponse,
         store_refresh: Option<String>,
     ) -> Result<Authenticated, AuthError> {
+        let access_token = tokens.access_token().secret().clone();
+        let email = flow::fetch_email(http, &access_token)?;
         if let Some(refresh) = store_refresh {
-            vault()?
+            vault(&email)?
                 .set_password(&refresh)
                 .map_err(|err| AuthError::Vault(err.to_string()))?;
         }
-        let access_token = tokens.access_token().secret().clone();
-        let email = flow::fetch_email(http, &access_token)?;
         Ok(Authenticated {
             email,
             access_token,
@@ -111,7 +156,12 @@ impl GmailAuth {
     }
 }
 
-fn vault() -> Result<keyring::Entry, AuthError> {
-    keyring::Entry::new(KEYRING_SERVICE, KEYRING_REFRESH)
+fn vault(email: &str) -> Result<keyring::Entry, AuthError> {
+    keyring::Entry::new(KEYRING_SERVICE, &format!("gmail-refresh:{email}"))
+        .map_err(|err| AuthError::Vault(err.to_string()))
+}
+
+fn legacy_vault() -> Result<keyring::Entry, AuthError> {
+    keyring::Entry::new(KEYRING_SERVICE, KEYRING_REFRESH_LEGACY)
         .map_err(|err| AuthError::Vault(err.to_string()))
 }

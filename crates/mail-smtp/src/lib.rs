@@ -122,6 +122,7 @@ mod tests {
     fn outbox_message(in_reply_to: Option<&str>) -> OutboxMessage {
         OutboxMessage {
             id: 1,
+            account_id: 1,
             message_id: "<test.abc123@exemple.fr>".to_string(),
             from: "moi@exemple.fr".to_string(),
             to: vec!["a@exemple.fr".to_string(), "b@exemple.fr".to_string()],

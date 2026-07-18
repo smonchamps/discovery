@@ -8,9 +8,9 @@
 <body>
 <header>
   <h1>discovery</h1>
-  <span id="account" hidden></span>
+  <span id="accounts"></span>
   <span id="status">démarrage…</span>
-  <button id="connect" hidden>Connecter Gmail</button>
+  <button id="connect" hidden>Ajouter un compte</button>
   <button id="compose-btn" hidden title="Écrire (c)">Écrire</button>
   <button id="refresh" hidden>Synchroniser</button>
 </header>
@@ -49,6 +49,7 @@
     </article>
     <section id="compose" hidden>
       <h2 id="compose-title">Nouveau message</h2>
+      <label id="compose-from-row" hidden>De <select id="compose-from"></select></label>
       <label>À <input id="compose-to" type="text" placeholder="destinataire@exemple.fr"></label>
       <label>Objet <input id="compose-subject" type="text"></label>
       <textarea id="compose-body" placeholder="Votre message…"></textarea>

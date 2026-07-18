@@ -3,16 +3,18 @@
 //!
 //! L'UI est « bête » (PLAN.md §3) : elle affiche l'état et émet des
 //! intentions via les commandes de [`commands`] ; toute l'intelligence vit
-//! dans mail-core / mail-imap / mail-auth.
+//! dans mail-core / mail-imap / mail-smtp / mail-auth.
 
 mod commands;
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 pub(crate) struct AppState {
     pub started_at: Instant,
-    pub account: Mutex<Option<mail_auth::Authenticated>>,
+    /// Jetons d'accès des comptes connectés, par email (multi-comptes).
+    pub accounts: Mutex<HashMap<String, mail_auth::Authenticated>>,
     /// Sérialise les vidanges de la boîte d'envoi : deux pompes
     /// concurrentes mettraient en quarantaine les envois l'une de l'autre.
     pub outbox_flush: Arc<Mutex<()>>,
@@ -24,7 +26,7 @@ pub(crate) struct AppState {
 fn main() {
     let state = AppState {
         started_at: Instant::now(),
-        account: Mutex::new(None),
+        accounts: Mutex::new(HashMap::new()),
         outbox_flush: Arc::new(Mutex::new(())),
         drafts_push: Arc::new(Mutex::new(())),
     };
@@ -32,7 +34,8 @@ fn main() {
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::startup_report,
-            commands::connect_account,
+            commands::connect_accounts,
+            commands::add_account,
             commands::sync_inbox,
             commands::list_messages,
             commands::message_body,

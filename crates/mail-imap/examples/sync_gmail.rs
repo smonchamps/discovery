@@ -17,10 +17,12 @@ use mail_core::{Store, SyncEngine};
 use mail_imap::ImapServer;
 
 fn main() -> anyhow::Result<()> {
-    let account = GmailAuth::from_env()
-        .context("configuration OAuth")?
-        .authenticate_silent()
-        .context("connectez d'abord un compte via l'application Discovery")?;
+    let auth = GmailAuth::from_env().context("configuration OAuth")?;
+    let account = match std::env::var("DISCOVERY_ACCOUNT") {
+        Ok(email) => auth.authenticate_silent(&email),
+        Err(_) => auth.authenticate_silent_legacy(),
+    }
+    .context("connectez d'abord un compte via Discovery (ou définissez DISCOVERY_ACCOUNT)")?;
 
     let timer = Instant::now();
     let mut server =
@@ -29,9 +31,10 @@ fn main() -> anyhow::Result<()> {
 
     let db_path = std::path::PathBuf::from("target/mail-imap-example.db");
     let mut store = Store::open(&db_path)?;
+    let account_id = store.adopt_or_create_account(&account.email, "gmail")?;
 
     let timer = Instant::now();
-    let report = SyncEngine::default().sync(&mut server, &mut store, "INBOX")?;
+    let report = SyncEngine::default().sync(&mut server, &mut store, account_id, "INBOX")?;
     println!(
         "Synchronisation {:?} : {} enveloppe(s) récupérée(s)/mise(s) à jour, {} supprimée(s), en {:?}",
         report.mode,
@@ -42,7 +45,7 @@ fn main() -> anyhow::Result<()> {
     server.logout();
 
     let timer = Instant::now();
-    let recent = store.recent("INBOX", 0, 10)?;
+    let recent = store.recent(account_id, "INBOX", 0, 10)?;
     println!(
         "Les 10 plus récents (lus depuis SQLite en {:?}) :",
         timer.elapsed()

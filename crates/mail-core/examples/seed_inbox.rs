@@ -4,8 +4,12 @@
 //! pour que lire et citer se testent entièrement hors ligne.
 //!
 //! ```powershell
-//! cargo run -p mail-core --example seed_inbox --release -- <chemin.db> [nombre]
+//! cargo run -p mail-core --example seed_inbox --release -- <chemin.db> [nombre] [email]
 //! ```
+//!
+//! `email` (défaut : seed@exemple.fr) désigne le compte qui possède la
+//! boîte — appeler l'outil deux fois avec deux emails peuple une base
+//! multi-comptes (décor de l'E2E boîte unifiée).
 //!
 //! Attention : la boîte INBOX de la base visée est remplacée. L'UIDVALIDITY
 //! synthétique (424242) garantit qu'une future synchro réelle repartira
@@ -48,14 +52,17 @@ fn main() -> Result<(), mail_core::Error> {
         .and_then(|value| value.parse().ok())
         .unwrap_or(50_000);
 
+    let email = args.get(3).map(String::as_str).unwrap_or("seed@exemple.fr");
+
     let timer = Instant::now();
     let mut store = Store::open(std::path::Path::new(path))?;
-    let mailbox_id = match store.sync_state("INBOX")? {
+    let account = store.adopt_or_create_account(email, "gmail")?;
+    let mailbox_id = match store.sync_state(account, "INBOX")? {
         Some(state) => {
             store.reset_mailbox(state.mailbox_id, SEED_UID_VALIDITY)?;
             state.mailbox_id
         }
-        None => store.create_mailbox("INBOX", SEED_UID_VALIDITY)?,
+        None => store.create_mailbox(account, "INBOX", SEED_UID_VALIDITY)?,
     };
 
     let mut batch = Vec::with_capacity(BATCH);

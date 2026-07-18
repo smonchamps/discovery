@@ -1,15 +1,18 @@
 //! Commandes Tauri : la passerelle entre l'UI et le noyau.
 //!
-//! Le travail bloquant (OAuth, IMAP) passe par `spawn_blocking` pour ne
-//! jamais geler la fenêtre ; les lectures SQLite sont assez rapides pour
-//! rester synchrones (~200 µs mesurées).
+//! Multi-comptes (Phase 3) : l'identité d'un message est `(compte, uid)`
+//! — un UID seul ne suffit plus. Chaque opération réseau passe par la
+//! connexion de SON compte ; les boucles (synchro, vidange, brouillons)
+//! agrègent les comptes connectés. Le travail bloquant (OAuth, IMAP,
+//! SMTP) passe par `spawn_blocking` pour ne jamais geler la fenêtre.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 use std::time::Instant;
 
 use mail_auth::{Authenticated, GmailAuth};
-use mail_core::{Action, OutboxState, Store, SyncEngine, SyncMode};
+use mail_core::{Action, OutboxState, Store, SyncEngine};
 use mail_imap::ImapServer;
 use mail_smtp::SmtpMailer;
 use serde::Serialize;
@@ -25,21 +28,27 @@ const LIST_LIMIT_MAX: usize = 500;
 
 #[derive(Serialize)]
 pub struct AccountInfo {
+    pub id: i64,
     pub email: String,
 }
 
 #[derive(Serialize)]
 pub struct SyncSummary {
-    pub mode: String,
+    /// Comptes synchronisés avec succès.
+    pub accounts: usize,
     pub fetched: usize,
     pub deleted: usize,
     pub replayed: usize,
     pub total: u64,
     pub elapsed_ms: u64,
+    /// Échecs par compte — les autres comptes ne sont pas bloqués.
+    pub errors: Vec<String>,
 }
 
 #[derive(Serialize)]
 pub struct MessageRow {
+    pub account_id: i64,
+    pub account_email: String,
     pub uid: u32,
     pub subject: String,
     pub sender: String,
@@ -56,55 +65,176 @@ pub fn startup_report(state: State<'_, AppState>) -> String {
     )
 }
 
-/// `interactive: false` = reconnexion silencieuse (refresh token du coffre) ;
-/// `true` = parcours navigateur complet.
+/// Connexion silencieuse de TOUS les comptes du registre. Registre vide
+/// (base migrée de Phase 2) : l'entrée héritée du coffre peut révéler le
+/// compte — elle est alors migrée et le compte en attente revendiqué.
 #[tauri::command]
-pub async fn connect_account(
+pub async fn connect_accounts(
+    app: AppHandle,
     state: State<'_, AppState>,
-    interactive: bool,
-) -> Result<AccountInfo, String> {
-    // Crochet E2E : compte factice au jeton invalide par construction —
-    // hors ligne garanti, jamais de vrai OAuth pendant un test piloté.
-    if let Ok(email) = std::env::var("DISCOVERY_E2E_ACCOUNT") {
-        *lock_account(&state)? = Some(Authenticated {
-            email: email.clone(),
-            access_token: "jeton-e2e-invalide".to_string(),
-        });
-        return Ok(AccountInfo { email });
+) -> Result<Vec<AccountInfo>, String> {
+    let path = db_path(&app)?;
+
+    // Crochet E2E : comptes factices (emails séparés par des virgules),
+    // jetons invalides par construction — hors ligne garanti.
+    if let Ok(list) = std::env::var("DISCOVERY_E2E_ACCOUNT") {
+        let store = Store::open(&path).map_err(|err| err.to_string())?;
+        let mut infos = Vec::new();
+        for email in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
+            let id = store
+                .adopt_or_create_account(email, "gmail")
+                .map_err(|err| err.to_string())?;
+            lock_accounts(&state)?.insert(
+                email.to_string(),
+                Authenticated {
+                    email: email.to_string(),
+                    access_token: "jeton-e2e-invalide".to_string(),
+                },
+            );
+            infos.push(AccountInfo {
+                id,
+                email: email.to_string(),
+            });
+        }
+        return Ok(infos);
     }
-    let account = tauri::async_runtime::spawn_blocking(move || {
+
+    let emails: Vec<String> = {
+        let store = Store::open(&path).map_err(|err| err.to_string())?;
+        store
+            .accounts()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|account| account.email)
+            .collect()
+    };
+
+    let connected = tauri::async_runtime::spawn_blocking(move || {
         let auth = GmailAuth::from_env().map_err(|err| err.to_string())?;
-        let result = if interactive {
-            auth.authenticate_interactive()
+        let mut list = Vec::new();
+        if emails.is_empty() {
+            if let Ok(account) = auth.authenticate_silent_legacy() {
+                list.push(account);
+            }
         } else {
-            auth.authenticate_silent()
-        };
-        result.map_err(|err| err.to_string())
+            for email in &emails {
+                if let Ok(account) = auth.authenticate_silent(email) {
+                    list.push(account);
+                }
+            }
+        }
+        Ok::<_, String>(list)
     })
     .await
     .map_err(|err| err.to_string())??;
 
-    let email = account.email.clone();
-    *lock_account(&state)? = Some(account);
-    Ok(AccountInfo { email })
+    let store = Store::open(&path).map_err(|err| err.to_string())?;
+    let mut infos = Vec::new();
+    for account in connected {
+        let id = store
+            .adopt_or_create_account(&account.email, "gmail")
+            .map_err(|err| err.to_string())?;
+        infos.push(AccountInfo {
+            id,
+            email: account.email.clone(),
+        });
+        lock_accounts(&state)?.insert(account.email.clone(), account);
+    }
+    Ok(infos)
 }
 
+/// Ajoute un compte — parcours navigateur complet, répétable à volonté.
+#[tauri::command]
+pub async fn add_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<AccountInfo, String> {
+    let account = tauri::async_runtime::spawn_blocking(move || {
+        GmailAuth::from_env()
+            .map_err(|err| err.to_string())?
+            .authenticate_interactive()
+            .map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let id = store
+        .adopt_or_create_account(&account.email, "gmail")
+        .map_err(|err| err.to_string())?;
+    let info = AccountInfo {
+        id,
+        email: account.email.clone(),
+    };
+    lock_accounts(&state)?.insert(account.email.clone(), account);
+    Ok(info)
+}
+
+/// Synchronise TOUS les comptes connectés — l'échec d'un compte ne
+/// bloque pas les autres (il est consigné dans le bilan).
 #[tauri::command]
 pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<SyncSummary, String> {
-    let account = lock_account(&state)?
-        .clone()
-        .ok_or_else(|| "aucun compte connecté".to_string())?;
     let path = db_path(&app)?;
+    let jobs = connected_jobs(&path, &state)?;
+    let timer = Instant::now();
 
-    let (summary, refreshed) =
-        tauri::async_runtime::spawn_blocking(move || run_sync(&account, &path))
-            .await
-            .map_err(|err| err.to_string())??;
+    let (accounts, fetched, deleted, replayed, errors, refreshed) =
+        tauri::async_runtime::spawn_blocking(move || {
+            let mut accounts = 0;
+            let mut fetched = 0;
+            let mut deleted = 0;
+            let mut replayed = 0;
+            let mut errors = Vec::new();
+            let mut refreshed = Vec::new();
+            for (account_id, auth) in jobs {
+                match run_sync(&auth, account_id, &path) {
+                    Ok((report, fresh)) => {
+                        accounts += 1;
+                        fetched += report.fetched;
+                        deleted += report.deleted;
+                        replayed += report.replayed;
+                        if let Some(fresh) = fresh {
+                            refreshed.push(fresh);
+                        }
+                    }
+                    Err(err) => errors.push(format!("{} : {err}", auth.email)),
+                }
+            }
+            (accounts, fetched, deleted, replayed, errors, refreshed)
+        })
+        .await
+        .map_err(|err| err.to_string())?;
 
-    if let Some(fresh) = refreshed {
-        *lock_account(&state)? = Some(fresh);
+    for fresh in refreshed {
+        lock_accounts(&state)?.insert(fresh.email.clone(), fresh);
     }
-    Ok(summary)
+    let total = Store::open(&db_path(&app)?)
+        .and_then(|store| store.unified_count(MAILBOX))
+        .map_err(|err| err.to_string())?;
+
+    Ok(SyncSummary {
+        accounts,
+        fetched,
+        deleted,
+        replayed,
+        total,
+        elapsed_ms: timer.elapsed().as_millis() as u64,
+        errors,
+    })
+}
+
+fn run_sync(
+    account: &Authenticated,
+    account_id: i64,
+    db_path: &Path,
+) -> Result<(mail_core::SyncReport, Option<Authenticated>), String> {
+    let (mut server, refreshed) = connect_imap(account)?;
+    let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
+    let report = SyncEngine::default()
+        .sync(&mut server, &mut store, account_id, MAILBOX)
+        .map_err(|err| err.to_string())?;
+    server.logout();
+    Ok((report, refreshed))
 }
 
 #[derive(Serialize)]
@@ -115,37 +245,38 @@ pub struct MessagePage {
     pub elapsed_us: u64,
 }
 
-/// Une page de la liste virtualisée : l'UI ne matérialise que les lignes
-/// visibles et demande les pages au fil du défilement.
+/// Une page de la BOÎTE UNIFIÉE : tous les comptes fusionnés par date.
+/// L'UI ne matérialise que les lignes visibles (virtualisation).
 #[tauri::command]
 pub fn list_messages(app: AppHandle, offset: usize, limit: usize) -> Result<MessagePage, String> {
     let timer = Instant::now();
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let total = store
-        .sync_state(MAILBOX)
-        .map_err(|err| err.to_string())?
-        .map(|state| store.count(state.mailbox_id))
-        .transpose()
-        .map_err(|err| err.to_string())?
-        .unwrap_or(0);
+        .unified_count(MAILBOX)
+        .map_err(|err| err.to_string())?;
     let rows = store
-        .recent(MAILBOX, offset, limit.min(LIST_LIMIT_MAX))
+        .unified_recent(MAILBOX, offset, limit.min(LIST_LIMIT_MAX))
         .map_err(|err| err.to_string())?
         .into_iter()
-        .map(|envelope| MessageRow {
-            uid: envelope.uid,
-            subject: envelope
+        .map(|row| MessageRow {
+            account_id: row.account_id,
+            account_email: row.account_email,
+            uid: row.envelope.uid,
+            subject: row
+                .envelope
                 .subject
                 .unwrap_or_else(|| "(sans sujet)".to_string()),
-            sender: envelope
+            sender: row
+                .envelope
                 .sender
                 .unwrap_or_else(|| "(expéditeur inconnu)".to_string()),
-            date: envelope
+            date: row
+                .envelope
                 .date
                 .map(|date| date.format("%Y-%m-%d").to_string())
                 .unwrap_or_default(),
-            seen: envelope.seen,
-            flagged: envelope.flagged,
+            seen: row.envelope.seen,
+            flagged: row.envelope.flagged,
         })
         .collect();
     Ok(MessagePage {
@@ -162,18 +293,18 @@ pub struct BodyView {
     pub remote_images_blocked: usize,
 }
 
-/// Corps d'un message : cache local d'abord (aucun réseau), serveur sinon.
-/// Le document retourné embarque sa propre CSP et se charge dans une iframe
-/// `sandbox` côté UI — les trois couches de défense de la Phase 0.
-/// `show_images` est le choix explicite de l'utilisateur, par message.
+/// Corps d'un message : cache local d'abord (aucun réseau), serveur du
+/// compte sinon. Document auto-CSP chargé dans une iframe `sandbox` —
+/// les trois couches de défense de la Phase 0.
 #[tauri::command]
 pub async fn message_body(
     app: AppHandle,
     state: State<'_, AppState>,
+    account_id: i64,
     uid: u32,
     show_images: bool,
 ) -> Result<BodyView, String> {
-    let html = raw_body(&app, &state, uid).await?;
+    let html = raw_body(&app, &state, account_id, uid).await?;
 
     let policy = if show_images {
         mail_render::ImagePolicy::AllowRemote
@@ -187,92 +318,63 @@ pub async fn message_body(
     })
 }
 
-fn fetch_body(account: &Authenticated, db_path: &Path, uid: u32) -> Result<String, String> {
+fn fetch_body(
+    account: &Authenticated,
+    db_path: &Path,
+    account_id: i64,
+    uid: u32,
+) -> Result<String, String> {
     let (mut server, _refreshed) = connect_imap(account)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
-    let body = mail_core::load_body(&mut server, &mut store, MAILBOX, uid)
+    let body = mail_core::load_body(&mut server, &mut store, account_id, MAILBOX, uid)
         .map_err(|err| err.to_string())?;
     server.logout();
     body.ok_or_else(|| "message introuvable sur le serveur".to_string())
 }
 
 /// Corps HTML brut d'un message : cache local d'abord (aucun réseau),
-/// serveur sinon — le chemin partagé par la lecture, la réponse et le
-/// transfert.
+/// serveur du compte sinon — chemin partagé lecture/réponse/transfert.
 async fn raw_body(
     app: &AppHandle,
     state: &State<'_, AppState>,
+    account_id: i64,
     uid: u32,
 ) -> Result<String, String> {
     let path = db_path(app)?;
     let cached = Store::open(&path)
-        .and_then(|store| store.body(MAILBOX, uid))
+        .and_then(|store| store.body(account_id, MAILBOX, uid))
         .map_err(|err| err.to_string())?;
     match cached {
         Some(html) => Ok(html),
         None => {
-            let account = lock_account(state)?
-                .clone()
-                .ok_or_else(|| "aucun compte connecté".to_string())?;
-            tauri::async_runtime::spawn_blocking(move || fetch_body(&account, &path, uid))
+            let auth = auth_for(&path, state, account_id)?;
+            tauri::async_runtime::spawn_blocking(move || fetch_body(&auth, &path, account_id, uid))
                 .await
                 .map_err(|err| err.to_string())?
         }
     }
 }
 
-fn run_sync(
-    account: &Authenticated,
-    db_path: &Path,
-) -> Result<(SyncSummary, Option<Authenticated>), String> {
-    let timer = Instant::now();
-    let (mut server, refreshed) = connect_imap(account)?;
-    let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
-    let report = SyncEngine::default()
-        .sync(&mut server, &mut store, MAILBOX)
-        .map_err(|err| err.to_string())?;
-    server.logout();
-
-    let total = store
-        .sync_state(MAILBOX)
-        .map_err(|err| err.to_string())?
-        .map(|sync_state| store.count(sync_state.mailbox_id))
-        .transpose()
-        .map_err(|err| err.to_string())?
-        .unwrap_or(0);
-
-    let summary = SyncSummary {
-        mode: match report.mode {
-            SyncMode::Initial => "initiale",
-            SyncMode::Incremental => "incrémentale",
-        }
-        .to_string(),
-        fetched: report.fetched,
-        deleted: report.deleted,
-        replayed: report.replayed,
-        total,
-        elapsed_ms: timer.elapsed().as_millis() as u64,
-    };
-    Ok((summary, refreshed))
-}
-
 /// Archive : disparition locale immédiate + journalisation, le serveur
-/// suivra au prochain sync (chez Gmail : reste dans « Tous les messages »).
+/// du compte suivra au prochain sync.
 #[tauri::command]
-pub fn archive_message(app: AppHandle, uid: u32) -> Result<(), String> {
-    queue_removal(&app, uid, Action::Archive)
+pub fn archive_message(app: AppHandle, account_id: i64, uid: u32) -> Result<(), String> {
+    queue_removal(&app, account_id, uid, Action::Archive)
 }
 
-/// Suppression : disparition locale immédiate + journalisation, mise à la
-/// corbeille du serveur au prochain sync.
+/// Suppression : disparition locale immédiate + journalisation, mise à
+/// la corbeille du serveur du compte au prochain sync.
 #[tauri::command]
-pub fn delete_message(app: AppHandle, uid: u32) -> Result<(), String> {
-    queue_removal(&app, uid, Action::Delete)
+pub fn delete_message(app: AppHandle, account_id: i64, uid: u32) -> Result<(), String> {
+    queue_removal(&app, account_id, uid, Action::Delete)
 }
 
-fn queue_removal(app: &AppHandle, uid: u32, action: Action) -> Result<(), String> {
+fn queue_removal(app: &AppHandle, account_id: i64, uid: u32, action: Action) -> Result<(), String> {
     let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
-    let Some(state) = store.sync_state(MAILBOX).map_err(|err| err.to_string())? else {
+    let Some(state) = store
+        .sync_state(account_id, MAILBOX)
+        .map_err(|err| err.to_string())?
+    else {
         return Ok(());
     };
     store
@@ -284,11 +386,14 @@ fn queue_removal(app: &AppHandle, uid: u32, action: Action) -> Result<(), String
 }
 
 /// Marque lu/non-lu : application locale immédiate (optimisme UI) +
-/// journalisation dans la file — la prochaine synchro rejoue vers le serveur.
+/// journalisation — la prochaine synchro du compte rejoue vers le serveur.
 #[tauri::command]
-pub fn mark_seen(app: AppHandle, uid: u32, seen: bool) -> Result<(), String> {
+pub fn mark_seen(app: AppHandle, account_id: i64, uid: u32, seen: bool) -> Result<(), String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let Some(state) = store.sync_state(MAILBOX).map_err(|err| err.to_string())? else {
+    let Some(state) = store
+        .sync_state(account_id, MAILBOX)
+        .map_err(|err| err.to_string())?
+    else {
         return Ok(());
     };
     let changed = store
@@ -307,12 +412,19 @@ pub fn mark_seen(app: AppHandle, uid: u32, seen: bool) -> Result<(), String> {
     Ok(())
 }
 
-/// Étoile/désétoile : application locale immédiate (optimisme UI) +
-/// journalisation — même contrat que lu/non-lu, même file rejouable.
+/// Étoile/désétoile : même contrat que lu/non-lu, même file rejouable.
 #[tauri::command]
-pub fn mark_flagged(app: AppHandle, uid: u32, flagged: bool) -> Result<(), String> {
+pub fn mark_flagged(
+    app: AppHandle,
+    account_id: i64,
+    uid: u32,
+    flagged: bool,
+) -> Result<(), String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let Some(state) = store.sync_state(MAILBOX).map_err(|err| err.to_string())? else {
+    let Some(state) = store
+        .sync_state(account_id, MAILBOX)
+        .map_err(|err| err.to_string())?
+    else {
         return Ok(());
     };
     let changed = store
@@ -332,11 +444,12 @@ pub fn mark_flagged(app: AppHandle, uid: u32, flagged: bool) -> Result<(), Strin
 }
 
 // ---------------------------------------------------------------------
-// Composer, répondre, envoyer — la boîte d'envoi (Phase 2, PLAN.md §4).
+// Composer, répondre, envoyer — la boîte d'envoi (Phases 2-3).
 // ---------------------------------------------------------------------
 
 #[derive(Serialize)]
 pub struct ComposeContext {
+    pub account_id: i64,
     pub uid: u32,
     /// Vide pour un transfert : l'utilisateur choisit le destinataire.
     pub to: String,
@@ -353,7 +466,7 @@ pub struct OutboxSummary {
     pub deferred: usize,
     pub rejected: usize,
     pub quarantined: usize,
-    /// Restant en file après la vidange.
+    /// Restant en file après la vidange (tous comptes).
     pub queued: usize,
     /// Connexion SMTP impossible (hors ligne, token…) — la file attend.
     pub error: Option<String>,
@@ -379,22 +492,21 @@ pub struct OutboxStatus {
 }
 
 /// Pré-remplissage d'une réponse : destinataire = adresse brute de
-/// l'expéditeur, sujet « Re: » une seule fois, corps cité ligne à ligne.
-/// La citation est un confort : si le corps est inaccessible (hors ligne,
-/// jamais mis en cache), on répond sans elle plutôt que de bloquer.
-/// Le fil (In-Reply-To) sera résolu à l'envoi, depuis le même UID.
+/// l'expéditeur, sujet « Re: » une seule fois, corps cité. La citation
+/// est un confort : corps inaccessible = on répond sans elle.
 #[tauri::command]
 pub async fn reply_context(
     app: AppHandle,
     state: State<'_, AppState>,
+    account_id: i64,
     uid: u32,
 ) -> Result<ComposeContext, String> {
-    let envelope = envelope_of(&app, uid)?;
+    let envelope = envelope_of(&app, account_id, uid)?;
     let to = envelope
         .sender_address
         .clone()
         .ok_or_else(|| "adresse de l'expéditeur inconnue — resynchronisez la boîte".to_string())?;
-    let body = match raw_body(&app, &state, uid).await {
+    let body = match raw_body(&app, &state, account_id, uid).await {
         Ok(html) => mail_core::quote_reply(
             envelope.sender.as_deref(),
             quote_date(&envelope).as_deref(),
@@ -403,6 +515,7 @@ pub async fn reply_context(
         Err(_) => String::new(),
     };
     Ok(ComposeContext {
+        account_id,
         uid,
         to,
         subject: mail_core::reply_subject(envelope.subject.as_deref()),
@@ -411,20 +524,20 @@ pub async fn reply_context(
     })
 }
 
-/// Pré-remplissage d'un transfert : sujet « Fwd: », bloc « Message
-/// transféré » (De/Date/Objet + texte). Sans corps, un transfert ne
-/// transmettrait rien : ici, corps inaccessible = échec — contrairement
-/// à la réponse. Un transfert ouvre un nouveau fil : pas d'In-Reply-To.
-/// Les pièces jointes ne suivent pas encore (Phase 3).
+/// Pré-remplissage d'un transfert : sans corps, un transfert ne
+/// transmettrait rien — ici l'échec est bloquant. Nouveau fil : pas
+/// d'In-Reply-To. Les pièces jointes ne suivent pas encore (Phase 3).
 #[tauri::command]
 pub async fn forward_context(
     app: AppHandle,
     state: State<'_, AppState>,
+    account_id: i64,
     uid: u32,
 ) -> Result<ComposeContext, String> {
-    let envelope = envelope_of(&app, uid)?;
-    let html = raw_body(&app, &state, uid).await?;
+    let envelope = envelope_of(&app, account_id, uid)?;
+    let html = raw_body(&app, &state, account_id, uid).await?;
     Ok(ComposeContext {
+        account_id,
         uid,
         to: String::new(),
         subject: mail_core::forward_subject(envelope.subject.as_deref()),
@@ -438,10 +551,10 @@ pub async fn forward_context(
     })
 }
 
-fn envelope_of(app: &AppHandle, uid: u32) -> Result<mail_core::Envelope, String> {
+fn envelope_of(app: &AppHandle, account_id: i64, uid: u32) -> Result<mail_core::Envelope, String> {
     let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
     store
-        .envelope(MAILBOX, uid)
+        .envelope(account_id, MAILBOX, uid)
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "message introuvable".to_string())
 }
@@ -453,121 +566,107 @@ fn quote_date(envelope: &mail_core::Envelope) -> Option<String> {
         .map(|date| date.format("%Y-%m-%d %H:%M").to_string())
 }
 
-/// Journalise l'envoi dans la boîte d'envoi — AVANT toute tentative
-/// réseau (règle « jamais d'envoi perdu »). Retour immédiat ; la
-/// remise réelle passe par [`flush_outbox`].
+/// Journalise l'envoi dans la boîte d'envoi du compte émetteur — AVANT
+/// toute tentative réseau (règle « jamais d'envoi perdu »).
 #[tauri::command]
 pub fn queue_send(
     app: AppHandle,
-    state: State<'_, AppState>,
+    account_id: i64,
     to: String,
     subject: String,
     body: String,
     reply_to_uid: Option<u32>,
 ) -> Result<(), String> {
-    let account = lock_account(&state)?
-        .clone()
-        .ok_or_else(|| "aucun compte connecté".to_string())?;
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let from = account_email(&store, account_id)?;
     let in_reply_to = reply_to_uid
-        .and_then(|uid| store.envelope(MAILBOX, uid).ok().flatten())
+        .and_then(|uid| store.envelope(account_id, MAILBOX, uid).ok().flatten())
         .and_then(|envelope| envelope.message_id);
-    let draft = mail_core::compose(&account.email, &to, &subject, &body, in_reply_to.as_deref())
+    let draft = mail_core::compose(&from, &to, &subject, &body, in_reply_to.as_deref())
         .map_err(|err| err.to_string())?;
     store
-        .enqueue_outbox(&draft)
+        .enqueue_outbox(account_id, &draft)
         .map_err(|err| err.to_string())?;
     Ok(())
 }
 
-/// Vide la boîte d'envoi vers Gmail. Hors ligne, ce n'est PAS une erreur :
-/// la file attend, le bilan le dit. Réentrance interdite (verrou) — deux
-/// pompes concurrentes mettraient en quarantaine les envois en vol
-/// l'une de l'autre.
+/// Vide les boîtes d'envoi de TOUS les comptes connectés — chacun par
+/// SA connexion SMTP. Hors ligne = bilan, pas une erreur. Réentrance
+/// interdite (verrou).
 #[tauri::command]
 pub async fn flush_outbox(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<OutboxSummary, String> {
-    let account = lock_account(&state)?
-        .clone()
-        .ok_or_else(|| "aucun compte connecté".to_string())?;
     let path = db_path(&app)?;
+    let jobs = connected_jobs(&path, &state)?;
     let lock = state.outbox_flush.clone();
 
     let (summary, refreshed) =
-        tauri::async_runtime::spawn_blocking(move || run_flush(&account, &path, &lock))
+        tauri::async_runtime::spawn_blocking(move || run_flush_all(jobs, &path, &lock))
             .await
             .map_err(|err| err.to_string())??;
 
-    if let Some(fresh) = refreshed {
-        *lock_account(&state)? = Some(fresh);
+    for fresh in refreshed {
+        lock_accounts(&state)?.insert(fresh.email.clone(), fresh);
     }
     Ok(summary)
 }
 
-fn run_flush(
-    account: &Authenticated,
+fn run_flush_all(
+    jobs: Vec<(i64, Authenticated)>,
     db_path: &Path,
     lock: &Mutex<()>,
-) -> Result<(OutboxSummary, Option<Authenticated>), String> {
+) -> Result<(OutboxSummary, Vec<Authenticated>), String> {
     let _guard = lock
         .lock()
         .map_err(|_| "vidange précédente interrompue".to_string())?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
 
     // Un crash antérieur se constate même hors ligne : quarantaine d'abord.
-    let quarantined = store.quarantine_inflight().map_err(|err| err.to_string())?;
-    let queued = store
+    let mut summary = OutboxSummary {
+        sent: 0,
+        deferred: 0,
+        rejected: 0,
+        quarantined: store.quarantine_inflight().map_err(|err| err.to_string())?,
+        queued: 0,
+        error: None,
+    };
+    let mut refreshed_list = Vec::new();
+
+    for (account_id, auth) in jobs {
+        if store
+            .outbox_to_send(account_id)
+            .map_err(|err| err.to_string())?
+            .is_empty()
+        {
+            continue;
+        }
+        match connect_smtp(&auth) {
+            // Hors ligne : la file de ce compte survit telle quelle.
+            Err(reason) => summary.error = Some(reason),
+            Ok((mut mailer, refreshed)) => {
+                let report = mail_core::flush_outbox(&mut mailer, &mut store, account_id)
+                    .map_err(|err| err.to_string())?;
+                summary.sent += report.sent;
+                summary.deferred += report.deferred;
+                summary.rejected += report.rejected;
+                summary.quarantined += report.quarantined;
+                if let Some(fresh) = refreshed {
+                    refreshed_list.push(fresh);
+                }
+            }
+        }
+    }
+    summary.queued = store
         .outbox_in_state(OutboxState::Queued)
         .map_err(|err| err.to_string())?
         .len();
-    if queued == 0 {
-        let summary = OutboxSummary {
-            sent: 0,
-            deferred: 0,
-            rejected: 0,
-            quarantined,
-            queued: 0,
-            error: None,
-        };
-        return Ok((summary, None));
-    }
-
-    match connect_smtp(account) {
-        // Hors ligne : la file survit telle quelle — c'est le contrat.
-        Err(reason) => {
-            let summary = OutboxSummary {
-                sent: 0,
-                deferred: 0,
-                rejected: 0,
-                quarantined,
-                queued,
-                error: Some(reason),
-            };
-            Ok((summary, None))
-        }
-        Ok((mut mailer, refreshed)) => {
-            let report =
-                mail_core::flush_outbox(&mut mailer, &mut store).map_err(|err| err.to_string())?;
-            let remaining = store
-                .outbox_in_state(OutboxState::Queued)
-                .map_err(|err| err.to_string())?
-                .len();
-            let summary = OutboxSummary {
-                sent: report.sent,
-                deferred: report.deferred,
-                rejected: report.rejected,
-                quarantined: quarantined + report.quarantined,
-                queued: remaining,
-                error: None,
-            };
-            Ok((summary, refreshed))
-        }
-    }
+    Ok((summary, refreshed_list))
 }
 
-/// L'état de la boîte d'envoi pour l'UI : tout ce qui n'est pas parti.
+/// L'état de la boîte d'envoi pour l'UI : tout ce qui n'est pas parti,
+/// tous comptes confondus.
 #[tauri::command]
 pub fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
@@ -613,24 +712,24 @@ pub fn outbox_delete(app: AppHandle, id: i64) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------
-// Brouillons locaux — plus jamais de texte perdu (Phase 2).
+// Brouillons locaux + reflet Gmail par compte (Phases 2-3).
 // ---------------------------------------------------------------------
 
 #[derive(Serialize)]
 pub struct DraftRow {
     pub id: i64,
+    pub account_id: i64,
     pub to: String,
     pub subject: String,
     pub body: String,
     pub reply_to_uid: Option<u32>,
 }
 
-/// Sauvegarde un brouillon — texte brut, jamais validé : c'est un filet,
-/// pas une frontière. Retourne l'id à réutiliser pour les sauvegardes
-/// suivantes du même brouillon.
+/// Sauvegarde un brouillon — texte brut, jamais validé : c'est un filet.
 #[tauri::command]
 pub fn save_draft(
     app: AppHandle,
+    account_id: i64,
     id: Option<i64>,
     to: String,
     subject: String,
@@ -639,7 +738,7 @@ pub fn save_draft(
 ) -> Result<i64, String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     store
-        .save_draft(id, &to, &subject, &body, reply_to_uid)
+        .save_draft(account_id, id, &to, &subject, &body, reply_to_uid)
         .map_err(|err| err.to_string())
 }
 
@@ -652,6 +751,7 @@ pub fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
         .into_iter()
         .map(|draft| DraftRow {
             id: draft.id,
+            account_id: draft.account_id,
             to: draft.to_raw,
             subject: draft.subject,
             body: draft.body,
@@ -668,48 +768,42 @@ pub fn delete_draft(app: AppHandle, id: i64) -> Result<(), String> {
 
 #[derive(Serialize)]
 pub struct DraftSyncSummary {
-    /// Copies poussées (nouvelles versions) dans le dossier Brouillons.
     pub pushed: usize,
-    /// Copies distantes purgées (brouillons supprimés ou remplacés).
     pub purged: usize,
-    /// Brouillons non poussables en l'état (aucun destinataire valide) —
-    /// ils restent locaux, rien n'est perdu.
+    /// Brouillons non poussables en l'état — ils restent locaux.
     pub kept_local: usize,
     /// Réseau indisponible — rien de changé, le cycle suivant retentera.
     pub error: Option<String>,
 }
 
-/// Reflète les brouillons locaux dans le dossier Brouillons Gmail
-/// (poussée seule, v1 — le tirage viendra avec la Phase 3). Sans travail
-/// en attente, aucun réseau n'est touché. Réentrance interdite (verrou) :
-/// deux poussées concurrentes créeraient des copies en double.
+/// Reflète les brouillons de TOUS les comptes connectés dans leurs
+/// dossiers Brouillons respectifs (poussée seule, v1). Sans travail,
+/// aucun réseau. Réentrance interdite (verrou).
 #[tauri::command]
 pub async fn sync_drafts(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<DraftSyncSummary, String> {
-    let account = lock_account(&state)?
-        .clone()
-        .ok_or_else(|| "aucun compte connecté".to_string())?;
     let path = db_path(&app)?;
+    let jobs = connected_jobs(&path, &state)?;
     let lock = state.drafts_push.clone();
 
     let (summary, refreshed) =
-        tauri::async_runtime::spawn_blocking(move || run_draft_sync(&account, &path, &lock))
+        tauri::async_runtime::spawn_blocking(move || run_draft_sync_all(jobs, &path, &lock))
             .await
             .map_err(|err| err.to_string())??;
 
-    if let Some(fresh) = refreshed {
-        *lock_account(&state)? = Some(fresh);
+    for fresh in refreshed {
+        lock_accounts(&state)?.insert(fresh.email.clone(), fresh);
     }
     Ok(summary)
 }
 
-fn run_draft_sync(
-    account: &Authenticated,
+fn run_draft_sync_all(
+    jobs: Vec<(i64, Authenticated)>,
     db_path: &Path,
     lock: &Mutex<()>,
-) -> Result<(DraftSyncSummary, Option<Authenticated>), String> {
+) -> Result<(DraftSyncSummary, Vec<Authenticated>), String> {
     let _guard = lock
         .lock()
         .map_err(|_| "poussée précédente interrompue".to_string())?;
@@ -720,100 +814,108 @@ fn run_draft_sync(
         kept_local: 0,
         error: None,
     };
+    let mut refreshed_list = Vec::new();
 
-    let nothing_to_do = store
-        .drafts_to_push()
-        .map_err(|err| err.to_string())?
-        .is_empty()
-        && store
-            .draft_tombstones()
+    for (account_id, auth) in jobs {
+        let nothing_to_do = store
+            .drafts_to_push(account_id)
             .map_err(|err| err.to_string())?
-            .is_empty();
-    if nothing_to_do {
-        return Ok((summary, None));
-    }
-
-    let (mut server, refreshed) = match connect_imap(account) {
-        Ok(pair) => pair,
-        // Hors ligne : rien de changé, le cycle suivant retentera.
-        Err(reason) => {
-            summary.error = Some(reason);
-            return Ok((summary, None));
+            .is_empty()
+            && store
+                .draft_tombstones(account_id)
+                .map_err(|err| err.to_string())?
+                .is_empty();
+        if nothing_to_do {
+            continue;
         }
-    };
 
-    // La garde des repères : UIDVALIDITY d'abord, toute purge ensuite.
-    match server.drafts_uidvalidity() {
-        Ok(validity) => {
-            store
-                .align_drafts_uidvalidity(validity)
-                .map_err(|err| err.to_string())?;
-        }
-        Err(err) => {
-            summary.error = Some(err.to_string());
-            server.logout();
-            return Ok((summary, refreshed));
-        }
-    }
-
-    if !purge_draft_tombstones(&mut server, &store, &mut summary)? {
-        server.logout();
-        return Ok((summary, refreshed));
-    }
-
-    for draft in store.drafts_to_push().map_err(|err| err.to_string())? {
-        let bytes = match mail_smtp::draft_bytes(
-            &account.email,
-            &draft.to_raw,
-            &draft.subject,
-            &draft.body,
-        ) {
-            Ok(bytes) => bytes,
-            // Pas poussable en l'état (ex. aucun destinataire valide) :
-            // le local reste la référence, on n'insiste pas.
-            Err(_) => {
-                summary.kept_local += 1;
+        let (mut server, refreshed) = match connect_imap(&auth) {
+            Ok(pair) => pair,
+            Err(reason) => {
+                summary.error = Some(reason);
                 continue;
             }
         };
-        match server.append_draft(&bytes) {
-            Ok(remote_uid) => {
+        if let Some(fresh) = refreshed {
+            refreshed_list.push(fresh);
+        }
+
+        // La garde des repères : UIDVALIDITY d'abord, toute purge ensuite.
+        match server.drafts_uidvalidity() {
+            Ok(validity) => {
                 store
-                    .record_draft_pushed(draft.id, remote_uid, draft.updated_epoch)
+                    .align_drafts_uidvalidity(account_id, validity)
                     .map_err(|err| err.to_string())?;
-                summary.pushed += 1;
             }
             Err(err) => {
                 summary.error = Some(err.to_string());
-                break;
+                server.logout();
+                continue;
             }
         }
-    }
 
-    // Les remplacements de CE cycle viennent de créer leurs tombstones :
-    // les purger tout de suite, sinon l'ancienne copie reste visible dans
-    // Gmail jusqu'au cycle suivant (défaut observé en validation terrain —
-    // « un deuxième brouillon » après un Synchroniser en cours d'édition).
-    if summary.error.is_none() {
-        purge_draft_tombstones(&mut server, &store, &mut summary)?;
+        if !purge_draft_tombstones(&mut server, &store, account_id, &mut summary)? {
+            server.logout();
+            continue;
+        }
+
+        for draft in store
+            .drafts_to_push(account_id)
+            .map_err(|err| err.to_string())?
+        {
+            let bytes = match mail_smtp::draft_bytes(
+                &auth.email,
+                &draft.to_raw,
+                &draft.subject,
+                &draft.body,
+            ) {
+                Ok(bytes) => bytes,
+                // Pas poussable en l'état : le local reste la référence.
+                Err(_) => {
+                    summary.kept_local += 1;
+                    continue;
+                }
+            };
+            match server.append_draft(&bytes) {
+                Ok(remote_uid) => {
+                    store
+                        .record_draft_pushed(draft.id, remote_uid, draft.updated_epoch)
+                        .map_err(|err| err.to_string())?;
+                    summary.pushed += 1;
+                }
+                Err(err) => {
+                    summary.error = Some(err.to_string());
+                    break;
+                }
+            }
+        }
+
+        // Les remplacements de CE cycle viennent de créer leurs
+        // tombstones : purge immédiate — pas de copie double visible.
+        if summary.error.is_none() {
+            purge_draft_tombstones(&mut server, &store, account_id, &mut summary)?;
+        }
+        server.logout();
     }
-    server.logout();
-    Ok((summary, refreshed))
+    Ok((summary, refreshed_list))
 }
 
-/// Purge les copies distantes en tombstone (brouillons supprimés ou
-/// remplacés). Retourne `false` si le réseau a lâché en route — le bilan
-/// porte l'erreur, la dette reste enregistrée, le cycle suivant reprendra.
+/// Purge les copies distantes en tombstone d'UN compte. Retourne `false`
+/// si le réseau a lâché — la dette reste enregistrée pour le cycle suivant.
 fn purge_draft_tombstones(
     server: &mut ImapServer,
     store: &Store,
+    account_id: i64,
     summary: &mut DraftSyncSummary,
 ) -> Result<bool, String> {
-    for uid in store.draft_tombstones().map_err(|err| err.to_string())? {
+    for uid in store
+        .draft_tombstones(account_id)
+        .map_err(|err| err.to_string())?
+    {
         match server.delete_draft_remote(uid) {
             Ok(()) => {
                 store
-                    .clear_draft_tombstone(uid)
+                    .clear_draft_tombstone(account_id, uid)
                     .map_err(|err| err.to_string())?;
                 summary.purged += 1;
             }
@@ -826,17 +928,20 @@ fn purge_draft_tombstones(
     Ok(true)
 }
 
-/// Même stratégie que [`connect_imap`] : un échec d'ouverture déclenche
-/// une ré-authentification silencieuse puis une seconde tentative —
-/// ainsi un token expiré ne peut jamais être confondu avec un refus
-/// permanent d'un message.
+// ---------------------------------------------------------------------
+// Connexions et état partagé.
+// ---------------------------------------------------------------------
+
+/// Même stratégie pour SMTP et IMAP : un échec d'ouverture déclenche une
+/// ré-authentification silencieuse puis une seconde tentative — un token
+/// expiré ne peut jamais passer pour un refus permanent d'un message.
 fn connect_smtp(account: &Authenticated) -> Result<(SmtpMailer, Option<Authenticated>), String> {
     match SmtpMailer::connect_xoauth2(SMTP_HOST, &account.email, &account.access_token) {
         Ok(mailer) => Ok((mailer, None)),
         Err(_) => {
             let fresh = GmailAuth::from_env()
                 .map_err(|err| err.to_string())?
-                .authenticate_silent()
+                .authenticate_silent(&account.email)
                 .map_err(|err| err.to_string())?;
             let mailer = SmtpMailer::connect_xoauth2(SMTP_HOST, &fresh.email, &fresh.access_token)
                 .map_err(|err| err.to_string())?;
@@ -845,15 +950,13 @@ fn connect_smtp(account: &Authenticated) -> Result<(SmtpMailer, Option<Authentic
     }
 }
 
-/// L'access token expire (~1 h) : en cas d'échec de connexion, une
-/// ré-authentification silencieuse puis une seconde tentative.
 fn connect_imap(account: &Authenticated) -> Result<(ImapServer, Option<Authenticated>), String> {
     match ImapServer::connect_xoauth2(IMAP_HOST, IMAP_PORT, &account.email, &account.access_token) {
         Ok(server) => Ok((server, None)),
         Err(_) => {
             let fresh = GmailAuth::from_env()
                 .map_err(|err| err.to_string())?
-                .authenticate_silent()
+                .authenticate_silent(&account.email)
                 .map_err(|err| err.to_string())?;
             let server = ImapServer::connect_xoauth2(
                 IMAP_HOST,
@@ -867,11 +970,54 @@ fn connect_imap(account: &Authenticated) -> Result<(ImapServer, Option<Authentic
     }
 }
 
-fn lock_account<'a>(
+/// Les comptes du registre qui sont connectés (jeton en mémoire) —
+/// l'unité de travail des boucles synchro/vidange/brouillons.
+fn connected_jobs(
+    path: &Path,
+    state: &State<'_, AppState>,
+) -> Result<Vec<(i64, Authenticated)>, String> {
+    let store = Store::open(path).map_err(|err| err.to_string())?;
+    let known = store.accounts().map_err(|err| err.to_string())?;
+    let connected = lock_accounts(state)?;
+    Ok(known
+        .into_iter()
+        .filter_map(|account| {
+            connected
+                .get(&account.email)
+                .cloned()
+                .map(|auth| (account.id, auth))
+        })
+        .collect())
+}
+
+fn auth_for(
+    path: &Path,
+    state: &State<'_, AppState>,
+    account_id: i64,
+) -> Result<Authenticated, String> {
+    let store = Store::open(path).map_err(|err| err.to_string())?;
+    let email = account_email(&store, account_id)?;
+    lock_accounts(state)?
+        .get(&email)
+        .cloned()
+        .ok_or_else(|| format!("compte non connecté : {email}"))
+}
+
+fn account_email(store: &Store, account_id: i64) -> Result<String, String> {
+    store
+        .accounts()
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .find(|account| account.id == account_id)
+        .map(|account| account.email)
+        .ok_or_else(|| "compte inconnu".to_string())
+}
+
+fn lock_accounts<'a>(
     state: &'a State<'_, AppState>,
-) -> Result<std::sync::MutexGuard<'a, Option<Authenticated>>, String> {
+) -> Result<MutexGuard<'a, HashMap<String, Authenticated>>, String> {
     state
-        .account
+        .accounts
         .lock()
         .map_err(|_| "état interne verrouillé".to_string())
 }

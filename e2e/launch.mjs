@@ -15,21 +15,25 @@ import { chromium } from '@playwright/test';
 const root = path.resolve(import.meta.dirname, '..');
 const CDP_PORT = 9222;
 
-export async function launchApp({ messages = 200 } = {}) {
+export async function launchApp({
+  accounts = [{ email: 'e2e@exemple.fr', messages: 200 }],
+} = {}) {
   execSync('cargo build -p discovery-desktop', { cwd: root, stdio: 'inherit' });
 
   const db = path.join(root, 'target', 'e2e', 'parcours.db');
   rmSync(db, { force: true });
   mkdirSync(path.dirname(db), { recursive: true });
-  execSync(`cargo run -p mail-core --example seed_inbox -- "${db}" ${messages}`, {
-    cwd: root,
-    stdio: 'inherit',
-  });
+  for (const account of accounts) {
+    execSync(
+      `cargo run -p mail-core --example seed_inbox -- "${db}" ${account.messages} ${account.email}`,
+      { cwd: root, stdio: 'inherit' },
+    );
+  }
 
   const env = {
     ...process.env,
     DISCOVERY_DB_PATH: db,
-    DISCOVERY_E2E_ACCOUNT: 'e2e@exemple.fr',
+    DISCOVERY_E2E_ACCOUNT: accounts.map((account) => account.email).join(','),
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
   };
   delete env.GOOGLE_CLIENT_ID;

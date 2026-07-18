@@ -76,6 +76,8 @@ impl OutboxState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutboxMessage {
     pub id: i64,
+    /// Le compte émetteur — chaque vidange passe par SA connexion SMTP.
+    pub account_id: i64,
     /// Message-ID RFC 5322 généré à la composition — l'identité stable
     /// qui relie ce journal au message réellement parti.
     pub message_id: String,
@@ -90,20 +92,21 @@ pub struct OutboxMessage {
     pub queued_epoch: i64,
 }
 
-const OUTBOX_SELECT: &str = "SELECT id, message_id, sender, recipients, subject, body_text,
-        in_reply_to, state, attempts, last_error, queued_epoch
+const OUTBOX_SELECT: &str = "SELECT id, account_id, message_id, sender, recipients, subject,
+        body_text, in_reply_to, state, attempts, last_error, queued_epoch
  FROM outbox";
 
 impl Store {
     /// Journalise l'intention d'envoi — AVANT toute tentative réseau.
     /// C'est cette écriture qui fonde « jamais d'envoi perdu ».
-    pub fn enqueue_outbox(&self, draft: &Draft) -> Result<i64, Error> {
+    pub fn enqueue_outbox(&self, account_id: i64, draft: &Draft) -> Result<i64, Error> {
         self.conn().execute(
             "INSERT INTO outbox
-             (message_id, sender, recipients, subject, body_text, in_reply_to,
-              state, queued_epoch)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+             (account_id, message_id, sender, recipients, subject, body_text,
+              in_reply_to, state, queued_epoch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
+                account_id,
                 draft.message_id,
                 draft.from,
                 draft.to.join(&TO_SEPARATOR.to_string()),
@@ -115,6 +118,18 @@ impl Store {
             ],
         )?;
         Ok(self.conn().last_insert_rowid())
+    }
+
+    /// La file d'envoi d'UN compte, dans l'ordre d'émission — chaque
+    /// vidange passe par la connexion SMTP de son compte.
+    pub fn outbox_to_send(&self, account_id: i64) -> Result<Vec<OutboxMessage>, Error> {
+        let mut stmt = self.conn().prepare(&format!(
+            "{OUTBOX_SELECT} WHERE account_id = ?1 AND state = 'queued' ORDER BY id"
+        ))?;
+        let rows = stmt
+            .query_map([account_id], row_to_outbox)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Toute la boîte d'envoi, dans l'ordre d'émission.
@@ -205,27 +220,28 @@ impl Store {
 }
 
 fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
-    let state_raw: String = row.get(7)?;
+    let state_raw: String = row.get(8)?;
     let state = OutboxState::parse(&state_raw).ok_or_else(|| {
         rusqlite::Error::FromSqlConversionFailure(
-            7,
+            8,
             rusqlite::types::Type::Text,
             format!("état de boîte d'envoi inconnu : {state_raw}").into(),
         )
     })?;
-    let recipients: String = row.get(3)?;
+    let recipients: String = row.get(4)?;
     Ok(OutboxMessage {
         id: row.get(0)?,
-        message_id: row.get(1)?,
-        from: row.get(2)?,
+        account_id: row.get(1)?,
+        message_id: row.get(2)?,
+        from: row.get(3)?,
         to: recipients.split(TO_SEPARATOR).map(str::to_string).collect(),
-        subject: row.get(4)?,
-        body_text: row.get(5)?,
-        in_reply_to: row.get(6)?,
+        subject: row.get(5)?,
+        body_text: row.get(6)?,
+        in_reply_to: row.get(7)?,
         state,
-        attempts: row.get(8)?,
-        last_error: row.get(9)?,
-        queued_epoch: row.get(10)?,
+        attempts: row.get(9)?,
+        last_error: row.get(10)?,
+        queued_epoch: row.get(11)?,
     })
 }
 
@@ -253,13 +269,14 @@ pub struct OutboxReport {
 pub fn flush_outbox(
     transport: &mut dyn MailTransport,
     store: &mut Store,
+    account_id: i64,
 ) -> Result<OutboxReport, Error> {
     let mut report = OutboxReport {
         quarantined: store.quarantine_inflight()?,
         ..OutboxReport::default()
     };
 
-    for message in store.outbox_in_state(OutboxState::Queued)? {
+    for message in store.outbox_to_send(account_id)? {
         store.set_outbox_state(message.id, OutboxState::Sending)?;
         match transport.send(&message) {
             Ok(()) => {
@@ -313,13 +330,17 @@ mod tests {
         compose("moi@exemple.fr", "vous@exemple.fr", subject, "corps", None).unwrap()
     }
 
-    fn store() -> Store {
-        Store::open_in_memory().unwrap()
+    fn store() -> (Store, i64) {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap();
+        (store, account)
     }
 
     #[test]
     fn enqueue_journals_everything_before_any_network() {
-        let store = store();
+        let (store, account) = store();
         let composed = compose(
             "moi@exemple.fr",
             "a@exemple.fr, b@exemple.fr",
@@ -328,7 +349,7 @@ mod tests {
             Some("<origine@exemple.fr>"),
         )
         .unwrap();
-        let id = store.enqueue_outbox(&composed).unwrap();
+        let id = store.enqueue_outbox(account, &composed).unwrap();
 
         let queued = store.outbox_in_state(OutboxState::Queued).unwrap();
         assert_eq!(queued.len(), 1);
@@ -352,7 +373,10 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         {
             let store = Store::open(&path).unwrap();
-            store.enqueue_outbox(&draft("survivant")).unwrap();
+            let account = store
+                .adopt_or_create_account("test@exemple.fr", "gmail")
+                .unwrap();
+            store.enqueue_outbox(account, &draft("survivant")).unwrap();
         } // « crash » : le processus s'arrête avant tout envoi.
 
         let reopened = Store::open(&path).unwrap();
@@ -366,14 +390,14 @@ mod tests {
 
     #[test]
     fn flush_sends_in_emission_order_and_marks_sent() {
-        let mut store = store();
+        let (mut store, account) = store();
         let first = draft("premier");
         let second = draft("second");
-        store.enqueue_outbox(&first).unwrap();
-        store.enqueue_outbox(&second).unwrap();
+        store.enqueue_outbox(account, &first).unwrap();
+        store.enqueue_outbox(account, &second).unwrap();
         let mut transport = FakeTransport::default();
 
-        let report = flush_outbox(&mut transport, &mut store).unwrap();
+        let report = flush_outbox(&mut transport, &mut store, account).unwrap();
 
         assert_eq!(report.sent, 2);
         assert_eq!(
@@ -394,14 +418,14 @@ mod tests {
     /// et repart à la vidange suivante.
     #[test]
     fn network_cut_keeps_message_queued_then_next_flush_sends_it() {
-        let mut store = store();
-        store.enqueue_outbox(&draft("à retenter")).unwrap();
+        let (mut store, account) = store();
+        store.enqueue_outbox(account, &draft("à retenter")).unwrap();
 
         let mut down = FakeTransport {
             network_down: true,
             ..FakeTransport::default()
         };
-        let cut = flush_outbox(&mut down, &mut store).unwrap();
+        let cut = flush_outbox(&mut down, &mut store, account).unwrap();
         assert_eq!((cut.sent, cut.deferred), (0, 1));
         let queued = store.outbox_in_state(OutboxState::Queued).unwrap();
         assert_eq!(queued.len(), 1);
@@ -412,7 +436,7 @@ mod tests {
         );
 
         let mut up = FakeTransport::default();
-        let recovered = flush_outbox(&mut up, &mut store).unwrap();
+        let recovered = flush_outbox(&mut up, &mut store, account).unwrap();
         assert_eq!(recovered.sent, 1);
         assert_eq!(store.outbox_in_state(OutboxState::Sent).unwrap().len(), 1);
     }
@@ -420,15 +444,15 @@ mod tests {
     /// Réseau tombé : inutile de marteler le serveur pour chaque message.
     #[test]
     fn transient_failure_stops_the_pump_after_one_attempt() {
-        let mut store = store();
-        store.enqueue_outbox(&draft("a")).unwrap();
-        store.enqueue_outbox(&draft("b")).unwrap();
+        let (mut store, account) = store();
+        store.enqueue_outbox(account, &draft("a")).unwrap();
+        store.enqueue_outbox(account, &draft("b")).unwrap();
         let mut down = FakeTransport {
             network_down: true,
             ..FakeTransport::default()
         };
 
-        flush_outbox(&mut down, &mut store).unwrap();
+        flush_outbox(&mut down, &mut store, account).unwrap();
 
         assert_eq!(down.calls, 1, "un seul essai suffit à constater la coupure");
         assert_eq!(store.outbox_in_state(OutboxState::Queued).unwrap().len(), 2);
@@ -436,15 +460,15 @@ mod tests {
 
     #[test]
     fn permanent_rejection_steps_aside_and_the_rest_still_goes() {
-        let mut store = store();
-        store.enqueue_outbox(&draft("mauvais")).unwrap();
-        store.enqueue_outbox(&draft("bon")).unwrap();
+        let (mut store, account) = store();
+        store.enqueue_outbox(account, &draft("mauvais")).unwrap();
+        store.enqueue_outbox(account, &draft("bon")).unwrap();
         let mut transport = FakeTransport {
             reject_subjects: vec!["mauvais".to_string()],
             ..FakeTransport::default()
         };
 
-        let report = flush_outbox(&mut transport, &mut store).unwrap();
+        let report = flush_outbox(&mut transport, &mut store, account).unwrap();
 
         assert_eq!((report.sent, report.rejected), (1, 1));
         let rejected = store.outbox_in_state(OutboxState::Rejected).unwrap();
@@ -453,7 +477,7 @@ mod tests {
 
         // Le refus est définitif : la vidange suivante ne le retente pas.
         let mut second = FakeTransport::default();
-        let idle = flush_outbox(&mut second, &mut store).unwrap();
+        let idle = flush_outbox(&mut second, &mut store, account).unwrap();
         assert_eq!(second.calls, 0);
         assert_eq!(idle, OutboxReport::default());
     }
@@ -462,14 +486,14 @@ mod tests {
     /// remise) n'est JAMAIS renvoyé automatiquement — quarantaine.
     #[test]
     fn inflight_message_is_quarantined_never_resent() {
-        let mut store = store();
-        let id = store.enqueue_outbox(&draft("ambigu")).unwrap();
+        let (mut store, account) = store();
+        let id = store.enqueue_outbox(account, &draft("ambigu")).unwrap();
         // Crash simulé : l'état « sending » persiste, l'accusé n'est
         // jamais revenu. Peut-être parti, peut-être pas.
         store.set_outbox_state(id, OutboxState::Sending).unwrap();
 
         let mut transport = FakeTransport::default();
-        let report = flush_outbox(&mut transport, &mut store).unwrap();
+        let report = flush_outbox(&mut transport, &mut store, account).unwrap();
 
         assert_eq!(report.quarantined, 1);
         assert_eq!(transport.calls, 0, "rien ne doit repartir tout seul");
@@ -482,15 +506,15 @@ mod tests {
     /// alors seulement, l'envoi repart.
     #[test]
     fn user_requeue_is_the_only_way_out_of_quarantine() {
-        let mut store = store();
-        let id = store.enqueue_outbox(&draft("confirmé")).unwrap();
+        let (mut store, account) = store();
+        let id = store.enqueue_outbox(account, &draft("confirmé")).unwrap();
         store.set_outbox_state(id, OutboxState::Sending).unwrap();
         let mut transport = FakeTransport::default();
-        flush_outbox(&mut transport, &mut store).unwrap();
+        flush_outbox(&mut transport, &mut store, account).unwrap();
         assert!(transport.accepted.is_empty());
 
         store.requeue_outbox(id).unwrap();
-        let report = flush_outbox(&mut transport, &mut store).unwrap();
+        let report = flush_outbox(&mut transport, &mut store, account).unwrap();
 
         assert_eq!(report.sent, 1);
         assert_eq!(store.outbox_in_state(OutboxState::Sent).unwrap().len(), 1);
@@ -498,10 +522,10 @@ mod tests {
 
     #[test]
     fn requeue_ignores_states_that_are_not_user_decisions() {
-        let mut store = store();
-        let id = store.enqueue_outbox(&draft("déjà parti")).unwrap();
+        let (mut store, account) = store();
+        let id = store.enqueue_outbox(account, &draft("déjà parti")).unwrap();
         let mut transport = FakeTransport::default();
-        flush_outbox(&mut transport, &mut store).unwrap();
+        flush_outbox(&mut transport, &mut store, account).unwrap();
 
         store.requeue_outbox(id).unwrap();
 
@@ -514,11 +538,11 @@ mod tests {
 
     #[test]
     fn delete_abandons_pending_but_preserves_sent_history() {
-        let mut store = store();
-        let kept = store.enqueue_outbox(&draft("parti")).unwrap();
+        let (mut store, account) = store();
+        let kept = store.enqueue_outbox(account, &draft("parti")).unwrap();
         let mut transport = FakeTransport::default();
-        flush_outbox(&mut transport, &mut store).unwrap();
-        let abandoned = store.enqueue_outbox(&draft("abandonné")).unwrap();
+        flush_outbox(&mut transport, &mut store, account).unwrap();
+        let abandoned = store.enqueue_outbox(account, &draft("abandonné")).unwrap();
 
         store.delete_outbox(abandoned).unwrap();
         store.delete_outbox(kept).unwrap();
@@ -526,6 +550,30 @@ mod tests {
         let all = store.outbox().unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].state, OutboxState::Sent);
+    }
+
+    /// Chaque compte vide SA file par SA connexion SMTP : la vidange
+    /// d'un compte ne touche jamais la file d'un autre.
+    #[test]
+    fn flush_only_sends_the_given_accounts_queue() {
+        let (mut store, account) = store();
+        let other = store
+            .adopt_or_create_account("autre@exemple.fr", "gmail")
+            .unwrap();
+        store
+            .enqueue_outbox(account, &draft("du compte A"))
+            .unwrap();
+        store.enqueue_outbox(other, &draft("du compte B")).unwrap();
+        let mut transport = FakeTransport::default();
+
+        let report = flush_outbox(&mut transport, &mut store, account).unwrap();
+
+        assert_eq!(report.sent, 1);
+        assert_eq!(
+            store.outbox_to_send(other).unwrap().len(),
+            1,
+            "la file de B attend SA connexion"
+        );
     }
 
     #[test]

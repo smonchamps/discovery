@@ -16,12 +16,19 @@ use crate::error::Error;
 
 const SCHEMA: &str = "
 PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS accounts (
+    id       INTEGER PRIMARY KEY,
+    email    TEXT NOT NULL UNIQUE,
+    provider TEXT NOT NULL DEFAULT 'gmail'
+);
 CREATE TABLE IF NOT EXISTS mailboxes (
     id             INTEGER PRIMARY KEY,
-    name           TEXT NOT NULL UNIQUE,
+    account_id     INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name           TEXT NOT NULL,
     uid_validity   INTEGER NOT NULL,
     last_uid       INTEGER NOT NULL DEFAULT 0,
-    highest_modseq INTEGER
+    highest_modseq INTEGER,
+    UNIQUE (account_id, name)
 );
 CREATE TABLE IF NOT EXISTS envelopes (
     mailbox_id     INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
@@ -50,6 +57,7 @@ CREATE TABLE IF NOT EXISTS pending_actions (
 );
 CREATE TABLE IF NOT EXISTS drafts (
     id            INTEGER PRIMARY KEY,
+    account_id    INTEGER NOT NULL DEFAULT 1,
     to_raw        TEXT NOT NULL,
     subject       TEXT NOT NULL,
     body          TEXT NOT NULL,
@@ -59,14 +67,17 @@ CREATE TABLE IF NOT EXISTS drafts (
     pushed_epoch  INTEGER
 );
 CREATE TABLE IF NOT EXISTS draft_tombstones (
-    remote_uid INTEGER PRIMARY KEY
+    account_id INTEGER NOT NULL,
+    remote_uid INTEGER NOT NULL,
+    PRIMARY KEY (account_id, remote_uid)
 );
 CREATE TABLE IF NOT EXISTS drafts_remote (
-    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    account_id   INTEGER PRIMARY KEY,
     uid_validity INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS outbox (
     id           INTEGER PRIMARY KEY,
+    account_id   INTEGER NOT NULL DEFAULT 1,
     message_id   TEXT NOT NULL,
     sender       TEXT NOT NULL,
     recipients   TEXT NOT NULL,
@@ -87,6 +98,23 @@ pub struct SyncState {
     pub uid_validity: u32,
     pub last_uid: Uid,
     pub highest_modseq: Option<u64>,
+}
+
+/// Un compte connecté au client.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Account {
+    pub id: i64,
+    pub email: String,
+    pub provider: String,
+}
+
+/// Une ligne de la boîte unifiée : l'enveloppe ET son compte — un UID
+/// seul n'identifie plus un message en multi-comptes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnifiedRow {
+    pub account_id: i64,
+    pub account_email: String,
+    pub envelope: Envelope,
 }
 
 pub struct Store(Connection);
@@ -115,13 +143,13 @@ impl Store {
         Ok(Self(conn))
     }
 
-    pub fn sync_state(&self, mailbox: &str) -> Result<Option<SyncState>, Error> {
+    pub fn sync_state(&self, account_id: i64, mailbox: &str) -> Result<Option<SyncState>, Error> {
         let state = self
             .0
             .query_row(
                 "SELECT id, uid_validity, last_uid, highest_modseq
-                 FROM mailboxes WHERE name = ?1",
-                [mailbox],
+                 FROM mailboxes WHERE account_id = ?1 AND name = ?2",
+                params![account_id, mailbox],
                 |row| {
                     Ok(SyncState {
                         mailbox_id: row.get(0)?,
@@ -135,12 +163,68 @@ impl Store {
         Ok(state)
     }
 
-    pub fn create_mailbox(&self, mailbox: &str, uid_validity: u32) -> Result<i64, Error> {
+    pub fn create_mailbox(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        uid_validity: u32,
+    ) -> Result<i64, Error> {
         self.0.execute(
-            "INSERT INTO mailboxes (name, uid_validity) VALUES (?1, ?2)",
-            params![mailbox, uid_validity],
+            "INSERT INTO mailboxes (account_id, name, uid_validity) VALUES (?1, ?2, ?3)",
+            params![account_id, mailbox, uid_validity],
         )?;
         Ok(self.0.last_insert_rowid())
+    }
+
+    /// Enregistre un compte, ou revendique le compte « en attente
+    /// d'adoption » créé par la migration Phase 2 → 3 (email vide) : la
+    /// première connexion après la mise à jour est, en pratique, le même
+    /// compte Gmail qu'avant — ses données l'attendent.
+    pub fn adopt_or_create_account(&self, email: &str, provider: &str) -> Result<i64, Error> {
+        if let Some(id) = self.account_id(email)? {
+            return Ok(id);
+        }
+        let claimed = self.0.execute(
+            "UPDATE accounts SET email = ?1, provider = ?2
+             WHERE email = '' AND id = (SELECT MIN(id) FROM accounts WHERE email = '')",
+            params![email, provider],
+        )?;
+        if claimed == 0 {
+            self.0.execute(
+                "INSERT INTO accounts (email, provider) VALUES (?1, ?2)",
+                params![email, provider],
+            )?;
+            return Ok(self.0.last_insert_rowid());
+        }
+        self.account_id(email)?
+            .ok_or_else(|| Error::Corrupt("compte revendiqué introuvable".to_string()))
+    }
+
+    fn account_id(&self, email: &str) -> Result<Option<i64>, Error> {
+        let id = self
+            .0
+            .query_row("SELECT id FROM accounts WHERE email = ?1", [email], |row| {
+                row.get(0)
+            })
+            .optional()?;
+        Ok(id)
+    }
+
+    /// Les comptes connus — sans l'éventuel compte en attente d'adoption.
+    pub fn accounts(&self) -> Result<Vec<Account>, Error> {
+        let mut stmt = self
+            .0
+            .prepare("SELECT id, email, provider FROM accounts WHERE email != '' ORDER BY id")?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(Account {
+                    id: row.get(0)?,
+                    email: row.get(1)?,
+                    provider: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Repart de zéro pour une boîte dont l'UIDVALIDITY a changé : les UIDs
@@ -316,13 +400,13 @@ impl Store {
     }
 
     /// Corps HTML brut (pré-assainissement) d'un message, s'il est en cache.
-    pub fn body(&self, mailbox: &str, uid: Uid) -> Result<Option<String>, Error> {
+    pub fn body(&self, account_id: i64, mailbox: &str, uid: Uid) -> Result<Option<String>, Error> {
         let body = self
             .0
             .query_row(
                 "SELECT b.html FROM bodies b JOIN mailboxes m ON m.id = b.mailbox_id
-                 WHERE m.name = ?1 AND b.uid = ?2",
-                params![mailbox, uid],
+                 WHERE m.account_id = ?1 AND m.name = ?2 AND b.uid = ?3",
+                params![account_id, mailbox, uid],
                 |row| row.get(0),
             )
             .optional()?;
@@ -337,10 +421,10 @@ impl Store {
         Ok(())
     }
 
-    /// Une page d'enveloppes, les plus récentes d'abord (date, puis UID en
-    /// repli). `offset` permet la virtualisation de la liste côté UI.
+    /// Une page d'enveloppes d'UN compte, les plus récentes d'abord.
     pub fn recent(
         &self,
+        account_id: i64,
         mailbox: &str,
         offset: usize,
         limit: usize,
@@ -349,29 +433,89 @@ impl Store {
             "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
                     e.date_epoch, e.seen, e.flagged
              FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
-             WHERE m.name = ?1
+             WHERE m.account_id = ?1 AND m.name = ?2
              ORDER BY e.date_epoch DESC, e.uid DESC
+             LIMIT ?3 OFFSET ?4",
+        )?;
+        let rows = stmt
+            .query_map(
+                params![account_id, mailbox, limit as i64, offset as i64],
+                row_to_envelope,
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// La boîte unifiée : la même boîte (INBOX) de TOUS les comptes,
+    /// fusionnée par date — le cœur produit du multi-comptes. Chaque
+    /// ligne porte son compte : un UID seul n'identifie plus un message.
+    pub fn unified_recent(
+        &self,
+        mailbox: &str,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<UnifiedRow>, Error> {
+        let mut stmt = self.0.prepare(
+            "SELECT a.id, a.email,
+                    e.uid, e.subject, e.sender, e.sender_address, e.message_id,
+                    e.date_epoch, e.seen, e.flagged
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             JOIN accounts a ON a.id = m.account_id
+             WHERE m.name = ?1
+             ORDER BY e.date_epoch DESC, e.uid DESC, a.id
              LIMIT ?2 OFFSET ?3",
         )?;
         let rows = stmt
             .query_map(params![mailbox, limit as i64, offset as i64], |row| {
-                row_to_envelope(row)
+                Ok(UnifiedRow {
+                    account_id: row.get(0)?,
+                    account_email: row.get(1)?,
+                    envelope: Envelope {
+                        uid: row.get(2)?,
+                        subject: row.get(3)?,
+                        sender: row.get(4)?,
+                        sender_address: row.get(5)?,
+                        message_id: row.get(6)?,
+                        date: row
+                            .get::<_, Option<i64>>(7)?
+                            .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
+                        seen: row.get(8)?,
+                        flagged: row.get(9)?,
+                    },
+                })
             })?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
+    /// Total de la boîte unifiée, tous comptes confondus.
+    pub fn unified_count(&self, mailbox: &str) -> Result<u64, Error> {
+        let count: i64 = self.0.query_row(
+            "SELECT COUNT(*) FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.name = ?1",
+            [mailbox],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
     /// Une enveloppe précise — le contexte nécessaire pour répondre
     /// (adresse brute de l'expéditeur, Message-ID du fil).
-    pub fn envelope(&self, mailbox: &str, uid: Uid) -> Result<Option<Envelope>, Error> {
+    pub fn envelope(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        uid: Uid,
+    ) -> Result<Option<Envelope>, Error> {
         let envelope = self
             .0
             .query_row(
                 "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
                         e.date_epoch, e.seen, e.flagged
                  FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
-                 WHERE m.name = ?1 AND e.uid = ?2",
-                params![mailbox, uid],
+                 WHERE m.account_id = ?1 AND m.name = ?2 AND e.uid = ?3",
+                params![account_id, mailbox, uid],
                 row_to_envelope,
             )
             .optional()?;
@@ -398,8 +542,20 @@ impl Store {
 }
 
 /// Fait évoluer en place une base d'une version précédente : les colonnes
-/// s'ajoutent sans perdre ce qui est déjà là.
+/// s'ajoutent sans perdre ce qui est déjà là, et la bascule multi-comptes
+/// (Phase 3) reconstruit les tables dont les contraintes changent.
 fn migrate(conn: &Connection) -> Result<(), Error> {
+    migrate_multi_account(conn)?;
+    add_missing_columns(
+        conn,
+        "drafts",
+        &[("account_id", "INTEGER NOT NULL DEFAULT 1")],
+    )?;
+    add_missing_columns(
+        conn,
+        "outbox",
+        &[("account_id", "INTEGER NOT NULL DEFAULT 1")],
+    )?;
     add_missing_columns(
         conn,
         "envelopes",
@@ -416,15 +572,73 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
     )
 }
 
+/// Bascule Phase 2 → 3 : les contraintes de trois tables changent
+/// (UNIQUE et clés par compte) — SQLite exige une reconstruction. Les
+/// données existantes sont adoptées par un compte « en attente » (email
+/// vide) que la première connexion revendiquera : en pratique, le même
+/// compte Gmail qu'avant la mise à jour. Zéro perte, prouvé par test.
+fn migrate_multi_account(conn: &Connection) -> Result<(), Error> {
+    if table_columns(conn, "mailboxes")?.contains("account_id") {
+        return Ok(());
+    }
+    conn.execute_batch(
+        "PRAGMA foreign_keys = OFF;
+         BEGIN;
+         INSERT INTO accounts (id, email, provider) VALUES (1, '', 'gmail');
+
+         CREATE TABLE mailboxes_v3 (
+             id             INTEGER PRIMARY KEY,
+             account_id     INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+             name           TEXT NOT NULL,
+             uid_validity   INTEGER NOT NULL,
+             last_uid       INTEGER NOT NULL DEFAULT 0,
+             highest_modseq INTEGER,
+             UNIQUE (account_id, name)
+         );
+         INSERT INTO mailboxes_v3 (id, account_id, name, uid_validity, last_uid, highest_modseq)
+             SELECT id, 1, name, uid_validity, last_uid, highest_modseq FROM mailboxes;
+         DROP TABLE mailboxes;
+         ALTER TABLE mailboxes_v3 RENAME TO mailboxes;
+
+         CREATE TABLE drafts_remote_v3 (
+             account_id   INTEGER PRIMARY KEY,
+             uid_validity INTEGER NOT NULL
+         );
+         INSERT INTO drafts_remote_v3 (account_id, uid_validity)
+             SELECT 1, uid_validity FROM drafts_remote;
+         DROP TABLE drafts_remote;
+         ALTER TABLE drafts_remote_v3 RENAME TO drafts_remote;
+
+         CREATE TABLE draft_tombstones_v3 (
+             account_id INTEGER NOT NULL,
+             remote_uid INTEGER NOT NULL,
+             PRIMARY KEY (account_id, remote_uid)
+         );
+         INSERT INTO draft_tombstones_v3 (account_id, remote_uid)
+             SELECT 1, remote_uid FROM draft_tombstones;
+         DROP TABLE draft_tombstones;
+         ALTER TABLE draft_tombstones_v3 RENAME TO draft_tombstones;
+
+         COMMIT;
+         PRAGMA foreign_keys = ON;",
+    )?;
+    Ok(())
+}
+
+fn table_columns(conn: &Connection, table: &str) -> Result<HashSet<String>, Error> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let columns = stmt
+        .query_map([], |row| row.get(1))?
+        .collect::<Result<_, _>>()?;
+    Ok(columns)
+}
+
 fn add_missing_columns(
     conn: &Connection,
     table: &str,
     columns: &[(&str, &str)],
 ) -> Result<(), Error> {
-    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
-    let existing: HashSet<String> = stmt
-        .query_map([], |row| row.get(1))?
-        .collect::<Result<_, _>>()?;
+    let existing = table_columns(conn, table)?;
     for (column, ddl) in columns {
         if !existing.contains(*column) {
             conn.execute(
@@ -472,10 +686,23 @@ mod tests {
         }
     }
 
+    fn test_account(store: &Store) -> i64 {
+        store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap()
+    }
+
     fn store_with_mailbox() -> (Store, i64) {
         let store = Store::open_in_memory().unwrap();
-        let id = store.create_mailbox("INBOX", 1).unwrap();
+        let account = test_account(&store);
+        let id = store.create_mailbox(account, "INBOX", 1).unwrap();
         (store, id)
+    }
+
+    fn recent(store: &Store, offset: usize, limit: usize) -> Vec<Envelope> {
+        store
+            .recent(test_account(store), "INBOX", offset, limit)
+            .unwrap()
     }
 
     #[test]
@@ -485,7 +712,7 @@ mod tests {
         store
             .upsert_envelopes(id, std::slice::from_ref(&original))
             .unwrap();
-        assert_eq!(store.recent("INBOX", 0, 10).unwrap(), vec![original]);
+        assert_eq!(recent(&store, 0, 10), vec![original]);
     }
 
     #[test]
@@ -504,7 +731,7 @@ mod tests {
         store
             .upsert_envelopes(id, std::slice::from_ref(&bare))
             .unwrap();
-        assert_eq!(store.recent("INBOX", 0, 10).unwrap(), vec![bare]);
+        assert_eq!(recent(&store, 0, 10), vec![bare]);
     }
 
     #[test]
@@ -516,7 +743,7 @@ mod tests {
         store
             .upsert_envelopes(id, &[envelope(1, "après", 100, true)])
             .unwrap();
-        let rows = store.recent("INBOX", 0, 10).unwrap();
+        let rows = recent(&store, 0, 10);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].subject.as_deref(), Some("après"));
         assert!(rows[0].seen);
@@ -535,12 +762,7 @@ mod tests {
                 ],
             )
             .unwrap();
-        let uids: Vec<Uid> = store
-            .recent("INBOX", 0, 2)
-            .unwrap()
-            .iter()
-            .map(|e| e.uid)
-            .collect();
+        let uids: Vec<Uid> = recent(&store, 0, 2).iter().map(|e| e.uid).collect();
         assert_eq!(uids, vec![3, 2]);
     }
 
@@ -566,7 +788,7 @@ mod tests {
     fn sync_state_roundtrips_including_modseq() {
         let (store, id) = store_with_mailbox();
         assert_eq!(
-            store.sync_state("INBOX").unwrap(),
+            store.sync_state(test_account(&store), "INBOX").unwrap(),
             Some(SyncState {
                 mailbox_id: id,
                 uid_validity: 1,
@@ -575,7 +797,10 @@ mod tests {
             })
         );
         store.update_state(id, 42, Some(9000)).unwrap();
-        let state = store.sync_state("INBOX").unwrap().unwrap();
+        let state = store
+            .sync_state(test_account(&store), "INBOX")
+            .unwrap()
+            .unwrap();
         assert_eq!(state.last_uid, 42);
         assert_eq!(state.highest_modseq, Some(9000));
     }
@@ -583,7 +808,10 @@ mod tests {
     #[test]
     fn sync_state_is_none_for_unknown_mailbox() {
         let store = Store::open_in_memory().unwrap();
-        assert_eq!(store.sync_state("INBOX").unwrap(), None);
+        assert_eq!(
+            store.sync_state(test_account(&store), "INBOX").unwrap(),
+            None
+        );
     }
 
     #[test]
@@ -595,7 +823,10 @@ mod tests {
         store.update_state(id, 1, Some(5)).unwrap();
         store.reset_mailbox(id, 2).unwrap();
         assert_eq!(store.count(id).unwrap(), 0);
-        let state = store.sync_state("INBOX").unwrap().unwrap();
+        let state = store
+            .sync_state(test_account(&store), "INBOX")
+            .unwrap()
+            .unwrap();
         assert_eq!(state.uid_validity, 2);
         assert_eq!(state.last_uid, 0);
         assert_eq!(state.highest_modseq, None);
@@ -618,14 +849,9 @@ mod tests {
                     .collect::<Vec<_>>(),
             )
             .unwrap();
-        let page: Vec<Uid> = store
-            .recent("INBOX", 2, 2)
-            .unwrap()
-            .iter()
-            .map(|e| e.uid)
-            .collect();
+        let page: Vec<Uid> = recent(&store, 2, 2).iter().map(|e| e.uid).collect();
         assert_eq!(page, vec![3, 2], "offset 2 saute les deux plus récents");
-        assert!(store.recent("INBOX", 10, 5).unwrap().is_empty());
+        assert!(recent(&store, 10, 5).is_empty());
     }
 
     #[test]
@@ -651,7 +877,7 @@ mod tests {
             .unwrap();
 
         assert!(store.set_seen_local(id, 1, true).unwrap());
-        assert!(store.recent("INBOX", 0, 1).unwrap()[0].seen);
+        assert!(recent(&store, 0, 1)[0].seen);
         assert!(
             !store.set_seen_local(id, 1, true).unwrap(),
             "déjà lu : aucun changement à journaliser"
@@ -666,7 +892,7 @@ mod tests {
             .unwrap();
 
         assert!(store.set_flagged_local(id, 1, true).unwrap());
-        assert!(store.recent("INBOX", 0, 1).unwrap()[0].flagged);
+        assert!(recent(&store, 0, 1)[0].flagged);
         assert!(
             !store.set_flagged_local(id, 1, true).unwrap(),
             "déjà étoilé : aucun changement à journaliser"
@@ -683,8 +909,8 @@ mod tests {
 
         store.remove_local(id, 1).unwrap();
 
-        assert!(store.recent("INBOX", 0, 10).unwrap().is_empty());
-        assert_eq!(store.body("INBOX", 1).unwrap(), None);
+        assert!(recent(&store, 0, 10).is_empty());
+        assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
     }
 
     #[test]
@@ -698,10 +924,13 @@ mod tests {
     #[test]
     fn body_roundtrips_and_is_none_when_absent() {
         let (store, id) = store_with_mailbox();
-        assert_eq!(store.body("INBOX", 1).unwrap(), None);
+        assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
         store.save_body(id, 1, "<p>bonjour</p>").unwrap();
         assert_eq!(
-            store.body("INBOX", 1).unwrap().as_deref(),
+            store
+                .body(test_account(&store), "INBOX", 1)
+                .unwrap()
+                .as_deref(),
             Some("<p>bonjour</p>")
         );
     }
@@ -711,7 +940,7 @@ mod tests {
         let (store, id) = store_with_mailbox();
         store.save_body(id, 1, "<p>x</p>").unwrap();
         store.reset_mailbox(id, 2).unwrap();
-        assert_eq!(store.body("INBOX", 1).unwrap(), None);
+        assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
     }
 
     #[test]
@@ -722,8 +951,14 @@ mod tests {
             .upsert_envelopes(id, std::slice::from_ref(&original))
             .unwrap();
 
-        assert_eq!(store.envelope("INBOX", 7).unwrap(), Some(original));
-        assert_eq!(store.envelope("INBOX", 99).unwrap(), None);
+        assert_eq!(
+            store.envelope(test_account(&store), "INBOX", 7).unwrap(),
+            Some(original)
+        );
+        assert_eq!(
+            store.envelope(test_account(&store), "INBOX", 99).unwrap(),
+            None
+        );
     }
 
     /// Une base Phase 1 (sans les colonnes de réponse) doit s'ouvrir et
@@ -762,7 +997,7 @@ mod tests {
         }
 
         let store = Store::open(&path).unwrap();
-        let rows = store.recent("INBOX", 0, 10).unwrap();
+        let rows = recent(&store, 0, 10);
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].uid, 42);
         assert_eq!(rows[0].subject.as_deref(), Some("hérité de la phase 1"));
@@ -779,6 +1014,174 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// Migration Phase 2 → 3 sur une base complète : toutes les données
+    /// (enveloppes, corps, actions, brouillons, tombstones, boîte d'envoi)
+    /// sont adoptées par le compte en attente — zéro perte, et la première
+    /// connexion revendique le tout.
+    #[test]
+    fn migrates_a_full_phase2_database_and_adopts_everything() {
+        let path = std::env::temp_dir().join(format!(
+            "discovery-test-migration-p2-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE mailboxes (
+                    id             INTEGER PRIMARY KEY,
+                    name           TEXT NOT NULL UNIQUE,
+                    uid_validity   INTEGER NOT NULL,
+                    last_uid       INTEGER NOT NULL DEFAULT 0,
+                    highest_modseq INTEGER
+                );
+                CREATE TABLE envelopes (
+                    mailbox_id     INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+                    uid            INTEGER NOT NULL,
+                    subject        TEXT,
+                    sender         TEXT,
+                    sender_address TEXT,
+                    message_id     TEXT,
+                    date_epoch     INTEGER,
+                    seen           INTEGER NOT NULL DEFAULT 0,
+                    flagged        INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (mailbox_id, uid)
+                );
+                CREATE TABLE bodies (
+                    mailbox_id INTEGER NOT NULL,
+                    uid        INTEGER NOT NULL,
+                    html       TEXT NOT NULL,
+                    PRIMARY KEY (mailbox_id, uid)
+                );
+                CREATE TABLE pending_actions (
+                    id INTEGER PRIMARY KEY, mailbox_id INTEGER NOT NULL,
+                    uid INTEGER NOT NULL, kind TEXT NOT NULL
+                );
+                CREATE TABLE drafts (
+                    id INTEGER PRIMARY KEY, to_raw TEXT NOT NULL,
+                    subject TEXT NOT NULL, body TEXT NOT NULL,
+                    reply_to_uid INTEGER, updated_epoch INTEGER NOT NULL,
+                    remote_uid INTEGER, pushed_epoch INTEGER
+                );
+                CREATE TABLE draft_tombstones (remote_uid INTEGER PRIMARY KEY);
+                CREATE TABLE drafts_remote (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    uid_validity INTEGER NOT NULL
+                );
+                CREATE TABLE outbox (
+                    id INTEGER PRIMARY KEY, message_id TEXT NOT NULL,
+                    sender TEXT NOT NULL, recipients TEXT NOT NULL,
+                    subject TEXT NOT NULL, body_text TEXT NOT NULL,
+                    in_reply_to TEXT, state TEXT NOT NULL DEFAULT 'queued',
+                    attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT,
+                    queued_epoch INTEGER NOT NULL
+                );
+                INSERT INTO mailboxes (id, name, uid_validity) VALUES (1, 'INBOX', 7);
+                INSERT INTO envelopes (mailbox_id, uid, subject, seen, flagged)
+                    VALUES (1, 42, 'hérité', 1, 1);
+                INSERT INTO bodies VALUES (1, 42, '<p>corps</p>');
+                INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (1, 42, 'mark_seen');
+                INSERT INTO drafts (to_raw, subject, body, updated_epoch, remote_uid, pushed_epoch)
+                    VALUES ('x@y.fr', 'précieux', 'texte', 10, 77, 10);
+                INSERT INTO draft_tombstones VALUES (99);
+                INSERT INTO drafts_remote VALUES (1, 1234);
+                INSERT INTO outbox (message_id, sender, recipients, subject, body_text, queued_epoch)
+                    VALUES ('<m@x>', 'moi@y.fr', 'toi@y.fr', 's', 'b', 20);",
+            )
+            .unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        let account = store
+            .adopt_or_create_account("legacy@exemple.fr", "gmail")
+            .unwrap();
+        assert_eq!(account, 1, "la revendication prend le compte en attente");
+
+        assert_eq!(store.recent(account, "INBOX", 0, 10).unwrap()[0].uid, 42);
+        assert_eq!(
+            store.body(1, "INBOX", 42).unwrap().as_deref(),
+            Some("<p>corps</p>")
+        );
+        let drafts = store.drafts().unwrap();
+        assert_eq!(drafts[0].account_id, 1);
+        assert_eq!(drafts[0].remote_uid, Some(77));
+        assert_eq!(store.draft_tombstones(1).unwrap(), vec![99]);
+        assert!(
+            !store.align_drafts_uidvalidity(1, 1234).unwrap(),
+            "l'UIDVALIDITY des brouillons a survécu : pas de réinitialisation"
+        );
+        assert_eq!(store.outbox_to_send(1).unwrap().len(), 1);
+        assert_eq!(store.accounts().unwrap().len(), 1);
+
+        let second = store
+            .adopt_or_create_account("deux@exemple.fr", "gmail")
+            .unwrap();
+        assert_ne!(second, 1, "le placeholder ne se revendique qu'une fois");
+
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Le cœur produit du multi-comptes : la même boîte de tous les
+    /// comptes, fusionnée par date — chaque ligne connaît son compte.
+    #[test]
+    fn unified_recent_merges_accounts_by_date() {
+        let store = Store::open_in_memory().unwrap();
+        let first = store
+            .adopt_or_create_account("a@exemple.fr", "gmail")
+            .unwrap();
+        let second = store
+            .adopt_or_create_account("b@exemple.fr", "gmail")
+            .unwrap();
+        let inbox_a = store.create_mailbox(first, "INBOX", 1).unwrap();
+        let inbox_b = store.create_mailbox(second, "INBOX", 1).unwrap();
+
+        let mut store = store;
+        store
+            .upsert_envelopes(
+                inbox_a,
+                &[
+                    envelope(1, "a-ancien", 100, false),
+                    envelope(2, "a-récent", 300, false),
+                ],
+            )
+            .unwrap();
+        store
+            .upsert_envelopes(
+                inbox_b,
+                &[
+                    envelope(1, "b-milieu", 200, false),
+                    envelope(2, "b-dernier", 400, false),
+                ],
+            )
+            .unwrap();
+
+        let rows = store.unified_recent("INBOX", 0, 10).unwrap();
+        let order: Vec<(&str, &str)> = rows
+            .iter()
+            .map(|row| {
+                (
+                    row.account_email.as_str(),
+                    row.envelope.subject.as_deref().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            order,
+            vec![
+                ("b@exemple.fr", "b-dernier"),
+                ("a@exemple.fr", "a-récent"),
+                ("b@exemple.fr", "b-milieu"),
+                ("a@exemple.fr", "a-ancien"),
+            ],
+            "fusion par date, chaque ligne porte son compte"
+        );
+        assert_eq!(store.unified_count("INBOX").unwrap(), 4);
+        // Même UID dans deux comptes : deux messages distincts.
+        assert!(store.envelope(first, "INBOX", 1).unwrap().is_some());
+        assert!(store.envelope(second, "INBOX", 1).unwrap().is_some());
+    }
+
     #[test]
     fn remove_absent_drops_orphaned_bodies() {
         let (mut store, id) = store_with_mailbox();
@@ -787,6 +1190,6 @@ mod tests {
             .unwrap();
         store.save_body(id, 1, "<p>x</p>").unwrap();
         assert_eq!(store.remove_absent(id, &HashSet::new()).unwrap(), 1);
-        assert_eq!(store.body("INBOX", 1).unwrap(), None);
+        assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
     }
 }
