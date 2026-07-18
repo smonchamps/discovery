@@ -388,7 +388,7 @@ main.split {
 }
 
 #search-results .row.search-result {
-  position: static;
+  position: relative;
 }
 
 .empty-search {
