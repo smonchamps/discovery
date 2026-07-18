@@ -375,8 +375,14 @@ fn decode_entities(text: &str) -> String {
         out.push_str(&rest[..pos]);
         rest = &rest[pos..];
         // Une entité plausible tient en peu de caractères ; au-delà,
-        // c'est une esperluette littérale.
-        let semi = rest[..rest.len().min(12)].find(';');
+        // c'est une esperluette littérale. On limite en CARACTÈRES,
+        // pas en octets, pour ne pas couper un caractère multi-octets
+        // (ex. 'è') en plein milieu.
+        let semi = rest
+            .char_indices()
+            .take(12)
+            .find(|(_, c)| *c == ';')
+            .map(|(i, _)| i);
         match semi.and_then(|s| decode_entity(&rest[1..s]).map(|c| (c, s))) {
             Some((decoded, s)) => {
                 out.push(decoded);
@@ -860,6 +866,23 @@ mod tests {
         assert_eq!(
             indexable_text("caf&eacute; &amp; th&eacute; &inconnu; &#x41;"),
             "café & thé &inconnu; A"
+        );
+    }
+
+    /// Régression : une esperluette suivie d'un caractère multi-octets
+    /// juste après la fenêtre de 12 caractères ne doit pas couper le
+    /// caractère en plein milieu.
+    #[test]
+    fn ampersand_before_multibyte_char_does_not_panic() {
+        assert_eq!(
+            indexable_text("&quot; (modèle avec médecins)"),
+            "\" (modèle avec médecins)"
+        );
+        // Esperluette non suivie d'entité, avec un caractère multi-octets
+        // qui déborde de la limite des 12 caractères.
+        assert_eq!(
+            indexable_text("modèle & clinique de médecins"),
+            "modèle & clinique de médecins"
         );
     }
 }
