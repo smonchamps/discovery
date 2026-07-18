@@ -33,6 +33,38 @@ pub struct Authenticated {
     pub access_token: String,
 }
 
+/// Credentials d'un compte IMAP/SMTP générique (serveur, port, mot de
+/// passe). Le mot de passe est en mémoire uniquement pendant la session ;
+/// il est lu depuis le coffre de l'OS au démarrage.
+#[derive(Debug, Clone)]
+pub struct GenericCredentials {
+    pub email: String,
+    pub username: String,
+    pub password: String,
+    pub imap_host: String,
+    pub imap_port: u16,
+    pub smtp_host: String,
+    pub smtp_port: u16,
+}
+
+/// Session d'un compte connecté, quelle que soit sa méthode
+/// d'authentification. C'est ce qui circule dans l'état applicatif du
+/// desktop.
+#[derive(Debug, Clone)]
+pub enum AccountSession {
+    Gmail(Authenticated),
+    Generic(GenericCredentials),
+}
+
+impl AccountSession {
+    pub fn email(&self) -> &str {
+        match self {
+            AccountSession::Gmail(auth) => &auth.email,
+            AccountSession::Generic(creds) => &creds.email,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct GmailAuth {
     client_id: String,
@@ -164,4 +196,31 @@ fn vault(email: &str) -> Result<keyring::Entry, AuthError> {
 fn legacy_vault() -> Result<keyring::Entry, AuthError> {
     keyring::Entry::new(KEYRING_SERVICE, KEYRING_REFRESH_LEGACY)
         .map_err(|err| AuthError::Vault(err.to_string()))
+}
+
+const KEYRING_GENERIC_PASSWORD: &str = "generic-password";
+
+fn generic_vault(email: &str) -> Result<keyring::Entry, AuthError> {
+    keyring::Entry::new(
+        KEYRING_SERVICE,
+        &format!("{KEYRING_GENERIC_PASSWORD}:{email}"),
+    )
+    .map_err(|err| AuthError::Vault(err.to_string()))
+}
+
+/// Stocke le mot de passe d'un compte IMAP/SMTP générique dans le coffre.
+pub fn store_generic_password(email: &str, password: &str) -> Result<(), AuthError> {
+    generic_vault(email)?
+        .set_password(password)
+        .map_err(|err| AuthError::Vault(err.to_string()))
+}
+
+/// Récupère le mot de passe d'un compte IMAP/SMTP générique depuis le coffre.
+pub fn fetch_generic_password(email: &str) -> Result<String, AuthError> {
+    generic_vault(email)?
+        .get_password()
+        .map_err(|err| match err {
+            keyring::Error::NoEntry => AuthError::Vault(format!("aucun mot de passe pour {email}")),
+            other => AuthError::Vault(other.to_string()),
+        })
 }

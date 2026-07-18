@@ -30,6 +30,6 @@ pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{MailServer, MailboxSnapshot};
-pub use store::{Account, Store, SyncState, UnifiedRow};
+pub use store::{Account, AccountConfig, Store, SyncState, UnifiedRow};
 pub use sync::{SyncEngine, SyncMode, SyncReport};
 pub use transport::{MailTransport, SendError};

@@ -65,6 +65,27 @@ impl ImapServer {
         })
     }
 
+    /// Connexion TLS + authentification par mot de passe (IMAP générique).
+    pub fn connect_password(
+        host: &str,
+        port: u16,
+        user: &str,
+        password: &str,
+    ) -> Result<Self, Error> {
+        let client = imap::ClientBuilder::new(host, port)
+            .connect()
+            .map_err(server_err)?;
+        let session = client
+            .login(user, password)
+            .map_err(|(err, _)| server_err(err))?;
+        Ok(Self {
+            session,
+            selected: None,
+            trash: None,
+            drafts: None,
+        })
+    }
+
     pub fn logout(mut self) {
         let _ = self.session.logout();
     }

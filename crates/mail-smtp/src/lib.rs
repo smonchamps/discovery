@@ -33,6 +33,19 @@ impl SmtpMailer {
             .authentication(vec![Mechanism::Xoauth2])
             .credentials(Credentials::new(user.to_string(), access_token.to_string()))
             .build();
+        Self::test_transport(transport)
+    }
+
+    /// Connexion TLS + authentification par mot de passe (SMTP générique).
+    pub fn connect_password(host: &str, user: &str, password: &str) -> Result<Self, SendError> {
+        let transport = SmtpTransport::relay(host)
+            .map_err(|err| SendError::Transient(err.to_string()))?
+            .credentials(Credentials::new(user.to_string(), password.to_string()))
+            .build();
+        Self::test_transport(transport)
+    }
+
+    fn test_transport(transport: SmtpTransport) -> Result<Self, SendError> {
         match transport.test_connection() {
             Ok(true) => Ok(Self { transport }),
             Ok(false) => Err(SendError::Transient(

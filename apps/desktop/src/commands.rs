@@ -11,7 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use std::time::Instant;
 
-use mail_auth::{Authenticated, GmailAuth};
+use mail_auth::{AccountSession, Authenticated, GenericCredentials, GmailAuth};
+use mail_core::AccountConfig;
 use mail_core::{Action, OutboxState, Store, SyncEngine};
 use mail_imap::ImapServer;
 use mail_smtp::SmtpMailer;
@@ -87,10 +88,10 @@ pub async fn connect_accounts(
                 .map_err(|err| err.to_string())?;
             lock_accounts(&state)?.insert(
                 email.to_string(),
-                Authenticated {
+                AccountSession::Gmail(Authenticated {
                     email: email.to_string(),
                     access_token: "jeton-e2e-invalide".to_string(),
-                },
+                }),
             );
             infos.push(AccountInfo {
                 id,
@@ -100,29 +101,45 @@ pub async fn connect_accounts(
         return Ok(infos);
     }
 
-    let emails: Vec<String> = {
+    let accounts = {
         let store = Store::open(&path).map_err(|err| err.to_string())?;
-        store
-            .accounts()
-            .map_err(|err| err.to_string())?
-            .into_iter()
-            .map(|account| account.email)
-            .collect()
+        store.accounts().map_err(|err| err.to_string())?
     };
 
+    let path_for_spawn = path.clone();
     let connected = tauri::async_runtime::spawn_blocking(move || {
-        let auth = GmailAuth::from_env().map_err(|err| err.to_string())?;
         let mut list = Vec::new();
-        if emails.is_empty() {
-            if let Ok(account) = auth.authenticate_silent_legacy() {
-                list.push(account);
-            }
-        } else {
-            for email in &emails {
-                if let Ok(account) = auth.authenticate_silent(email) {
-                    list.push(account);
+        let gmail_auth = GmailAuth::from_env();
+        for account in accounts {
+            match account.provider.as_str() {
+                "gmail" => {
+                    let auth = gmail_auth.as_ref().map_err(|err| err.to_string())?;
+                    if let Ok(session) = auth.authenticate_silent(&account.email) {
+                        list.push(AccountSession::Gmail(session));
+                    }
                 }
+                "imap" => {
+                    if let Ok(password) = mail_auth::fetch_generic_password(&account.email) {
+                        let config = Store::open(&path_for_spawn)
+                            .map_err(|err| err.to_string())?
+                            .account_config(account.id)
+                            .map_err(|err| err.to_string())?;
+                        if let Some(session) =
+                            build_generic_session(&account.email, &password, &config)
+                        {
+                            list.push(session);
+                        }
+                    }
+                }
+                _ => {}
             }
+        }
+        // Repli hérité Phase 2 : un compte Gmail sans provider explicite.
+        if list.is_empty()
+            && let Ok(auth) = gmail_auth
+            && let Ok(account) = auth.authenticate_silent_legacy()
+        {
+            list.push(AccountSession::Gmail(account));
         }
         Ok::<_, String>(list)
     })
@@ -131,15 +148,20 @@ pub async fn connect_accounts(
 
     let store = Store::open(&path).map_err(|err| err.to_string())?;
     let mut infos = Vec::new();
-    for account in connected {
+    for session in connected {
+        let email = session.email().to_string();
+        let provider = match &session {
+            AccountSession::Gmail(_) => "gmail",
+            AccountSession::Generic(_) => "imap",
+        };
         let id = store
-            .adopt_or_create_account(&account.email, "gmail")
+            .adopt_or_create_account(&email, provider)
             .map_err(|err| err.to_string())?;
         infos.push(AccountInfo {
             id,
-            email: account.email.clone(),
+            email: email.clone(),
         });
-        lock_accounts(&state)?.insert(account.email.clone(), account);
+        lock_accounts(&state)?.insert(email, session);
     }
     Ok(infos)
 }
@@ -167,8 +189,93 @@ pub async fn add_account(
         id,
         email: account.email.clone(),
     };
-    lock_accounts(&state)?.insert(account.email.clone(), account);
+    lock_accounts(&state)?.insert(account.email.clone(), AccountSession::Gmail(account));
     Ok(info)
+}
+
+#[derive(serde::Deserialize)]
+pub struct GenericAccountInput {
+    pub email: String,
+    pub username: Option<String>,
+    pub password: String,
+    pub imap_host: String,
+    pub imap_port: u16,
+    pub smtp_host: String,
+    pub smtp_port: u16,
+}
+
+/// Ajoute un compte IMAP/SMTP générique : teste la connexion, stocke le
+/// mot de passe dans le coffre, puis enregistre le compte en base.
+#[tauri::command]
+pub async fn add_generic_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    input: GenericAccountInput,
+) -> Result<AccountInfo, String> {
+    let username = input.username.unwrap_or_else(|| input.email.clone());
+    let email = input.email.clone();
+    let imap_host = input.imap_host.clone();
+    let imap_port = input.imap_port;
+    let smtp_host = input.smtp_host.clone();
+    let smtp_port = input.smtp_port;
+    let password = input.password.clone();
+
+    // Test IMAP immédiat : on ne stocke rien tant que la connexion ne
+    // fonctionne pas.
+    tauri::async_runtime::spawn_blocking({
+        let email = email.clone();
+        let username = username.clone();
+        let imap_host = imap_host.clone();
+        let password = password.clone();
+        move || {
+            let server = mail_imap::ImapServer::connect_password(
+                &imap_host, imap_port, &username, &password,
+            )
+            .map_err(|err| format!("connexion IMAP impossible : {err}"))?;
+            server.logout();
+            mail_auth::store_generic_password(&email, &password).map_err(|err| err.to_string())
+        }
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let id = store
+        .create_generic_account(
+            &email, &username, &imap_host, imap_port, &smtp_host, smtp_port,
+        )
+        .map_err(|err| err.to_string())?;
+
+    let session = AccountSession::Generic(GenericCredentials {
+        email: email.clone(),
+        username: username.clone(),
+        password,
+        imap_host,
+        imap_port,
+        smtp_host,
+        smtp_port,
+    });
+    lock_accounts(&state)?.insert(email.clone(), session);
+
+    Ok(AccountInfo { id, email })
+}
+
+/// Construit une session générique à partir du mot de passe et de la
+/// configuration stockée. Retourne `None` si la configuration est incomplète.
+fn build_generic_session(
+    email: &str,
+    password: &str,
+    config: &AccountConfig,
+) -> Option<AccountSession> {
+    Some(AccountSession::Generic(GenericCredentials {
+        email: email.to_string(),
+        username: config.username.clone().unwrap_or_else(|| email.to_string()),
+        password: password.to_string(),
+        imap_host: config.imap_host.clone()?,
+        imap_port: config.imap_port?,
+        smtp_host: config.smtp_host.clone()?,
+        smtp_port: config.smtp_port?,
+    }))
 }
 
 /// Synchronise TOUS les comptes connectés — l'échec d'un compte ne
@@ -187,8 +294,9 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             let mut replayed = 0;
             let mut errors = Vec::new();
             let mut refreshed = Vec::new();
-            for (account_id, auth) in jobs {
-                match run_sync(&auth, account_id, &path) {
+            for (account_id, session) in jobs {
+                let email = session.email().to_string();
+                match run_sync(&session, account_id, &path) {
                     Ok((report, fresh)) => {
                         accounts += 1;
                         fetched += report.fetched;
@@ -198,7 +306,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                             refreshed.push(fresh);
                         }
                     }
-                    Err(err) => errors.push(format!("{} : {err}", auth.email)),
+                    Err(err) => errors.push(format!("{email} : {err}")),
                 }
             }
             (accounts, fetched, deleted, replayed, errors, refreshed)
@@ -207,7 +315,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
         .map_err(|err| err.to_string())?;
 
     for fresh in refreshed {
-        lock_accounts(&state)?.insert(fresh.email.clone(), fresh);
+        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
     }
     let total = Store::open(&db_path(&app)?)
         .and_then(|store| store.unified_count(MAILBOX))
@@ -225,11 +333,11 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
 }
 
 fn run_sync(
-    account: &Authenticated,
+    session: &AccountSession,
     account_id: i64,
     db_path: &Path,
-) -> Result<(mail_core::SyncReport, Option<Authenticated>), String> {
-    let (mut server, refreshed) = connect_imap(account)?;
+) -> Result<(mail_core::SyncReport, Option<AccountSession>), String> {
+    let (mut server, refreshed) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let report = SyncEngine::default()
         .sync(&mut server, &mut store, account_id, MAILBOX)
@@ -339,12 +447,12 @@ pub async fn message_body(
 }
 
 fn fetch_body(
-    account: &Authenticated,
+    session: &AccountSession,
     db_path: &Path,
     account_id: i64,
     uid: u32,
 ) -> Result<String, String> {
-    let (mut server, _refreshed) = connect_imap(account)?;
+    let (mut server, _refreshed) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let body = mail_core::load_body(&mut server, &mut store, account_id, MAILBOX, uid)
         .map_err(|err| err.to_string())?;
@@ -367,10 +475,12 @@ async fn raw_body(
     match cached {
         Some(html) => Ok(html),
         None => {
-            let auth = auth_for(&path, state, account_id)?;
-            tauri::async_runtime::spawn_blocking(move || fetch_body(&auth, &path, account_id, uid))
-                .await
-                .map_err(|err| err.to_string())?
+            let session = auth_for(&path, state, account_id)?;
+            tauri::async_runtime::spawn_blocking(move || {
+                fetch_body(&session, &path, account_id, uid)
+            })
+            .await
+            .map_err(|err| err.to_string())?
         }
     }
 }
@@ -628,16 +738,16 @@ pub async fn flush_outbox(
             .map_err(|err| err.to_string())??;
 
     for fresh in refreshed {
-        lock_accounts(&state)?.insert(fresh.email.clone(), fresh);
+        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
     }
     Ok(summary)
 }
 
 fn run_flush_all(
-    jobs: Vec<(i64, Authenticated)>,
+    jobs: Vec<(i64, AccountSession)>,
     db_path: &Path,
     lock: &Mutex<()>,
-) -> Result<(OutboxSummary, Vec<Authenticated>), String> {
+) -> Result<(OutboxSummary, Vec<AccountSession>), String> {
     let _guard = lock
         .lock()
         .map_err(|_| "vidange précédente interrompue".to_string())?;
@@ -654,7 +764,7 @@ fn run_flush_all(
     };
     let mut refreshed_list = Vec::new();
 
-    for (account_id, auth) in jobs {
+    for (account_id, session) in jobs {
         if store
             .outbox_to_send(account_id)
             .map_err(|err| err.to_string())?
@@ -662,7 +772,7 @@ fn run_flush_all(
         {
             continue;
         }
-        match connect_smtp(&auth) {
+        match connect_smtp(&session) {
             // Hors ligne : la file de ce compte survit telle quelle.
             Err(reason) => summary.error = Some(reason),
             Ok((mut mailer, refreshed)) => {
@@ -814,16 +924,16 @@ pub async fn sync_drafts(
             .map_err(|err| err.to_string())??;
 
     for fresh in refreshed {
-        lock_accounts(&state)?.insert(fresh.email.clone(), fresh);
+        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
     }
     Ok(summary)
 }
 
 fn run_draft_sync_all(
-    jobs: Vec<(i64, Authenticated)>,
+    jobs: Vec<(i64, AccountSession)>,
     db_path: &Path,
     lock: &Mutex<()>,
-) -> Result<(DraftSyncSummary, Vec<Authenticated>), String> {
+) -> Result<(DraftSyncSummary, Vec<AccountSession>), String> {
     let _guard = lock
         .lock()
         .map_err(|_| "poussée précédente interrompue".to_string())?;
@@ -836,7 +946,7 @@ fn run_draft_sync_all(
     };
     let mut refreshed_list = Vec::new();
 
-    for (account_id, auth) in jobs {
+    for (account_id, session) in jobs {
         let nothing_to_do = store
             .drafts_to_push(account_id)
             .map_err(|err| err.to_string())?
@@ -849,7 +959,7 @@ fn run_draft_sync_all(
             continue;
         }
 
-        let (mut server, refreshed) = match connect_imap(&auth) {
+        let (mut server, refreshed) = match connect_imap(&session) {
             Ok(pair) => pair,
             Err(reason) => {
                 summary.error = Some(reason);
@@ -884,7 +994,7 @@ fn run_draft_sync_all(
             .map_err(|err| err.to_string())?
         {
             let bytes = match mail_smtp::draft_bytes(
-                &auth.email,
+                session.email(),
                 &draft.to_raw,
                 &draft.subject,
                 &draft.body,
@@ -952,50 +1062,79 @@ fn purge_draft_tombstones(
 // Connexions et état partagé.
 // ---------------------------------------------------------------------
 
-/// Même stratégie pour SMTP et IMAP : un échec d'ouverture déclenche une
-/// ré-authentification silencieuse puis une seconde tentative — un token
-/// expiré ne peut jamais passer pour un refus permanent d'un message.
-fn connect_smtp(account: &Authenticated) -> Result<(SmtpMailer, Option<Authenticated>), String> {
-    match SmtpMailer::connect_xoauth2(SMTP_HOST, &account.email, &account.access_token) {
-        Ok(mailer) => Ok((mailer, None)),
-        Err(_) => {
-            let fresh = GmailAuth::from_env()
-                .map_err(|err| err.to_string())?
-                .authenticate_silent(&account.email)
-                .map_err(|err| err.to_string())?;
-            let mailer = SmtpMailer::connect_xoauth2(SMTP_HOST, &fresh.email, &fresh.access_token)
-                .map_err(|err| err.to_string())?;
-            Ok((mailer, Some(fresh)))
+/// Ouvre une connexion SMTP adaptée au type de compte. Pour Gmail, un
+/// échec déclenche un refresh silencieux ; pour un compte générique, le
+/// mot de passe est fixe (pas de retry possible).
+fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountSession>), String> {
+    match session {
+        AccountSession::Gmail(auth) => {
+            match SmtpMailer::connect_xoauth2(SMTP_HOST, &auth.email, &auth.access_token) {
+                Ok(mailer) => Ok((mailer, None)),
+                Err(_) => {
+                    let fresh = GmailAuth::from_env()
+                        .map_err(|err| err.to_string())?
+                        .authenticate_silent(&auth.email)
+                        .map_err(|err| err.to_string())?;
+                    let mailer =
+                        SmtpMailer::connect_xoauth2(SMTP_HOST, &fresh.email, &fresh.access_token)
+                            .map_err(|err| err.to_string())?;
+                    Ok((mailer, Some(AccountSession::Gmail(fresh))))
+                }
+            }
+        }
+        AccountSession::Generic(creds) => {
+            let mailer =
+                SmtpMailer::connect_password(&creds.smtp_host, &creds.username, &creds.password)
+                    .map_err(|err| err.to_string())?;
+            Ok((mailer, None))
         }
     }
 }
 
-fn connect_imap(account: &Authenticated) -> Result<(ImapServer, Option<Authenticated>), String> {
-    match ImapServer::connect_xoauth2(IMAP_HOST, IMAP_PORT, &account.email, &account.access_token) {
-        Ok(server) => Ok((server, None)),
-        Err(_) => {
-            let fresh = GmailAuth::from_env()
-                .map_err(|err| err.to_string())?
-                .authenticate_silent(&account.email)
-                .map_err(|err| err.to_string())?;
-            let server = ImapServer::connect_xoauth2(
-                IMAP_HOST,
-                IMAP_PORT,
-                &fresh.email,
-                &fresh.access_token,
+/// Ouvre une connexion IMAP adaptée au type de compte. Pour Gmail, un
+/// échec déclenche un refresh silencieux ; pour un compte générique, le
+/// mot de passe est fixe.
+fn connect_imap(session: &AccountSession) -> Result<(ImapServer, Option<AccountSession>), String> {
+    match session {
+        AccountSession::Gmail(auth) => {
+            match ImapServer::connect_xoauth2(IMAP_HOST, IMAP_PORT, &auth.email, &auth.access_token)
+            {
+                Ok(server) => Ok((server, None)),
+                Err(_) => {
+                    let fresh = GmailAuth::from_env()
+                        .map_err(|err| err.to_string())?
+                        .authenticate_silent(&auth.email)
+                        .map_err(|err| err.to_string())?;
+                    let server = ImapServer::connect_xoauth2(
+                        IMAP_HOST,
+                        IMAP_PORT,
+                        &fresh.email,
+                        &fresh.access_token,
+                    )
+                    .map_err(|err| err.to_string())?;
+                    Ok((server, Some(AccountSession::Gmail(fresh))))
+                }
+            }
+        }
+        AccountSession::Generic(creds) => {
+            let server = ImapServer::connect_password(
+                &creds.imap_host,
+                creds.imap_port,
+                &creds.username,
+                &creds.password,
             )
             .map_err(|err| err.to_string())?;
-            Ok((server, Some(fresh)))
+            Ok((server, None))
         }
     }
 }
 
-/// Les comptes du registre qui sont connectés (jeton en mémoire) —
+/// Les comptes du registre qui sont connectés (session en mémoire) —
 /// l'unité de travail des boucles synchro/vidange/brouillons.
 fn connected_jobs(
     path: &Path,
     state: &State<'_, AppState>,
-) -> Result<Vec<(i64, Authenticated)>, String> {
+) -> Result<Vec<(i64, AccountSession)>, String> {
     let store = Store::open(path).map_err(|err| err.to_string())?;
     let known = store.accounts().map_err(|err| err.to_string())?;
     let connected = lock_accounts(state)?;
@@ -1005,7 +1144,7 @@ fn connected_jobs(
             connected
                 .get(&account.email)
                 .cloned()
-                .map(|auth| (account.id, auth))
+                .map(|session| (account.id, session))
         })
         .collect())
 }
@@ -1014,7 +1153,7 @@ fn auth_for(
     path: &Path,
     state: &State<'_, AppState>,
     account_id: i64,
-) -> Result<Authenticated, String> {
+) -> Result<AccountSession, String> {
     let store = Store::open(path).map_err(|err| err.to_string())?;
     let email = account_email(&store, account_id)?;
     lock_accounts(state)?
@@ -1035,7 +1174,7 @@ fn account_email(store: &Store, account_id: i64) -> Result<String, String> {
 
 fn lock_accounts<'a>(
     state: &'a State<'_, AppState>,
-) -> Result<MutexGuard<'a, HashMap<String, Authenticated>>, String> {
+) -> Result<MutexGuard<'a, HashMap<String, AccountSession>>, String> {
     state
         .accounts
         .lock()

@@ -13,8 +13,8 @@ use std::time::Instant;
 
 pub(crate) struct AppState {
     pub started_at: Instant,
-    /// Jetons d'accès des comptes connectés, par email (multi-comptes).
-    pub accounts: Mutex<HashMap<String, mail_auth::Authenticated>>,
+    /// Sessions des comptes connectés, par email (multi-comptes).
+    pub accounts: Mutex<HashMap<String, mail_auth::AccountSession>>,
     /// Sérialise les vidanges de la boîte d'envoi : deux pompes
     /// concurrentes mettraient en quarantaine les envois l'une de l'autre.
     pub outbox_flush: Arc<Mutex<()>>,
@@ -36,6 +36,7 @@ fn main() {
             commands::startup_report,
             commands::connect_accounts,
             commands::add_account,
+            commands::add_generic_account,
             commands::sync_inbox,
             commands::list_messages,
             commands::search_messages,

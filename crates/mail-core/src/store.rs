@@ -232,6 +232,67 @@ impl Store {
         Ok(rows)
     }
 
+    /// Configuration serveur d'un compte (Gmail ou IMAP générique).
+    pub fn account_config(&self, account_id: i64) -> Result<AccountConfig, Error> {
+        let config = self
+            .0
+            .query_row(
+                "SELECT imap_host, imap_port, smtp_host, smtp_port, username
+                 FROM accounts WHERE id = ?1",
+                [account_id],
+                |row| {
+                    Ok(AccountConfig {
+                        imap_host: row.get(0)?,
+                        imap_port: row.get(1)?,
+                        smtp_host: row.get(2)?,
+                        smtp_port: row.get(3)?,
+                        username: row.get(4)?,
+                    })
+                },
+            )
+            .optional()?
+            .unwrap_or(AccountConfig {
+                imap_host: None,
+                imap_port: None,
+                smtp_host: None,
+                smtp_port: None,
+                username: None,
+            });
+        Ok(config)
+    }
+
+    /// Crée ou met à jour un compte IMAP/SMTP générique.
+    pub fn create_generic_account(
+        &self,
+        email: &str,
+        username: &str,
+        imap_host: &str,
+        imap_port: u16,
+        smtp_host: &str,
+        smtp_port: u16,
+    ) -> Result<i64, Error> {
+        self.0.execute(
+            "INSERT INTO accounts (email, provider, username, imap_host, imap_port, smtp_host, smtp_port)
+             VALUES (?1, 'imap', ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(email) DO UPDATE SET
+                provider = 'imap',
+                username = excluded.username,
+                imap_host = excluded.imap_host,
+                imap_port = excluded.imap_port,
+                smtp_host = excluded.smtp_host,
+                smtp_port = excluded.smtp_port",
+            params![
+                email,
+                username,
+                imap_host,
+                imap_port,
+                smtp_host,
+                smtp_port
+            ],
+        )?;
+        Ok(self.0.last_insert_rowid())
+    }
+
     /// Repart de zéro pour une boîte dont l'UIDVALIDITY a changé : les UIDs
     /// ne veulent plus rien dire — corps et actions en attente compris (une
     /// intention sur un UID invalidé est irréalisable par construction).
@@ -576,6 +637,16 @@ impl Store {
 /// Fait évoluer en place une base d'une version précédente : les colonnes
 /// s'ajoutent sans perdre ce qui est déjà là, et la bascule multi-comptes
 /// (Phase 3) reconstruit les tables dont les contraintes changent.
+/// Configuration serveur d'un compte IMAP/SMTP générique.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountConfig {
+    pub imap_host: Option<String>,
+    pub imap_port: Option<u16>,
+    pub smtp_host: Option<String>,
+    pub smtp_port: Option<u16>,
+    pub username: Option<String>,
+}
+
 fn migrate(conn: &Connection) -> Result<(), Error> {
     migrate_multi_account(conn)?;
     add_missing_columns(
@@ -601,6 +672,17 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
         conn,
         "drafts",
         &[("remote_uid", "INTEGER"), ("pushed_epoch", "INTEGER")],
+    )?;
+    add_missing_columns(
+        conn,
+        "accounts",
+        &[
+            ("imap_host", "TEXT"),
+            ("imap_port", "INTEGER"),
+            ("smtp_host", "TEXT"),
+            ("smtp_port", "INTEGER"),
+            ("username", "TEXT"),
+        ],
     )?;
     search::migrate_search(conn)
 }

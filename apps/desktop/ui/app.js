@@ -754,7 +754,14 @@ function setStatus(text, isError = false) {
 
 // Les reconnexions silencieuses ont eu lieu au démarrage
 // (connect_accounts) : ce bouton AJOUTE un compte — parcours navigateur.
-el('connect').addEventListener('click', async () => {
+function toggleAddMenu() {
+  el('add-menu').hidden = !el('add-menu').hidden;
+}
+
+el('connect').addEventListener('click', toggleAddMenu);
+
+el('add-gmail').addEventListener('click', async () => {
+  el('add-menu').hidden = true;
   setStatus('autorisation en cours dans votre navigateur…');
   try {
     const account = await invoke('add_account');
@@ -765,6 +772,60 @@ el('connect').addEventListener('click', async () => {
     await onConnected();
   } catch (err) {
     setStatus(`connexion impossible : ${err}`, true);
+  }
+});
+
+el('add-imap').addEventListener('click', () => {
+  el('add-menu').hidden = true;
+  el('imap-dialog').hidden = false;
+  el('imap-email').focus();
+});
+
+el('imap-cancel').addEventListener('click', () => {
+  el('imap-dialog').hidden = true;
+  el('imap-form').reset();
+});
+
+// Fermer le menu d'ajout en cliquant ailleurs.
+document.addEventListener('click', (event) => {
+  if (!el('add-menu').hidden
+    && !el('connect').contains(event.target)
+    && !el('add-menu').contains(event.target)) {
+    el('add-menu').hidden = true;
+  }
+});
+
+el('imap-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const email = el('imap-email').value.trim();
+  const username = el('imap-username').value.trim() || email;
+  const password = el('imap-password').value;
+  const imapHost = el('imap-host').value.trim();
+  const imapPort = Number(el('imap-port').value) || 993;
+  const smtpHost = el('smtp-host').value.trim();
+  const smtpPort = Number(el('smtp-port').value) || 465;
+
+  setStatus('vérification du compte IMAP…');
+  try {
+    const account = await invoke('add_generic_account', {
+      email,
+      username: username === email ? null : username,
+      password,
+      imapHost,
+      imapPort,
+      smtpHost,
+      smtpPort,
+    });
+    if (!connectedAccounts.some((known) => known.id === account.id)) {
+      connectedAccounts.push(account);
+    }
+    renderAccounts();
+    el('imap-dialog').hidden = true;
+    el('imap-form').reset();
+    setStatus('compte IMAP ajouté');
+    await onConnected();
+  } catch (err) {
+    setStatus(`ajout IMAP impossible : ${err}`, true);
   }
 });
 
@@ -816,7 +877,14 @@ document.addEventListener('keydown', (event) => {
   const typing = event.target instanceof HTMLInputElement
     || event.target instanceof HTMLTextAreaElement;
   if (typing) {
-    if (event.key === 'Escape') event.target.blur();
+    if (event.key === 'Escape') {
+      if (!el('imap-dialog').hidden) {
+        el('imap-dialog').hidden = true;
+        el('imap-form').reset();
+      } else {
+        event.target.blur();
+      }
+    }
     return;
   }
   switch (event.key) {
@@ -848,7 +916,10 @@ document.addEventListener('keydown', (event) => {
       showSearch();
       break;
     case 'Escape':
-      if (!el('compose').hidden) {
+      if (!el('imap-dialog').hidden) {
+        el('imap-dialog').hidden = true;
+        el('imap-form').reset();
+      } else if (!el('compose').hidden) {
         closeCompose();
       } else if (searchMode) {
         hideSearch();

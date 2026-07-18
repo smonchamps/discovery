@@ -11,10 +11,30 @@
   <span id="accounts"></span>
   <span id="status">démarrage…</span>
   <button id="connect" hidden>Ajouter un compte</button>
+  <div id="add-menu" hidden>
+    <button id="add-gmail">Compte Gmail</button>
+    <button id="add-imap">Compte IMAP/SMTP</button>
+  </div>
   <button id="compose-btn" hidden title="Écrire (c)">Écrire</button>
   <button id="refresh" hidden>Synchroniser</button>
   <input id="search" type="search" placeholder="Rechercher…" hidden>
 </header>
+<div id="imap-dialog" hidden>
+  <form id="imap-form">
+    <h2>Ajouter un compte IMAP/SMTP</h2>
+    <label>Adresse email <input id="imap-email" type="email" required></label>
+    <label>Nom d'utilisateur (optionnel) <input id="imap-username" type="text" placeholder="identique à l'email"></label>
+    <label>Mot de passe <input id="imap-password" type="password" required></label>
+    <label>Serveur IMAP <input id="imap-host" type="text" placeholder="imap.exemple.fr" required></label>
+    <label>Port IMAP <input id="imap-port" type="number" value="993" min="1" max="65535" required></label>
+    <label>Serveur SMTP <input id="smtp-host" type="text" placeholder="smtp.exemple.fr" required></label>
+    <label>Port SMTP <input id="smtp-port" type="number" value="465" min="1" max="65535" required></label>
+    <div id="imap-actions">
+      <button type="submit">Ajouter</button>
+      <button type="button" id="imap-cancel">Annuler</button>
+    </div>
+  </form>
+</div>
 <div id="outbox-bar" hidden>
   <span id="outbox-summary"></span>
   <div id="outbox-problems"></div>
