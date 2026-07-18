@@ -195,6 +195,14 @@ main.split {
   background: #f6f9ff;
 }
 
+.row > * {
+  pointer-events: none;
+}
+
+.row > .account-dot {
+  pointer-events: auto;
+}
+
 .row.selected {
   background: #e8f0fe;
 }
@@ -363,6 +371,30 @@ main.split {
 
 #compose-send:hover {
   background: #1765c8;
+}
+
+#search {
+  width: 220px;
+  border: 1px solid #c8c8c8;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font: inherit;
+  font-size: 13px;
+}
+
+#search-results {
+  overflow-y: auto;
+  height: 100%;
+}
+
+#search-results .row.search-result {
+  position: static;
+}
+
+.empty-search {
+  text-align: center;
+  color: var(--muted);
+  margin-top: 48px;
 }
 
 footer {

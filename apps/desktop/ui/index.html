@@ -13,6 +13,7 @@
   <button id="connect" hidden>Ajouter un compte</button>
   <button id="compose-btn" hidden title="Écrire (c)">Écrire</button>
   <button id="refresh" hidden>Synchroniser</button>
+  <input id="search" type="search" placeholder="Rechercher…" hidden>
 </header>
 <div id="outbox-bar" hidden>
   <span id="outbox-summary"></span>
@@ -25,6 +26,7 @@
 <main class="split">
   <section id="pane-list">
     <div id="scroll-space"><div id="rows"></div></div>
+    <div id="search-results" hidden></div>
     <p id="empty" hidden>Aucun message pour l'instant.</p>
   </section>
   <section id="pane-detail">

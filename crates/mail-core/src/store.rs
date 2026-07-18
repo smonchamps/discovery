@@ -13,6 +13,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::action::{Action, PendingAction};
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
+use crate::search;
 
 const SCHEMA: &str = "
 PRAGMA foreign_keys = ON;
@@ -116,6 +117,10 @@ pub struct UnifiedRow {
     pub account_email: String,
     pub envelope: Envelope,
 }
+
+/// Colonnes du SELECT unifié, partagées par [`Store::unified_recent`] et
+/// [`Store::search`] — l'ordre est celui de [`row_to_unified`].
+pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged";
 
 pub struct Store(Connection);
 
@@ -231,6 +236,7 @@ impl Store {
     /// ne veulent plus rien dire — corps et actions en attente compris (une
     /// intention sur un UID invalidé est irréalisable par construction).
     pub fn reset_mailbox(&self, mailbox_id: i64, uid_validity: u32) -> Result<(), Error> {
+        search::deindex_mailbox(&self.0, mailbox_id)?;
         self.0.execute(
             "DELETE FROM pending_actions WHERE mailbox_id = ?1",
             [mailbox_id],
@@ -274,6 +280,8 @@ impl Store {
                   date_epoch, seen, flagged)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             )?;
+            let mut body_stmt =
+                tx.prepare("SELECT html FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
             for envelope in envelopes {
                 stmt.execute(params![
                     mailbox_id,
@@ -286,6 +294,18 @@ impl Store {
                     envelope.seen,
                     envelope.flagged,
                 ])?;
+                let html: Option<String> = body_stmt
+                    .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
+                    .optional()?;
+                search::index_message(
+                    &tx,
+                    mailbox_id,
+                    envelope.uid,
+                    envelope.subject.as_deref(),
+                    envelope.sender.as_deref(),
+                    envelope.sender_address.as_deref(),
+                    html.as_deref(),
+                )?;
             }
         }
         tx.commit()?;
@@ -315,6 +335,7 @@ impl Store {
             let mut actions =
                 tx.prepare("DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2")?;
             for uid in &stale {
+                search::deindex_message(&tx, mailbox_id, *uid)?;
                 envelopes.execute(params![mailbox_id, uid])?;
                 bodies.execute(params![mailbox_id, uid])?;
                 actions.execute(params![mailbox_id, uid])?;
@@ -327,6 +348,7 @@ impl Store {
     /// Retire localement une enveloppe et son corps (archivage/suppression
     /// optimiste) ; le serveur suivra via la file d'actions.
     pub fn remove_local(&self, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
+        search::deindex_message(&self.0, mailbox_id, uid)?;
         self.0.execute(
             "DELETE FROM bodies WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid],
@@ -418,6 +440,32 @@ impl Store {
             "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html) VALUES (?1, ?2, ?3)",
             params![mailbox_id, uid, html],
         )?;
+        if let Some((subject, sender, sender_address)) = self
+            .0
+            .query_row(
+                "SELECT subject, sender, sender_address
+                 FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
+                params![mailbox_id, uid],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .optional()?
+        {
+            search::index_message(
+                &self.0,
+                mailbox_id,
+                uid,
+                subject.as_deref(),
+                sender.as_deref(),
+                sender_address.as_deref(),
+                Some(html),
+            )?;
+        }
         Ok(())
     }
 
@@ -455,36 +503,20 @@ impl Store {
         offset: usize,
         limit: usize,
     ) -> Result<Vec<UnifiedRow>, Error> {
-        let mut stmt = self.0.prepare(
-            "SELECT a.id, a.email,
-                    e.uid, e.subject, e.sender, e.sender_address, e.message_id,
-                    e.date_epoch, e.seen, e.flagged
+        let mut stmt = self.0.prepare(&format!(
+            "{SELECT_UNIFIED}
              FROM envelopes e
              JOIN mailboxes m ON m.id = e.mailbox_id
              JOIN accounts a ON a.id = m.account_id
              WHERE m.name = ?1
              ORDER BY e.date_epoch DESC, e.uid DESC, a.id
-             LIMIT ?2 OFFSET ?3",
-        )?;
+             LIMIT ?2 OFFSET ?3"
+        ))?;
         let rows = stmt
-            .query_map(params![mailbox, limit as i64, offset as i64], |row| {
-                Ok(UnifiedRow {
-                    account_id: row.get(0)?,
-                    account_email: row.get(1)?,
-                    envelope: Envelope {
-                        uid: row.get(2)?,
-                        subject: row.get(3)?,
-                        sender: row.get(4)?,
-                        sender_address: row.get(5)?,
-                        message_id: row.get(6)?,
-                        date: row
-                            .get::<_, Option<i64>>(7)?
-                            .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
-                        seen: row.get(8)?,
-                        flagged: row.get(9)?,
-                    },
-                })
-            })?
+            .query_map(
+                params![mailbox, limit as i64, offset as i64],
+                row_to_unified,
+            )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -569,7 +601,8 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
         conn,
         "drafts",
         &[("remote_uid", "INTEGER"), ("pushed_epoch", "INTEGER")],
-    )
+    )?;
+    search::migrate_search(conn)
 }
 
 /// Bascule Phase 2 → 3 : les contraintes de trois tables changent
@@ -664,6 +697,27 @@ fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
             .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
         seen: row.get(6)?,
         flagged: row.get(7)?,
+    })
+}
+
+/// Mapping partagé par les lectures de la boîte unifiée — l'ordre des
+/// colonnes est celui de [`SELECT_UNIFIED`].
+pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
+    Ok(UnifiedRow {
+        account_id: row.get(0)?,
+        account_email: row.get(1)?,
+        envelope: Envelope {
+            uid: row.get(2)?,
+            subject: row.get(3)?,
+            sender: row.get(4)?,
+            sender_address: row.get(5)?,
+            message_id: row.get(6)?,
+            date: row
+                .get::<_, Option<i64>>(7)?
+                .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
+            seen: row.get(8)?,
+            flagged: row.get(9)?,
+        },
     })
 }
 

@@ -14,6 +14,7 @@ mod envelope;
 mod error;
 mod outbox;
 mod remote;
+mod search;
 mod store;
 mod sync;
 #[cfg(test)]

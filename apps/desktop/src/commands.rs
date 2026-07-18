@@ -25,6 +25,7 @@ const IMAP_HOST: &str = "imap.gmail.com";
 const IMAP_PORT: u16 = 993;
 const SMTP_HOST: &str = "smtp.gmail.com";
 const LIST_LIMIT_MAX: usize = 500;
+const SEARCH_LIMIT: usize = 50;
 
 #[derive(Serialize)]
 pub struct AccountInfo {
@@ -245,6 +246,30 @@ pub struct MessagePage {
     pub elapsed_us: u64,
 }
 
+/// Mapping partagé entre la boîte unifiée et les résultats de recherche.
+fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
+    MessageRow {
+        account_id: row.account_id,
+        account_email: row.account_email,
+        uid: row.envelope.uid,
+        subject: row
+            .envelope
+            .subject
+            .unwrap_or_else(|| "(sans sujet)".to_string()),
+        sender: row
+            .envelope
+            .sender
+            .unwrap_or_else(|| "(expéditeur inconnu)".to_string()),
+        date: row
+            .envelope
+            .date
+            .map(|date| date.format("%Y-%m-%d").to_string())
+            .unwrap_or_default(),
+        seen: row.envelope.seen,
+        flagged: row.envelope.flagged,
+    }
+}
+
 /// Une page de la BOÎTE UNIFIÉE : tous les comptes fusionnés par date.
 /// L'UI ne matérialise que les lignes visibles (virtualisation).
 #[tauri::command]
@@ -258,26 +283,7 @@ pub fn list_messages(app: AppHandle, offset: usize, limit: usize) -> Result<Mess
         .unified_recent(MAILBOX, offset, limit.min(LIST_LIMIT_MAX))
         .map_err(|err| err.to_string())?
         .into_iter()
-        .map(|row| MessageRow {
-            account_id: row.account_id,
-            account_email: row.account_email,
-            uid: row.envelope.uid,
-            subject: row
-                .envelope
-                .subject
-                .unwrap_or_else(|| "(sans sujet)".to_string()),
-            sender: row
-                .envelope
-                .sender
-                .unwrap_or_else(|| "(expéditeur inconnu)".to_string()),
-            date: row
-                .envelope
-                .date
-                .map(|date| date.format("%Y-%m-%d").to_string())
-                .unwrap_or_default(),
-            seen: row.envelope.seen,
-            flagged: row.envelope.flagged,
-        })
+        .map(to_message_row)
         .collect();
     Ok(MessagePage {
         total,
@@ -285,6 +291,20 @@ pub fn list_messages(app: AppHandle, offset: usize, limit: usize) -> Result<Mess
         rows,
         elapsed_us: timer.elapsed().as_micros() as u64,
     })
+}
+
+/// Recherche plein-texte sur tous les comptes. Le déclenchement à partir
+/// de 3 caractères et le debounce sont de la responsabilité de l'UI.
+#[tauri::command]
+pub fn search_messages(app: AppHandle, query: String) -> Result<Vec<MessageRow>, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let rows = store
+        .search(&query, SEARCH_LIMIT)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .map(to_message_row)
+        .collect();
+    Ok(rows)
 }
 
 #[derive(Serialize)]

@@ -23,6 +23,97 @@ let composeAccountId = null; // compte émetteur de la composition en cours
 let composeDraftId = null;  // id du brouillon en cours d'édition, sinon null
 let draftSaveTimer = null;  // autosauvegarde debouncée pendant la frappe
 let connectedAccounts = []; // comptes connectés {id, email} — l'ordre du registre
+let searchMode = false;     // la recherche remplace-t-elle la boîte unifiée ?
+let searchResults = [];     // résultats de la recherche en cours
+let searchTimer = null;     // debounce de la saisie
+
+/// Active le mode recherche : le champ apparaît et la liste unifiée
+/// cède la place aux résultats.
+function showSearch() {
+  if (searchMode) return;
+  searchMode = true;
+  el('scroll-space').hidden = true;
+  el('empty').hidden = true;
+  el('search-results').hidden = false;
+  el('search').hidden = false;
+  el('search').focus();
+}
+
+/// Quitte le mode recherche et revient à la boîte unifiée.
+function hideSearch() {
+  if (!searchMode) return;
+  searchMode = false;
+  searchResults = [];
+  clearTimeout(searchTimer);
+  el('search').value = '';
+  el('search').hidden = true;
+  el('search-results').hidden = true;
+  el('search-results').replaceChildren();
+  el('scroll-space').hidden = false;
+  el('empty').hidden = total > 0;
+  renderVisible();
+}
+
+async function runSearch() {
+  const query = el('search').value.trim();
+  if (query.length < 3) {
+    searchResults = [];
+    renderSearchResults();
+    return;
+  }
+  try {
+    searchResults = await invoke('search_messages', { query });
+    renderSearchResults();
+  } catch (err) {
+    setStatus(`recherche impossible : ${err}`, true);
+  }
+}
+
+function renderSearchResults() {
+  const container = el('search-results');
+  container.replaceChildren();
+  if (searchResults.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'empty-search';
+    p.textContent = 'Aucun résultat.';
+    container.appendChild(p);
+    return;
+  }
+  for (const message of searchResults) {
+    container.appendChild(buildResultRow(message));
+  }
+}
+
+function buildResultRow(message) {
+  const row = document.createElement('div');
+  row.className = 'row search-result';
+  if (!message.seen) row.classList.add('unread');
+  if (message.flagged) row.classList.add('flagged');
+  if (currentMessage
+    && message.uid === currentMessage.uid
+    && message.account_id === currentMessage.account_id) {
+    row.classList.add('selected');
+  }
+  for (const [cls, text] of [
+    ['date', message.date],
+    ['sender', message.sender],
+    ['subject', message.subject],
+  ]) {
+    const span = document.createElement('span');
+    span.className = cls;
+    span.textContent = text;
+    row.appendChild(span);
+  }
+  if (connectedAccounts.length > 1) {
+    const dot = document.createElement('span');
+    dot.className = 'dot account-dot';
+    dot.style.background = accountColor(message.account_id);
+    dot.title = message.account_email;
+    row.appendChild(dot);
+  }
+  row.addEventListener('click', () => openMessage(message, null));
+  return row;
+}
 
 async function init() {
   invoke('startup_report').then((report) => {
@@ -704,6 +795,18 @@ el('show-images').addEventListener('click', async () => {
   await loadBody(currentMessage, true);
 });
 
+el('search').addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 150);
+});
+
+el('search').addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    hideSearch();
+  }
+});
+
 // Raccourcis : c (écrire), r (répondre), e (archiver), Suppr (supprimer),
 // j/k (naviguer), Échap (fermer la composition). Dans un champ de saisie,
 // les lettres redeviennent des lettres — seul Échap garde un sens (sortir
@@ -736,14 +839,22 @@ document.addEventListener('keydown', (event) => {
       performAction('delete');
       break;
     case 'j':
-      if (currentIndex !== null) openMessageAt(currentIndex + 1);
+      if (currentIndex !== null && !searchMode) openMessageAt(currentIndex + 1);
       break;
     case 'k':
-      if (currentIndex !== null) openMessageAt(currentIndex - 1);
+      if (currentIndex !== null && !searchMode) openMessageAt(currentIndex - 1);
+      break;
+    case '/':
+      showSearch();
       break;
     case 'Escape':
-      if (el('compose').hidden) return;
-      closeCompose();
+      if (!el('compose').hidden) {
+        closeCompose();
+      } else if (searchMode) {
+        hideSearch();
+      } else {
+        return;
+      }
       break;
     default:
       return;

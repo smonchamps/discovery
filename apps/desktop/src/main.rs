@@ -38,6 +38,7 @@ fn main() {
             commands::add_account,
             commands::sync_inbox,
             commands::list_messages,
+            commands::search_messages,
             commands::message_body,
             commands::mark_seen,
             commands::mark_flagged,
