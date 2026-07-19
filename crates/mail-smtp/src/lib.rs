@@ -24,6 +24,24 @@ pub struct SmtpMailer {
     transport: SmtpTransport,
 }
 
+/// Mode TLS déduit du port de soumission SMTP. 465 est le port SMTPS
+/// (TLS implicite dès l'ouverture) ; 587 et les autres ports de
+/// soumission montent le chiffrement via STARTTLS. Jamais de repli en
+/// clair — la règle sécurité « TLS partout » tient (un serveur sans
+/// STARTTLS fait échouer l'ouverture, ce qui est le comportement voulu).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SmtpTls {
+    Implicit,
+    StartTls,
+}
+
+fn smtp_tls_for_port(port: u16) -> SmtpTls {
+    match port {
+        465 => SmtpTls::Implicit,
+        _ => SmtpTls::StartTls,
+    }
+}
+
 impl SmtpMailer {
     /// Connexion TLS (port 465) + authentification XOAUTH2, vérifiée
     /// immédiatement : on ne rend un transport que s'il sait envoyer.
@@ -37,9 +55,21 @@ impl SmtpMailer {
     }
 
     /// Connexion TLS + authentification par mot de passe (SMTP générique).
-    pub fn connect_password(host: &str, user: &str, password: &str) -> Result<Self, SendError> {
-        let transport = SmtpTransport::relay(host)
-            .map_err(|err| SendError::Transient(err.to_string()))?
+    /// Le `port` est honoré : 465 ouvre en TLS implicite, tout autre port
+    /// (587 en tête) monte le TLS via STARTTLS. Vérifiée immédiatement.
+    pub fn connect_password(
+        host: &str,
+        port: u16,
+        user: &str,
+        password: &str,
+    ) -> Result<Self, SendError> {
+        let builder = match smtp_tls_for_port(port) {
+            SmtpTls::Implicit => SmtpTransport::relay(host),
+            SmtpTls::StartTls => SmtpTransport::starttls_relay(host),
+        }
+        .map_err(|err| SendError::Transient(err.to_string()))?;
+        let transport = builder
+            .port(port)
             .credentials(Credentials::new(user.to_string(), password.to_string()))
             .build();
         Self::test_transport(transport)
@@ -213,6 +243,19 @@ mod tests {
     fn draft_without_any_valid_recipient_stays_local() {
         let result = draft_bytes("moi@exemple.fr", "pas encore d'adresse", "s", "c");
         assert!(result.is_err(), "attendu : non poussable en l'état");
+    }
+
+    /// Régression (bug #1) : le port de soumission SMTP était ignoré —
+    /// `connect_password` câblait `relay()` = TLS implicite 465 en dur,
+    /// et le port saisi par l'utilisateur était jeté. La politique doit
+    /// distinguer 465 (SMTPS, TLS implicite) de 587 et des autres ports
+    /// de soumission (STARTTLS). Jamais de repli en clair.
+    #[test]
+    fn smtp_tls_policy_follows_the_submission_port() {
+        assert_eq!(smtp_tls_for_port(465), SmtpTls::Implicit);
+        assert_eq!(smtp_tls_for_port(587), SmtpTls::StartTls);
+        assert_eq!(smtp_tls_for_port(25), SmtpTls::StartTls);
+        assert_eq!(smtp_tls_for_port(2525), SmtpTls::StartTls);
     }
 
     #[test]

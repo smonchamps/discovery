@@ -290,7 +290,12 @@ impl Store {
                 smtp_port
             ],
         )?;
-        Ok(self.0.last_insert_rowid())
+        // JAMAIS `last_insert_rowid()` : sur le chemin UPDATE (ré-ajout),
+        // aucune ligne n'est insérée et il renverrait 0 (ou un id d'une
+        // autre écriture de la connexion). L'id fait toujours foi en base.
+        self.account_id(email)?.ok_or_else(|| {
+            Error::Corrupt("compte générique introuvable après écriture".to_string())
+        })
     }
 
     /// Repart de zéro pour une boîte dont l'UIDVALIDITY a changé : les UIDs
@@ -1327,5 +1332,74 @@ mod tests {
         store.save_body(id, 1, "<p>x</p>").unwrap();
         assert_eq!(store.remove_absent(id, &HashSet::new()).unwrap(), 1);
         assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
+    }
+
+    /// Régression (bug #2) : ré-ajouter un compte générique déjà connu
+    /// doit renvoyer le MÊME id et appliquer la nouvelle configuration.
+    /// Sur le chemin UPDATE de l'upsert, `last_insert_rowid()` renvoyait
+    /// 0 — un id fantôme que l'UI récupérait pour la pastille et la
+    /// sélection. Chaque commande ouvre SA connexion : on modélise donc
+    /// le ré-ajout par deux `Store` distincts sur la même base fichier,
+    /// car c'est la connexion fraîche (sans INSERT préalable) qui emprunte
+    /// le chemin UPDATE et exhibe le 0.
+    #[test]
+    fn re_adding_a_generic_account_returns_the_same_id_and_updates_config() {
+        let path = std::env::temp_dir().join(format!(
+            "discovery-test-generic-{}-{}.sqlite",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+
+        let first = {
+            let store = Store::open(&path).unwrap();
+            store
+                .create_generic_account(
+                    "compte@exemple.fr",
+                    "compte",
+                    "imap.a.fr",
+                    993,
+                    "smtp.a.fr",
+                    465,
+                )
+                .unwrap()
+        };
+        let second = {
+            let store = Store::open(&path).unwrap();
+            store
+                .create_generic_account(
+                    "compte@exemple.fr",
+                    "login",
+                    "imap.b.fr",
+                    143,
+                    "smtp.b.fr",
+                    587,
+                )
+                .unwrap()
+        };
+        let (count, config) = {
+            let store = Store::open(&path).unwrap();
+            (
+                store.accounts().unwrap().len(),
+                store.account_config(first).unwrap(),
+            )
+        };
+        // Nettoyage avant les assertions : un échec ne doit pas laisser de
+        // fichier temporaire derrière lui.
+        let _ = std::fs::remove_file(&path);
+
+        assert!(first > 0, "la primo-création doit renvoyer un id réel");
+        assert_eq!(
+            second, first,
+            "le ré-ajout doit renvoyer l'id existant, jamais 0"
+        );
+        assert_eq!(count, 1, "un seul compte, pas un doublon");
+        assert_eq!(config.username.as_deref(), Some("login"));
+        assert_eq!(config.imap_host.as_deref(), Some("imap.b.fr"));
+        assert_eq!(config.imap_port, Some(143));
+        assert_eq!(config.smtp_host.as_deref(), Some("smtp.b.fr"));
+        assert_eq!(config.smtp_port, Some(587));
     }
 }

@@ -1083,9 +1083,13 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
             }
         }
         AccountSession::Generic(creds) => {
-            let mailer =
-                SmtpMailer::connect_password(&creds.smtp_host, &creds.username, &creds.password)
-                    .map_err(|err| err.to_string())?;
+            let mailer = SmtpMailer::connect_password(
+                &creds.smtp_host,
+                creds.smtp_port,
+                &creds.username,
+                &creds.password,
+            )
+            .map_err(|err| err.to_string())?;
             Ok((mailer, None))
         }
     }
