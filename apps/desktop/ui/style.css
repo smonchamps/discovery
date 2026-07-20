@@ -406,6 +406,13 @@ main.split {
   z-index: 10;
 }
 
+/* Sans ce garde-fou, `#add-menu` (spécificité d'ID) écrase la règle
+   `[hidden] { display: none }` du navigateur : le menu resterait affiché
+   en permanence et intercepterait les clics sous lui. */
+#add-menu[hidden] {
+  display: none;
+}
+
 #add-menu button {
   text-align: left;
   background: none;
