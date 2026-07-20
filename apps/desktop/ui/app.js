@@ -417,7 +417,13 @@ async function performAction(kind) {
     : 'supprimé — le serveur suivra au prochain sync');
   closeDetail();
   await reloadList();
-  if (total > 0 && index !== null) {
+  if (searchMode) {
+    // La recherche occupe le volet : on retire le message traité des
+    // résultats (sinon il y reste, périmé et cliquable) sans revenir à
+    // la boîte unifiée.
+    el('empty').hidden = true;
+    await runSearch();
+  } else if (total > 0 && index !== null) {
     await openMessageAt(Math.min(index, total - 1));
   }
 }

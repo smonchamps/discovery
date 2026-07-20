@@ -163,21 +163,29 @@ impl Store {
     /// `date:AAAA`, `date:AAAA-MM`, `date:AAAA-MM-JJ`. Un filtre seul,
     /// sans terme, liste les messages correspondants par date.
     pub fn search(&self, input: &str, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
-        let (match_expr, filters) = parse_query(input);
-        if match_expr.is_none() && filters.is_empty() {
+        let (terms_expr, filters) = parse_query(input);
+        // Le filtre expéditeur passe par la colonne `sender` de l'index
+        // FTS, qui replie casse ET accents (unicode61 remove_diacritics) :
+        // un LIKE SQL ne replie que l'ASCII et raterait « Étienne ».
+        // Préfixe, pour rester tolérant à la frappe (« duran » → Durand).
+        let from_expr = filters
+            .from
+            .as_ref()
+            .map(|value| format!("sender:\"{value}\"*"));
+        let has_terms = terms_expr.is_some();
+        let match_expr = match (terms_expr, from_expr) {
+            (Some(terms), Some(from)) => Some(format!("{terms} {from}")),
+            (Some(terms), None) => Some(terms),
+            (None, Some(from)) => Some(from),
+            (None, None) => None,
+        };
+        if match_expr.is_none() && filters.since.is_none() && filters.until.is_none() {
             return Ok(Vec::new());
         }
         let mut clauses = String::new();
         let mut values: Vec<Value> = Vec::new();
         if let Some(expr) = &match_expr {
             values.push(expr.clone().into());
-        }
-        if let Some(from) = &filters.from {
-            clauses.push_str(
-                " AND (e.sender LIKE '%' || ? || '%' OR e.sender_address LIKE '%' || ? || '%')",
-            );
-            values.push(from.clone().into());
-            values.push(from.clone().into());
         }
         if let Some(since) = filters.since {
             clauses.push_str(" AND e.date_epoch >= ?");
@@ -189,6 +197,13 @@ impl Store {
         }
         values.push((limit as i64).into());
         let sql = if match_expr.is_some() {
+            // Pertinence quand il y a des termes ; date quand la requête
+            // n'est qu'un filtre expéditeur (le BM25 n'a alors aucun sens).
+            let order = if has_terms {
+                "bm25(search_fts, 10.0, 5.0, 1.0), e.date_epoch DESC"
+            } else {
+                "e.date_epoch DESC, e.uid DESC"
+            };
             format!(
                 "{SELECT_UNIFIED}
                  FROM search_fts
@@ -197,7 +212,7 @@ impl Store {
                  JOIN mailboxes m ON m.id = e.mailbox_id
                  JOIN accounts a ON a.id = m.account_id
                  WHERE search_fts MATCH ?{clauses}
-                 ORDER BY bm25(search_fts, 10.0, 5.0, 1.0), e.date_epoch DESC
+                 ORDER BY {order}
                  LIMIT ?"
             )
         } else {
@@ -226,12 +241,6 @@ struct Filters {
     until: Option<i64>,
 }
 
-impl Filters {
-    fn is_empty(&self) -> bool {
-        self.from.is_none() && self.since.is_none() && self.until.is_none()
-    }
-}
-
 /// Découpe la saisie en termes et filtres. Chaque terme est neutralisé
 /// entre guillemets FTS5 (les guillemets de l'utilisateur sont retirés) :
 /// la syntaxe du moteur est inatteignable depuis le champ de recherche.
@@ -244,8 +253,11 @@ fn parse_query(input: &str) -> (Option<String>, Filters) {
             .strip_prefix("from:")
             .or_else(|| lower.strip_prefix("de:"))
         {
-            if !value.is_empty() {
-                filters.from = Some(value.to_string());
+            // Neutralisé comme un terme : injecté dans la syntaxe FTS
+            // (`sender:"…"*`), il ne doit pas pouvoir la casser.
+            let clean: String = value.chars().filter(|c| *c != '"').collect();
+            if !clean.is_empty() {
+                filters.from = Some(clean);
             }
         } else if let Some(value) = lower.strip_prefix("date:") {
             // Un filtre de date illisible est ignoré plutôt qu'appliqué
@@ -765,6 +777,35 @@ mod tests {
             vec!["Rapport achats"],
             "le filtre matche le nom affiché comme l'adresse"
         );
+    }
+
+    /// Régression (bug #3) : le filtre from: repliait seulement l'ASCII
+    /// (LIKE SQL) et ratait un nom à capitale accentuée. Il passe désormais
+    /// par la colonne `sender` de l'index FTS, qui replie casse ET accents
+    /// (`unicode61 remove_diacritics`).
+    #[test]
+    fn from_filter_folds_case_and_accents() {
+        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope(
+                    1,
+                    "Rapport",
+                    "Étienne Bernard",
+                    "e.bernard@ex.fr",
+                    100,
+                )],
+            )
+            .unwrap();
+
+        // La capitale « É » doit être trouvée, avec ou sans accent saisi.
+        assert_eq!(store.search("from:etienne", 50).unwrap().len(), 1);
+        assert_eq!(store.search("from:étienne", 50).unwrap().len(), 1);
+        assert_eq!(store.search("from:ETIENNE", 50).unwrap().len(), 1);
+        assert_eq!(store.search("rapport from:etienne", 50).unwrap().len(), 1);
+        // Un expéditeur qui ne correspond pas reste exclu.
+        assert_eq!(store.search("from:durand", 50).unwrap().len(), 0);
     }
 
     #[test]

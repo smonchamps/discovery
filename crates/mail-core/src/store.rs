@@ -502,12 +502,15 @@ impl Store {
     }
 
     pub fn save_body(&self, mailbox_id: i64, uid: Uid, html: &str) -> Result<(), Error> {
-        self.0.execute(
+        // Corps et index dans UNE transaction : l'invariant du module veut
+        // que l'index vive dans la base avec la donnée — un crash entre les
+        // deux écritures laisserait l'index désaccordé du corps.
+        let tx = self.0.unchecked_transaction()?;
+        tx.execute(
             "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html) VALUES (?1, ?2, ?3)",
             params![mailbox_id, uid, html],
         )?;
-        if let Some((subject, sender, sender_address)) = self
-            .0
+        if let Some((subject, sender, sender_address)) = tx
             .query_row(
                 "SELECT subject, sender, sender_address
                  FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
@@ -523,7 +526,7 @@ impl Store {
             .optional()?
         {
             search::index_message(
-                &self.0,
+                &tx,
                 mailbox_id,
                 uid,
                 subject.as_deref(),
@@ -532,6 +535,7 @@ impl Store {
                 Some(html),
             )?;
         }
+        tx.commit()?;
         Ok(())
     }
 

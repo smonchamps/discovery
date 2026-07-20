@@ -44,3 +44,23 @@ test("recherche : ouvrir un résultat affiche le message, Échap revient à l'un
   await expect(page.locator('#scroll-space')).toBeVisible();
   await expect(page.locator('#perf')).toContainText('200 messages');
 });
+
+test('recherche : archiver un résultat le retire des résultats (régression #4)', async () => {
+  await page.keyboard.press('/');
+  await page.locator('#search').fill('facture');
+  const results = page.locator('#search-results .row');
+  await expect(results.first()).toBeVisible({ timeout: 5_000 });
+
+  const before = await results.count();
+  const archived = await results.first().locator('.subject').textContent();
+
+  // Ouvrir le premier résultat, puis l'archiver (raccourci e).
+  await results.first().click();
+  await expect(page.locator('#detail')).toBeVisible();
+  await page.keyboard.press('e');
+
+  // Le message archivé disparaît des résultats, sans quitter la recherche.
+  await expect(page.locator('#search')).toBeVisible();
+  await expect(results).toHaveCount(before - 1);
+  await expect(page.locator('#search-results')).not.toContainText(archived);
+});
