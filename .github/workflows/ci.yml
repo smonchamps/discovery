@@ -25,6 +25,38 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
+  e2e:
+    name: E2E Playwright (la vraie fenêtre, Windows + WebView2)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      # Pré-construire ICI, hors du hook Playwright : launchApp lance
+      # lui-même `cargo build`/`cargo run`, mais compiler à froid depuis
+      # le beforeAll dépasserait son timeout (60 s). Une étape par
+      # commande : un `run:` multi-lignes tourne en PowerShell sur Windows
+      # et masquerait l'échec de la première commande.
+      - name: Construire l'application
+        run: cargo build -p discovery-desktop
+      - name: Construire le semeur de base E2E
+        run: cargo build -p mail-core --example seed_inbox
+      - name: Dépendances E2E
+        # Les tests s'attachent à WebView2 via CDP (connectOverCDP) : aucun
+        # navigateur Playwright n'est lancé, donc rien à télécharger.
+        run: npm ci
+        working-directory: e2e
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+      - name: E2E (10 parcours pilotés via CDP)
+        run: npm test
+        working-directory: e2e
+
   audit:
     name: cargo audit (CVE des dépendances)
     runs-on: ubuntu-latest
