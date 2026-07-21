@@ -207,22 +207,36 @@ async function onConnected() {
   el('compose-btn').hidden = false;
   await reloadList();
   await refresh();
-  await refreshBackfill();
+  // La liste est utilisable AVANT que le rattrapage ne commence :
+  // « enveloppes d'abord » reste la règle, le fond vient après.
+  await refreshBackfill({ autoStart: true });
 }
 
 // --- Rattrapage des corps (ADR 0007) --------------------------------
 //
-// Sans corps téléchargé, la recherche ne porte que sur les sujets : le
-// terrain a montré 18 corps sur 537. Le rattrapage les rapatrie par lots
-// bornés — c'est ce qui rend l'arrêt gratuit : on cesse simplement de
-// rappeler la commande.
+// Sans corps téléchargé, la recherche ne porte que sur les sujets et les
+// pièces jointes restent invisibles : le terrain a montré 18 corps sur
+// 537. Le rattrapage les rapatrie par lots bornés — c'est ce qui rend
+// l'arrêt gratuit : on cesse simplement de rappeler la commande.
+//
+// Il DÉMARRE SEUL, après la première synchro. L'ADR 0007 exige que ce
+// téléchargement soit visible et interruptible, pas qu'il soit déclenché
+// à la main : un travail de fond que l'utilisateur doit réclamer est un
+// travail qui n'aura pas lieu. La visibilité reste entière — bandeau,
+// avancement, bouton d'arrêt.
 let backfillRunning = false;
+// Arrêt DEMANDÉ : tant qu'il tient, plus de reprise automatique. Ne
+// survit pas à la session — le travail, lui, doit finir un jour.
+let backfillStopped = false;
 
-async function refreshBackfill() {
+async function refreshBackfill({ autoStart = false } = {}) {
   if (backfillRunning) return;
   try {
     const status = await invoke('backfill_status');
     showBackfill(status.remaining);
+    if (autoStart && status.remaining > 0 && !backfillStopped) {
+      runBackfill();
+    }
   } catch {
     el('backfill-bar').hidden = true;
   }
@@ -236,7 +250,7 @@ function showBackfill(remaining, fetched = null) {
   }
   bar.hidden = false;
   el('backfill-summary').textContent = backfillRunning
-    ? `Rattrapage en cours — ${fetched ?? 0} rapatrié(s), ${remaining} restant(s)`
+    ? `Lecture du contenu en cours — ${fetched ?? 0} lu(s), ${remaining} restant(s)`
     : `${remaining} message(s) dont le contenu n'a pas encore été lu (recherche et pièces jointes)`;
   el('backfill-start').hidden = backfillRunning;
   el('backfill-stop').hidden = !backfillRunning;
@@ -269,9 +283,14 @@ async function runBackfill() {
   }
 }
 
-el('backfill-start').addEventListener('click', runBackfill);
+// Le bouton ne sert plus qu'à REPRENDRE après un arrêt volontaire.
+el('backfill-start').addEventListener('click', () => {
+  backfillStopped = false;
+  runBackfill();
+});
 el('backfill-stop').addEventListener('click', () => {
   backfillRunning = false; // le lot en cours se termine, puis la boucle sort
+  backfillStopped = true; // et plus de reprise automatique de la session
   setStatus('rattrapage interrompu — il reprendra où il s\'est arrêté');
 });
 

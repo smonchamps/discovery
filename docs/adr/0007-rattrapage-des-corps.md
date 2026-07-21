@@ -138,6 +138,12 @@ décision en cours — à instrumenter le jour où le rattrapage gênera.
   pompe écrite.
 - **Visibilité** : l'avancement doit être visible et interruptible — un
   téléchargement de fond invisible est une mauvaise surprise réseau.
+  **Précision (2026-07-21)** : cette exigence porte sur la VISIBILITÉ,
+  pas sur le déclenchement. Le rattrapage démarre donc seul, après la
+  première synchro — un travail de fond que l'utilisateur doit réclamer
+  est un travail qui n'aura pas lieu, et le terrain l'a confirmé. Le
+  bandeau, l'avancement et le bouton d'arrêt restent entiers ; un arrêt
+  volontaire suspend la reprise automatique jusqu'à la session suivante.
 - **Levier connu si le gate 3 se tend** : « indexer sans stocker » au-delà
   de l'horizon, chiffré ici à 500 Mo pour 200 000 messages. Décision
   informée, pas réécriture en panique.
