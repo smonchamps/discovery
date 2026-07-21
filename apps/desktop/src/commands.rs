@@ -67,14 +67,27 @@ pub fn startup_report(state: State<'_, AppState>) -> String {
     )
 }
 
+/// Bilan d'une reconnexion : ce qui est revenu, et POURQUOI le reste ne
+/// l'est pas. Un compte muet est pire qu'un compte en erreur — sans cette
+/// liste, l'utilisateur voit une pastille manquer sans savoir quoi faire.
+#[derive(Serialize)]
+pub struct ConnectReport {
+    pub accounts: Vec<AccountInfo>,
+    pub problems: Vec<String>,
+}
+
 /// Connexion silencieuse de TOUS les comptes du registre. Registre vide
 /// (base migrée de Phase 2) : l'entrée héritée du coffre peut révéler le
 /// compte — elle est alors migrée et le compte en attente revendiqué.
+///
+/// **Chaque compte est isolé** : la configuration manquante ou le jeton
+/// périmé de l'un ne doit jamais empêcher les autres de revenir. Même
+/// principe que [`sync_inbox`].
 #[tauri::command]
 pub async fn connect_accounts(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<Vec<AccountInfo>, String> {
+) -> Result<ConnectReport, String> {
     let path = db_path(&app)?;
 
     // Crochet E2E : comptes factices (emails séparés par des virgules),
@@ -98,7 +111,10 @@ pub async fn connect_accounts(
                 email: email.to_string(),
             });
         }
-        return Ok(infos);
+        return Ok(ConnectReport {
+            accounts: infos,
+            problems: Vec::new(),
+        });
     }
 
     let accounts = {
@@ -107,44 +123,44 @@ pub async fn connect_accounts(
     };
 
     let path_for_spawn = path.clone();
-    let connected = tauri::async_runtime::spawn_blocking(move || {
+    let (connected, mut problems) = tauri::async_runtime::spawn_blocking(move || {
         let mut list = Vec::new();
+        let mut problems: Vec<String> = Vec::new();
+        // Une configuration Gmail absente ne concerne QUE les comptes
+        // Gmail : elle ne doit pas empêcher un compte IMAP de revenir.
         let gmail_auth = GmailAuth::from_env();
         for account in accounts {
-            match account.provider.as_str() {
-                "gmail" => {
-                    let auth = gmail_auth.as_ref().map_err(|err| err.to_string())?;
-                    if let Ok(session) = auth.authenticate_silent(&account.email) {
-                        list.push(AccountSession::Gmail(session));
-                    }
-                }
-                "imap" => {
-                    if let Ok(password) = mail_auth::fetch_generic_password(&account.email) {
-                        let config = Store::open(&path_for_spawn)
-                            .map_err(|err| err.to_string())?
-                            .account_config(account.id)
-                            .map_err(|err| err.to_string())?;
-                        if let Some(session) =
-                            build_generic_session(&account.email, &password, &config)
-                        {
-                            list.push(session);
-                        }
-                    }
-                }
-                _ => {}
+            let outcome = match account.provider.as_str() {
+                "gmail" => match &gmail_auth {
+                    Ok(auth) => auth
+                        .authenticate_silent(&account.email)
+                        .map(|session| Some(AccountSession::Gmail(session)))
+                        .map_err(|err| err.to_string()),
+                    Err(err) => Err(err.to_string()),
+                },
+                "imap" => connect_generic(&path_for_spawn, &account),
+                other => Err(format!("fournisseur inconnu : {other}")),
+            };
+            match outcome {
+                Ok(Some(session)) => list.push(session),
+                Ok(None) => problems.push(format!(
+                    "{} : configuration serveur incomplète",
+                    account.email
+                )),
+                Err(reason) => problems.push(format!("{} : {reason}", account.email)),
             }
         }
         // Repli hérité Phase 2 : un compte Gmail sans provider explicite.
         if list.is_empty()
-            && let Ok(auth) = gmail_auth
+            && let Ok(auth) = &gmail_auth
             && let Ok(account) = auth.authenticate_silent_legacy()
         {
             list.push(AccountSession::Gmail(account));
         }
-        Ok::<_, String>(list)
+        (list, problems)
     })
     .await
-    .map_err(|err| err.to_string())??;
+    .map_err(|err| err.to_string())?;
 
     let store = Store::open(&path).map_err(|err| err.to_string())?;
     let mut infos = Vec::new();
@@ -163,7 +179,26 @@ pub async fn connect_accounts(
         });
         lock_accounts(&state)?.insert(email, session);
     }
-    Ok(infos)
+    problems.sort();
+    Ok(ConnectReport {
+        accounts: infos,
+        problems,
+    })
+}
+
+/// Reconnecte un compte IMAP générique depuis le coffre et sa
+/// configuration. `Ok(None)` : la configuration serveur est incomplète.
+fn connect_generic(
+    db_path: &Path,
+    account: &mail_core::Account,
+) -> Result<Option<AccountSession>, String> {
+    let password =
+        mail_auth::fetch_generic_password(&account.email).map_err(|err| err.to_string())?;
+    let config = Store::open(db_path)
+        .map_err(|err| err.to_string())?
+        .account_config(account.id)
+        .map_err(|err| err.to_string())?;
+    Ok(build_generic_session(&account.email, &password, &config))
 }
 
 /// Ajoute un compte — parcours navigateur complet, répétable à volonté.

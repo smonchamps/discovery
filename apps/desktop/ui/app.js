@@ -124,15 +124,28 @@ async function init() {
   });
   el('pane-list').addEventListener('scroll', onScroll);
   refreshDrafts(); // les brouillons sont locaux : visibles même sans compte
+  let problems = [];
   try {
-    connectedAccounts = await invoke('connect_accounts');
-  } catch {
+    const report = await invoke('connect_accounts');
+    connectedAccounts = report.accounts;
+    problems = report.problems;
+  } catch (err) {
     connectedAccounts = [];
+    problems = [`${err}`];
   }
   renderAccounts();
   el('connect').hidden = false; // ajouter un compte est toujours possible
   if (connectedAccounts.length > 0) {
     await onConnected();
+    // Reconnexion partielle : dire LEQUEL manque et pourquoi, sinon
+    // l'utilisateur constate une pastille absente sans savoir quoi faire.
+    if (problems.length > 0) {
+      setStatus(`compte non reconnecté — ${problems.join(' ; ')}`, true);
+    }
+  } else if (problems.length > 0) {
+    setStatus(`aucun compte reconnecté — ${problems.join(' ; ')}`, true);
+    await reloadList();
+    await refreshOutbox();
   } else {
     setStatus('Ajoutez un compte Gmail pour commencer.');
     await reloadList();
