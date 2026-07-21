@@ -414,15 +414,21 @@ Après la recherche, dans l'ordre du plan et des reports assumés :
 1. ~~**Microsoft + IMAP générique**~~ ✅ **FAIT et validé terrain.** La voie
    Graph a été écartée sur mesures ([ADR 0006](adr/0006-microsoft-imap-oauth2.md)),
    et elle reste le plan B avec ses signaux de bascule.
-2. **Pièces jointes** (puis le filtre de recherche « a une pièce jointe »).
+2. ~~**Pièces jointes**~~ ✅ **FAIT et validé terrain** (lecture :
+   détecter, lister, enregistrer). Restent hors périmètre assumé :
+   l'ENVOI de pièces jointes, et le filtre de recherche « a une pièce
+   jointe ».
 3. ~~**Notifications Windows.**~~ ✅ **FAIT et validé terrain** — règles
    pures dans `mail-core::notify`, bulle unique, jamais sur une synchro
    initiale. ⚠️ exige l'application installée : voir §9.1.
 4. **Threading des conversations.**
-5. **Dossiers / déplacer** (débloque le report Phase 2 ; la dette UTF-7
-   qui le bloquait est soldée — `mail-imap::mutf7`) et **tirage des
-   brouillons** (éditer ici un brouillon créé ailleurs).
-6. **Clôture Phase 3** : `docs/PHASE3.md` (revue de clôture), gate 3 —
+5. ~~**Dossiers / déplacer**~~ ✅ **FAIT et validé terrain**, boucle
+   hors-ligne comprise. La liste des dossiers est **mise en cache comme
+   les enveloppes** : choisir une destination ne demande jamais le
+   réseau. MOVE (RFC 6851) si annoncé, COPY+EXPUNGE sinon — l'écart est
+   nommé dans le code.
+6. **Tirage des brouillons** (éditer ici un brouillon créé ailleurs).
+7. **Clôture Phase 3** : `docs/PHASE3.md` (revue de clôture), gate 3 —
    budgets tenus avec **3 comptes / 200 000 messages cumulés**.
 
 ---
