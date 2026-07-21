@@ -10,6 +10,7 @@
 //! arrivera ici même, sans toucher au moteur — c'est le rôle du trait.
 
 mod convert;
+mod mutf7;
 
 use imap_proto::NameAttribute;
 use imap_proto::types::UidSetMember;

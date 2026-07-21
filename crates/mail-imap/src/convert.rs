@@ -40,7 +40,7 @@ pub(crate) enum ArchiveStrategy {
 /// existe et sert (spikes/microsoft, compte réel). Sans ce repli,
 /// archiver serait indisponible sur tout compte Microsoft. La liste reste
 /// volontairement courte : un nom inconnu vaut mieux qu'un mauvais choix.
-const ARCHIVE_FALLBACK_NAMES: [&str; 2] = ["archive", "archives"];
+const ARCHIVE_FALLBACK_NAMES: [&str; 4] = ["archive", "archives", "archivé", "archivés"];
 
 /// Choisit la stratégie d'archivage d'après les dossiers annoncés.
 ///
@@ -62,8 +62,13 @@ pub(crate) fn archive_strategy<'a>(
             SpecialUse::Other => {
                 // Le nom COMPLET doit correspondre : « Archive/Achats »
                 // est un classement, pas la destination d'archivage.
+                // Comparaison sur le nom DÉCODÉ : un serveur français
+                // annonce `Archiv&AOk-s`, que la liste ne reconnaîtrait
+                // jamais sous sa forme réseau. Ce qui est mémorisé reste
+                // en revanche le nom réseau — c'est lui qu'on renverra.
                 if named.is_none()
-                    && ARCHIVE_FALLBACK_NAMES.contains(&name.to_ascii_lowercase().as_str())
+                    && ARCHIVE_FALLBACK_NAMES
+                        .contains(&crate::mutf7::decode(name).to_lowercase().as_str())
                 {
                     named = Some(name.to_string());
                 }
@@ -705,6 +710,27 @@ Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--B--\r\n";
     }
 
     /// Un serveur générique qui expose `\Archive` : on y DÉPLACE le message.
+    /// Dette UTF-7 soldée. Un serveur francophone annonce son dossier
+    /// d'archives en UTF-7 modifié : `Archiv&AOk-s`. Sans décodage, le
+    /// repli par nom ne le reconnaissait pas, et l'archivage restait
+    /// indisponible sur ces comptes — exactement le cas Exchange qui a
+    /// motivé le repli (ADR 0006).
+    ///
+    /// Ce qui est retenu reste le nom RÉSEAU : c'est lui qu'on renverra
+    /// au serveur, jamais sa forme lisible.
+    #[test]
+    fn an_accented_archive_folder_is_recognised_through_its_encoded_name() {
+        let strategy = archive_strategy([
+            ("INBOX", SpecialUse::Other),
+            ("Archiv&AOk-s", SpecialUse::Other),
+        ]);
+        assert_eq!(
+            strategy,
+            ArchiveStrategy::MoveTo("Archiv&AOk-s".to_string()),
+            "le nom mémorisé doit rester celui du protocole"
+        );
+    }
+
     #[test]
     fn generic_server_moves_to_its_archive_folder() {
         let folders = [

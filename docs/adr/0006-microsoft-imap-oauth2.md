@@ -142,10 +142,16 @@ ne dit rien de la piste OIDC — elle reste non mesurée, donc non retenue.
   Microsoft le ferme par défaut sur certains tenants d'entreprise. Le cas
   se manifestera par un refus à la connexion, pas par une perte — la
   boîte d'envoi conserve le message. À traiter en bêta si le cas survient.
-- **Dette repérée** : les noms de dossiers reviennent en **UTF-7 modifié**
-  non décodé (`Actualit&AOk-`). Sans effet ici (comparaison ASCII), mais
-  **bloquant pour la fonctionnalité « dossiers / déplacer »** du backlog
-  Phase 3.
+- ~~**Dette repérée** : les noms de dossiers reviennent en UTF-7 modifié
+  non décodé (`Actualit&AOk-`).~~ **Soldée** : `mail-imap::mutf7` décode
+  RFC 3501 §5.1.3, avec une règle explicite — on décode pour l'**œil** et
+  pour les **comparaisons**, jamais pour le protocole. Le nom réseau reste
+  celui qu'on renvoie au serveur ; les deux coexistent.
+
+  Effet immédiat et non recherché : le repli par nom de l'archivage
+  reconnaît désormais un dossier `Archiv&AOk-s`. Sur un serveur
+  francophone sans attribut `\Archive` — exactement le cas Exchange qui a
+  motivé ce repli — l'archivage était jusqu'ici indisponible.
 - **Bascule vers Graph** si l'un de ces trois signaux apparaît : SMTP AUTH
   massivement fermé chez les utilisateurs bêta, annonce de retrait d'IMAP
   OAuth, ou quotas IMAP rédhibitoires à l'échelle. Le banc reste dans

@@ -419,7 +419,8 @@ Après la recherche, dans l'ordre du plan et des reports assumés :
    pures dans `mail-core::notify`, bulle unique, jamais sur une synchro
    initiale. ⚠️ exige l'application installée : voir §9.1.
 4. **Threading des conversations.**
-5. **Dossiers / déplacer** (débloque le report Phase 2) et **tirage des
+5. **Dossiers / déplacer** (débloque le report Phase 2 ; la dette UTF-7
+   qui le bloquait est soldée — `mail-imap::mutf7`) et **tirage des
    brouillons** (éditer ici un brouillon créé ailleurs).
 6. **Clôture Phase 3** : `docs/PHASE3.md` (revue de clôture), gate 3 —
    budgets tenus avec **3 comptes / 200 000 messages cumulés**.
