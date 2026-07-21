@@ -4,8 +4,33 @@
 //! trait. L'adaptateur IMAP réel l'implémentera (module protocoles) ; les
 //! tests utilisent un serveur simulé qui rejoue les bizarreries du terrain.
 
+use crate::attachment::Attachment;
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
+
+/// Ce qu'un corps rapatrié rapporte : le HTML à afficher, et la
+/// description des fichiers qu'il transporte.
+///
+/// Les deux voyagent ENSEMBLE parce qu'ils se lisent dans les mêmes
+/// octets. Redemander les pièces jointes séparément coûterait un second
+/// téléchargement complet du message pour une information déjà passée
+/// sous les yeux de l'adaptateur.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FetchedBody {
+    pub html: String,
+    pub attachments: Vec<Attachment>,
+}
+
+impl FetchedBody {
+    /// Corps sans pièce jointe — le cas courant, et tout ce dont les
+    /// tests du moteur ont besoin.
+    pub fn html(html: impl Into<String>) -> Self {
+        Self {
+            html: html.into(),
+            attachments: Vec::new(),
+        }
+    }
+}
 
 /// État d'une boîte au moment de sa sélection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,9 +57,9 @@ pub trait MailServer {
     fn changes_since(&mut self, mailbox: &str, modseq: u64)
     -> Result<Option<Vec<Envelope>>, Error>;
 
-    /// Corps HTML d'un message, prêt à assainir (l'extraction MIME est la
+    /// Corps d'un message, prêt à assainir (l'extraction MIME est la
     /// responsabilité de l'adaptateur). `None` si le message n'existe plus.
-    fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<String>, Error>;
+    fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error>;
 
     /// Corps de PLUSIEURS messages en une seule commande. Les UIDs que le
     /// serveur ne sert plus sont simplement absents du résultat.
@@ -49,7 +74,21 @@ pub trait MailServer {
         &mut self,
         mailbox: &str,
         uids: &[Uid],
-    ) -> Result<Vec<(Uid, String)>, Error>;
+    ) -> Result<Vec<(Uid, FetchedBody)>, Error>;
+
+    /// Les OCTETS d'une pièce jointe, désignée par son rang dans le
+    /// message. `None` si le message ou la pièce n'existe plus.
+    ///
+    /// Séparé du corps à dessein : les métadonnées sont gratuites et
+    /// stockées, les octets se paient à la demande et ne sont jamais
+    /// gardés. C'est ce qui laisse intact le budget disque de l'ADR 0007
+    /// — y ajouter les fichiers le ferait exploser.
+    fn fetch_attachment(
+        &mut self,
+        mailbox: &str,
+        uid: Uid,
+        index: usize,
+    ) -> Result<Option<Vec<u8>>, Error>;
 
     /// Applique (ou retire) le flag `\Seen` côté serveur.
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error>;

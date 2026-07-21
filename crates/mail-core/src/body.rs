@@ -23,9 +23,9 @@ pub fn load_body(
         return Ok(None);
     };
     match server.fetch_body_html(mailbox, uid)? {
-        Some(html) => {
-            store.save_body(state.mailbox_id, uid, &html)?;
-            Ok(Some(html))
+        Some(fetched) => {
+            store.save_body(state.mailbox_id, uid, &fetched.html, &fetched.attachments)?;
+            Ok(Some(fetched.html))
         }
         None => Ok(None),
     }

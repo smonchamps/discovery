@@ -13,7 +13,7 @@ mod convert;
 
 use imap_proto::NameAttribute;
 use imap_proto::types::UidSetMember;
-use mail_core::{Envelope, Error, MailServer, MailboxSnapshot, Uid};
+use mail_core::{Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, Uid};
 
 /// Chaîne SASL XOAUTH2 (Gmail, Microsoft) : jamais de mot de passe.
 struct XOAuth2 {
@@ -274,7 +274,7 @@ impl MailServer for ImapServer {
         Ok(None)
     }
 
-    fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<String>, Error> {
+    fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error> {
         self.ensure_selected(mailbox)?;
         let fetches = self
             .session
@@ -282,7 +282,7 @@ impl MailServer for ImapServer {
             .map_err(server_err)?;
         Ok(fetches
             .iter()
-            .find_map(|fetch| convert::extract_html(fetch.body()?)))
+            .find_map(|fetch| body_from_raw(fetch.body()?)))
     }
 
     /// Une SEULE commande `UID FETCH` pour tout le lot — c'est ce qui rend
@@ -295,7 +295,7 @@ impl MailServer for ImapServer {
         &mut self,
         mailbox: &str,
         uids: &[Uid],
-    ) -> Result<Vec<(Uid, String)>, Error> {
+    ) -> Result<Vec<(Uid, FetchedBody)>, Error> {
         if uids.is_empty() {
             return Ok(Vec::new());
         }
@@ -308,10 +308,34 @@ impl MailServer for ImapServer {
             .iter()
             .filter_map(|fetch| {
                 let uid = fetch.uid?;
-                let html = convert::extract_html(fetch.body()?)?;
-                Some((uid, html))
+                Some((uid, body_from_raw(fetch.body()?)?))
             })
             .collect())
+    }
+
+    /// Retélécharge le message pour en extraire UNE pièce, plutôt que de
+    /// demander la partie au serveur (`BODY[2.1.3]`).
+    ///
+    /// C'est un choix, et il se paie : un aller-retour complet (~192 ms
+    /// mesurés) là où un FETCH de partie serait plus léger. En échange,
+    /// aucun numéro de partie MIME n'est jamais calculé — l'arithmétique
+    /// des parties imbriquées est une source de bugs classique, et le
+    /// rang reste celui qu'a produit l'extraction locale, donc cohérent
+    /// avec ce qui est affiché. À revoir si les gros fichiers gênent.
+    fn fetch_attachment(
+        &mut self,
+        mailbox: &str,
+        uid: Uid,
+        index: usize,
+    ) -> Result<Option<Vec<u8>>, Error> {
+        self.ensure_selected(mailbox)?;
+        let fetches = self
+            .session
+            .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+            .map_err(server_err)?;
+        Ok(fetches
+            .iter()
+            .find_map(|fetch| convert::attachment_bytes(fetch.body()?, index)))
     }
 
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error> {
@@ -380,4 +404,14 @@ impl MailServer for ImapServer {
 
 fn server_err(err: imap::Error) -> Error {
     Error::Server(err.to_string())
+}
+
+/// Un message brut devient un corps affichable ET la description de ses
+/// pièces jointes — les deux se lisent dans les mêmes octets, il serait
+/// absurde de les redemander séparément.
+fn body_from_raw(raw: &[u8]) -> Option<FetchedBody> {
+    Some(FetchedBody {
+        html: convert::extract_html(raw)?,
+        attachments: convert::extract_attachments(raw),
+    })
 }

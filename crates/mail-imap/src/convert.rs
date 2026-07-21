@@ -202,34 +202,113 @@ pub(crate) fn extract_html(raw: &[u8]) -> Option<String> {
     Some(inline_cid_images(html, &message))
 }
 
+/// Type MIME d'une partie, `application/octet-stream` à défaut.
+fn part_mime(part: &mail_parser::MessagePart<'_>) -> String {
+    use mail_parser::MimeHeaders;
+
+    match part.content_type() {
+        Some(content_type) => format!(
+            "{}/{}",
+            content_type.ctype(),
+            content_type.subtype().unwrap_or("octet-stream")
+        ),
+        None => "application/octet-stream".to_string(),
+    }
+}
+
+/// Cette partie est-elle une image incorporée au HTML par
+/// [`inline_cid_images`] ?
+///
+/// **Prédicat partagé, et c'est tout son intérêt** : ce qui est incorporé
+/// au corps ne doit pas être listé en pièce jointe, et réciproquement.
+/// Deux règles écrites séparément finiraient par diverger — soit le logo
+/// d'infolettre apparaîtrait en pièce jointe, soit un fichier
+/// disparaîtrait des deux côtés.
+fn is_inlined_image(part: &mail_parser::MessagePart<'_>) -> bool {
+    use mail_parser::MimeHeaders;
+
+    part.content_id().is_some() && part_mime(part).starts_with("image/")
+}
+
 fn inline_cid_images(html: String, message: &mail_parser::Message<'_>) -> String {
     use base64::Engine;
     use mail_parser::MimeHeaders;
 
     let mut result = html;
-    for part in message.attachments() {
+    for part in message.attachments().filter(|part| is_inlined_image(part)) {
         let Some(content_id) = part.content_id() else {
             continue;
         };
-        let Some(content_type) = part.content_type() else {
-            continue;
-        };
-        let mime = format!(
-            "{}/{}",
-            content_type.ctype(),
-            content_type.subtype().unwrap_or("octet-stream")
-        );
-        if !mime.starts_with("image/") {
-            continue;
-        }
         let data_uri = format!(
-            "data:{mime};base64,{}",
+            "data:{};base64,{}",
+            part_mime(part),
             base64::engine::general_purpose::STANDARD.encode(part.contents())
         );
         let reference = format!("cid:{}", content_id.trim_matches(['<', '>']));
         result = result.replace(&reference, &data_uri);
     }
     result
+}
+
+/// Les pièces jointes RÉELLES d'un message : les fichiers que
+/// l'utilisateur reconnaîtrait comme tels.
+///
+/// Les images déjà incorporées au corps en sont exclues ([`is_inlined_image`]).
+/// Le rang renvoyé suit les pièces RETENUES : c'est lui qui servira à
+/// retrouver les octets plus tard, en rejouant cette même extraction.
+pub(crate) fn extract_attachments(raw: &[u8]) -> Vec<mail_core::Attachment> {
+    attachment_parts(raw)
+        .into_iter()
+        .enumerate()
+        .map(|(index, (name, mime, size))| mail_core::Attachment {
+            index,
+            name,
+            mime,
+            size,
+        })
+        .collect()
+}
+
+/// Les octets d'UNE pièce jointe, désignée par son rang.
+///
+/// Rejoue l'extraction sur le message brut : le rang est donc stable par
+/// construction, sans jamais manipuler de numéro de partie IMAP.
+pub(crate) fn attachment_bytes(raw: &[u8], index: usize) -> Option<Vec<u8>> {
+    let message = mail_parser::MessageParser::new().parse(raw)?;
+    message
+        .attachments()
+        .filter(|part| !is_inlined_image(part))
+        .nth(index)
+        .map(|part| part.contents().to_vec())
+}
+
+/// Nom, type et taille décodée de chaque pièce jointe retenue.
+fn attachment_parts(raw: &[u8]) -> Vec<(String, String, u64)> {
+    use mail_parser::MimeHeaders;
+
+    let Some(message) = mail_parser::MessageParser::new().parse(raw) else {
+        return Vec::new();
+    };
+    message
+        .attachments()
+        .filter(|part| !is_inlined_image(part))
+        .map(|part| {
+            let mime = part_mime(part);
+            // `attachment_name` décode déjà le RFC 2047. Sans nom, on en
+            // fabrique un : un fichier anonyme reste enregistrable.
+            let name = part
+                .attachment_name()
+                .map(str::to_string)
+                .unwrap_or_else(|| fallback_name(&mime));
+            (name, mime, part.contents().len() as u64)
+        })
+        .collect()
+}
+
+/// Nom de repli pour une pièce sans `filename` — dérivé du sous-type.
+fn fallback_name(mime: &str) -> String {
+    let extension = mime.rsplit('/').next().unwrap_or("bin");
+    format!("piece-jointe.{extension}")
 }
 
 /// Décode un en-tête RFC 2047 en le présentant à `mail-parser` comme un
@@ -380,6 +459,212 @@ mod tests {
         let raw = b"From: a@b.c\r\nSubject: t\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bonjour <b>monde</b></p>";
         let html = extract_html(raw).expect("corps html attendu");
         assert!(html.contains("<b>monde</b>"));
+    }
+
+    // --- Pièces jointes -------------------------------------------
+
+    /// Un message porteur d'un vrai fichier : nom, type et taille DÉCODÉE.
+    #[test]
+    fn lists_a_real_attachment_with_its_name_type_and_decoded_size() {
+        let raw = b"From: a@b.c
+Subject: t
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary=\"B\"
+
+--B
+Content-Type: text/html
+
+<p>voici</p>
+--B
+Content-Type: application/pdf; name=\"facture.pdf\"
+Content-Disposition: attachment; filename=\"facture.pdf\"
+Content-Transfer-Encoding: base64
+
+SGVsbG8sIHdvcmxkIQ==
+--B--
+";
+        let found = extract_attachments(raw);
+        assert_eq!(
+            found.len(),
+            1,
+            "une seule pièce jointe attendue : {found:?}"
+        );
+        assert_eq!(found[0].name, "facture.pdf");
+        assert_eq!(found[0].mime, "application/pdf");
+        // "Hello, world!" = 13 octets une fois le base64 décodé.
+        assert_eq!(
+            found[0].size, 13,
+            "la taille doit être celle des octets décodés"
+        );
+        assert_eq!(found[0].index, 0);
+    }
+
+    /// LE piège de cette fonctionnalité. `mail_parser` range les images
+    /// référencées par Content-ID parmi les `attachments()` — or elles
+    /// sont DÉJÀ incorporées au HTML par `inline_cid_images`. Sans ce
+    /// filtre, le logo de chaque infolettre apparaîtrait comme une pièce
+    /// jointe : le trombone deviendrait du bruit permanent.
+    #[test]
+    fn an_inlined_cid_image_is_not_an_attachment() {
+        let raw = b"From: a@b.c
+Subject: t
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary=\"B\"
+
+--B
+Content-Type: text/html; charset=utf-8
+
+<p>logo : <img src=\"cid:logo123\"></p>
+--B
+Content-Type: image/png
+Content-ID: <logo123>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgo=
+--B--
+";
+        assert!(
+            extract_attachments(raw).is_empty(),
+            "une image déjà incorporée au HTML ne doit pas être listée"
+        );
+    }
+
+    /// Le cas réel : une infolettre avec son logo ET une vraie pièce
+    /// jointe. Exactement une doit ressortir.
+    #[test]
+    fn keeps_the_real_file_and_drops_the_logo() {
+        let raw = b"From: a@b.c
+Subject: t
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary=\"B\"
+
+--B
+Content-Type: text/html
+
+<img src=\"cid:logo\">
+--B
+Content-Type: image/png
+Content-ID: <logo>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgo=
+--B
+Content-Type: application/pdf
+Content-Disposition: attachment; filename=\"contrat.pdf\"
+
+PDF
+--B--
+";
+        let found = extract_attachments(raw);
+        assert_eq!(found.len(), 1, "le logo doit disparaître : {found:?}");
+        assert_eq!(found[0].name, "contrat.pdf");
+    }
+
+    /// Symétrique du précédent, dans l'autre sens : un fichier NON-image
+    /// porteur d'un Content-ID n'est pas incorporé au HTML, donc il reste
+    /// une pièce jointe. Le filtre doit être exactement celui de
+    /// l'incorporation — ni plus large, ni plus étroit.
+    #[test]
+    fn a_non_image_with_a_content_id_stays_an_attachment() {
+        let raw = b"From: a@b.c
+Subject: t
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary=\"B\"
+
+--B
+Content-Type: text/html
+
+<p>x</p>
+--B
+Content-Type: application/pdf
+Content-ID: <doc1>
+Content-Disposition: attachment; filename=\"annexe.pdf\"
+
+PDF
+--B--
+";
+        let found = extract_attachments(raw);
+        assert_eq!(found.len(), 1, "un PDF n'est jamais incorporé au HTML");
+        assert_eq!(found[0].name, "annexe.pdf");
+    }
+
+    /// Les noms non-ASCII circulent encodés (RFC 2047). Afficher
+    /// `=?UTF-8?B?...?=` à l'utilisateur serait une régression visible —
+    /// c'est le meme defaut que les dossiers en UTF-7 non decode.
+    #[test]
+    fn decodes_an_encoded_filename() {
+        let raw = "From: a@b.c
+Subject: t
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary=\"B\"
+
+--B
+Content-Type: text/plain
+
+corps
+--B
+Content-Type: application/pdf
+Content-Disposition: attachment; filename=\"=?UTF-8?B?csOpc3Vtw6kucGRm?=\"
+
+PDF
+--B--
+"
+        .as_bytes();
+        let found = extract_attachments(raw);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "résumé.pdf", "nom RFC 2047 à décoder");
+    }
+
+    /// Un message simple n'a rien à montrer — et surtout pas son propre
+    /// corps déguisé en pièce jointe.
+    #[test]
+    fn a_plain_message_has_no_attachments() {
+        let raw = b"From: a@b.c
+Subject: t
+
+Juste du texte.
+";
+        assert!(extract_attachments(raw).is_empty());
+    }
+
+    /// Les rangs sont contigus et servent de cle de re-telechargement :
+    /// ils doivent suivre les pieces RETENUES, pas les parties MIME.
+    #[test]
+    fn indexes_are_contiguous_over_the_kept_attachments() {
+        let raw = b"From: a@b.c
+Subject: t
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary=\"B\"
+
+--B
+Content-Type: text/html
+
+<img src=\"cid:l\">
+--B
+Content-Type: image/png
+Content-ID: <l>
+
+PNG
+--B
+Content-Type: application/pdf
+Content-Disposition: attachment; filename=\"un.pdf\"
+
+A
+--B
+Content-Type: text/csv
+Content-Disposition: attachment; filename=\"deux.csv\"
+
+B
+--B--
+";
+        let found = extract_attachments(raw);
+        assert_eq!(found.len(), 2);
+        assert_eq!(
+            found[0].index, 0,
+            "le logo écarté ne doit pas décaler les rangs"
+        );
+        assert_eq!(found[1].index, 1);
+        assert_eq!(found[1].name, "deux.csv");
     }
 
     #[test]

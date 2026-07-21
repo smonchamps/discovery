@@ -563,6 +563,7 @@ mod tests {
                 "<div style=\"color:red\">le contrat est sign\u{e9}</div>\
                  <style>.x{font-size:12px}</style>\
                  <script>var couleur = \"bleu\";</script>",
+                &[],
             )
             .unwrap();
 
@@ -588,6 +589,7 @@ mod tests {
                 inbox,
                 1,
                 "<p>r&eacute;union &amp; caf&eacute; &#233;quipe</p>",
+                &[],
             )
             .unwrap();
 
@@ -609,7 +611,7 @@ mod tests {
             )
             .unwrap();
         store
-            .save_body(inbox, 1, "<p>la facture est jointe</p>")
+            .save_body(inbox, 1, "<p>la facture est jointe</p>", &[])
             .unwrap();
 
         let rows = store.search("facture", 50).unwrap();
@@ -645,7 +647,7 @@ mod tests {
         store
             .upsert_envelopes(inbox, &[envelope(1, "Sujet", "Alice", "a@ex.fr", 100)])
             .unwrap();
-        store.save_body(inbox, 1, "<p>le contrat</p>").unwrap();
+        store.save_body(inbox, 1, "<p>le contrat</p>", &[]).unwrap();
         // Une synchro repasse sur l'enveloppe (drapeau lu, par exemple).
         store
             .upsert_envelopes(inbox, &[envelope(1, "Sujet", "Alice", "a@ex.fr", 100)])

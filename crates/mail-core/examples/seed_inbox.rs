@@ -96,10 +96,23 @@ fn main() -> Result<(), mail_core::Error> {
     // sans alourdir l'outil de mesure quand on seed 50 000 messages.
     let body_from = count.saturating_sub(500) + 1;
     for uid in body_from..=count {
+        // Un message sur dix porte une pièce jointe : de quoi exercer la
+        // liste ET son absence, sans avoir à distinguer deux décors.
+        let attachments: Vec<mail_core::Attachment> = if uid % 10 == 0 {
+            vec![mail_core::Attachment {
+                index: 0,
+                name: format!("facture-{uid}.pdf"),
+                mime: "application/pdf".to_string(),
+                size: 20_480,
+            }]
+        } else {
+            Vec::new()
+        };
         store.save_body(
             mailbox_id,
             uid,
             &format!("<p>Corps du message n°{uid} : contenu de démonstration.</p>"),
+            &attachments,
         )?;
     }
     store.update_state(mailbox_id, count, None)?;

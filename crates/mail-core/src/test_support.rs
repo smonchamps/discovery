@@ -8,7 +8,7 @@ use chrono::{TimeZone, Utc};
 
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
-use crate::remote::{MailServer, MailboxSnapshot};
+use crate::remote::{FetchedBody, MailServer, MailboxSnapshot};
 
 pub(crate) struct FakeServer {
     pub(crate) uid_validity: u32,
@@ -21,6 +21,8 @@ pub(crate) struct FakeServer {
     /// Lots de corps demandés, dans l'ordre : c'est ce qui prouve que le
     /// rattrapage groupe au lieu d'enchaîner les allers-retours.
     pub(crate) body_batches: Vec<Vec<Uid>>,
+    /// Octets servis pour (uid, rang) — les pièces jointes du simulateur.
+    pub(crate) attachment_bytes: BTreeMap<(Uid, usize), Vec<u8>>,
     /// Journal des actions reçues, dans l'ordre (`seen:1:true`, `archive:2`…).
     pub(crate) action_calls: Vec<String>,
     /// Simule une coupure sur les actions (test « zéro perte »).
@@ -38,6 +40,7 @@ impl FakeServer {
             fetch_batches: Vec::new(),
             body_fetches: 0,
             body_batches: Vec::new(),
+            attachment_bytes: BTreeMap::new(),
             action_calls: Vec::new(),
             actions_fail: false,
         }
@@ -132,21 +135,39 @@ impl MailServer for FakeServer {
         ))
     }
 
-    fn fetch_body_html(&mut self, _mailbox: &str, uid: Uid) -> Result<Option<String>, Error> {
+    fn fetch_body_html(&mut self, _mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error> {
         self.body_fetches += 1;
-        Ok(self.bodies.get(&uid).cloned())
+        Ok(self.bodies.get(&uid).map(FetchedBody::html))
     }
 
     fn fetch_bodies_html(
         &mut self,
         _mailbox: &str,
         uids: &[Uid],
-    ) -> Result<Vec<(Uid, String)>, Error> {
+    ) -> Result<Vec<(Uid, FetchedBody)>, Error> {
         self.body_batches.push(uids.to_vec());
         Ok(uids
             .iter()
-            .filter_map(|uid| self.bodies.get(uid).map(|html| (*uid, html.clone())))
+            .filter_map(|uid| {
+                self.bodies
+                    .get(uid)
+                    .map(|html| (*uid, FetchedBody::html(html)))
+            })
             .collect())
+    }
+
+    /// Le serveur simulé sert les octets qu'on lui a posés — de quoi
+    /// prouver le chemin sans jamais toucher au réseau.
+    fn fetch_attachment(
+        &mut self,
+        _mailbox: &str,
+        uid: Uid,
+        index: usize,
+    ) -> Result<Option<Vec<u8>>, Error> {
+        Ok(self
+            .attachment_bytes
+            .get(&(uid, index))
+            .map(|bytes| bytes.to_vec()))
     }
 
     fn set_seen(&mut self, _mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error> {

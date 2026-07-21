@@ -7,6 +7,7 @@
 
 mod action;
 mod address;
+mod attachment;
 mod backfill;
 mod body;
 mod compose;
@@ -24,6 +25,7 @@ mod transport;
 
 pub use action::{Action, PendingAction};
 pub use address::EmailAddress;
+pub use attachment::Attachment;
 pub use backfill::{BACKFILL_BATCH, BackfillReport, backfill_bodies};
 pub use body::load_body;
 pub use compose::{Draft, compose, forward_subject, quote_forward, quote_reply, reply_subject};
@@ -31,7 +33,7 @@ pub use drafts::SavedDraft;
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
-pub use remote::{MailServer, MailboxSnapshot};
+pub use remote::{FetchedBody, MailServer, MailboxSnapshot};
 pub use store::{Account, AccountConfig, Store, SyncState, UnifiedRow};
 pub use sync::{SyncEngine, SyncMode, SyncReport};
 pub use transport::{MailTransport, SendError};

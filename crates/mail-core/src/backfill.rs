@@ -80,8 +80,8 @@ pub fn backfill_bodies(
         }
         attempted.extend(batch.iter().copied());
 
-        for (uid, html) in server.fetch_bodies_html(mailbox, &batch)? {
-            store.save_body(state.mailbox_id, uid, &html)?;
+        for (uid, body) in server.fetch_bodies_html(mailbox, &batch)? {
+            store.save_body(state.mailbox_id, uid, &body.html, &body.attachments)?;
             fetched += 1;
         }
     }

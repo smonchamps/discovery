@@ -11,6 +11,7 @@ use chrono::DateTime;
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::action::{Action, PendingAction};
+use crate::attachment::Attachment;
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
 use crate::search;
@@ -49,6 +50,17 @@ CREATE TABLE IF NOT EXISTS bodies (
     uid        INTEGER NOT NULL,
     html       TEXT NOT NULL,
     PRIMARY KEY (mailbox_id, uid)
+);
+-- Métadonnées seules : jamais les octets. Ils se retéléchargent à la
+-- demande (ADR 0007 — le budget disque ne survivrait pas aux fichiers).
+CREATE TABLE IF NOT EXISTS attachments (
+    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    uid        INTEGER NOT NULL,
+    idx        INTEGER NOT NULL,
+    name       TEXT NOT NULL,
+    mime       TEXT NOT NULL,
+    size       INTEGER NOT NULL,
+    PRIMARY KEY (mailbox_id, uid, idx)
 );
 CREATE TABLE IF NOT EXISTS pending_actions (
     id         INTEGER PRIMARY KEY,
@@ -501,15 +513,46 @@ impl Store {
         Ok(body)
     }
 
-    pub fn save_body(&self, mailbox_id: i64, uid: Uid, html: &str) -> Result<(), Error> {
-        // Corps et index dans UNE transaction : l'invariant du module veut
-        // que l'index vive dans la base avec la donnée — un crash entre les
-        // deux écritures laisserait l'index désaccordé du corps.
+    /// Enregistre un corps, son index de recherche et la description de
+    /// ses pièces jointes — **dans une seule transaction**.
+    ///
+    /// Les trois se lisent dans les mêmes octets et n'ont de sens
+    /// qu'ensemble : un corps sans son index sortirait des recherches, un
+    /// corps sans ses pièces jointes les rendrait invisibles jusqu'au
+    /// prochain re-téléchargement. Un crash entre deux écritures ne doit
+    /// jamais pouvoir produire cet état.
+    pub fn save_body(
+        &self,
+        mailbox_id: i64,
+        uid: Uid,
+        html: &str,
+        attachments: &[Attachment],
+    ) -> Result<(), Error> {
         let tx = self.0.unchecked_transaction()?;
         tx.execute(
             "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html) VALUES (?1, ?2, ?3)",
             params![mailbox_id, uid, html],
         )?;
+        // Remplacement intégral : un message re-téléchargé dont une pièce
+        // aurait disparu ne doit pas garder l'ancienne ligne fantôme.
+        tx.execute(
+            "DELETE FROM attachments WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid],
+        )?;
+        for attachment in attachments {
+            tx.execute(
+                "INSERT INTO attachments (mailbox_id, uid, idx, name, mime, size)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    mailbox_id,
+                    uid,
+                    attachment.index as i64,
+                    attachment.name,
+                    attachment.mime,
+                    attachment.size as i64
+                ],
+            )?;
+        }
         if let Some((subject, sender, sender_address)) = tx
             .query_row(
                 "SELECT subject, sender, sender_address
@@ -537,6 +580,35 @@ impl Store {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Les pièces jointes connues d'un message, dans l'ordre du MIME.
+    ///
+    /// Vide tant que le corps n'a pas été rapatrié : c'est la même
+    /// condition que la recherche dans le texte, et le rattrapage la
+    /// lève pour tout l'horizon de récence.
+    pub fn attachments(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        uid: Uid,
+    ) -> Result<Vec<Attachment>, Error> {
+        let mut statement = self.0.prepare(
+            "SELECT a.idx, a.name, a.mime, a.size
+             FROM attachments a
+             JOIN mailboxes m ON m.id = a.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2 AND a.uid = ?3
+             ORDER BY a.idx",
+        )?;
+        let rows = statement.query_map(params![account_id, mailbox, uid], |row| {
+            Ok(Attachment {
+                index: row.get::<_, i64>(0)? as usize,
+                name: row.get(1)?,
+                mime: row.get(2)?,
+                size: row.get::<_, i64>(3)? as u64,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Les messages RÉCENTS dont le corps manque encore, du plus récent au
@@ -1114,7 +1186,7 @@ mod tests {
         store
             .upsert_envelopes(id, &[envelope(1, "a", 100, false)])
             .unwrap();
-        store.save_body(id, 1, "<p>x</p>").unwrap();
+        store.save_body(id, 1, "<p>x</p>", &[]).unwrap();
 
         store.remove_local(id, 1).unwrap();
 
@@ -1134,7 +1206,7 @@ mod tests {
     fn body_roundtrips_and_is_none_when_absent() {
         let (store, id) = store_with_mailbox();
         assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
-        store.save_body(id, 1, "<p>bonjour</p>").unwrap();
+        store.save_body(id, 1, "<p>bonjour</p>", &[]).unwrap();
         assert_eq!(
             store
                 .body(test_account(&store), "INBOX", 1)
@@ -1144,10 +1216,82 @@ mod tests {
         );
     }
 
+    fn pdf(index: usize, name: &str) -> Attachment {
+        Attachment {
+            index,
+            name: name.to_string(),
+            mime: "application/pdf".to_string(),
+            size: 2048,
+        }
+    }
+
+    #[test]
+    fn attachments_are_saved_with_the_body_and_read_back_in_order() {
+        let (store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        assert!(
+            store.attachments(account, "INBOX", 1).unwrap().is_empty(),
+            "rien tant que le corps n'est pas rapatrié"
+        );
+
+        store
+            .save_body(
+                id,
+                1,
+                "<p>ci-joint</p>",
+                &[pdf(0, "un.pdf"), pdf(1, "deux.pdf")],
+            )
+            .unwrap();
+
+        let found = store.attachments(account, "INBOX", 1).unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].name, "un.pdf");
+        assert_eq!(found[1].name, "deux.pdf");
+        assert_eq!(found[1].size, 2048);
+    }
+
+    /// Un message re-téléchargé dont une pièce a disparu ne doit pas
+    /// garder l'ancienne ligne : l'utilisateur cliquerait sur un fichier
+    /// que le serveur ne sert plus, et l'échec n'arriverait qu'au
+    /// téléchargement — loin de la cause.
+    #[test]
+    fn re_saving_replaces_the_attachment_list_instead_of_accumulating() {
+        let (store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .save_body(id, 1, "<p>x</p>", &[pdf(0, "un.pdf"), pdf(1, "deux.pdf")])
+            .unwrap();
+
+        store
+            .save_body(id, 1, "<p>x</p>", &[pdf(0, "un.pdf")])
+            .unwrap();
+
+        let found = store.attachments(account, "INBOX", 1).unwrap();
+        assert_eq!(found.len(), 1, "la pièce disparue doit l'être aussi ici");
+        assert_eq!(found[0].name, "un.pdf");
+    }
+
+    /// Les pièces jointes appartiennent à un message d'un COMPTE : la
+    /// même paire (boîte, uid) chez un autre compte ne doit rien voir.
+    #[test]
+    fn attachments_never_leak_across_accounts() {
+        let (store, id) = store_with_mailbox();
+        store
+            .save_body(id, 1, "<p>x</p>", &[pdf(0, "prive.pdf")])
+            .unwrap();
+
+        let other = store
+            .adopt_or_create_account("autre@exemple.fr", "gmail")
+            .unwrap();
+        store.create_mailbox(other, "INBOX", 1).unwrap();
+
+        assert!(store.attachments(other, "INBOX", 1).unwrap().is_empty());
+    }
+
     #[test]
     fn reset_mailbox_clears_bodies_too() {
         let (store, id) = store_with_mailbox();
-        store.save_body(id, 1, "<p>x</p>").unwrap();
+        store.save_body(id, 1, "<p>x</p>", &[]).unwrap();
         store.reset_mailbox(id, 2).unwrap();
         assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
     }
@@ -1397,7 +1541,7 @@ mod tests {
         store
             .upsert_envelopes(id, &[envelope(1, "a", 100, false)])
             .unwrap();
-        store.save_body(id, 1, "<p>x</p>").unwrap();
+        store.save_body(id, 1, "<p>x</p>", &[]).unwrap();
         assert_eq!(store.remove_absent(id, &HashSet::new()).unwrap(), 1);
         assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
     }
@@ -1505,7 +1649,7 @@ mod tests {
                 ],
             )
             .unwrap();
-        store.save_body(id, 2, "<p>déjà là</p>").unwrap();
+        store.save_body(id, 2, "<p>déjà là</p>", &[]).unwrap();
         let account = test_account(&store);
 
         assert_eq!(
