@@ -415,7 +415,9 @@ Après la recherche, dans l'ordre du plan et des reports assumés :
    Graph a été écartée sur mesures ([ADR 0006](adr/0006-microsoft-imap-oauth2.md)),
    et elle reste le plan B avec ses signaux de bascule.
 2. **Pièces jointes** (puis le filtre de recherche « a une pièce jointe »).
-3. **Notifications Windows.**
+3. ~~**Notifications Windows.**~~ ✅ **FAIT et validé terrain** — règles
+   pures dans `mail-core::notify`, bulle unique, jamais sur une synchro
+   initiale. ⚠️ exige l'application installée : voir §9.1.
 4. **Threading des conversations.**
 5. **Dossiers / déplacer** (débloque le report Phase 2) et **tirage des
    brouillons** (éditer ici un brouillon créé ailleurs).
@@ -429,7 +431,38 @@ Après la recherche, dans l'ordre du plan et des reports assumés :
 **Plateforme :** Windows 11. Deux shells disponibles : **PowerShell 5.1**
 (principal) et **Bash** (Git Bash, POSIX). Ils n'ont pas la même syntaxe.
 
-### 9.1 Pièges à connaître absolument
+### 9.1 Les notifications exigent l'application INSTALLÉE
+
+Piège coûteux, découvert sur le terrain. `tauri-plugin-notification`
+s'appuie sur `tauri-winrt-notification`, qui exige une **identité
+applicative (AppUserModelID)**. Sous Windows, cette identité n'existe que
+si un **raccourci du menu Démarrer** la porte — donc uniquement après
+installation.
+
+Conséquences pratiques :
+
+- lancée par `cargo run`, l'application n'a **aucune** identité : Windows
+  refuse le toast, silencieusement ;
+- il faut donc `cargo tauri build` puis installer, et lancer **depuis le
+  menu Démarrer** — pas depuis `target/release` ;
+- les variables `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` et
+  `MICROSOFT_CLIENT_ID` doivent alors être définies **au niveau
+  utilisateur**, pas seulement dans le terminal courant.
+
+**Windows n'inscrit une application dans Paramètres → Notifications
+qu'APRÈS sa première notification réussie.** Vérifier la liste avant
+d'avoir déclenché une bulle ne prouve donc rien — c'est ce qui a produit
+un faux négatif pendant la validation.
+
+Pour trancher sans attendre un vrai message, tester l'identité seule :
+
+```powershell
+[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]
+$n = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('dev.discovery.app')
+$n.Setting   # « Enabled » = l'identité est enregistrée
+```
+
+### 9.2 Pièges à connaître absolument
 - **PowerShell 5.1 n'a PAS l'opérateur `&&`.** Écrire les commandes sur des
   lignes séparées, ou les chaîner en Bash. `cd e2e && npm test` échoue en
   PowerShell → utiliser `cd e2e; npm test` ou le shell Bash.
