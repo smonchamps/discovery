@@ -190,7 +190,73 @@ async function onConnected() {
   el('compose-btn').hidden = false;
   await reloadList();
   await refresh();
+  await refreshBackfill();
 }
+
+// --- Rattrapage des corps (ADR 0007) --------------------------------
+//
+// Sans corps téléchargé, la recherche ne porte que sur les sujets : le
+// terrain a montré 18 corps sur 537. Le rattrapage les rapatrie par lots
+// bornés — c'est ce qui rend l'arrêt gratuit : on cesse simplement de
+// rappeler la commande.
+let backfillRunning = false;
+
+async function refreshBackfill() {
+  if (backfillRunning) return;
+  try {
+    const status = await invoke('backfill_status');
+    showBackfill(status.remaining);
+  } catch {
+    el('backfill-bar').hidden = true;
+  }
+}
+
+function showBackfill(remaining, fetched = null) {
+  const bar = el('backfill-bar');
+  if (remaining === 0 && !backfillRunning) {
+    bar.hidden = true;
+    return;
+  }
+  bar.hidden = false;
+  el('backfill-summary').textContent = backfillRunning
+    ? `Rattrapage en cours — ${fetched ?? 0} rapatrié(s), ${remaining} restant(s)`
+    : `${remaining} message(s) dont le contenu n'est pas cherchable`;
+  el('backfill-start').hidden = backfillRunning;
+  el('backfill-stop').hidden = !backfillRunning;
+}
+
+async function runBackfill() {
+  if (backfillRunning) return;
+  backfillRunning = true;
+  let fetched = 0;
+  showBackfill(0, 0);
+  try {
+    // Un lot par appel : la boucle s'arrête dès que l'utilisateur le
+    // demande, sans jeton d'annulation à propager jusqu'au réseau.
+    while (backfillRunning) {
+      const report = await invoke('backfill_bodies');
+      fetched += report.fetched;
+      showBackfill(report.remaining, fetched);
+      if (report.errors.length > 0) {
+        setStatus(`rattrapage — ${report.errors.join(' ; ')}`, true);
+      }
+      // Plus rien à faire, ou plus rien qui avance : on s'arrête.
+      if (report.remaining === 0 || report.fetched === 0) break;
+    }
+    setStatus(`rattrapage : ${fetched} message(s) rendus cherchables`);
+  } catch (err) {
+    setStatus(`rattrapage impossible : ${err}`, true);
+  } finally {
+    backfillRunning = false;
+    await refreshBackfill();
+  }
+}
+
+el('backfill-start').addEventListener('click', runBackfill);
+el('backfill-stop').addEventListener('click', () => {
+  backfillRunning = false; // le lot en cours se termine, puis la boucle sort
+  setStatus('rattrapage interrompu — il reprendra où il s\'est arrêté');
+});
 
 async function refresh() {
   setStatus('synchronisation…');

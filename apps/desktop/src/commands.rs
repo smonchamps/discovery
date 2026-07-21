@@ -27,6 +27,12 @@ const IMAP_PORT: u16 = 993;
 const SMTP_HOST: &str = "smtp.gmail.com";
 const LIST_LIMIT_MAX: usize = 500;
 const SEARCH_LIMIT: usize = 50;
+/// Horizon de récence du rattrapage des corps (ADR 0007) : 12 mois. C'est
+/// lui qui borne le coût disque — le budget du plan (< 1 Go) en dépend.
+const BACKFILL_HORIZON_DAYS: i64 = 365;
+/// Corps rapatriés par appel, tous comptes confondus. Borner le lot rend
+/// l'interruption gratuite : l'UI cesse simplement de rappeler.
+const BACKFILL_BUDGET: usize = 200;
 
 #[derive(Serialize)]
 pub struct AccountInfo {
@@ -1233,4 +1239,142 @@ fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
     Ok(dir.join("discovery.db"))
+}
+
+// ---------------------------------------------------------------------
+// Rattrapage des corps (ADR 0007).
+// ---------------------------------------------------------------------
+
+/// Début de l'horizon de récence, en epoch. `std` suffit : pas de
+/// dépendance à `chrono` pour une soustraction de secondes.
+fn backfill_horizon() -> i64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_secs() as i64)
+        .unwrap_or_default();
+    now - BACKFILL_HORIZON_DAYS * 86_400
+}
+
+/// Combien de messages attendent encore leur corps, tous comptes connus
+/// confondus. Purement local : aucune connexion réseau.
+fn pending_total(store: &Store) -> Result<u64, String> {
+    let since = backfill_horizon();
+    let mut total = 0;
+    for account in store.accounts().map_err(|err| err.to_string())? {
+        total += store
+            .bodies_pending_count(account.id, MAILBOX, since)
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(total)
+}
+
+#[derive(Serialize)]
+pub struct BackfillStatus {
+    pub remaining: u64,
+}
+
+/// État du rattrapage, sans rien télécharger — de quoi afficher
+/// « N messages sans corps » avant même de commencer.
+#[tauri::command]
+pub fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    Ok(BackfillStatus {
+        remaining: pending_total(&store)?,
+    })
+}
+
+#[derive(Serialize)]
+pub struct BackfillSummary {
+    pub fetched: usize,
+    pub remaining: u64,
+    pub errors: Vec<String>,
+}
+
+/// UN lot de rattrapage, tous comptes connectés confondus.
+///
+/// Volontairement borné : l'UI rappelle tant qu'il reste du travail, et
+/// s'arrête quand l'utilisateur le demande. L'interruption est ainsi
+/// gratuite — aucun jeton d'annulation à propager — et une coupure ne
+/// coûte jamais plus qu'un lot.
+#[tauri::command]
+pub async fn backfill_bodies(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<BackfillSummary, String> {
+    let path = db_path(&app)?;
+    let jobs = connected_jobs(&path, &state)?;
+    let lock = state.bodies_backfill.clone();
+
+    let (summary, refreshed) =
+        tauri::async_runtime::spawn_blocking(move || run_backfill_all(jobs, &path, &lock))
+            .await
+            .map_err(|err| err.to_string())??;
+
+    for fresh in refreshed {
+        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
+    }
+    Ok(summary)
+}
+
+fn run_backfill_all(
+    jobs: Vec<(i64, AccountSession)>,
+    db_path: &Path,
+    lock: &Mutex<()>,
+) -> Result<(BackfillSummary, Vec<AccountSession>), String> {
+    let _guard = lock
+        .lock()
+        .map_err(|_| "rattrapage précédent interrompu".to_string())?;
+
+    let since = backfill_horizon();
+    let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
+    let mut summary = BackfillSummary {
+        fetched: 0,
+        remaining: 0,
+        errors: Vec::new(),
+    };
+    let mut refreshed_list = Vec::new();
+    // Le budget est PARTAGÉ entre les comptes : un lot reste un lot, même
+    // avec trois comptes connectés.
+    let mut budget = BACKFILL_BUDGET;
+
+    for (account_id, session) in jobs {
+        if budget == 0 {
+            break;
+        }
+        let email = session.email().to_string();
+        // Ne pas ouvrir une connexion pour un compte qui n'a rien à faire.
+        let pending = store
+            .bodies_pending_count(account_id, MAILBOX, since)
+            .map_err(|err| err.to_string())?;
+        if pending == 0 {
+            continue;
+        }
+        match connect_imap(&session) {
+            Err(reason) => summary.errors.push(format!("{email} : {reason}")),
+            Ok((mut server, refreshed)) => {
+                if let Some(fresh) = refreshed {
+                    refreshed_list.push(fresh);
+                }
+                match mail_core::backfill_bodies(
+                    &mut server,
+                    &mut store,
+                    account_id,
+                    MAILBOX,
+                    since,
+                    budget,
+                ) {
+                    Ok(report) => {
+                        summary.fetched += report.fetched;
+                        budget = budget.saturating_sub(report.fetched);
+                    }
+                    Err(err) => summary.errors.push(format!("{email} : {err}")),
+                }
+                server.logout();
+            }
+        }
+    }
+
+    summary.remaining = pending_total(&store)?;
+    summary.errors.sort();
+    Ok((summary, refreshed_list))
 }

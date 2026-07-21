@@ -45,6 +45,15 @@ test("recherche : ouvrir un résultat affiche le message, Échap revient à l'un
   await expect(page.locator('#perf')).toContainText('200 messages');
 });
 
+/// Le décor E2E a un corps pour chaque message : il n'y a donc rien à
+/// rattraper, et le bandeau doit rester invisible. Vérifie du même coup
+/// que `backfill_status` répond, et que le bandeau ne fuit pas à l'écran
+/// par spécificité CSS — le défaut exact qui avait rendu le menu d'ajout
+/// affiché en permanence.
+test('rattrapage : aucun bandeau quand tous les corps sont là', async () => {
+  await expect(page.locator('#backfill-bar')).toBeHidden();
+});
+
 test('recherche : archiver un résultat le retire des résultats (régression #4)', async () => {
   await page.keyboard.press('/');
   await page.locator('#search').fill('facture');

@@ -21,6 +21,9 @@ pub(crate) struct AppState {
     /// Sérialise la poussée des brouillons vers Gmail : deux poussées
     /// concurrentes créeraient des copies distantes en double.
     pub drafts_push: Arc<Mutex<()>>,
+    /// Sérialise le rattrapage des corps : deux pompes concurrentes
+    /// se disputeraient la bande passante et les mêmes messages.
+    pub bodies_backfill: Arc<Mutex<()>>,
 }
 
 fn main() {
@@ -29,6 +32,7 @@ fn main() {
         accounts: Mutex::new(HashMap::new()),
         outbox_flush: Arc::new(Mutex::new(())),
         drafts_push: Arc::new(Mutex::new(())),
+        bodies_backfill: Arc::new(Mutex::new(())),
     };
     let result = tauri::Builder::default()
         .manage(state)
@@ -56,6 +60,8 @@ fn main() {
             commands::list_drafts,
             commands::delete_draft,
             commands::sync_drafts,
+            commands::backfill_status,
+            commands::backfill_bodies,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {
