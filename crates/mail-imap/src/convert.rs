@@ -8,6 +8,53 @@ use chrono::Utc;
 use imap_proto::types::{Address, Envelope as ProtoEnvelope};
 use mail_core::{Envelope, Uid};
 
+/// Rôle spécial d'un dossier (RFC 6154), réduit à ce qui décide de
+/// l'archivage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SpecialUse {
+    Archive,
+    All,
+    Other,
+}
+
+/// Ce qu'« archiver » veut dire sur CE serveur.
+///
+/// Déduit de ses capacités annoncées, **jamais du fournisseur** : c'est la
+/// même discipline que la découverte de la corbeille et des brouillons.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ArchiveStrategy {
+    /// Le serveur expose `\Archive` : y copier le message, puis l'expurger.
+    MoveTo(String),
+    /// Le serveur expose `\All` (sémantique Gmail) : expurger d'INBOX n'y
+    /// retire que le libellé, le message survit dans « Tous les messages ».
+    ExpungeOnly,
+    /// Ni l'un ni l'autre : expurger DÉTRUIRAIT le message. On refuse.
+    Unsupported,
+}
+
+/// Choisit la stratégie d'archivage d'après les dossiers annoncés.
+///
+/// `\Archive` prime sur `\All` : déplacer est toujours plus sûr
+/// qu'expurger. En l'absence des deux, on refuse — « jamais de perte de
+/// mail » (PLAN.md §1) l'emporte sur le confort d'une fonctionnalité.
+pub(crate) fn archive_strategy<'a>(
+    folders: impl IntoIterator<Item = (&'a str, SpecialUse)>,
+) -> ArchiveStrategy {
+    let mut has_all = false;
+    for (name, role) in folders {
+        match role {
+            SpecialUse::Archive => return ArchiveStrategy::MoveTo(name.to_string()),
+            SpecialUse::All => has_all = true,
+            SpecialUse::Other => {}
+        }
+    }
+    if has_all {
+        ArchiveStrategy::ExpungeOnly
+    } else {
+        ArchiveStrategy::Unsupported
+    }
+}
+
 /// Compacte une liste d'UIDs en ensemble IMAP : `[1,2,3,5]` → `"1:3,5"`.
 pub(crate) fn uid_set(uids: &[Uid]) -> String {
     let mut sorted = uids.to_vec();
@@ -333,5 +380,52 @@ Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--B--\r\n";
             !html.contains("<chevron>"),
             "le texte doit être échappé, pas interprété"
         );
+    }
+
+    /// Gmail n'expose pas `\Archive` mais expose `\All` : expurger d'INBOX
+    /// ne fait qu'y retirer le libellé, le message survit dans « Tous les
+    /// messages ». C'est la sémantique d'origine du produit.
+    #[test]
+    fn gmail_archives_by_expunging_because_all_mail_catches_the_message() {
+        let folders = [
+            ("INBOX", SpecialUse::Other),
+            ("[Gmail]/Tous les messages", SpecialUse::All),
+            ("[Gmail]/Corbeille", SpecialUse::Other),
+        ];
+        assert_eq!(archive_strategy(folders), ArchiveStrategy::ExpungeOnly);
+    }
+
+    /// Un serveur générique qui expose `\Archive` : on y DÉPLACE le message.
+    #[test]
+    fn generic_server_moves_to_its_archive_folder() {
+        let folders = [
+            ("INBOX", SpecialUse::Other),
+            ("Archive", SpecialUse::Archive),
+            ("Trash", SpecialUse::Other),
+        ];
+        assert_eq!(
+            archive_strategy(folders),
+            ArchiveStrategy::MoveTo("Archive".to_string())
+        );
+    }
+
+    /// LE cas qui perdait des messages : ni `\Archive`, ni `\All`. Sur un
+    /// IMAP générique, expurger d'INBOX SUPPRIME définitivement — il n'y a
+    /// aucun filet. On refuse plutôt que de détruire.
+    #[test]
+    fn refuses_to_archive_when_expunging_would_destroy_the_message() {
+        let folders = [("INBOX", SpecialUse::Other), ("Trash", SpecialUse::Other)];
+        assert_eq!(archive_strategy(folders), ArchiveStrategy::Unsupported);
+    }
+
+    /// `\Archive` prime sur `\All` : déplacer est toujours plus sûr
+    /// qu'expurger, quel que soit l'ordre d'annonce des dossiers.
+    #[test]
+    fn archive_folder_wins_over_all_mail_whatever_the_order() {
+        let all_first = [("Tous", SpecialUse::All), ("Archives", SpecialUse::Archive)];
+        let archive_first = [("Archives", SpecialUse::Archive), ("Tous", SpecialUse::All)];
+        let expected = ArchiveStrategy::MoveTo("Archives".to_string());
+        assert_eq!(archive_strategy(all_first), expected);
+        assert_eq!(archive_strategy(archive_first), expected);
     }
 }

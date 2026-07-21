@@ -37,6 +37,7 @@ pub struct ImapServer {
     selected: Option<(String, MailboxSnapshot)>,
     trash: Option<String>,
     drafts: Option<String>,
+    archive: Option<convert::ArchiveStrategy>,
 }
 
 impl ImapServer {
@@ -62,6 +63,7 @@ impl ImapServer {
             selected: None,
             trash: None,
             drafts: None,
+            archive: None,
         })
     }
 
@@ -83,6 +85,7 @@ impl ImapServer {
             selected: None,
             trash: None,
             drafts: None,
+            archive: None,
         })
     }
 
@@ -150,6 +153,39 @@ impl ImapServer {
             })?;
         self.drafts = Some(drafts.clone());
         Ok(drafts)
+    }
+
+    /// Ce qu'« archiver » veut dire sur CE serveur, déduit de ses dossiers
+    /// spéciaux (RFC 6154) et mémorisé pour la session.
+    fn archive_strategy(&mut self) -> Result<convert::ArchiveStrategy, Error> {
+        if let Some(strategy) = &self.archive {
+            return Ok(strategy.clone());
+        }
+        let names = self.session.list(None, Some("*")).map_err(server_err)?;
+        let folders: Vec<(&str, convert::SpecialUse)> = names
+            .iter()
+            .map(|name| {
+                let role = if name
+                    .attributes()
+                    .iter()
+                    .any(|attribute| matches!(attribute, NameAttribute::Archive))
+                {
+                    convert::SpecialUse::Archive
+                } else if name
+                    .attributes()
+                    .iter()
+                    .any(|attribute| matches!(attribute, NameAttribute::All))
+                {
+                    convert::SpecialUse::All
+                } else {
+                    convert::SpecialUse::Other
+                };
+                (name.name(), role)
+            })
+            .collect();
+        let strategy = convert::archive_strategy(folders);
+        self.archive = Some(strategy.clone());
+        Ok(strategy)
     }
 
     /// UIDVALIDITY du dossier Brouillons — la garde des repères distants :
@@ -275,11 +311,32 @@ impl MailServer for ImapServer {
         Ok(())
     }
 
-    /// Chez Gmail, l'expunge d'INBOX retire le label sans supprimer :
-    /// le message reste dans « Tous les messages » — c'est l'archivage.
+    /// Archiver dépend des capacités du serveur, JAMAIS du fournisseur.
+    ///
+    /// Chez Gmail (`\All`), l'expunge d'INBOX ne retire que le libellé : le
+    /// message survit dans « Tous les messages ». Sur un IMAP générique,
+    /// le même expunge **détruirait** le message — il faut donc le déplacer
+    /// vers `\Archive`. Sans l'un ni l'autre, on refuse : « jamais de perte
+    /// de mail » (PLAN.md §1) prime sur la disponibilité de la fonction.
     fn archive(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error> {
-        self.ensure_selected(mailbox)?;
-        self.expunge_uid(uid)
+        match self.archive_strategy()? {
+            convert::ArchiveStrategy::MoveTo(folder) => {
+                self.ensure_selected(mailbox)?;
+                self.session
+                    .uid_copy(uid.to_string(), &folder)
+                    .map_err(server_err)?;
+                self.expunge_uid(uid)
+            }
+            convert::ArchiveStrategy::ExpungeOnly => {
+                self.ensure_selected(mailbox)?;
+                self.expunge_uid(uid)
+            }
+            convert::ArchiveStrategy::Unsupported => Err(Error::Server(
+                "ce serveur n'expose ni dossier Archive (\\Archive) ni « tous les messages » \
+                 (\\All) : archiver y détruirait le message"
+                    .to_string(),
+            )),
+        }
     }
 
     fn delete(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error> {
