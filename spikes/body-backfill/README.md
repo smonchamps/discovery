@@ -41,16 +41,41 @@ cargo run --release -- "$env:APPDATA\dev.discovery.app\discovery.db" vous@gmail.
    le vrai chemin de téléchargement, de mise en cache et d'indexation du
    produit, pas une imitation.
 
-## Mesures
-
-> À remplir au premier passage.
+## Mesures — compte Gmail réel, 200 corps, 2026-07-21
 
 | Mesure | Valeur |
 |---|---|
-| Taille moyenne d'un corps | — |
-| Durée moyenne par corps | — |
-| Croissance de la base par corps | — |
-| Extrapolation (compte de 2193 messages) | — |
+| Corps téléchargés | 200 (0 échec) |
+| HTML transféré | 11,6 Mo — **59,2 Ko par corps** |
+| Durée | 38,3 s — **192 ms par corps** |
+| Croissance de la base | +12,1 Mo — **61,9 Ko par corps** |
+| Extrapolation (1992 restants) | ~6,4 min · ~120 Mo · base finale ~137 Mo |
+
+### La surprise : l'index est presque gratuit
+
+Croissance disque **61,9 Ko** par corps, pour **59,2 Ko** de HTML. L'écart —
+**~2,5 Ko par message** — est tout ce que coûte l'index FTS5. La vigilance
+« taille » de l'[ADR 0004](../../docs/adr/0004-moteur-de-recherche-fts5.md)
+est levée : la table *contentless* tient sa promesse.
+
+**Ce n'est donc pas l'index qui coûte, ce sont les corps stockés** — 25×
+plus. Cela ouvre une option que les chiffres seuls révèlent : indexer sans
+stocker.
+
+### Mise à l'échelle du gate 3 (200 000 messages cumulés)
+
+| Politique | Disque | Temps (séquentiel) |
+|---|---|---|
+| Stocker tous les corps | **12,4 Go** | 10,7 h |
+| Indexer sans stocker | **500 Mo** | 10,7 h |
+| Plafond de récence (12 mois, 3 comptes) | ~370 Mo | ~20 min |
+
+### Nuance sur le temps
+
+Les 192 ms/corps mesurent le chemin actuel de `load_body` : **un aller-retour
+IMAP par message**. Un rattrapage réel grouperait les `FETCH` (50 par
+commande), ce qui réduirait fortement ce chiffre. **192 ms est un majorant,
+pas le coût incompressible.**
 
 ## La décision qui suivra
 
