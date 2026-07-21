@@ -21,6 +21,15 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "icon": ["icons/icon.ico"],
+    "publisher": "discovery",
+    "shortDescription": "Client mail rapide, simple et fiable",
+    "targets": ["nsis"],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
   }
 }

@@ -35,7 +35,7 @@ paie en vitesse et en fiabilité.
 | RAM en usage courant | < 200 Mo | Phase 1 |
 | Base locale (3 comptes, corps rattrapés) | < 1 Go | Phase 3 ([ADR 0007](adr/0007-rattrapage-des-corps.md)) |
 | Défilement de la liste | 60 fps | Phase 1 |
-| Taille de l'installeur Windows | < 15 Mo | Phase 1 |
+| Taille de l'installeur Windows | < 15 Mo | **mesuré : 4,75 Mo** (NSIS, 2026-07-21) |
 | Perte de données | 0, prouvé par tests de crash-récupération | Phase 2 |
 
 Ces budgets sont des **gates bloquants** : une phase ne se termine pas si un budget est
