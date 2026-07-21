@@ -32,26 +32,50 @@ pub(crate) enum ArchiveStrategy {
     Unsupported,
 }
 
+/// Noms de repli, quand le serveur n'annonce aucun attribut d'archivage.
+///
+/// Exception délibérée à la règle « jamais de nom en dur », justifiée par
+/// la mesure : Exchange Online annonce `\Drafts`, `\Junk`, `\Sent` et
+/// `\Trash`, mais **pas** `\Archive` — alors que le dossier « Archive »
+/// existe et sert (spikes/microsoft, compte réel). Sans ce repli,
+/// archiver serait indisponible sur tout compte Microsoft. La liste reste
+/// volontairement courte : un nom inconnu vaut mieux qu'un mauvais choix.
+const ARCHIVE_FALLBACK_NAMES: [&str; 2] = ["archive", "archives"];
+
 /// Choisit la stratégie d'archivage d'après les dossiers annoncés.
 ///
-/// `\Archive` prime sur `\All` : déplacer est toujours plus sûr
-/// qu'expurger. En l'absence des deux, on refuse — « jamais de perte de
-/// mail » (PLAN.md §1) l'emporte sur le confort d'une fonctionnalité.
+/// Ordre de priorité, du plus sûr au moins sûr :
+/// 1. `\Archive` annoncé — l'intention du serveur, sans ambiguïté ;
+/// 2. `\All` annoncé — sémantique Gmail, où expurger EST l'archivage ;
+/// 3. un dossier nommé « Archive » — repli mesuré (voir ci-dessus) ;
+/// 4. sinon : refus. « Jamais de perte de mail » (PLAN.md §1) l'emporte
+///    sur le confort d'une fonctionnalité.
 pub(crate) fn archive_strategy<'a>(
     folders: impl IntoIterator<Item = (&'a str, SpecialUse)>,
 ) -> ArchiveStrategy {
     let mut has_all = false;
+    let mut named: Option<String> = None;
     for (name, role) in folders {
         match role {
             SpecialUse::Archive => return ArchiveStrategy::MoveTo(name.to_string()),
             SpecialUse::All => has_all = true,
-            SpecialUse::Other => {}
+            SpecialUse::Other => {
+                // Le nom COMPLET doit correspondre : « Archive/Achats »
+                // est un classement, pas la destination d'archivage.
+                if named.is_none()
+                    && ARCHIVE_FALLBACK_NAMES.contains(&name.to_ascii_lowercase().as_str())
+                {
+                    named = Some(name.to_string());
+                }
+            }
         }
     }
     if has_all {
-        ArchiveStrategy::ExpungeOnly
-    } else {
-        ArchiveStrategy::Unsupported
+        return ArchiveStrategy::ExpungeOnly;
+    }
+    match named {
+        Some(folder) => ArchiveStrategy::MoveTo(folder),
+        None => ArchiveStrategy::Unsupported,
     }
 }
 
@@ -416,6 +440,59 @@ Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--B--\r\n";
     fn refuses_to_archive_when_expunging_would_destroy_the_message() {
         let folders = [("INBOX", SpecialUse::Other), ("Trash", SpecialUse::Other)];
         assert_eq!(archive_strategy(folders), ArchiveStrategy::Unsupported);
+    }
+
+    /// Exchange Online annonce `\Drafts`, `\Junk`, `\Sent` et `\Trash`
+    /// mais PAS `\Archive` — alors que le dossier « Archive » existe et
+    /// sert (mesuré sur compte réel, spikes/microsoft). Sans ce repli,
+    /// archiver serait indisponible sur tout compte Microsoft.
+    #[test]
+    fn falls_back_to_a_folder_named_archive_when_the_attribute_is_missing() {
+        let exchange = [
+            ("Archive", SpecialUse::Other),
+            ("Archive/Achats", SpecialUse::Other),
+            ("INBOX", SpecialUse::Other),
+            ("Drafts", SpecialUse::Other),
+            ("Deleted", SpecialUse::Other),
+        ];
+        assert_eq!(
+            archive_strategy(exchange),
+            ArchiveStrategy::MoveTo("Archive".to_string())
+        );
+    }
+
+    #[test]
+    fn named_archive_matches_whatever_the_case() {
+        let folders = [
+            ("INBOX", SpecialUse::Other),
+            ("ARCHIVES", SpecialUse::Other),
+        ];
+        assert_eq!(
+            archive_strategy(folders),
+            ArchiveStrategy::MoveTo("ARCHIVES".to_string())
+        );
+    }
+
+    /// Un SOUS-dossier d'archive n'est pas le dossier d'archive : on ne
+    /// déverserait pas le courrier dans « Archive/Achats ».
+    #[test]
+    fn an_archive_subfolder_alone_does_not_count() {
+        let folders = [
+            ("INBOX", SpecialUse::Other),
+            ("Archive/Achats", SpecialUse::Other),
+        ];
+        assert_eq!(archive_strategy(folders), ArchiveStrategy::Unsupported);
+    }
+
+    /// Un attribut annoncé fait toujours foi contre une simple
+    /// correspondance de nom : chez Gmail, expurger EST l'archivage.
+    #[test]
+    fn announced_all_mail_wins_over_a_merely_named_folder() {
+        let folders = [
+            ("[Gmail]/Tous les messages", SpecialUse::All),
+            ("Archive", SpecialUse::Other),
+        ];
+        assert_eq!(archive_strategy(folders), ArchiveStrategy::ExpungeOnly);
     }
 
     /// `\Archive` prime sur `\All` : déplacer est toujours plus sûr

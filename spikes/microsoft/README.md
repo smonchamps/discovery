@@ -40,20 +40,40 @@ insiste : *« specify the full scopes, including Outlook resource URLs »*.
 Serveurs : `outlook.office365.com:993` (TLS implicite) et
 `smtp.office365.com:587` (**STARTTLS** — Office 365 n'écoute pas en 465).
 
-## Mesures
+## Mesures — compte Outlook.com réel, 2026-07-21
 
-> À remplir après le premier passage sur compte réel.
+| Mesure | Valeur | Verdict |
+|---|---|---|
+| Scopes **accordés** | `IMAP.AccessAsUser.All` + `SMTP.Send` | ✅ pas de consentement partiel |
+| Refresh token | reçu | ✅ reconnexion silencieuse possible |
+| Consentement OAuth2 | 16,3 s (1er, écran de consentement) · 1,8 s (ensuite) | ✅ |
+| Connexion IMAP XOAUTH2 | 389 ms · 551 ms | ✅ |
+| LIST (41 dossiers) | 54 ms · 144 ms | ✅ |
+| SELECT INBOX | 38 ms · 246 ms (1 message, UIDVALIDITY 14) | ✅ |
+| FETCH enveloppes | *non significatif* — boîte à 1 message | ⚠️ à re-mesurer sur boîte peuplée |
+| **SMTP AUTH** (587 STARTTLS) | **OUVERT**, 0,8–1,2 s | ✅ **le risque nommé ne s'est pas matérialisé** |
 
-| Mesure | Valeur |
+### Dossiers spéciaux : support RFC 6154 **partiel**
+
+| Attribut | Annoncé par Exchange |
 |---|---|
-| Consentement OAuth2 | — |
-| Refresh token reçu | — |
-| Connexion IMAP XOAUTH2 | — |
-| LIST (dossiers) | — |
-| SELECT INBOX | — |
-| FETCH 200 enveloppes | — |
-| SMTP AUTH | — |
-| `\Archive` / `\All` annoncés | — |
+| `\Drafts`, `\Junk`, `\Sent`, `\Trash` | ✅ (`Drafts`, `Junk`, `Sent`, `Deleted`) |
+| `\Archive` | ❌ **non** — alors que le dossier `Archive` existe et sert (13 sous-dossiers) |
+| `\All` | ❌ non |
+
+Conséquence directe : sans repli, archiver serait **indisponible** sur tout
+compte Microsoft (le garde-fou anti-destruction de `e37a105` refuserait,
+correctement). D'où le repli par nom ajouté dans `mail-imap` — exception
+délibérée à la règle « jamais de nom en dur », **justifiée par cette
+mesure**.
+
+### Risque relevé pour plus tard : noms de dossiers en UTF-7 modifié
+
+Le LIST renvoie `Actualit&AOk-`, `Sant&AOk-`, `R&AOk-p&AOk-t&AOk-` — de
+l'UTF-7 modifié (RFC 3501 §5.1.3) non décodé. Sans importance ici (on ne
+compare que `Archive`, pur ASCII), mais **bloquant pour la fonctionnalité
+« dossiers / déplacer »** du backlog Phase 3 : les noms s'afficheraient en
+charabia. À traiter à ce moment-là.
 
 ## Étape 2 — Graph, seulement si nécessaire
 
