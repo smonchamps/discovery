@@ -58,10 +58,21 @@ h1 {
   flex: none;
 }
 
-.row .account-dot {
+/* Trombone et pastille partagent un seul ancrage : les positionner
+   separement les ferait se chevaucher sur un message qui cumule les deux. */
+.row .row-marks {
   position: absolute;
-  top: 9px;
+  top: 8px;
   right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.row .clip {
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.75;
 }
 
 #compose-from {
@@ -220,7 +231,7 @@ main.split {
   pointer-events: none;
 }
 
-.row > .account-dot {
+.row > .row-marks {
   pointer-events: auto;
 }
 

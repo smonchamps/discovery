@@ -60,6 +60,7 @@ pub struct MessageRow {
     pub date: String,
     pub seen: bool,
     pub flagged: bool,
+    pub has_attachment: bool,
 }
 
 #[tauri::command]
@@ -443,6 +444,7 @@ pub struct MessagePage {
 /// Mapping partagé entre la boîte unifiée et les résultats de recherche.
 fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
     MessageRow {
+        has_attachment: row.has_attachment,
         account_id: row.account_id,
         account_email: row.account_email,
         uid: row.envelope.uid,

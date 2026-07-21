@@ -132,11 +132,20 @@ pub struct UnifiedRow {
     pub account_id: i64,
     pub account_email: String,
     pub envelope: Envelope,
+    /// Le message porte-t-il au moins une piece jointe ?
+    ///
+    /// Faux tant que son corps n'a pas ete lu — meme condition que la
+    /// recherche dans le texte. Le trombone apparait donc au fil du
+    /// rattrapage, jamais a tort.
+    pub has_attachment: bool,
 }
 
 /// Colonnes du SELECT unifié, partagées par [`Store::unified_recent`] et
 /// [`Store::search`] — l'ordre est celui de [`row_to_unified`].
-pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged";
+/// La derniere colonne est un EXISTS sur `attachments` : la liste doit
+/// pouvoir afficher le trombone sans une requete par ligne. La cle
+/// primaire (mailbox_id, uid, idx) rend ce test indexe.
+pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, EXISTS(SELECT 1 FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid)";
 
 pub struct Store(Connection);
 
@@ -955,6 +964,7 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
             seen: row.get(8)?,
             flagged: row.get(9)?,
         },
+        has_attachment: row.get(10)?,
     })
 }
 

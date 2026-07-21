@@ -146,3 +146,14 @@ test('pièces jointes : listées quand il y en a, absentes sinon', async () => {
   await expect(page.locator('#detail-subject')).toContainText('n°189');
   await expect(page.locator('#attachments')).toBeHidden();
 });
+
+/// Le trombone doit aussi se voir dans la LISTE, sans avoir a ouvrir le
+/// message : c'est la que l'utilisateur trie. Un message sur dix en
+/// porte un dans le decor — le voisin immediat doit rester nu.
+test('liste : le trombone marque les messages porteurs, et eux seuls', async () => {
+  const withClip = page.locator('.row', { hasText: 'n°180' }).first();
+  const without = page.locator('.row', { hasText: 'n°179' }).first();
+
+  await expect(withClip.locator('.clip')).toBeVisible();
+  await expect(without.locator('.clip')).toHaveCount(0);
+});

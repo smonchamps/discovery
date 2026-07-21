@@ -104,15 +104,32 @@ function buildResultRow(message) {
     span.textContent = text;
     row.appendChild(span);
   }
+  appendRowMarks(row, message);
+  row.addEventListener('click', () => openMessage(message, null));
+  return row;
+}
+
+/// Marqueurs de bout de ligne : trombone puis pastille de compte, dans
+/// UN conteneur commun. Les poser separement les ferait se chevaucher
+/// des qu'un message cumule les deux.
+function appendRowMarks(row, message) {
+  const marks = document.createElement('span');
+  marks.className = 'row-marks';
+  if (message.has_attachment) {
+    const clip = document.createElement('span');
+    clip.className = 'clip';
+    clip.textContent = '📎';
+    clip.title = 'Contient une pièce jointe';
+    marks.appendChild(clip);
+  }
   if (connectedAccounts.length > 1) {
     const dot = document.createElement('span');
     dot.className = 'dot account-dot';
     dot.style.background = accountColor(message.account_id);
     dot.title = message.account_email;
-    row.appendChild(dot);
+    marks.appendChild(dot);
   }
-  row.addEventListener('click', () => openMessage(message, null));
-  return row;
+  if (marks.childElementCount > 0) row.appendChild(marks);
 }
 
 async function init() {
@@ -383,13 +400,7 @@ function buildRow(index) {
     span.textContent = text;
     row.appendChild(span);
   }
-  if (connectedAccounts.length > 1) {
-    const dot = document.createElement('span');
-    dot.className = 'dot account-dot';
-    dot.style.background = accountColor(message.account_id);
-    dot.title = message.account_email;
-    row.appendChild(dot);
-  }
+  appendRowMarks(row, message);
   row.addEventListener('click', () => openMessage(message, index));
   return row;
 }
