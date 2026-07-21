@@ -376,7 +376,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     let jobs = connected_jobs(&path, &state)?;
     let timer = Instant::now();
 
-    let (accounts, fetched, deleted, replayed, errors, refreshed, arrivals) =
+    let (accounts, fetched, deleted, replayed, mut errors, refreshed, arrivals) =
         tauri::async_runtime::spawn_blocking(move || {
             let mut accounts = 0;
             let mut fetched = 0;
@@ -413,7 +413,9 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     for fresh in refreshed {
         lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
     }
-    show_arrival_notification(&app, &arrivals);
+    if let Some(problem) = arrival_notification_problem(&app, &arrivals) {
+        errors.push(problem);
+    }
     let total = Store::open(&db_path(&app)?)
         .and_then(|store| store.unified_count(MAILBOX))
         .map_err(|err| err.to_string())?;
@@ -468,21 +470,28 @@ fn run_sync(
 
 /// Affiche la bulle système d'un lot d'arrivées, s'il y a lieu.
 ///
-/// Un échec ici — permission refusée, service indisponible — ne doit
-/// JAMAIS faire échouer une synchro : le courrier est arrivé, c'est le
-/// seul résultat qui compte. L'erreur est donc absorbée.
-fn show_arrival_notification(app: &AppHandle, arrivals: &[mail_core::Envelope]) {
+/// Un échec — permission refusée, identité applicative non enregistrée —
+/// ne doit JAMAIS faire échouer une synchro : le courrier est arrivé,
+/// c'est le seul résultat qui compte. Mais il est **rapporté**.
+///
+/// La première version avalait l'erreur en silence. Sur un poste où
+/// Windows refusait le toast, le symptôme était « rien ne se passe » :
+/// indiagnosticable. Absorber un échec est une chose, en effacer la
+/// trace en est une autre.
+fn arrival_notification_problem(
+    app: &AppHandle,
+    arrivals: &[mail_core::Envelope],
+) -> Option<String> {
     use tauri_plugin_notification::NotificationExt;
 
-    let Some(notification) = mail_core::notification_for(arrivals) else {
-        return;
-    };
-    let _ = app
-        .notification()
+    let notification = mail_core::notification_for(arrivals)?;
+    app.notification()
         .builder()
         .title(notification.title)
         .body(notification.body)
-        .show();
+        .show()
+        .err()
+        .map(|err| format!("notification non affichée : {err}"))
 }
 
 #[derive(Serialize)]
