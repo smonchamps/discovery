@@ -285,6 +285,35 @@ impl MailServer for ImapServer {
             .find_map(|fetch| convert::extract_html(fetch.body()?)))
     }
 
+    /// Une SEULE commande `UID FETCH` pour tout le lot — c'est ce qui rend
+    /// le rattrapage des corps tenable (un aller-retour par message coûte
+    /// ~192 ms sur un serveur réel, cf. `spikes/body-backfill`).
+    ///
+    /// `BODY.PEEK[]` : lire un corps ne doit jamais poser `\Seen`. Les UIDs
+    /// que le serveur ne sert plus sont simplement absents du résultat.
+    fn fetch_bodies_html(
+        &mut self,
+        mailbox: &str,
+        uids: &[Uid],
+    ) -> Result<Vec<(Uid, String)>, Error> {
+        if uids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.ensure_selected(mailbox)?;
+        let fetches = self
+            .session
+            .uid_fetch(convert::uid_set(uids), "(UID BODY.PEEK[])")
+            .map_err(server_err)?;
+        Ok(fetches
+            .iter()
+            .filter_map(|fetch| {
+                let uid = fetch.uid?;
+                let html = convert::extract_html(fetch.body()?)?;
+                Some((uid, html))
+            })
+            .collect())
+    }
+
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error> {
         self.ensure_selected(mailbox)?;
         let query = if seen {

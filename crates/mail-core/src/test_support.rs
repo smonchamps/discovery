@@ -18,6 +18,9 @@ pub(crate) struct FakeServer {
     pub(crate) bodies: BTreeMap<Uid, String>,
     pub(crate) fetch_batches: Vec<Vec<Uid>>,
     pub(crate) body_fetches: usize,
+    /// Lots de corps demandés, dans l'ordre : c'est ce qui prouve que le
+    /// rattrapage groupe au lieu d'enchaîner les allers-retours.
+    pub(crate) body_batches: Vec<Vec<Uid>>,
     /// Journal des actions reçues, dans l'ordre (`seen:1:true`, `archive:2`…).
     pub(crate) action_calls: Vec<String>,
     /// Simule une coupure sur les actions (test « zéro perte »).
@@ -34,6 +37,7 @@ impl FakeServer {
             bodies: BTreeMap::new(),
             fetch_batches: Vec::new(),
             body_fetches: 0,
+            body_batches: Vec::new(),
             action_calls: Vec::new(),
             actions_fail: false,
         }
@@ -131,6 +135,18 @@ impl MailServer for FakeServer {
     fn fetch_body_html(&mut self, _mailbox: &str, uid: Uid) -> Result<Option<String>, Error> {
         self.body_fetches += 1;
         Ok(self.bodies.get(&uid).cloned())
+    }
+
+    fn fetch_bodies_html(
+        &mut self,
+        _mailbox: &str,
+        uids: &[Uid],
+    ) -> Result<Vec<(Uid, String)>, Error> {
+        self.body_batches.push(uids.to_vec());
+        Ok(uids
+            .iter()
+            .filter_map(|uid| self.bodies.get(uid).map(|html| (*uid, html.clone())))
+            .collect())
     }
 
     fn set_seen(&mut self, _mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error> {

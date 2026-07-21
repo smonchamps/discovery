@@ -36,6 +36,21 @@ pub trait MailServer {
     /// responsabilité de l'adaptateur). `None` si le message n'existe plus.
     fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<String>, Error>;
 
+    /// Corps de PLUSIEURS messages en une seule commande. Les UIDs que le
+    /// serveur ne sert plus sont simplement absents du résultat.
+    ///
+    /// Volontairement sans implémentation par défaut : un repli qui
+    /// boucherait sur [`Self::fetch_body_html`] serait silencieusement
+    /// ruineux. Un aller-retour par message coûte ~192 ms sur un serveur
+    /// réel (`spikes/body-backfill`) — rattraper une boîte entière n'est
+    /// tenable qu'en groupant, et chaque adaptateur doit le dire
+    /// explicitement.
+    fn fetch_bodies_html(
+        &mut self,
+        mailbox: &str,
+        uids: &[Uid],
+    ) -> Result<Vec<(Uid, String)>, Error>;
+
     /// Applique (ou retire) le flag `\Seen` côté serveur.
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error>;
 

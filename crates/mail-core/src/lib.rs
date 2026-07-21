@@ -7,6 +7,7 @@
 
 mod action;
 mod address;
+mod backfill;
 mod body;
 mod compose;
 mod drafts;
@@ -23,6 +24,7 @@ mod transport;
 
 pub use action::{Action, PendingAction};
 pub use address::EmailAddress;
+pub use backfill::{BACKFILL_BATCH, BackfillReport, backfill_bodies};
 pub use body::load_body;
 pub use compose::{Draft, compose, forward_subject, quote_forward, quote_reply, reply_subject};
 pub use drafts::SavedDraft;

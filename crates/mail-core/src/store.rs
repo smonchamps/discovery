@@ -539,6 +539,70 @@ impl Store {
         Ok(())
     }
 
+    /// Les messages RÉCENTS dont le corps manque encore, du plus récent au
+    /// plus ancien — le travail du rattrapage ([ADR 0007](../../../docs/adr/0007-rattrapage-des-corps.md)).
+    ///
+    /// `since_epoch` borne le coût : c'est l'horizon de récence. L'ordre
+    /// décroissant rend la reprise après coupure naturelle — on redemande
+    /// simplement la liste, les corps déjà écrits n'y sont plus.
+    ///
+    /// Un message sans date est ignoré : il n'est pas situable dans
+    /// l'horizon, et l'inclure ouvrirait la porte à du courrier
+    /// arbitrairement ancien — ce que l'horizon existe précisément pour
+    /// empêcher. En pratique l'INTERNALDATE d'IMAP est toujours présent.
+    pub fn bodies_to_backfill(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        since_epoch: i64,
+        limit: usize,
+    ) -> Result<Vec<Uid>, Error> {
+        let mut stmt = self.0.prepare(
+            "SELECT e.uid
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2
+               AND e.date_epoch IS NOT NULL AND e.date_epoch >= ?3
+               AND NOT EXISTS (
+                   SELECT 1 FROM bodies b
+                    WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+               )
+             ORDER BY e.date_epoch DESC, e.uid DESC
+             LIMIT ?4",
+        )?;
+        let uids = stmt
+            .query_map(
+                params![account_id, mailbox, since_epoch, limit as i64],
+                |row| row.get(0),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(uids)
+    }
+
+    /// Combien de messages attendent encore leur corps dans l'horizon —
+    /// de quoi afficher un avancement honnête.
+    pub fn bodies_pending_count(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        since_epoch: i64,
+    ) -> Result<u64, Error> {
+        let count: i64 = self.0.query_row(
+            "SELECT COUNT(*)
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2
+               AND e.date_epoch IS NOT NULL AND e.date_epoch >= ?3
+               AND NOT EXISTS (
+                   SELECT 1 FROM bodies b
+                    WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+               )",
+            params![account_id, mailbox, since_epoch],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
     /// Une page d'enveloppes d'UN compte, les plus récentes d'abord.
     pub fn recent(
         &self,
@@ -1405,5 +1469,116 @@ mod tests {
         assert_eq!(config.imap_port, Some(143));
         assert_eq!(config.smtp_host.as_deref(), Some("smtp.b.fr"));
         assert_eq!(config.smtp_port, Some(587));
+    }
+
+    /// Le rattrapage vise les messages RÉCENTS sans corps, du plus récent
+    /// au plus ancien : c'est l'ordre où la recherche a le plus de valeur,
+    /// et celui qui rend la reprise après coupure naturelle.
+    #[test]
+    fn backfill_lists_recent_bodyless_messages_newest_first() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "ancien", 1_000, false),
+                    envelope(2, "milieu", 2_000, false),
+                    envelope(3, "récent", 3_000, false),
+                ],
+            )
+            .unwrap();
+        let account = test_account(&store);
+
+        let todo = store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap();
+        assert_eq!(todo, vec![3, 2, 1]);
+    }
+
+    #[test]
+    fn backfill_skips_messages_that_already_have_a_body() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "sans corps", 1_000, false),
+                    envelope(2, "avec corps", 2_000, false),
+                ],
+            )
+            .unwrap();
+        store.save_body(id, 2, "<p>déjà là</p>").unwrap();
+        let account = test_account(&store);
+
+        assert_eq!(
+            store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
+            vec![1]
+        );
+    }
+
+    /// L'horizon de récence est ce qui BORNE le coût (ADR 0007) : au-delà,
+    /// on ne rapatrie rien.
+    #[test]
+    fn backfill_respects_the_recency_horizon() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "hors horizon", 1_000, false),
+                    envelope(2, "dans l'horizon", 5_000, false),
+                ],
+            )
+            .unwrap();
+        let account = test_account(&store);
+
+        assert_eq!(
+            store
+                .bodies_to_backfill(account, "INBOX", 4_000, 10)
+                .unwrap(),
+            vec![2]
+        );
+    }
+
+    #[test]
+    fn backfill_honours_the_batch_limit() {
+        let (mut store, id) = store_with_mailbox();
+        let envelopes: Vec<Envelope> = (1..=10)
+            .map(|uid| envelope(uid, "message", uid as i64 * 100, false))
+            .collect();
+        store.upsert_envelopes(id, &envelopes).unwrap();
+        let account = test_account(&store);
+
+        assert_eq!(
+            store
+                .bodies_to_backfill(account, "INBOX", 0, 3)
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+
+    #[test]
+    fn backfill_never_leaks_another_accounts_messages() {
+        let (mut store, mine) = store_with_mailbox();
+        let other = store
+            .adopt_or_create_account("autre@exemple.fr", "gmail")
+            .unwrap();
+        let theirs = store.create_mailbox(other, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(mine, &[envelope(1, "à moi", 1_000, false)])
+            .unwrap();
+        store
+            .upsert_envelopes(theirs, &[envelope(1, "à l'autre", 2_000, false)])
+            .unwrap();
+        let account = test_account(&store);
+
+        assert_eq!(
+            store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
+            vec![1],
+            "un seul message : celui du compte demandé"
+        );
+        assert_eq!(
+            store.bodies_to_backfill(other, "INBOX", 0, 10).unwrap(),
+            vec![1]
+        );
     }
 }
