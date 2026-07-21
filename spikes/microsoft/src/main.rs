@@ -201,6 +201,32 @@ fn imap_probe(email: &str, access_token: &str) -> Result<()> {
         println!("   ATTENTION : ni \\Archive ni \\All — archiver serait destructeur");
     }
 
+    // Exchange n'annonce qu'une partie des attributs RFC 6154. Le dossier
+    // d'archivage existe peut-être sous son seul nom : on regarde, plutôt
+    // que de supposer.
+    println!("\n   --- inventaire des dossiers (nom + attributs spéciaux) ---");
+    for folder in folders.iter() {
+        let special: Vec<String> = folder
+            .attributes()
+            .iter()
+            .filter_map(|attribute| match attribute {
+                NameAttribute::Archive => Some("\\Archive".to_string()),
+                NameAttribute::All => Some("\\All".to_string()),
+                NameAttribute::Trash => Some("\\Trash".to_string()),
+                NameAttribute::Drafts => Some("\\Drafts".to_string()),
+                NameAttribute::Sent => Some("\\Sent".to_string()),
+                NameAttribute::Junk => Some("\\Junk".to_string()),
+                _ => None,
+            })
+            .collect();
+        if special.is_empty() {
+            println!("   {}", folder.name());
+        } else {
+            println!("   {}  [{}]", folder.name(), special.join(" "));
+        }
+    }
+    println!("   --- fin de l'inventaire ---\n");
+
     let timer = Instant::now();
     let inbox = session.select("INBOX")?;
     let total = inbox.exists;
