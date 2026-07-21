@@ -569,20 +569,72 @@ async function toggleStar() {
 }
 
 /// Archive ou supprime le message ouvert, puis avance au suivant.
-async function performAction(kind) {
+// Les trois actions qui retirent le message de la boîte disent la même
+// chose : c'est local tout de suite, le serveur suit au prochain sync.
+const ACTION_DONE = {
+  archive: () => 'archivé — le serveur suivra au prochain sync',
+  delete: () => 'supprimé — le serveur suivra au prochain sync',
+  move: (folder) => `déplacé vers ${folder.display} — le serveur suivra au prochain sync`,
+};
+
+// --- Déplacer vers un dossier ---------------------------------------
+
+async function openMoveDialog() {
+  if (!currentMessage) return;
+  const list = el('move-list');
+  list.replaceChildren();
+  el('move-dialog').hidden = false;
+  setStatus('lecture des dossiers…');
+  try {
+    const folders = await invoke('list_folders', { accountId: currentMessage.account_id });
+    if (folders.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'dialog-note';
+      empty.textContent = 'Aucun dossier de destination sur ce compte.';
+      list.appendChild(empty);
+      setStatus('');
+      return;
+    }
+    for (const folder of folders) {
+      list.appendChild(buildFolderChoice(folder));
+    }
+    setStatus('');
+  } catch (err) {
+    el('move-dialog').hidden = true;
+    setStatus(`dossiers indisponibles : ${err}`, true);
+  }
+}
+
+function buildFolderChoice(folder) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  // textContent : ce nom vient du serveur.
+  button.textContent = folder.display;
+  button.addEventListener('click', async () => {
+    el('move-dialog').hidden = true;
+    await performAction('move', folder);
+  });
+  return button;
+}
+
+async function performAction(kind, folder = null) {
   if (!currentMessage) return;
   const index = currentIndex;
   const accountId = currentMessage.account_id;
   const uid = currentMessage.uid;
   try {
-    await invoke(kind === 'archive' ? 'archive_message' : 'delete_message', { accountId, uid });
+    if (kind === 'move') {
+      // On renvoie le nom RÉSEAU, jamais le nom affiché : le rejeu se
+      // fera peut-être des jours plus tard, contre le serveur.
+      await invoke('move_message', { accountId, uid, folder: folder.wire });
+    } else {
+      await invoke(kind === 'archive' ? 'archive_message' : 'delete_message', { accountId, uid });
+    }
   } catch (err) {
     setStatus(`action impossible : ${err}`, true);
     return;
   }
-  setStatus(kind === 'archive'
-    ? 'archivé — le serveur suivra au prochain sync'
-    : 'supprimé — le serveur suivra au prochain sync');
+  setStatus(ACTION_DONE[kind](folder));
   closeDetail();
   await reloadList();
   if (searchMode) {
@@ -930,10 +982,11 @@ function setStatus(text, isError = false) {
 // quelque chose a effectivement été fermé — Échap doit consommer la
 // touche plutôt que de la laisser filer vers une autre action.
 function closeAddDialog() {
-  for (const name of ['imap', 'ms']) {
+  for (const name of ['imap', 'ms', 'move']) {
     if (!el(`${name}-dialog`).hidden) {
       el(`${name}-dialog`).hidden = true;
-      el(`${name}-form`).reset();
+      // Le sélecteur de dossier n'est pas un formulaire : rien à vider.
+      if (typeof el(`${name}-form`).reset === 'function') el(`${name}-form`).reset();
       return true;
     }
   }
@@ -1057,6 +1110,8 @@ el('imap-form').addEventListener('submit', async (event) => {
 
 el('refresh').addEventListener('click', refresh);
 el('archive').addEventListener('click', () => performAction('archive'));
+el('move').addEventListener('click', openMoveDialog);
+el('move-cancel').addEventListener('click', () => { el('move-dialog').hidden = true; });
 el('delete').addEventListener('click', () => performAction('delete'));
 el('compose-btn').addEventListener('click', () => startCompose());
 el('star').addEventListener('click', toggleStar);
@@ -1125,6 +1180,9 @@ document.addEventListener('keydown', (event) => {
       break;
     case 'e':
       performAction('archive');
+      break;
+    case 'v':
+      openMoveDialog();
       break;
     case 'Delete':
       performAction('delete');

@@ -35,7 +35,7 @@ pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use notify::{Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
-pub use remote::{FetchedBody, MailServer, MailboxSnapshot};
+pub use remote::{FetchedBody, Folder, MailServer, MailboxSnapshot};
 pub use store::{Account, AccountConfig, Store, SyncState, UnifiedRow};
 pub use sync::{SyncEngine, SyncMode, SyncReport};
 pub use transport::{MailTransport, SendError};

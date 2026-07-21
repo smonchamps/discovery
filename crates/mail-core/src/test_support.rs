@@ -21,6 +21,9 @@ pub(crate) struct FakeServer {
     /// Lots de corps demandés, dans l'ordre : c'est ce qui prouve que le
     /// rattrapage groupe au lieu d'enchaîner les allers-retours.
     pub(crate) body_batches: Vec<Vec<Uid>>,
+    pub(crate) folders: Vec<crate::remote::Folder>,
+    /// Déplacements reçus : (uid, dossier cible réseau).
+    pub(crate) moved: Vec<(Uid, String)>,
     /// Octets servis pour (uid, rang) — les pièces jointes du simulateur.
     pub(crate) attachment_bytes: BTreeMap<(Uid, usize), Vec<u8>>,
     /// Journal des actions reçues, dans l'ordre (`seen:1:true`, `archive:2`…).
@@ -40,6 +43,8 @@ impl FakeServer {
             fetch_batches: Vec::new(),
             body_fetches: 0,
             body_batches: Vec::new(),
+            folders: Vec::new(),
+            moved: Vec::new(),
             attachment_bytes: BTreeMap::new(),
             action_calls: Vec::new(),
             actions_fail: false,
@@ -168,6 +173,21 @@ impl MailServer for FakeServer {
             .attachment_bytes
             .get(&(uid, index))
             .map(|bytes| bytes.to_vec()))
+    }
+
+    fn folders(&mut self) -> Result<Vec<crate::remote::Folder>, Error> {
+        Ok(self.folders.clone())
+    }
+
+    /// Le simulateur enregistre les déplacements demandés : c'est ce qui
+    /// permet de prouver le REJEU sans réseau.
+    fn move_to(&mut self, _mailbox: &str, uid: Uid, target: &str) -> Result<(), Error> {
+        if self.actions_fail {
+            return Err(Error::Server("coupure simulée".to_string()));
+        }
+        self.moved.push((uid, target.to_string()));
+        self.messages.remove(&uid);
+        Ok(())
     }
 
     fn set_seen(&mut self, _mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error> {

@@ -157,3 +157,19 @@ test('liste : le trombone marque les messages porteurs, et eux seuls', async () 
   await expect(withClip.locator('.clip')).toBeVisible();
   await expect(without.locator('.clip')).toHaveCount(0);
 });
+
+/// Déplacer : le dialogue s'ouvre, dit ce qu'il va faire, et Échap rend
+/// la main. Hors ligne, le décor n'a pas de serveur : la liste des
+/// dossiers échoue, et c'est justement ce qu'on vérifie — l'échec est
+/// ANNONCÉ, le dialogue se referme, l'application reste utilisable.
+test('déplacer : un serveur injoignable referme le dialogue et le dit', async () => {
+  await page.locator('.row').first().click();
+  await expect(page.locator('#detail')).toBeVisible();
+  await expect(page.locator('#move-dialog')).toBeHidden();
+
+  await page.locator('#move').click();
+
+  await expect(page.locator('#move-dialog')).toBeHidden({ timeout: 15_000 });
+  await expect(page.locator('#status')).toContainText('dossiers indisponibles');
+  await expect(page.locator('#detail')).toBeVisible();
+});

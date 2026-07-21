@@ -52,6 +52,8 @@ fn main() {
             commands::mark_seen,
             commands::mark_flagged,
             commands::archive_message,
+            commands::list_folders,
+            commands::move_message,
             commands::delete_message,
             commands::reply_context,
             commands::forward_context,

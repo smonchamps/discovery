@@ -50,6 +50,16 @@
     </div>
   </form>
 </div>
+<div id="move-dialog" hidden>
+  <div id="move-form">
+    <h2>Déplacer vers…</h2>
+    <p class="dialog-note">Le message quittera la boîte de réception.</p>
+    <div id="move-list"></div>
+    <div id="move-actions">
+      <button type="button" id="move-cancel">Annuler</button>
+    </div>
+  </div>
+</div>
 <div id="outbox-bar" hidden>
   <span id="outbox-summary"></span>
   <div id="outbox-problems"></div>
@@ -78,6 +88,7 @@
           <button id="reply" title="Répondre (r)">Répondre</button>
           <button id="forward" title="Transférer (f)">Transférer</button>
           <button id="archive" title="Archiver (e)">Archiver</button>
+          <button id="move" title="Déplacer (v)">Déplacer</button>
           <button id="delete" title="Supprimer (Suppr)">Supprimer</button>
         </div>
         <h2 id="detail-subject"></h2>

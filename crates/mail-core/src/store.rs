@@ -482,7 +482,7 @@ impl Store {
     pub fn enqueue_action(&self, mailbox_id: i64, uid: Uid, action: Action) -> Result<(), Error> {
         self.0.execute(
             "INSERT INTO pending_actions (mailbox_id, uid, kind) VALUES (?1, ?2, ?3)",
-            params![mailbox_id, uid, action.as_str()],
+            params![mailbox_id, uid, action.to_kind()],
         )?;
         Ok(())
     }
@@ -1206,8 +1206,14 @@ mod tests {
 
         let queued = store.pending_actions(id).unwrap();
         assert_eq!(queued.len(), 2);
-        assert_eq!((queued[0].uid, queued[0].action), (5, Action::MarkSeen));
-        assert_eq!((queued[1].uid, queued[1].action), (3, Action::MarkUnseen));
+        assert_eq!(
+            (queued[0].uid, queued[0].action.clone()),
+            (5, Action::MarkSeen)
+        );
+        assert_eq!(
+            (queued[1].uid, queued[1].action.clone()),
+            (3, Action::MarkUnseen)
+        );
 
         store.remove_action(queued[0].id).unwrap();
         assert_eq!(store.pending_actions(id).unwrap().len(), 1);

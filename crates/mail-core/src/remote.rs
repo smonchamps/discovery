@@ -41,6 +41,23 @@ pub struct MailboxSnapshot {
     pub highest_modseq: Option<u64>,
 }
 
+/// Un dossier du serveur, sous ses DEUX noms.
+///
+/// `wire` est celui du protocole (UTF-7 modifié) : c'est lui qu'on
+/// renvoie au serveur, et lui qu'on journalise. `display` est sa forme
+/// lisible. Les confondre casse soit l'affichage, soit le SELECT — ils
+/// coexistent donc explicitement plutôt que par convention.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Folder {
+    pub wire: String,
+    pub display: String,
+    /// Le dossier peut-il recevoir un message déplacé ?
+    ///
+    /// Faux pour les conteneurs qui ne portent pas de courrier
+    /// (attribut `\Noselect`) : les proposer produirait un échec au clic.
+    pub selectable: bool,
+}
+
 pub trait MailServer {
     /// Sélectionne une boîte et retourne son état courant.
     fn select(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error>;
@@ -101,4 +118,15 @@ pub trait MailServer {
 
     /// Met le message à la corbeille du serveur.
     fn delete(&mut self, mailbox: &str, uid: Uid) -> Result<(), Error>;
+
+    /// Les dossiers du compte, tels que l'utilisateur peut les choisir.
+    fn folders(&mut self) -> Result<Vec<Folder>, Error>;
+
+    /// Déplace le message vers `target`, désigné par son nom RÉSEAU.
+    ///
+    /// L'opération doit être **atomique du point de vue du message** :
+    /// il ne doit jamais pouvoir disparaître de la source sans être
+    /// arrivé à destination. Même règle d'or que la boîte d'envoi,
+    /// appliquée au tri.
+    fn move_to(&mut self, mailbox: &str, uid: Uid, target: &str) -> Result<(), Error>;
 }

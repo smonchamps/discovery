@@ -781,6 +781,63 @@ pub fn archive_message(app: AppHandle, account_id: i64, uid: u32) -> Result<(), 
     queue_removal(&app, account_id, uid, Action::Archive)
 }
 
+/// Un dossier proposé à l'utilisateur.
+#[derive(Serialize)]
+pub struct FolderRow {
+    /// Nom RÉSEAU — c'est lui que l'UI renverra pour un déplacement.
+    pub wire: String,
+    /// Nom lisible, décodé de l'UTF-7 modifié.
+    pub display: String,
+}
+
+/// Les dossiers d'un compte où un message peut être déplacé.
+///
+/// La boîte courante en est exclue : « déplacer vers INBOX » depuis
+/// INBOX n'a pas de sens, et certains serveurs le refusent.
+#[tauri::command]
+pub async fn list_folders(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: i64,
+) -> Result<Vec<FolderRow>, String> {
+    let path = db_path(&app)?;
+    let session = auth_for(&path, &state, account_id)?;
+    let folders =
+        tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FolderRow>, String> {
+            let (mut server, _refreshed) = connect_imap(&session)?;
+            let folders = server.folders().map_err(|err| err.to_string())?;
+            server.logout();
+            Ok(folders
+                .into_iter()
+                .filter(|folder| folder.selectable && folder.wire != MAILBOX)
+                .map(|folder| FolderRow {
+                    wire: folder.wire,
+                    display: folder.display,
+                })
+                .collect())
+        })
+        .await
+        .map_err(|err| err.to_string())??;
+    Ok(folders)
+}
+
+/// Déplace un message : disparition locale immédiate + journalisation,
+/// le serveur suivra au prochain sync — même boucle qu'archiver.
+#[tauri::command]
+pub fn move_message(
+    app: AppHandle,
+    account_id: i64,
+    uid: u32,
+    folder: String,
+) -> Result<(), String> {
+    // Le nom vient de l'UI, qui le tient de `list_folders` : il est déjà
+    // en forme réseau. Le décoder ici ferait échouer le rejeu.
+    if folder.trim().is_empty() {
+        return Err("dossier de destination manquant".to_string());
+    }
+    queue_removal(&app, account_id, uid, Action::MoveTo(folder))
+}
+
 /// Suppression : disparition locale immédiate + journalisation, mise à
 /// la corbeille du serveur du compte au prochain sync.
 #[tauri::command]

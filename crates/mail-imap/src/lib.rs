@@ -39,6 +39,9 @@ pub struct ImapServer {
     trash: Option<String>,
     drafts: Option<String>,
     archive: Option<convert::ArchiveStrategy>,
+    /// Le serveur annonce-t-il MOVE (RFC 6851) ? Mémorisé : la capacité
+    /// ne change pas en cours de session.
+    supports_move: Option<bool>,
 }
 
 impl ImapServer {
@@ -65,6 +68,7 @@ impl ImapServer {
             trash: None,
             drafts: None,
             archive: None,
+            supports_move: None,
         })
     }
 
@@ -87,6 +91,7 @@ impl ImapServer {
             trash: None,
             drafts: None,
             archive: None,
+            supports_move: None,
         })
     }
 
@@ -225,6 +230,17 @@ impl ImapServer {
     }
 
     /// Marque `\Deleted` puis expunge le seul UID visé (UIDPLUS).
+    /// Le serveur sait-il faire MOVE (RFC 6851) ?
+    fn supports_move(&mut self) -> Result<bool, Error> {
+        if let Some(known) = self.supports_move {
+            return Ok(known);
+        }
+        let capabilities = self.session.capabilities().map_err(server_err)?;
+        let supported = capabilities.has_str("MOVE");
+        self.supports_move = Some(supported);
+        Ok(supported)
+    }
+
     fn expunge_uid(&mut self, uid: Uid) -> Result<(), Error> {
         self.session
             .uid_store(uid.to_string(), "+FLAGS.SILENT (\\Deleted)")
@@ -337,6 +353,47 @@ impl MailServer for ImapServer {
         Ok(fetches
             .iter()
             .find_map(|fetch| convert::attachment_bytes(fetch.body()?, index)))
+    }
+
+    fn folders(&mut self) -> Result<Vec<mail_core::Folder>, Error> {
+        let names = self.session.list(None, Some("*")).map_err(server_err)?;
+        Ok(names
+            .iter()
+            .map(|name| mail_core::Folder {
+                wire: name.name().to_string(),
+                // Décodé pour l'œil SEULEMENT : `wire` reste ce qu'on
+                // renvoie au serveur (RFC 3501 §5.1.3).
+                display: mutf7::decode(name.name()),
+                // `\Noselect` marque un conteneur sans courrier : le
+                // proposer comme destination produirait un échec au clic.
+                selectable: !name
+                    .attributes()
+                    .iter()
+                    .any(|attribute| matches!(attribute, NameAttribute::NoSelect)),
+            })
+            .collect())
+    }
+
+    /// MOVE si le serveur l'annonce, COPY + EXPUNGE sinon.
+    ///
+    /// Le repli n'est pas équivalent, et l'écart mérite d'être nommé :
+    /// entre le COPY et l'EXPUNGE existe une fenêtre où une coupure
+    /// laisse le message dans les DEUX dossiers. C'est un doublon, pas
+    /// une perte — et l'ordre choisi garantit que ce sera toujours dans
+    /// ce sens-là. Copier d'abord, ne retirer qu'ensuite : « jamais de
+    /// perte de mail » (PLAN.md §1) prime sur la propreté.
+    fn move_to(&mut self, mailbox: &str, uid: Uid, target: &str) -> Result<(), Error> {
+        self.ensure_selected(mailbox)?;
+        if self.supports_move()? {
+            return self
+                .session
+                .uid_mv(uid.to_string(), target)
+                .map_err(server_err);
+        }
+        self.session
+            .uid_copy(uid.to_string(), target)
+            .map_err(server_err)?;
+        self.expunge_uid(uid)
     }
 
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error> {

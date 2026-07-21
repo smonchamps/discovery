@@ -187,13 +187,14 @@ fn replay_actions(
 ) -> Result<usize, Error> {
     let mut replayed = 0;
     for pending in store.pending_actions(mailbox_id)? {
-        let outcome = match pending.action {
+        let outcome = match &pending.action {
             Action::MarkSeen => server.set_seen(mailbox, pending.uid, true),
             Action::MarkUnseen => server.set_seen(mailbox, pending.uid, false),
             Action::MarkFlagged => server.set_flagged(mailbox, pending.uid, true),
             Action::MarkUnflagged => server.set_flagged(mailbox, pending.uid, false),
             Action::Archive => server.archive(mailbox, pending.uid),
             Action::Delete => server.delete(mailbox, pending.uid),
+            Action::MoveTo(target) => server.move_to(mailbox, pending.uid, target),
         };
         match outcome {
             Ok(()) => {
@@ -389,6 +390,62 @@ mod tests {
             "le rejeu doit préserver l'ordre d'émission"
         );
         assert!(store.pending_actions(id).unwrap().is_empty());
+    }
+
+    /// Le déplacement suit la même boucle hors-ligne que le reste :
+    /// journalisé au clic, rejoué à la synchro suivante. Le nom RÉSEAU du
+    /// dossier doit ressortir intact — une action peut être rejouée des
+    /// jours plus tard, sur un dossier accentué.
+    #[test]
+    fn replay_moves_the_message_to_its_journaled_folder() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        let id = mailbox_id(&store);
+        store
+            .enqueue_action(id, 1, Action::MoveTo("Archiv&AOk-s".to_string()))
+            .unwrap();
+
+        let report = synced(&mut server, &mut store, &engine);
+
+        assert_eq!(report.replayed, 1);
+        assert_eq!(
+            server.moved,
+            vec![(1, "Archiv&AOk-s".to_string())],
+            "le nom réseau doit arriver intact au serveur"
+        );
+        assert!(store.pending_actions(id).unwrap().is_empty());
+    }
+
+    /// Une coupure pendant le rejeu ne doit rien perdre : l'action
+    /// reste en file pour la synchro suivante. Même garantie que pour
+    /// les autres actions — le déplacement n'y fait pas exception.
+    #[test]
+    fn a_failed_move_stays_queued() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+
+        let id = mailbox_id(&store);
+        store
+            .enqueue_action(id, 1, Action::MoveTo("Factures".to_string()))
+            .unwrap();
+        server.actions_fail = true;
+
+        let report = synced(&mut server, &mut store, &engine);
+
+        assert_eq!(report.replayed, 0);
+        assert!(server.moved.is_empty());
+        assert_eq!(
+            store.pending_actions(id).unwrap().len(),
+            1,
+            "l'intention doit survivre à la coupure"
+        );
     }
 
     #[test]

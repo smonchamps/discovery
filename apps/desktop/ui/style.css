@@ -457,7 +457,8 @@ main.split {
 }
 
 #imap-dialog,
-#ms-dialog {
+#ms-dialog,
+#move-dialog {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.35);
@@ -471,10 +472,12 @@ main.split {
    `[hidden] { display: none }` et le dialogue reste affiché en
    permanence, interceptant tous les clics. */
 #imap-dialog[hidden],
-#ms-dialog[hidden] {
+#ms-dialog[hidden],
+#move-dialog[hidden] {
   display: none;
 }
 
+#move-form,
 #ms-form,
 #imap-form {
   background: #fff;
@@ -487,6 +490,7 @@ main.split {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
+#move-form h2,
 #ms-form h2,
 #imap-form h2 {
   margin: 0 0 6px;
@@ -574,4 +578,33 @@ footer {
 .attachment:disabled {
   opacity: 0.6;
   cursor: progress;
+}
+
+/* Sélecteur de dossier : la liste peut être longue (41 dossiers mesurés
+   sur un compte Exchange), elle défile dans le dialogue. */
+#move-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+#move-list button {
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13.5px;
+}
+
+#move-list button:hover {
+  background: #e8f0fe;
+}
+
+#move-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
 }
