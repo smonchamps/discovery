@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use mail_auth::{AccountSession, Authenticated, Authenticator, GenericCredentials};
 use mail_core::AccountConfig;
-use mail_core::{Action, OutboxState, Store, SyncEngine};
+use mail_core::{Action, MailServer, OutboxState, Store, SyncEngine};
 use mail_imap::ImapServer;
 use mail_smtp::SmtpMailer;
 use serde::Serialize;
@@ -569,6 +569,146 @@ async fn raw_body(
             .map_err(|err| err.to_string())?
         }
     }
+}
+
+/// Une pièce jointe telle que l'UI la présente.
+#[derive(Serialize)]
+pub struct AttachmentRow {
+    pub index: usize,
+    pub name: String,
+    pub mime: String,
+    pub size: String,
+}
+
+/// Les pièces jointes connues d'un message — lecture LOCALE, aucun
+/// réseau. Vide tant que le corps n'a pas été rapatrié : même condition
+/// que la recherche dans le texte, et le rattrapage la lève.
+#[tauri::command]
+pub fn message_attachments(
+    app: AppHandle,
+    account_id: i64,
+    uid: u32,
+) -> Result<Vec<AttachmentRow>, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let found = store
+        .attachments(account_id, MAILBOX, uid)
+        .map_err(|err| err.to_string())?;
+    Ok(found
+        .into_iter()
+        .map(|attachment| AttachmentRow {
+            index: attachment.index,
+            size: attachment.human_size(),
+            name: attachment.name,
+            mime: attachment.mime,
+        })
+        .collect())
+}
+
+/// Enregistre une pièce jointe dans le dossier Téléchargements et
+/// retourne son chemin.
+///
+/// Les octets ne sont jamais en cache : ils sont retéléchargés ici, une
+/// fois, à la demande de l'utilisateur.
+#[tauri::command]
+pub async fn save_attachment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: i64,
+    uid: u32,
+    index: usize,
+) -> Result<String, String> {
+    let path = db_path(&app)?;
+    let store = Store::open(&path).map_err(|err| err.to_string())?;
+    let attachment = store
+        .attachments(account_id, MAILBOX, uid)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .find(|candidate| candidate.index == index)
+        .ok_or_else(|| "pièce jointe inconnue".to_string())?;
+    drop(store);
+
+    let directory = app
+        .path()
+        .download_dir()
+        .map_err(|err| format!("dossier Téléchargements introuvable : {err}"))?;
+    let session = auth_for(&path, &state, account_id)?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        let (mut server, _refreshed) = connect_imap(&session)?;
+        let bytes = server
+            .fetch_attachment(MAILBOX, uid, index)
+            .map_err(|err| err.to_string())?;
+        server.logout();
+        bytes.ok_or_else(|| "pièce jointe absente du message".to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+
+    let target = unique_path(&directory, &safe_file_name(&attachment.name));
+    std::fs::write(&target, &bytes).map_err(|err| format!("écriture impossible : {err}"))?;
+    Ok(target.to_string_lossy().into_owned())
+}
+
+/// Réduit un nom venu du RÉSEAU à un nom de fichier inoffensif.
+///
+/// Un nom de pièce jointe est une chaîne choisie par l'expéditeur. Tel
+/// quel, `../../.ssh/authorized_keys` écrirait hors du dossier voulu :
+/// c'est une écriture arbitraire de fichier, déclenchée par un simple
+/// clic sur un message reçu. Rien de ce qui suit n'est de la prudence
+/// excessive.
+fn safe_file_name(raw: &str) -> String {
+    // Ne garder que le dernier segment : tout séparateur, toute
+    // remontée `..` et tout préfixe de lecteur disparaissent avec lui.
+    let base = raw
+        .rsplit(['/', '\\', ':'])
+        .next()
+        .unwrap_or("")
+        .trim()
+        .trim_matches('.');
+    let cleaned: String = base
+        .chars()
+        .map(|c| match c {
+            // Interdits par Windows, plus les caractères de contrôle.
+            '<' | '>' | '"' | '|' | '?' | '*' => '_',
+            c if (c as u32) < 0x20 => '_',
+            c => c,
+        })
+        .take(120)
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').to_string();
+    if cleaned.is_empty() || is_reserved_device_name(&cleaned) {
+        return "piece-jointe".to_string();
+    }
+    cleaned
+}
+
+/// Noms réservés par Windows : un fichier nommé `CON` ou `LPT1` est
+/// refusé par l'OS, quelle que soit l'extension.
+fn is_reserved_device_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or(name).to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || (stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.ends_with(|c: char| c.is_ascii_digit() && c != '0'))
+}
+
+/// Chemin libre dans `directory` : `facture.pdf`, puis `facture (2).pdf`…
+/// Enregistrer deux fois ne doit jamais écraser le premier fichier.
+fn unique_path(directory: &Path, name: &str) -> PathBuf {
+    let candidate = directory.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let (stem, extension) = match name.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() => (stem, format!(".{extension}")),
+        _ => (name, String::new()),
+    };
+    for n in 2..1000 {
+        let candidate = directory.join(format!("{stem} ({n}){extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    directory.join(format!("{stem} ({}){extension}", std::process::id()))
 }
 
 /// Archive : disparition locale immédiate + journalisation, le serveur
@@ -1434,6 +1574,78 @@ fn run_backfill_all(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un nom de pièce jointe est une chaîne choisie par l'EXPÉDITEUR.
+    /// Écrit tel quel, il permet une écriture arbitraire de fichier
+    /// déclenchée par un simple clic sur un message reçu. Ces cas ne
+    /// sont pas théoriques : ce sont ceux des archives d'exploitation
+    /// de clients mail.
+    #[test]
+    fn a_hostile_attachment_name_can_never_escape_its_folder() {
+        assert_eq!(
+            safe_file_name("../../.ssh/authorized_keys"),
+            "authorized_keys"
+        );
+        assert_eq!(
+            safe_file_name(r"..\..\Windows\System32\evil.dll"),
+            "evil.dll"
+        );
+        assert_eq!(safe_file_name(r"C:\Windows\notepad.exe"), "notepad.exe");
+        assert_eq!(safe_file_name("/etc/passwd"), "passwd");
+        assert_eq!(safe_file_name(".."), "piece-jointe");
+        assert_eq!(safe_file_name("/"), "piece-jointe");
+        assert_eq!(safe_file_name(""), "piece-jointe");
+    }
+
+    /// Windows refuse ces noms quelle que soit l'extension : sans repli,
+    /// l'enregistrement échouerait avec une erreur incompréhensible.
+    #[test]
+    fn windows_device_names_fall_back() {
+        assert_eq!(safe_file_name("CON"), "piece-jointe");
+        assert_eq!(safe_file_name("nul.txt"), "piece-jointe");
+        assert_eq!(safe_file_name("COM1.pdf"), "piece-jointe");
+        assert_eq!(safe_file_name("LPT9"), "piece-jointe");
+        // Ni réservé, ni piégeux : doit passer tel quel.
+        assert_eq!(safe_file_name("COM0.pdf"), "COM0.pdf");
+        assert_eq!(safe_file_name("console.log"), "console.log");
+    }
+
+    /// Un nom légitime, même accentué, doit traverser INTACT — un filtre
+    /// qui mutile les noms normaux serait payé tous les jours.
+    #[test]
+    fn a_legitimate_name_passes_through_untouched() {
+        assert_eq!(safe_file_name("facture.pdf"), "facture.pdf");
+        assert_eq!(safe_file_name("résumé 2026.docx"), "résumé 2026.docx");
+        assert_eq!(
+            safe_file_name("rapport-final_v2.xlsx"),
+            "rapport-final_v2.xlsx"
+        );
+    }
+
+    #[test]
+    fn control_characters_and_wildcards_are_neutralised() {
+        assert_eq!(safe_file_name("a<b>c.txt"), "a_b_c.txt");
+        assert_eq!(safe_file_name("fac\u{7}ture?.pdf"), "fac_ture_.pdf");
+    }
+
+    /// Enregistrer deux fois la même pièce ne doit jamais écraser le
+    /// premier fichier — la perte serait silencieuse.
+    #[test]
+    fn a_second_save_never_overwrites_the_first() {
+        let dir = std::env::temp_dir().join(format!("discovery-pj-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _ = std::fs::remove_file(dir.join("facture.pdf"));
+
+        let first = unique_path(&dir, "facture.pdf");
+        assert_eq!(first.file_name().unwrap(), "facture.pdf");
+        std::fs::write(&first, b"x").unwrap();
+
+        let second = unique_path(&dir, "facture.pdf");
+        assert_eq!(second.file_name().unwrap(), "facture (2).pdf");
+
+        std::fs::remove_file(&first).unwrap();
+        let _ = std::fs::remove_dir(&dir);
+    }
 
     /// L'adresse déclarée devient la clé du compte ET l'identifiant
     /// XOAUTH2 : elle n'est vérifiable par personne d'autre avant le

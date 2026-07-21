@@ -123,3 +123,26 @@ test('ajout de compte : trois voies, et le dialogue Microsoft ne fuit pas', asyn
   await page.keyboard.press('Escape');
   await expect(page.locator('#ms-dialog')).toBeHidden();
 });
+
+/// Pièces jointes : le décor en sème une un message sur dix. Le
+/// trombone doit apparaître là où il y en a — et surtout PAS ailleurs.
+///
+/// Ce second point est le vrai test : une image inline prise pour une
+/// pièce jointe ferait apparaître un trombone sur presque tous les
+/// messages, et le signal deviendrait du bruit.
+test('pièces jointes : listées quand il y en a, absentes sinon', async () => {
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#scroll-space')).toBeVisible();
+
+  // n°190 porte une pièce jointe (multiple de dix), n°189 non.
+  await page.locator('.row', { hasText: 'n°190' }).first().click();
+  await expect(page.locator('#detail-subject')).toContainText('n°190');
+  await expect(page.locator('#attachments')).toBeVisible();
+  await expect(page.locator('#attachments .attachment')).toHaveCount(1);
+  await expect(page.locator('#attachments .attachment')).toContainText('facture-190.pdf');
+  await expect(page.locator('#attachments .attachment')).toContainText('20 Ko');
+
+  await page.locator('.row', { hasText: 'n°189' }).first().click();
+  await expect(page.locator('#detail-subject')).toContainText('n°189');
+  await expect(page.locator('#attachments')).toBeHidden();
+});

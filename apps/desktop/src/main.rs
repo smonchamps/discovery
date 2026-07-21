@@ -46,6 +46,8 @@ fn main() {
             commands::list_messages,
             commands::search_messages,
             commands::message_body,
+            commands::message_attachments,
+            commands::save_attachment,
             commands::mark_seen,
             commands::mark_flagged,
             commands::archive_message,

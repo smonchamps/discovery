@@ -529,3 +529,38 @@ footer {
   line-height: 1.45;
   color: var(--muted);
 }
+
+/* Pièces jointes : visibles sous l'en-tête, cliquables pour enregistrer. */
+#attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Garde-fou `[hidden]` — même piège que `#add-menu` et les dialogues. */
+#attachments[hidden] {
+  display: none;
+}
+
+.attachment {
+  font-size: 12.5px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: #f2f4f7;
+  border-color: #dfe3e8;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment:hover:not(:disabled) {
+  background: #e8f0fe;
+  border-color: var(--accent);
+}
+
+.attachment:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}

@@ -419,8 +419,67 @@ async function openMessage(message, index) {
   el('detail-meta').textContent = `${message.sender} — ${message.date}`;
   el('detail-note').hidden = true;
   el('detail-frame').setAttribute('srcdoc', '');
+  renderAttachments([]);
   setStatus('chargement du message…');
   await loadBody(message, false);
+  await refreshAttachments(message);
+}
+
+// --- Pièces jointes -------------------------------------------------
+//
+// Les métadonnées sont locales et gratuites (elles arrivent avec le
+// corps) ; les octets se paient à la demande, au clic. Rien n'est mis en
+// cache : le budget disque de l'ADR 0007 ne survivrait pas aux fichiers.
+
+async function refreshAttachments(message) {
+  try {
+    const found = await invoke('message_attachments', {
+      accountId: message.account_id,
+      uid: message.uid,
+    });
+    // Le message affiché a pu changer pendant l'aller-retour.
+    if (currentMessage && currentMessage.uid === message.uid
+      && currentMessage.account_id === message.account_id) {
+      renderAttachments(found, message);
+    }
+  } catch {
+    renderAttachments([]);
+  }
+}
+
+function renderAttachments(found, message) {
+  const bar = el('attachments');
+  bar.replaceChildren();
+  bar.hidden = found.length === 0;
+  for (const attachment of found) {
+    bar.appendChild(buildAttachmentButton(attachment, message));
+  }
+}
+
+function buildAttachmentButton(attachment, message) {
+  const button = document.createElement('button');
+  button.className = 'attachment';
+  button.type = 'button';
+  // textContent, jamais innerHTML : ce nom vient du réseau.
+  button.textContent = `📎 ${attachment.name} (${attachment.size})`;
+  button.title = attachment.mime;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    setStatus(`téléchargement de ${attachment.name}…`);
+    try {
+      const path = await invoke('save_attachment', {
+        accountId: message.account_id,
+        uid: message.uid,
+        index: attachment.index,
+      });
+      setStatus(`enregistré : ${path}`);
+    } catch (err) {
+      setStatus(`enregistrement impossible : ${err}`, true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return button;
 }
 
 async function openMessageAt(index) {
