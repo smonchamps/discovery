@@ -220,7 +220,7 @@ function showBackfill(remaining, fetched = null) {
   bar.hidden = false;
   el('backfill-summary').textContent = backfillRunning
     ? `Rattrapage en cours — ${fetched ?? 0} rapatrié(s), ${remaining} restant(s)`
-    : `${remaining} message(s) dont le contenu n'est pas cherchable`;
+    : `${remaining} message(s) dont le contenu n'a pas encore été lu (recherche et pièces jointes)`;
   el('backfill-start').hidden = backfillRunning;
   el('backfill-stop').hidden = !backfillRunning;
 }
@@ -243,7 +243,7 @@ async function runBackfill() {
       // Plus rien à faire, ou plus rien qui avance : on s'arrête.
       if (report.remaining === 0 || report.fetched === 0) break;
     }
-    setStatus(`rattrapage : ${fetched} message(s) rendus cherchables`);
+    setStatus(`rattrapage : ${fetched} message(s) lus`);
   } catch (err) {
     setStatus(`rattrapage impossible : ${err}`, true);
   } finally {

@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS bodies (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     uid        INTEGER NOT NULL,
     html       TEXT NOT NULL,
+    -- 0 = corps rapatrie AVANT que les pieces jointes existent : son MIME
+    -- n'a jamais ete inspecte, et l'information n'est PAS recuperable
+    -- depuis le HTML stocke. Il faut le relire (voir bodies_to_backfill).
+    scanned    INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (mailbox_id, uid)
 );
 -- Métadonnées seules : jamais les octets. Ils se retéléchargent à la
@@ -530,7 +534,8 @@ impl Store {
     ) -> Result<(), Error> {
         let tx = self.0.unchecked_transaction()?;
         tx.execute(
-            "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html) VALUES (?1, ?2, ?3)",
+            "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html, scanned)
+             VALUES (?1, ?2, ?3, 1)",
             params![mailbox_id, uid, html],
         )?;
         // Remplacement intégral : un message re-téléchargé dont une pièce
@@ -638,6 +643,7 @@ impl Store {
                AND NOT EXISTS (
                    SELECT 1 FROM bodies b
                     WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+                      AND b.scanned = 1
                )
              ORDER BY e.date_epoch DESC, e.uid DESC
              LIMIT ?4",
@@ -668,6 +674,7 @@ impl Store {
                AND NOT EXISTS (
                    SELECT 1 FROM bodies b
                     WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+                      AND b.scanned = 1
                )",
             params![account_id, mailbox, since_epoch],
             |row| row.get(0),
@@ -818,6 +825,9 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
         "drafts",
         &[("remote_uid", "INTEGER"), ("pushed_epoch", "INTEGER")],
     )?;
+    // Les corps deja en base valent 0 : ils datent d'avant les pieces
+    // jointes, et le rattrapage devra les relire une fois.
+    add_missing_columns(conn, "bodies", &[("scanned", "INTEGER NOT NULL DEFAULT 0")])?;
     add_missing_columns(
         conn,
         "accounts",
@@ -1223,6 +1233,53 @@ mod tests {
             mime: "application/pdf".to_string(),
             size: 2048,
         }
+    }
+
+    /// Le defaut livre : un corps rapatrie AVANT les pieces jointes n'a
+    /// jamais eu son MIME inspecte, et l'information n'est pas
+    /// recuperable depuis le HTML stocke. Comme le rattrapage ne
+    /// selectionnait que les corps ABSENTS, ces messages n'auraient
+    /// jamais montre leurs pieces jointes — soit, en pratique, la
+    /// totalite d'une boite deja rattrapee.
+    #[test]
+    fn a_body_fetched_before_attachments_existed_is_queued_for_a_re_read() {
+        let (mut store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .upsert_envelopes(id, &[envelope(1, "sujet", 100, false)])
+            .unwrap();
+        store.save_body(id, 1, "<p>corps</p>", &[]).unwrap();
+
+        // Rien a faire : le corps a ete lu par la version courante.
+        assert!(
+            store
+                .bodies_to_backfill(account, "INBOX", 0, 10)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 0);
+
+        // On simule l'heritage : corps present, MIME jamais inspecte.
+        store
+            .conn()
+            .execute("UPDATE bodies SET scanned = 0", [])
+            .unwrap();
+
+        assert_eq!(
+            store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
+            vec![1],
+            "un corps jamais inspecte doit revenir dans le rattrapage"
+        );
+        assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 1);
+
+        // Le relire le sort definitivement de la file.
+        store.save_body(id, 1, "<p>corps</p>", &[]).unwrap();
+        assert!(
+            store
+                .bodies_to_backfill(account, "INBOX", 0, 10)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
