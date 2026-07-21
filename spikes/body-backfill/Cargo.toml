@@ -1,0 +1,15 @@
+# Banc de mesure, hors du workspace de production. Il dépend des crates
+# de prod par chemin — c'est voulu : on mesure le VRAI chemin de
+# téléchargement et d'indexation, pas une imitation.
+[workspace]
+
+[package]
+name = "spike-body-backfill"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+mail-auth = { path = "../../crates/mail-auth" }
+mail-core = { path = "../../crates/mail-core" }
+mail-imap = { path = "../../crates/mail-imap" }
