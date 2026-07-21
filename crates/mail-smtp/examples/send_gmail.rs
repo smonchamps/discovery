@@ -41,7 +41,7 @@ fn main() -> anyhow::Result<()> {
 
     let timer = Instant::now();
     let mut mailer =
-        SmtpMailer::connect_xoauth2("smtp.gmail.com", &account.email, &account.access_token)
+        SmtpMailer::connect_xoauth2("smtp.gmail.com", 465, &account.email, &account.access_token)
             .map_err(|err| anyhow::anyhow!("connexion SMTP : {err}"))?;
     println!("Connecté ({}) en {:?}", account.email, timer.elapsed());
 

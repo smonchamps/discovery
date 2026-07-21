@@ -25,6 +25,10 @@ const MAILBOX: &str = "INBOX";
 const IMAP_HOST: &str = "imap.gmail.com";
 const IMAP_PORT: u16 = 993;
 const SMTP_HOST: &str = "smtp.gmail.com";
+/// Port de soumission Gmail : 465, TLS implicite. Explicite plutôt que
+/// supposé — `smtp.office365.com` n'écoute qu'en 587/STARTTLS, et c'est
+/// ce port câblé en dur qui constituait le bug #3.
+const SMTP_PORT: u16 = 465;
 const LIST_LIMIT_MAX: usize = 500;
 const SEARCH_LIMIT: usize = 50;
 /// Horizon de récence du rattrapage des corps (ADR 0007) : 12 mois. C'est
@@ -1113,16 +1117,21 @@ fn purge_draft_tombstones(
 fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountSession>), String> {
     match session {
         AccountSession::Gmail(auth) => {
-            match SmtpMailer::connect_xoauth2(SMTP_HOST, &auth.email, &auth.access_token) {
+            match SmtpMailer::connect_xoauth2(SMTP_HOST, SMTP_PORT, &auth.email, &auth.access_token)
+            {
                 Ok(mailer) => Ok((mailer, None)),
                 Err(_) => {
                     let fresh = GmailAuth::from_env()
                         .map_err(|err| err.to_string())?
                         .authenticate_silent(&auth.email)
                         .map_err(|err| err.to_string())?;
-                    let mailer =
-                        SmtpMailer::connect_xoauth2(SMTP_HOST, &fresh.email, &fresh.access_token)
-                            .map_err(|err| err.to_string())?;
+                    let mailer = SmtpMailer::connect_xoauth2(
+                        SMTP_HOST,
+                        SMTP_PORT,
+                        &fresh.email,
+                        &fresh.access_token,
+                    )
+                    .map_err(|err| err.to_string())?;
                     Ok((mailer, Some(AccountSession::Gmail(fresh))))
                 }
             }

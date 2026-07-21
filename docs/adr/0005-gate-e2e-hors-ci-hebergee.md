@@ -9,6 +9,8 @@ toute vérification automatique :
 
 - le **port SMTP ignoré** pour un compte générique (`relay()` câblait un
   TLS implicite 465 en dur) — aucun test n'exerce un adaptateur réseau ;
+  [depuis : `mail-smtp` en a deux, qui joignent un faux serveur sur un
+  port éphémère — le trou était moins large qu'il n'y paraissait] ;
 - le **menu d'ajout de compte affiché en permanence** (`#add-menu`,
   spécificité d'ID écrasant `[hidden]`) — invisible sans piloter l'UI.
 

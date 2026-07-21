@@ -16,6 +16,7 @@
 //! fournisseurs l'exigeront (Phase 3, multi-comptes).
 
 use lettre::message::Mailbox;
+use lettre::transport::smtp::SmtpTransportBuilder;
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
 use lettre::{Message, SmtpTransport, Transport};
 use mail_core::{MailTransport, OutboxMessage, SendError};
@@ -42,12 +43,33 @@ fn smtp_tls_for_port(port: u16) -> SmtpTls {
     }
 }
 
+/// Ouvre le transport vers `host:port` selon la politique TLS du port.
+///
+/// Chemin UNIQUE des deux modes d'authentification : c'est ce qui garantit
+/// qu'un correctif sur la politique de port ne peut plus profiter à un
+/// seul des deux. Le bug #3 était né de cette duplication.
+fn transport_builder(host: &str, port: u16) -> Result<SmtpTransportBuilder, SendError> {
+    match smtp_tls_for_port(port) {
+        SmtpTls::Implicit => SmtpTransport::relay(host),
+        SmtpTls::StartTls => SmtpTransport::starttls_relay(host),
+    }
+    .map(|builder| builder.port(port))
+    .map_err(|err| SendError::Transient(err.to_string()))
+}
+
 impl SmtpMailer {
-    /// Connexion TLS (port 465) + authentification XOAUTH2, vérifiée
-    /// immédiatement : on ne rend un transport que s'il sait envoyer.
-    pub fn connect_xoauth2(host: &str, user: &str, access_token: &str) -> Result<Self, SendError> {
-        let transport = SmtpTransport::relay(host)
-            .map_err(|err| SendError::Transient(err.to_string()))?
+    /// Connexion TLS + authentification XOAUTH2, vérifiée immédiatement :
+    /// on ne rend un transport que s'il sait envoyer.
+    ///
+    /// Le `port` est honoré — Gmail écoute en 465 (TLS implicite),
+    /// `smtp.office365.com` uniquement en 587 (STARTTLS).
+    pub fn connect_xoauth2(
+        host: &str,
+        port: u16,
+        user: &str,
+        access_token: &str,
+    ) -> Result<Self, SendError> {
+        let transport = transport_builder(host, port)?
             .authentication(vec![Mechanism::Xoauth2])
             .credentials(Credentials::new(user.to_string(), access_token.to_string()))
             .build();
@@ -55,21 +77,14 @@ impl SmtpMailer {
     }
 
     /// Connexion TLS + authentification par mot de passe (SMTP générique).
-    /// Le `port` est honoré : 465 ouvre en TLS implicite, tout autre port
-    /// (587 en tête) monte le TLS via STARTTLS. Vérifiée immédiatement.
+    /// Même politique de port que XOAUTH2. Vérifiée immédiatement.
     pub fn connect_password(
         host: &str,
         port: u16,
         user: &str,
         password: &str,
     ) -> Result<Self, SendError> {
-        let builder = match smtp_tls_for_port(port) {
-            SmtpTls::Implicit => SmtpTransport::relay(host),
-            SmtpTls::StartTls => SmtpTransport::starttls_relay(host),
-        }
-        .map_err(|err| SendError::Transient(err.to_string()))?;
-        let transport = builder
-            .port(port)
+        let transport = transport_builder(host, port)?
             .credentials(Credentials::new(user.to_string(), password.to_string()))
             .build();
         Self::test_transport(transport)
@@ -161,6 +176,10 @@ fn parse_mailbox(address: &str) -> Result<Mailbox, SendError> {
 mod tests {
     use super::*;
     use mail_core::OutboxState;
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
 
     fn outbox_message(in_reply_to: Option<&str>) -> OutboxMessage {
         OutboxMessage {
@@ -256,6 +275,55 @@ mod tests {
         assert_eq!(smtp_tls_for_port(587), SmtpTls::StartTls);
         assert_eq!(smtp_tls_for_port(25), SmtpTls::StartTls);
         assert_eq!(smtp_tls_for_port(2525), SmtpTls::StartTls);
+    }
+
+    /// Écoute sur un port éphémère, accepte une connexion puis raccroche.
+    /// Renvoie le port et un canal qui signale l'arrivée : ce qu'on teste
+    /// est l'ARRIVÉE de la connexion, pas le dialogue SMTP — un faux
+    /// serveur qui raccroche suffit, et rend le test hors-ligne.
+    fn fake_smtp_server() -> (u16, mpsc::Receiver<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("port éphémère");
+        let port = listener.local_addr().expect("adresse locale").port();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            if listener.accept().is_ok() {
+                let _ = tx.send(());
+            }
+        });
+        (port, rx)
+    }
+
+    fn connection_arrived(rx: &mpsc::Receiver<()>) -> bool {
+        rx.recv_timeout(Duration::from_secs(5)).is_ok()
+    }
+
+    /// Régression (bug #3) : `connect_xoauth2` câblait `relay()` — TLS
+    /// implicite sur 465 — et n'offrait aucun port. Le défaut jumeau de
+    /// celui corrigé pour les mots de passe, invisible parce qu'un seul
+    /// fournisseur était branché : Gmail écoute bien en 465, mais
+    /// `smtp.office365.com` n'écoute qu'en 587/STARTTLS.
+    #[test]
+    fn xoauth2_connects_to_the_port_it_is_given() {
+        let (port, arrived) = fake_smtp_server();
+        // La connexion échoue forcément (le faux serveur raccroche) ;
+        // seule son arrivée sur LE port demandé est en jeu.
+        let _ = SmtpMailer::connect_xoauth2("127.0.0.1", port, "moi@exemple.fr", "jeton");
+        assert!(
+            connection_arrived(&arrived),
+            "XOAUTH2 doit joindre le port demandé, pas un 465 câblé en dur"
+        );
+    }
+
+    /// Le pendant pour le mot de passe : garde le correctif du bug #1 de
+    /// régresser quand les deux chemins seront unifiés.
+    #[test]
+    fn password_connects_to_the_port_it_is_given() {
+        let (port, arrived) = fake_smtp_server();
+        let _ = SmtpMailer::connect_password("127.0.0.1", port, "moi@exemple.fr", "secret");
+        assert!(
+            connection_arrived(&arrived),
+            "le mot de passe doit joindre le port demandé"
+        );
     }
 
     #[test]

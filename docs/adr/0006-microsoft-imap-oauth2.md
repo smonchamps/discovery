@@ -53,17 +53,19 @@ l'asymétrie d'effort est écrasante :
 |---|---|---|
 | Moteur de synchro, boîte d'envoi et ses règles d'or, brouillons, stockage | **réutilisés sans une ligne de neuf** | à réécrire contre REST |
 | Adaptateurs | déjà paramétrés par hôte (`connect_xoauth2(host, port, …)`) | nouvel adaptateur `MailServer` + `MailTransport` |
-| Reste à faire | endpoints/scopes par fournisseur, hôtes par compte, port SMTP XOAUTH2 | pagination, delta, quotas, modèle propre |
+| Reste à faire | endpoints/scopes par fournisseur, hôtes par compte | pagination, delta, quotas, modèle propre |
 
 ### Les deux pièges, gelés ici
 
 1. **Les scopes sont ceux de la RESSOURCE Outlook**, pas les noms courts de
    Graph — `https://outlook.office.com/IMAP.AccessAsUser.All` et
    `https://outlook.office.com/SMTP.Send`, plus `offline_access`.
-2. **SMTP est en 587 STARTTLS**, jamais en 465 implicite. Le chemin
-   XOAUTH2 de `mail-smtp` câble encore 465 en dur (le correctif de
-   `fb11538` n'a couvert que le chemin mot de passe) : **à corriger avant
-   la mise en production** de ce fournisseur.
+2. **SMTP est en 587 STARTTLS**, jamais en 465 implicite. ~~Le chemin
+   XOAUTH2 de `mail-smtp` câble encore 465 en dur.~~ **Soldé** : les deux
+   modes d'authentification passent désormais par un chemin unique
+   (`transport_builder`), et deux tests hors-ligne prouvent que le port
+   demandé est bien celui joint. La duplication qui avait laissé le
+   correctif `fb11538` ne profiter qu'au mot de passe n'existe plus.
 
 ## Conséquence inattendue : l'archivage
 
