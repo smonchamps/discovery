@@ -40,6 +40,7 @@ fn main() {
             commands::startup_report,
             commands::connect_accounts,
             commands::add_account,
+            commands::add_microsoft_account,
             commands::add_generic_account,
             commands::sync_inbox,
             commands::list_messages,

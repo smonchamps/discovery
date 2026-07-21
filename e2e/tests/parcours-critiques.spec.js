@@ -94,3 +94,32 @@ test('brouillon : Échap conserve le texte, Reprendre le restitue intact', async
   await expect(page.locator('#compose-subject')).toHaveValue('Brouillon E2E');
   await expect(page.locator('#compose-body')).toHaveValue('Texte précieux.');
 });
+
+/// Ajout de compte : les trois voies doivent être offertes, et le
+/// dialogue Microsoft rester invisible tant qu'on ne l'ouvre pas.
+///
+/// Ce dernier point n'est pas une formalité : le menu d'ajout est
+/// précisément resté affiché en permanence pendant une livraison, la
+/// spécificité d'ID écrasant `[hidden]`. Le même piège guette chaque
+/// nouvel élément masqué — d'où l'assertion.
+test('ajout de compte : trois voies, et le dialogue Microsoft ne fuit pas', async () => {
+  await expect(page.locator('#add-menu')).toBeHidden();
+  await expect(page.locator('#ms-dialog')).toBeHidden();
+
+  await page.locator('#connect').click();
+
+  await expect(page.locator('#add-gmail')).toBeVisible();
+  await expect(page.locator('#add-microsoft')).toBeVisible();
+  await expect(page.locator('#add-imap')).toBeVisible();
+
+  // Microsoft ne livre pas l'adresse du compte : elle est saisie avant
+  // que le navigateur ne prenne la main (ADR 0006).
+  await page.locator('#add-microsoft').click();
+  await expect(page.locator('#add-menu')).toBeHidden();
+  await expect(page.locator('#ms-email')).toBeFocused();
+
+  // Échap doit rendre la main — un dialogue qui piège l'utilisateur est
+  // pire que pas de dialogue du tout.
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#ms-dialog')).toBeHidden();
+});

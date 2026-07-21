@@ -837,6 +837,20 @@ function setStatus(text, isError = false) {
   status.classList.toggle('error', isError);
 }
 
+// Ferme le dialogue d'ajout ouvert, s'il y en a un. Renvoie `true` si
+// quelque chose a effectivement été fermé — Échap doit consommer la
+// touche plutôt que de la laisser filer vers une autre action.
+function closeAddDialog() {
+  for (const name of ['imap', 'ms']) {
+    if (!el(`${name}-dialog`).hidden) {
+      el(`${name}-dialog`).hidden = true;
+      el(`${name}-form`).reset();
+      return true;
+    }
+  }
+  return false;
+}
+
 // Les reconnexions silencieuses ont eu lieu au démarrage
 // (connect_accounts) : ce bouton AJOUTE un compte — parcours navigateur.
 function toggleAddMenu() {
@@ -857,6 +871,40 @@ el('add-gmail').addEventListener('click', async () => {
     await onConnected();
   } catch (err) {
     setStatus(`connexion impossible : ${err}`, true);
+  }
+});
+
+// Microsoft ne communique pas l'adresse du compte dans le périmètre de
+// scopes mesuré (ADR 0006) : on la demande AVANT d'ouvrir le navigateur.
+el('add-microsoft').addEventListener('click', () => {
+  el('add-menu').hidden = true;
+  el('ms-dialog').hidden = false;
+  el('ms-email').focus();
+});
+
+el('ms-cancel').addEventListener('click', () => {
+  el('ms-dialog').hidden = true;
+  el('ms-form').reset();
+});
+
+el('ms-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const email = el('ms-email').value.trim();
+  // Le dialogue se ferme avant le consentement : le navigateur prend la
+  // main, et laisser une modale par-dessus l'app serait déroutant.
+  el('ms-dialog').hidden = true;
+  el('ms-form').reset();
+  setStatus('autorisation Microsoft en cours dans votre navigateur…');
+  try {
+    const account = await invoke('add_microsoft_account', { email });
+    if (!connectedAccounts.some((known) => known.id === account.id)) {
+      connectedAccounts.push(account);
+    }
+    renderAccounts();
+    setStatus('compte Microsoft ajouté');
+    await onConnected();
+  } catch (err) {
+    setStatus(`ajout Microsoft impossible : ${err}`, true);
   }
 });
 
@@ -967,10 +1015,7 @@ document.addEventListener('keydown', (event) => {
     || event.target instanceof HTMLTextAreaElement;
   if (typing) {
     if (event.key === 'Escape') {
-      if (!el('imap-dialog').hidden) {
-        el('imap-dialog').hidden = true;
-        el('imap-form').reset();
-      } else {
+      if (!closeAddDialog()) {
         event.target.blur();
       }
     }
@@ -1005,9 +1050,8 @@ document.addEventListener('keydown', (event) => {
       showSearch();
       break;
     case 'Escape':
-      if (!el('imap-dialog').hidden) {
-        el('imap-dialog').hidden = true;
-        el('imap-form').reset();
+      if (closeAddDialog()) {
+        break;
       } else if (!el('compose').hidden) {
         closeCompose();
       } else if (searchMode) {

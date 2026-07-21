@@ -445,7 +445,8 @@ main.split {
   background: #f2f4f7;
 }
 
-#imap-dialog {
+#imap-dialog,
+#ms-dialog {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.35);
@@ -455,10 +456,15 @@ main.split {
   z-index: 20;
 }
 
-#imap-dialog[hidden] {
+/* Même garde-fou que `#add-menu` : sans lui, la spécificité d'ID écrase
+   `[hidden] { display: none }` et le dialogue reste affiché en
+   permanence, interceptant tous les clics. */
+#imap-dialog[hidden],
+#ms-dialog[hidden] {
   display: none;
 }
 
+#ms-form,
 #imap-form {
   background: #fff;
   border-radius: 10px;
@@ -470,11 +476,13 @@ main.split {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
+#ms-form h2,
 #imap-form h2 {
   margin: 0 0 6px;
   font-size: 17px;
 }
 
+#ms-form label,
 #imap-form label {
   display: flex;
   flex-direction: column;
@@ -483,6 +491,7 @@ main.split {
   color: var(--muted);
 }
 
+#ms-form input,
 #imap-form input {
   border: 1px solid #c8c8c8;
   border-radius: 6px;
@@ -491,6 +500,7 @@ main.split {
   font-size: 13.5px;
 }
 
+#ms-actions,
 #imap-actions {
   display: flex;
   gap: 8px;
@@ -509,4 +519,13 @@ footer {
   color: #9a9a9a;
   border-top: 1px solid var(--border);
   background: #fff;
+}
+
+/* Microsoft ne livre pas l'adresse du compte : cette note explique
+   POURQUOI on la demande, plutôt que de laisser deviner. */
+.dialog-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
 }

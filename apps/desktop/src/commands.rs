@@ -204,17 +204,48 @@ fn connect_generic(
     Ok(build_generic_session(&account.email, &password, &config))
 }
 
-/// Ajoute un compte — parcours navigateur complet, répétable à volonté.
+/// Ajoute un compte Gmail — parcours navigateur complet, répétable.
+/// Google livre l'identité du compte : rien à déclarer.
 #[tauri::command]
 pub async fn add_account(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<AccountInfo, String> {
+    add_oauth_account(app, state, &mail_auth::GOOGLE, None).await
+}
+
+/// Ajoute un compte Microsoft 365 / Outlook.com.
+///
+/// L'adresse est SAISIE : dans le périmètre de scopes mesuré par le spike,
+/// Microsoft ne livre pas l'identité du compte ([`mail_auth::Identity`]).
+#[tauri::command]
+pub async fn add_microsoft_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    email: String,
+) -> Result<AccountInfo, String> {
+    let email = email.trim().to_string();
+    // Validation à la frontière : l'adresse déclarée devient la clé du
+    // compte ET l'identifiant XOAUTH2. Une saisie vide produirait un
+    // compte fantôme que rien ne pourrait plus joindre.
+    if !is_plausible_address(&email) {
+        return Err("adresse invalide — saisissez l'adresse complète du compte".to_string());
+    }
+    add_oauth_account(app, state, &mail_auth::MICROSOFT, Some(email)).await
+}
+
+/// Le tronc commun des ajouts OAuth2 : consentement navigateur, puis
+/// enregistrement du compte sous la clé de SON fournisseur.
+async fn add_oauth_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider: &'static mail_auth::Provider,
+    declared_email: Option<String>,
+) -> Result<AccountInfo, String> {
     let account = tauri::async_runtime::spawn_blocking(move || {
-        Authenticator::google_from_env()
+        Authenticator::from_env(provider)
             .map_err(|err| err.to_string())?
-            // Google livre l'identité du compte : rien à déclarer.
-            .authenticate_interactive(None)
+            .authenticate_interactive(declared_email.as_deref())
             .map_err(|err| err.to_string())
     })
     .await
@@ -230,6 +261,18 @@ pub async fn add_account(
     };
     lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(account));
     Ok(info)
+}
+
+/// Filtre minimal d'adresse : ce qui suit est vérifié par le fournisseur
+/// lui-même au consentement. On ne cherche pas à valider RFC 5322 ici,
+/// seulement à refuser ce qui ne peut manifestement pas être une adresse.
+fn is_plausible_address(email: &str) -> bool {
+    match email.split_once('@') {
+        Some((local, domain)) => {
+            !local.is_empty() && domain.contains('.') && !domain.starts_with('.')
+        }
+        None => false,
+    }
 }
 
 /// Les champs arrivent de l'UI en camelCase. Tauri ne convertit que les
@@ -1386,4 +1429,29 @@ fn run_backfill_all(
     summary.remaining = pending_total(&store)?;
     summary.errors.sort();
     Ok((summary, refreshed_list))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// L'adresse déclarée devient la clé du compte ET l'identifiant
+    /// XOAUTH2 : elle n'est vérifiable par personne d'autre avant le
+    /// consentement. Un filtre minimal évite le compte fantôme, sans
+    /// prétendre valider la RFC 5322 — le fournisseur tranchera.
+    #[test]
+    fn declared_address_must_be_plausible() {
+        assert!(is_plausible_address("moi@exemple.fr"));
+        assert!(is_plausible_address("prenom.nom@outlook.com"));
+
+        assert!(!is_plausible_address(""), "vide");
+        assert!(!is_plausible_address("moi"), "sans arobase");
+        assert!(!is_plausible_address("@exemple.fr"), "sans partie locale");
+        assert!(!is_plausible_address("moi@"), "sans domaine");
+        assert!(!is_plausible_address("moi@exemple"), "domaine sans point");
+        assert!(
+            !is_plausible_address("moi@.fr"),
+            "domaine commençant par un point"
+        );
+    }
 }

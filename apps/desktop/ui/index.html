@@ -13,6 +13,7 @@
   <button id="connect" hidden>Ajouter un compte</button>
   <div id="add-menu" hidden>
     <button id="add-gmail">Compte Gmail</button>
+    <button id="add-microsoft">Compte Microsoft</button>
     <button id="add-imap">Compte IMAP/SMTP</button>
   </div>
   <button id="compose-btn" hidden title="Écrire (c)">Écrire</button>
@@ -32,6 +33,20 @@
     <div id="imap-actions">
       <button type="submit">Ajouter</button>
       <button type="button" id="imap-cancel">Annuler</button>
+    </div>
+  </form>
+</div>
+<div id="ms-dialog" hidden>
+  <form id="ms-form">
+    <h2>Ajouter un compte Microsoft</h2>
+    <p class="dialog-note">
+      Microsoft ne communique pas l'adresse du compte : saisissez-la ici.
+      L'autorisation se fera ensuite dans votre navigateur.
+    </p>
+    <label>Adresse email <input id="ms-email" type="email" required></label>
+    <div id="ms-actions">
+      <button type="submit">Continuer</button>
+      <button type="button" id="ms-cancel">Annuler</button>
     </div>
   </form>
 </div>
