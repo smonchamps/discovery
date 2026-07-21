@@ -260,11 +260,16 @@ DOM via `textContent` uniquement).
   - ✅ **Fondation multi-comptes** (commit `6b94741`) : boîte unifiée, N
     comptes Gmail, migration sans perte, coffre par email. 136 tests Rust,
     7/7 E2E, clippy muet.
-  - 🔶 **Recherche en production FTS5** : EN VOL — voir §7.
-  - ⬜ Reste : Microsoft/Graph + IMAP générique, pièces jointes,
-    notifications Windows, threading, dossiers/déplacer, tirage des
-    brouillons. **Gate 3 : budgets tenus avec 3 comptes / 200 000 messages
-    cumulés.**
+  - ✅ **Recherche en production FTS5**, complétée par le **rattrapage des
+    corps** ([ADR 0007](adr/0007-rattrapage-des-corps.md)) : sans lui, la
+    recherche « plein-texte » ne portait que sur les sujets. Validé sur le
+    terrain — base de 97 Mo pour ~2 730 messages, budget < 1 Go tenu à 10 %.
+  - ✅ **IMAP générique** puis **Microsoft 365** : la couche OAuth se décrit
+    désormais par fournisseur en données (`mail-auth::provider`), et les
+    deux parcours sont validés sur des comptes réels — envoi compris.
+  - ⬜ Reste : pièces jointes, notifications Windows, threading,
+    dossiers/déplacer, tirage des brouillons. **Gate 3 : budgets tenus avec
+    3 comptes / 200 000 messages cumulés.**
 - **Phases 4 (web) et 5 (durcissement/bêta)** : ⬜ non commencées.
 
 ---
@@ -406,9 +411,9 @@ caractères + debounce côté UI** (étape 3).
 
 ### Étape 5 et au-delà — backlog Phase 3 (ordre gelé)
 Après la recherche, dans l'ordre du plan et des reports assumés :
-1. **Microsoft/Graph + IMAP générique** (nouveaux providers derrière les
-   traits `MailServer`/`MailTransport`). ⚠️ l'enregistrement **Azure AD**
-   est une action **produit-owner** (voir §10), sur le chemin critique.
+1. ~~**Microsoft + IMAP générique**~~ ✅ **FAIT et validé terrain.** La voie
+   Graph a été écartée sur mesures ([ADR 0006](adr/0006-microsoft-imap-oauth2.md)),
+   et elle reste le plan B avec ses signaux de bascule.
 2. **Pièces jointes** (puis le filtre de recherche « a une pièce jointe »).
 3. **Notifications Windows.**
 4. **Threading des conversations.**
@@ -484,8 +489,10 @@ Certaines actions n'appartiennent pas au développeur mais à l'utilisateur
 - **Ajouter un 2ᵉ compte Gmail en test** : en mode Testing, le compte doit
   d'abord être inscrit comme **utilisateur de test** sur l'écran de
   consentement OAuth, sinon Google refuse le consentement.
-- **Enregistrement Azure AD** (app Microsoft 365) : préalable à
-  l'implémentation du provider Microsoft (backlog Phase 3, §8 étape 5).
+- ~~**Enregistrement Azure AD**~~ ✅ fait. Retenir pour la suite :
+  `MICROSOFT_CLIENT_ID` doit être défini dans l'environnement, **sans
+  secret** (client public, PKCE), et l'URI de redirection enregistrée est
+  `http://localhost` — Azure AD la distingue de `http://127.0.0.1`.
 
 ---
 

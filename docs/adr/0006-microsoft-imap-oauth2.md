@@ -105,11 +105,39 @@ annoncés : exception délibérée à la règle « jamais de nom en dur »,
 **justifiée par la mesure et par elle seule**. Ordre de priorité gelé :
 `\Archive` → `\All` → nom connu → refus.
 
+## Validation terrain (2026-07-21, compte Microsoft réel)
+
+Le parcours complet a été joué **depuis l'application**, pas depuis le
+banc. Les cinq points passent :
+
+| | Vérifié |
+|---|---|
+| Ajout du compte | consentement navigateur, adresse déclarée, pastille affichée |
+| Synchro | les messages Outlook remontent dans la boîte unifiée |
+| Rattrapage | le bandeau repart sur le nouveau compte |
+| Reconnexion | **silencieuse** au relancement — le refresh token du coffre tient |
+| Envoi | **un vrai message part en 587/STARTTLS** |
+
+Le dernier point est le plus important, et il ne pouvait pas être obtenu
+autrement. Le correctif du bug #3 n'était prouvé que **contre un faux
+serveur** : les tests montrent quel port est joint, jamais qu'un message
+en sort. C'est la validation terrain, et elle seule, qui ferme cette
+boucle — exactement le rôle qu'on lui donne.
+
+La reconnexion silencieuse valide au passage deux décisions prises sans
+mesure directe : `offline_access` suffit bien à obtenir un refresh token
+côté Microsoft (là où Google exige `access_type=offline` + `prompt=consent`),
+et les préfixes de coffre disjoints font cohabiter les fournisseurs.
+
+**Non levé** : `Identity::Declared`. L'adresse saisie a fonctionné, ce qui
+ne dit rien de la piste OIDC — elle reste non mesurée, donc non retenue.
+
 ## Conséquences
 
-- La productionisation suit : généraliser la couche OAuth par fournisseur
+- ~~La productionisation suit : généraliser la couche OAuth par fournisseur
   (`GmailAuth` est figé sur Google), sortir les hôtes des constantes de
-  `commands.rs`, corriger le port SMTP XOAUTH2.
+  `commands.rs`, corriger le port SMTP XOAUTH2.~~ **Fait et validé sur le
+  terrain.** Microsoft est un fournisseur de premier rang.
 - **Risque nommé** : SMTP AUTH est ouvert sur le tenant mesuré, mais
   Microsoft le ferme par défaut sur certains tenants d'entreprise. Le cas
   se manifestera par un refus à la connexion, pas par une perte — la

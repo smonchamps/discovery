@@ -80,10 +80,15 @@ Explorer en parallèle, converger par élimination sur critères mesurés (pas d
 | Shell Windows | **Tauri 2 (WebView2)** | Slint/egui natif | Electron | RAM, taille, vitesse de dev, réutilisation web |
 | UI partagée | **TS/React partagé desktop+web** | UI natives séparées | — | coût de double maintenance |
 | Stockage local | **SQLite + FTS5** | SQLite + Tantivy | fichiers Maildir | perf recherche 100k msgs |
-| Accès Microsoft | IMAP+OAuth | **Graph API** | les deux | fiabilité, quotas, effort |
+| Accès Microsoft | **IMAP+OAuth** ✅ tranché | ~~Graph API~~ (plan B) | les deux | fiabilité, quotas, effort |
 | Web | Backend de synchro mutualisé | Cœur Rust en WASM + proxy WebSocket | — | coût d'infra, confidentialité |
 
-Les options en gras sont les hypothèses de départ du CE ; les spikes les confirment ou les tuent.
+Les options en gras sont les hypothèses de départ du CE ; les spikes les
+confirment ou les tuent. **L'accès Microsoft a été tranché contre
+l'hypothèse initiale** : le spike a réfuté l'argument décisif de Graph
+(« IMAP est condamné ») et mesuré une asymétrie d'effort écrasante —
+voir [ADR 0006](adr/0006-microsoft-imap-oauth2.md). Graph reste le plan B,
+chiffré, avec ses trois signaux de bascule.
 
 **Livrable de Phase 0 :** concept paper finalisé + décisions gelées + budgets de perf
 validés sur prototypes. **Gate :** revue de conception ; on ne code la v1 qu'après.
