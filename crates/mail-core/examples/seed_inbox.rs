@@ -115,6 +115,24 @@ fn main() -> Result<(), mail_core::Error> {
             &attachments,
         )?;
     }
+    // Dossiers de destination : le déplacement se joue entièrement en
+    // local (cache + journal), donc l'E2E peut l'exercer hors ligne.
+    // « Archiv&AOk-s » est en UTF-7 modifié — le décodage doit se voir.
+    store.replace_folders(
+        account,
+        &[
+            mail_core::Folder {
+                wire: "Archiv&AOk-s".to_string(),
+                display: "Archivés".to_string(),
+                selectable: true,
+            },
+            mail_core::Folder {
+                wire: "Factures".to_string(),
+                display: "Factures".to_string(),
+                selectable: true,
+            },
+        ],
+    )?;
     store.update_state(mailbox_id, count, None)?;
 
     println!(

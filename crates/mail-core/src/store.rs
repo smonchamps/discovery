@@ -14,6 +14,7 @@ use crate::action::{Action, PendingAction};
 use crate::attachment::Attachment;
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
+use crate::remote::Folder;
 use crate::search;
 
 const SCHEMA: &str = "
@@ -65,6 +66,16 @@ CREATE TABLE IF NOT EXISTS attachments (
     mime       TEXT NOT NULL,
     size       INTEGER NOT NULL,
     PRIMARY KEY (mailbox_id, uid, idx)
+);
+-- Liste des dossiers, mise en cache comme les enveloppes : choisir une
+-- destination doit marcher HORS LIGNE, sinon le tri s'arrête avec le
+-- réseau. Rafraîchie à chaque synchro.
+CREATE TABLE IF NOT EXISTS folders (
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    wire       TEXT NOT NULL,
+    display    TEXT NOT NULL,
+    selectable INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (account_id, wire)
 );
 CREATE TABLE IF NOT EXISTS pending_actions (
     id         INTEGER PRIMARY KEY,
@@ -594,6 +605,44 @@ impl Store {
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Remplace la liste des dossiers connus d'un compte.
+    ///
+    /// Remplacement intégral et transactionnel : un dossier supprimé côté
+    /// serveur ne doit pas rester proposé comme destination — le
+    /// déplacement échouerait au rejeu, longtemps après le clic.
+    pub fn replace_folders(&self, account_id: i64, folders: &[Folder]) -> Result<(), Error> {
+        let tx = self.0.unchecked_transaction()?;
+        tx.execute(
+            "DELETE FROM folders WHERE account_id = ?1",
+            params![account_id],
+        )?;
+        for folder in folders {
+            tx.execute(
+                "INSERT OR REPLACE INTO folders (account_id, wire, display, selectable)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![account_id, folder.wire, folder.display, folder.selectable],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Les dossiers connus d'un compte — lecture LOCALE, jamais de réseau.
+    pub fn folders(&self, account_id: i64) -> Result<Vec<Folder>, Error> {
+        let mut statement = self.0.prepare(
+            "SELECT wire, display, selectable FROM folders
+             WHERE account_id = ?1 ORDER BY display",
+        )?;
+        let rows = statement.query_map(params![account_id], |row| {
+            Ok(Folder {
+                wire: row.get(0)?,
+                display: row.get(1)?,
+                selectable: row.get(2)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Les pièces jointes connues d'un message, dans l'ordre du MIME.
@@ -1365,6 +1414,57 @@ mod tests {
             .map(|e| e.subject.clone().unwrap_or_default())
             .collect();
         assert_eq!(subjects, vec!["vraiment nouveau".to_string()]);
+    }
+
+    fn folder(wire: &str, display: &str) -> Folder {
+        Folder {
+            wire: wire.to_string(),
+            display: display.to_string(),
+            selectable: true,
+        }
+    }
+
+    /// Choisir une destination doit fonctionner HORS LIGNE : la liste est
+    /// donc lue localement, comme les enveloppes. Le nom réseau et le nom
+    /// lisible sont conservés tous les deux — perdre le premier rendrait
+    /// le déplacement irréalisable au rejeu.
+    #[test]
+    fn folders_are_cached_locally_with_both_names() {
+        let (store, _) = store_with_mailbox();
+        let account = test_account(&store);
+        assert!(store.folders(account).unwrap().is_empty());
+
+        store
+            .replace_folders(account, &[folder("Archiv&AOk-s", "Archivés")])
+            .unwrap();
+
+        let cached = store.folders(account).unwrap();
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].wire, "Archiv&AOk-s");
+        assert_eq!(cached[0].display, "Archivés");
+    }
+
+    /// Un dossier supprimé côté serveur ne doit plus être proposé : le
+    /// déplacement échouerait au rejeu, longtemps après le clic — et
+    /// l'utilisateur ne ferait plus le lien.
+    #[test]
+    fn refreshing_folders_drops_the_ones_that_disappeared() {
+        let (store, _) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .replace_folders(
+                account,
+                &[folder("Ancien", "Ancien"), folder("Reste", "Reste")],
+            )
+            .unwrap();
+
+        store
+            .replace_folders(account, &[folder("Reste", "Reste")])
+            .unwrap();
+
+        let cached = store.folders(account).unwrap();
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].wire, "Reste");
     }
 
     #[test]

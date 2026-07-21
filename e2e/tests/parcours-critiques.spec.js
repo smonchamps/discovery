@@ -158,18 +158,44 @@ test('liste : le trombone marque les messages porteurs, et eux seuls', async () 
   await expect(without.locator('.clip')).toHaveCount(0);
 });
 
-/// Déplacer : le dialogue s'ouvre, dit ce qu'il va faire, et Échap rend
-/// la main. Hors ligne, le décor n'a pas de serveur : la liste des
-/// dossiers échoue, et c'est justement ce qu'on vérifie — l'échec est
-/// ANNONCÉ, le dialogue se referme, l'application reste utilisable.
-test('déplacer : un serveur injoignable referme le dialogue et le dit', async () => {
+/// Déplacer, de bout en bout et HORS LIGNE. C'est le test qui compte :
+/// la liste des dossiers vient du cache local, le déplacement est
+/// journalisé, et le serveur suivra. Rien de tout cela n'exige le
+/// réseau — c'est la promesse offline-first appliquée au tri.
+///
+/// Le décor expose « Archiv&AOk-s » : le nom AFFICHÉ doit être
+/// « Archivés », preuve que le décodage UTF-7 arrive jusqu'à l'œil.
+test('déplacer : choisir un dossier retire le message, hors ligne', async () => {
   await page.locator('.row').first().click();
   await expect(page.locator('#detail')).toBeVisible();
+  const subject = await page.locator('#detail-subject').textContent();
   await expect(page.locator('#move-dialog')).toBeHidden();
 
   await page.locator('#move').click();
+  await expect(page.locator('#move-dialog')).toBeVisible();
+  await expect(page.locator('#move-list button').first()).toHaveText('Archivés');
 
-  await expect(page.locator('#move-dialog')).toBeHidden({ timeout: 15_000 });
-  await expect(page.locator('#status')).toContainText('dossiers indisponibles');
-  await expect(page.locator('#detail')).toBeVisible();
+  await page.locator('#move-list button', { hasText: 'Archivés' }).click();
+
+  await expect(page.locator('#move-dialog')).toBeHidden();
+  // On n'assertionne PAS le bandeau de confirmation : l'ouverture
+  // automatique du message suivant l'écrase aussitôt. Défaut réel mais
+  // préexistant (archiver fait de même) — noté, hors périmètre ici.
+  // Ce qui compte, et qui est stable : le message a quitté la liste.
+  await expect(page.locator('#rows')).not.toContainText(subject);
+});
+
+/// Échap doit rendre la main sans rien déplacer — un dialogue qui piège
+/// l'utilisateur au milieu d'une action destructive serait pire que pas
+/// de dialogue du tout.
+test('déplacer : Échap referme sans rien faire', async () => {
+  await page.locator('.row').first().click();
+  const subject = await page.locator('#detail-subject').textContent();
+
+  await page.locator('#move').click();
+  await expect(page.locator('#move-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  await expect(page.locator('#move-dialog')).toBeHidden();
+  await expect(page.locator('#rows')).toContainText(subject);
 });

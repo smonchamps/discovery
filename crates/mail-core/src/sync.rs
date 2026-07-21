@@ -99,6 +99,14 @@ impl SyncEngine {
 
         let last_uid = store.max_uid(state.mailbox_id)?;
         store.update_state(state.mailbox_id, last_uid, snapshot.highest_modseq)?;
+
+        // La liste des dossiers est rafraîchie ICI, pas au moment où
+        // l'utilisateur veut déplacer : choisir une destination doit
+        // marcher hors ligne. Un échec n'invalide pas la synchro — les
+        // messages sont arrivés, l'ancienne liste reste utilisable.
+        if let Ok(folders) = server.folders() {
+            store.replace_folders(account_id, &folders)?;
+        }
         Ok(report)
     }
 
@@ -390,6 +398,27 @@ mod tests {
             "le rejeu doit préserver l'ordre d'émission"
         );
         assert!(store.pending_actions(id).unwrap().is_empty());
+    }
+
+    /// La liste des dossiers doit être en cache AVANT qu'on en ait
+    /// besoin : c'est la synchro qui la remplit, pas l'ouverture du
+    /// sélecteur. Sans cela, déplacer un message exige le réseau — dans
+    /// un produit qui se promet offline-first.
+    #[test]
+    fn syncing_caches_the_folder_list_for_offline_use() {
+        let mut server = FakeServer::new(false);
+        server.add(1, "a");
+        server.folders = vec![crate::remote::Folder {
+            wire: "Archiv&AOk-s".to_string(),
+            display: "Archivés".to_string(),
+            selectable: true,
+        }];
+        let mut store = Store::open_in_memory().unwrap();
+        synced(&mut server, &mut store, &SyncEngine::default());
+
+        let cached = store.folders(test_account(&store)).unwrap();
+        assert_eq!(cached.len(), 1);
+        assert_eq!(cached[0].display, "Archivés");
     }
 
     /// Le déplacement suit la même boucle hors-ligne que le reste :

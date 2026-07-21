@@ -792,33 +792,26 @@ pub struct FolderRow {
 
 /// Les dossiers d'un compte où un message peut être déplacé.
 ///
-/// La boîte courante en est exclue : « déplacer vers INBOX » depuis
-/// INBOX n'a pas de sens, et certains serveurs le refusent.
+/// Lecture **purement locale** : le cache est rempli par la synchro.
+/// Déplacer un message doit marcher hors ligne — l'action est journalisée
+/// et rejouée, comme archiver. Interroger le serveur ici rendrait le tri
+/// dépendant du réseau, ce que le produit refuse (PLAN.md §1).
+///
+/// La boîte courante est exclue : « déplacer vers INBOX » depuis INBOX
+/// n'a pas de sens, et certains serveurs le refusent.
 #[tauri::command]
-pub async fn list_folders(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    account_id: i64,
-) -> Result<Vec<FolderRow>, String> {
-    let path = db_path(&app)?;
-    let session = auth_for(&path, &state, account_id)?;
-    let folders =
-        tauri::async_runtime::spawn_blocking(move || -> Result<Vec<FolderRow>, String> {
-            let (mut server, _refreshed) = connect_imap(&session)?;
-            let folders = server.folders().map_err(|err| err.to_string())?;
-            server.logout();
-            Ok(folders
-                .into_iter()
-                .filter(|folder| folder.selectable && folder.wire != MAILBOX)
-                .map(|folder| FolderRow {
-                    wire: folder.wire,
-                    display: folder.display,
-                })
-                .collect())
+pub fn list_folders(app: AppHandle, account_id: i64) -> Result<Vec<FolderRow>, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    Ok(store
+        .folders(account_id)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .filter(|folder| folder.selectable && folder.wire != MAILBOX)
+        .map(|folder| FolderRow {
+            wire: folder.wire,
+            display: folder.display,
         })
-        .await
-        .map_err(|err| err.to_string())??;
-    Ok(folders)
+        .collect())
 }
 
 /// Déplace un message : disparition locale immédiate + journalisation,
