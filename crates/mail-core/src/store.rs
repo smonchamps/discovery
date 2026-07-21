@@ -625,6 +625,49 @@ impl Store {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// Les messages NON LUS arrivés après `uid_gt`, du plus ancien au
+    /// plus récent — la matière des notifications.
+    ///
+    /// Le critère est l'UID, pas la date : c'est l'ordre d'arrivée que
+    /// le serveur garantit, et c'est lui qui distingue « nouveau » de
+    /// « ancien mais récemment daté ». Les messages déjà lus ailleurs
+    /// sont exclus : notifier un message que l'utilisateur vient de lire
+    /// sur son téléphone est du bruit pur.
+    pub fn new_unread_after(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        uid_gt: Uid,
+        limit: usize,
+    ) -> Result<Vec<Envelope>, Error> {
+        let mut statement = self.0.prepare(
+            "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
+                    e.date_epoch, e.seen, e.flagged
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2
+               AND e.uid > ?3 AND e.seen = 0
+             ORDER BY e.uid
+             LIMIT ?4",
+        )?;
+        let rows =
+            statement.query_map(params![account_id, mailbox, uid_gt, limit as i64], |row| {
+                Ok(Envelope {
+                    uid: row.get(0)?,
+                    subject: row.get(1)?,
+                    sender: row.get(2)?,
+                    sender_address: row.get(3)?,
+                    message_id: row.get(4)?,
+                    date: row
+                        .get::<_, Option<i64>>(5)?
+                        .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
+                    seen: row.get(6)?,
+                    flagged: row.get(7)?,
+                })
+            })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
     /// Les messages RÉCENTS dont le corps manque encore, du plus récent au
     /// plus ancien — le travail du rattrapage ([ADR 0007](../../../docs/adr/0007-rattrapage-des-corps.md)).
     ///
@@ -1290,6 +1333,32 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    /// Un message deja lu ailleurs — telephone, webmail — ne doit pas
+    /// declencher de bulle : c'est du bruit pur, et c'est ce qui fait
+    /// couper les notifications.
+    #[test]
+    fn only_genuinely_new_and_unread_messages_are_notifiable() {
+        let (mut store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(10, "ancien", 100, false),
+                    envelope(11, "deja lu", 200, true),
+                    envelope(12, "vraiment nouveau", 300, false),
+                ],
+            )
+            .unwrap();
+
+        let arrivals = store.new_unread_after(account, "INBOX", 10, 20).unwrap();
+        let subjects: Vec<_> = arrivals
+            .iter()
+            .map(|e| e.subject.clone().unwrap_or_default())
+            .collect();
+        assert_eq!(subjects, vec!["vraiment nouveau".to_string()]);
     }
 
     #[test]

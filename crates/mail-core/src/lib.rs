@@ -14,6 +14,7 @@ mod compose;
 mod drafts;
 mod envelope;
 mod error;
+mod notify;
 mod outbox;
 mod remote;
 mod search;
@@ -32,6 +33,7 @@ pub use compose::{Draft, compose, forward_subject, quote_forward, quote_reply, r
 pub use drafts::SavedDraft;
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
+pub use notify::{Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{FetchedBody, MailServer, MailboxSnapshot};
 pub use store::{Account, AccountConfig, Store, SyncState, UnifiedRow};

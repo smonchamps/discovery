@@ -30,6 +30,9 @@ const BACKFILL_HORIZON_DAYS: i64 = 365;
 /// Corps rapatriés par appel, tous comptes confondus. Borner le lot rend
 /// l'interruption gratuite : l'UI cesse simplement de rappeler.
 const BACKFILL_BUDGET: usize = 200;
+/// Arrivees remontees par compte pour les notifications. Au-dela, seul
+/// le NOMBRE compte — la bulle resume de toute facon.
+const NOTIFY_MAX_ARRIVALS: usize = 50;
 
 #[derive(Serialize)]
 pub struct AccountInfo {
@@ -373,7 +376,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     let jobs = connected_jobs(&path, &state)?;
     let timer = Instant::now();
 
-    let (accounts, fetched, deleted, replayed, errors, refreshed) =
+    let (accounts, fetched, deleted, replayed, errors, refreshed, arrivals) =
         tauri::async_runtime::spawn_blocking(move || {
             let mut accounts = 0;
             let mut fetched = 0;
@@ -381,14 +384,18 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             let mut replayed = 0;
             let mut errors = Vec::new();
             let mut refreshed = Vec::new();
+            // Les arrivees de TOUS les comptes sont agregees : une bulle
+            // par compte serait la meme nuisance qu'une bulle par message.
+            let mut arrivals = Vec::new();
             for (account_id, session) in jobs {
                 let email = session.email().to_string();
                 match run_sync(&session, account_id, &path) {
-                    Ok((report, fresh)) => {
+                    Ok((report, fresh, mut new_unread)) => {
                         accounts += 1;
                         fetched += report.fetched;
                         deleted += report.deleted;
                         replayed += report.replayed;
+                        arrivals.append(&mut new_unread);
                         if let Some(fresh) = fresh {
                             refreshed.push(fresh);
                         }
@@ -396,7 +403,9 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                     Err(err) => errors.push(format!("{email} : {err}")),
                 }
             }
-            (accounts, fetched, deleted, replayed, errors, refreshed)
+            (
+                accounts, fetched, deleted, replayed, errors, refreshed, arrivals,
+            )
         })
         .await
         .map_err(|err| err.to_string())?;
@@ -404,6 +413,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     for fresh in refreshed {
         lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
     }
+    show_arrival_notification(&app, &arrivals);
     let total = Store::open(&db_path(&app)?)
         .and_then(|store| store.unified_count(MAILBOX))
         .map_err(|err| err.to_string())?;
@@ -423,14 +433,56 @@ fn run_sync(
     session: &AccountSession,
     account_id: i64,
     db_path: &Path,
-) -> Result<(mail_core::SyncReport, Option<AccountSession>), String> {
+) -> Result<
+    (
+        mail_core::SyncReport,
+        Option<AccountSession>,
+        Vec<mail_core::Envelope>,
+    ),
+    String,
+> {
     let (mut server, refreshed) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
+    // L'UID le plus haut AVANT la synchro : c'est lui qui separe
+    // « nouveau » de « deja connu ». Releve avant, sinon la synchro
+    // l'aurait deja deplace.
+    let last_uid_before = store
+        .sync_state(account_id, MAILBOX)
+        .map_err(|err| err.to_string())?
+        .map(|state| state.last_uid)
+        .unwrap_or(0);
     let report = SyncEngine::default()
         .sync(&mut server, &mut store, account_id, MAILBOX)
         .map_err(|err| err.to_string())?;
     server.logout();
-    Ok((report, refreshed))
+
+    let arrivals = store
+        .new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS)
+        .map_err(|err| err.to_string())?;
+    Ok((
+        report,
+        refreshed,
+        mail_core::arrivals_to_notify(report.mode, arrivals),
+    ))
+}
+
+/// Affiche la bulle système d'un lot d'arrivées, s'il y a lieu.
+///
+/// Un échec ici — permission refusée, service indisponible — ne doit
+/// JAMAIS faire échouer une synchro : le courrier est arrivé, c'est le
+/// seul résultat qui compte. L'erreur est donc absorbée.
+fn show_arrival_notification(app: &AppHandle, arrivals: &[mail_core::Envelope]) {
+    use tauri_plugin_notification::NotificationExt;
+
+    let Some(notification) = mail_core::notification_for(arrivals) else {
+        return;
+    };
+    let _ = app
+        .notification()
+        .builder()
+        .title(notification.title)
+        .body(notification.body)
+        .show();
 }
 
 #[derive(Serialize)]

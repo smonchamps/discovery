@@ -35,6 +35,7 @@ fn main() {
         bodies_backfill: Arc::new(Mutex::new(())),
     };
     let result = tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::startup_report,
