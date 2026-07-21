@@ -1,23 +1,25 @@
-//! Authentification Gmail de production : OAuth2 PKCE + coffre de l'OS.
+//! Authentification OAuth2 de production : PKCE + coffre de l'OS.
 //!
 //! Les enseignements des spikes de Phase 0, en qualité bibliothèque :
 //! jamais de mot de passe, refresh token dans le Credential Manager Windows,
 //! vérification systématique des **scopes accordés** (le consentement
-//! granulaire de Google délivre un token même sans la case Gmail cochée),
+//! granulaire délivre un token même sans la case courrier cochée),
 //! reconnexion silencieuse au lancement suivant.
+//!
+//! Le parcours est UN seul, quel que soit le fournisseur ; ce qui les
+//! distingue est décrit en données dans [`provider`].
 
 mod flow;
+mod provider;
 
 use oauth2::TokenResponse;
 use oauth2::basic::BasicTokenResponse;
 
 pub use flow::AuthError;
-
-pub(crate) const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
-pub(crate) const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
-pub(crate) const USERINFO_URL: &str = "https://www.googleapis.com/oauth2/v2/userinfo";
-pub(crate) const SCOPE_MAIL: &str = "https://mail.google.com/";
-pub(crate) const SCOPE_EMAIL: &str = "https://www.googleapis.com/auth/userinfo.email";
+pub use provider::{
+    ALL as PROVIDERS, ClientSecret, Endpoint, GOOGLE, Identity, MICROSOFT, Provider,
+    for_account_kind,
+};
 
 const KEYRING_SERVICE: &str = "discovery-mail";
 /// Entrée héritée de la Phase 2 (un seul compte) — lue en repli puis
@@ -27,8 +29,12 @@ const KEYRING_REFRESH_LEGACY: &str = "gmail-refresh-token";
 
 /// Session authentifiée : de quoi ouvrir une connexion IMAP XOAUTH2.
 /// L'access token expire (~1 h) : ré-authentifier silencieusement au besoin.
+///
+/// Le fournisseur voyage avec la session : c'est lui qui porte les serveurs
+/// à joindre, plus une constante d'application.
 #[derive(Debug, Clone)]
 pub struct Authenticated {
+    pub provider: &'static Provider,
     pub email: String,
     pub access_token: String,
 }
@@ -52,45 +58,73 @@ pub struct GenericCredentials {
 /// desktop.
 #[derive(Debug, Clone)]
 pub enum AccountSession {
-    Gmail(Authenticated),
+    /// Compte authentifié par OAuth2, quel que soit le fournisseur.
+    OAuth(Authenticated),
     Generic(GenericCredentials),
 }
 
 impl AccountSession {
     pub fn email(&self) -> &str {
         match self {
-            AccountSession::Gmail(auth) => &auth.email,
+            AccountSession::OAuth(auth) => &auth.email,
             AccountSession::Generic(creds) => &creds.email,
         }
     }
 }
 
+/// Authentificateur OAuth2 d'UN fournisseur.
 #[derive(Clone)]
-pub struct GmailAuth {
+pub struct Authenticator {
+    provider: &'static Provider,
     client_id: String,
-    client_secret: String,
+    /// `None` pour un client public (Microsoft) : présenter un secret y
+    /// ferait refuser l'échange.
+    client_secret: Option<String>,
 }
 
-impl GmailAuth {
-    pub fn new(client_id: impl Into<String>, client_secret: impl Into<String>) -> Self {
+impl Authenticator {
+    pub fn new(
+        provider: &'static Provider,
+        client_id: impl Into<String>,
+        client_secret: Option<String>,
+    ) -> Self {
         Self {
+            provider,
             client_id: client_id.into(),
-            client_secret: client_secret.into(),
+            client_secret,
         }
     }
 
-    /// Configuration par variables d'environnement (secret jamais dans le code).
-    pub fn from_env() -> Result<Self, AuthError> {
-        let client_id = std::env::var("GOOGLE_CLIENT_ID").map_err(|_| {
-            AuthError::Config(
-                "GOOGLE_CLIENT_ID manquante — lancez l'application depuis un terminal \
+    pub fn provider(&self) -> &'static Provider {
+        self.provider
+    }
+
+    /// Configuration par variables d'environnement `{PREFIXE}_CLIENT_ID`
+    /// et `{PREFIXE}_CLIENT_SECRET` (secret jamais dans le code).
+    pub fn from_env(provider: &'static Provider) -> Result<Self, AuthError> {
+        let id_var = format!("{}_CLIENT_ID", provider.env_prefix);
+        let client_id = std::env::var(&id_var).map_err(|_| {
+            AuthError::Config(format!(
+                "{id_var} manquante — lancez l'application depuis un terminal \
                  où la variable est définie"
-                    .to_string(),
-            )
+            ))
         })?;
-        let client_secret = std::env::var("GOOGLE_CLIENT_SECRET")
-            .map_err(|_| AuthError::Config("GOOGLE_CLIENT_SECRET manquante".to_string()))?;
-        Ok(Self::new(client_id, client_secret))
+        let client_secret = match provider.client_secret {
+            ClientSecret::Required => {
+                let secret_var = format!("{}_CLIENT_SECRET", provider.env_prefix);
+                Some(
+                    std::env::var(&secret_var)
+                        .map_err(|_| AuthError::Config(format!("{secret_var} manquante")))?,
+                )
+            }
+            ClientSecret::Forbidden => None,
+        };
+        Ok(Self::new(provider, client_id, client_secret))
+    }
+
+    /// Raccourci du fournisseur historique — le seul câblé à l'UI à ce jour.
+    pub fn google_from_env() -> Result<Self, AuthError> {
+        Self::from_env(&GOOGLE)
     }
 
     /// Reconnexion sans interaction d'UN compte : lit son entrée du
@@ -98,7 +132,7 @@ impl GmailAuth {
     /// Phase 2 — migrée vers l'entrée par compte au passage. Échoue s'il
     /// n'y a aucun jeton (→ [`Self::authenticate_interactive`]).
     pub fn authenticate_silent(&self, email: &str) -> Result<Authenticated, AuthError> {
-        let (refresh, from_legacy) = match vault(email)?.get_password() {
+        let (refresh, from_legacy) = match self.vault(email)?.get_password() {
             Ok(token) => (token, false),
             Err(keyring::Error::NoEntry) => {
                 let legacy = legacy_vault()?.get_password().map_err(|err| match err {
@@ -111,15 +145,15 @@ impl GmailAuth {
             }
             Err(other) => return Err(AuthError::Vault(other.to_string())),
         };
-        let client = flow::oauth_client(&self.client_id, &self.client_secret)?;
+        let client = self.client()?;
         let http = flow::http_client()?;
         let tokens = flow::refresh_access_token(&client, &http, refresh.clone())?;
-        flow::ensure_mail_scope(&tokens)?;
-        let account = self.finish(&http, &tokens, None)?;
+        flow::ensure_mail_scope(self.provider, &tokens)?;
+        let account = self.finish(&http, &tokens, Some(email), None)?;
         if from_legacy {
             // Migration du coffre : l'entrée devient par-compte, sous
-            // l'email RÉEL du jeton (celui que Google vient de confirmer).
-            vault(&account.email)?
+            // l'email RÉEL du jeton (celui que le fournisseur confirme).
+            self.vault(&account.email)?
                 .set_password(&refresh)
                 .map_err(|err| AuthError::Vault(err.to_string()))?;
             let _ = legacy_vault()?.delete_credential();
@@ -130,67 +164,97 @@ impl GmailAuth {
     /// Reconnexion héritée Phase 2 : quand la base ne connaît encore
     /// aucun compte, l'entrée non-keyée du coffre peut en révéler un —
     /// elle est alors migrée. L'email revient du jeton lui-même.
+    ///
+    /// Ce chemin est propre à Google : la Phase 2 ne connaissait que lui.
     pub fn authenticate_silent_legacy(&self) -> Result<Authenticated, AuthError> {
         let refresh = legacy_vault()?.get_password().map_err(|err| match err {
             keyring::Error::NoEntry => AuthError::Vault("aucun compte enregistré".to_string()),
             other => AuthError::Vault(other.to_string()),
         })?;
-        let client = flow::oauth_client(&self.client_id, &self.client_secret)?;
+        let client = self.client()?;
         let http = flow::http_client()?;
         let tokens = flow::refresh_access_token(&client, &http, refresh.clone())?;
-        flow::ensure_mail_scope(&tokens)?;
-        let account = self.finish(&http, &tokens, None)?;
-        vault(&account.email)?
+        flow::ensure_mail_scope(self.provider, &tokens)?;
+        let account = self.finish(&http, &tokens, None, None)?;
+        self.vault(&account.email)?
             .set_password(&refresh)
             .map_err(|err| AuthError::Vault(err.to_string()))?;
         let _ = legacy_vault()?.delete_credential();
         Ok(account)
     }
 
-    /// Parcours complet : navigateur → consentement Google → redirection
-    /// loopback → tokens. Le refresh token est stocké dans le coffre de l'OS.
-    pub fn authenticate_interactive(&self) -> Result<Authenticated, AuthError> {
-        let client = flow::oauth_client(&self.client_id, &self.client_secret)?;
+    /// Parcours complet : navigateur → consentement → redirection loopback
+    /// → tokens. Le refresh token est stocké dans le coffre de l'OS.
+    ///
+    /// `declared_email` n'est utilisé que par les fournisseurs qui ne
+    /// livrent pas l'identité du compte ([`Identity::Declared`]).
+    pub fn authenticate_interactive(
+        &self,
+        declared_email: Option<&str>,
+    ) -> Result<Authenticated, AuthError> {
+        let client = self.client()?;
         let http = flow::http_client()?;
-        let tokens = flow::interactive_tokens(client, &http)?;
-        flow::ensure_mail_scope(&tokens)?;
+        let tokens = flow::interactive_tokens(self.provider, client, &http)?;
+        flow::ensure_mail_scope(self.provider, &tokens)?;
         let refresh = tokens.refresh_token().map(|token| token.secret().clone());
-        self.finish(&http, &tokens, refresh)
+        self.finish(&http, &tokens, declared_email, refresh)
     }
 
     /// Oublie UN compte : supprime son refresh token du coffre.
     pub fn forget(&self, email: &str) -> Result<(), AuthError> {
-        match vault(email)?.delete_credential() {
+        match self.vault(email)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(err) => Err(AuthError::Vault(err.to_string())),
         }
     }
 
-    /// L'email n'est connu qu'APRÈS l'échange de jetons : le refresh se
-    /// range donc dans l'entrée du compte une fois l'identité confirmée.
+    fn client(&self) -> Result<flow::OauthClient, AuthError> {
+        flow::oauth_client(
+            self.provider,
+            &self.client_id,
+            self.client_secret.as_deref(),
+        )
+    }
+
+    fn vault(&self, email: &str) -> Result<keyring::Entry, AuthError> {
+        keyring::Entry::new(KEYRING_SERVICE, &vault_key(self.provider, email))
+            .map_err(|err| AuthError::Vault(err.to_string()))
+    }
+
+    /// Chez un fournisseur qui livre l'identité, l'email n'est connu
+    /// qu'APRÈS l'échange de jetons : le refresh se range donc dans
+    /// l'entrée du compte une fois l'identité confirmée.
     fn finish(
         &self,
         http: &flow::HttpClient,
         tokens: &BasicTokenResponse,
+        declared_email: Option<&str>,
         store_refresh: Option<String>,
     ) -> Result<Authenticated, AuthError> {
         let access_token = tokens.access_token().secret().clone();
-        let email = flow::fetch_email(http, &access_token)?;
+        let email = flow::resolve_email(self.provider, http, &access_token, declared_email)?;
         if let Some(refresh) = store_refresh {
-            vault(&email)?
+            self.vault(&email)?
                 .set_password(&refresh)
                 .map_err(|err| AuthError::Vault(err.to_string()))?;
         }
         Ok(Authenticated {
+            provider: self.provider,
             email,
             access_token,
         })
     }
 }
 
-fn vault(email: &str) -> Result<keyring::Entry, AuthError> {
-    keyring::Entry::new(KEYRING_SERVICE, &format!("gmail-refresh:{email}"))
-        .map_err(|err| AuthError::Vault(err.to_string()))
+/// Nom de l'entrée du coffre pour le refresh token d'un compte.
+///
+/// **Ne jamais changer sans migration.** Ce nom est la seule chose qui
+/// relie l'application aux jetons déjà stockés sur la machine de
+/// l'utilisateur : le modifier ne casse aucun test mais force une
+/// ré-authentification silencieuse de tous les comptes. C'est pour cela
+/// que le préfixe de Google reste `gmail`, hérité de la Phase 2.
+fn vault_key(provider: &Provider, email: &str) -> String {
+    format!("{}-refresh:{email}", provider.vault_prefix)
 }
 
 fn legacy_vault() -> Result<keyring::Entry, AuthError> {
@@ -223,4 +287,38 @@ pub fn fetch_generic_password(email: &str) -> Result<String, AuthError> {
             keyring::Error::NoEntry => AuthError::Vault(format!("aucun mot de passe pour {email}")),
             other => AuthError::Vault(other.to_string()),
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Test de caractérisation, écrit AVANT la généralisation par
+    /// fournisseur : il fige les noms d'entrée du coffre.
+    ///
+    /// Aucun test ne peut échouer si on les renomme — le coffre est dans
+    /// l'OS, pas dans le dépôt. Le symptôme serait silencieux et différé :
+    /// tous les comptes déjà connectés redemanderaient un consentement au
+    /// prochain lancement. D'où cette épingle.
+    #[test]
+    fn vault_entry_names_are_frozen() {
+        assert_eq!(
+            vault_key(&GOOGLE, "moi@exemple.fr"),
+            "gmail-refresh:moi@exemple.fr"
+        );
+        assert_eq!(KEYRING_SERVICE, "discovery-mail");
+        assert_eq!(KEYRING_REFRESH_LEGACY, "gmail-refresh-token");
+        assert_eq!(KEYRING_GENERIC_PASSWORD, "generic-password");
+    }
+
+    /// Deux fournisseurs pour la même adresse ne doivent jamais écrire
+    /// dans la même entrée : le second écraserait le jeton du premier, et
+    /// la panne — une déconnexion silencieuse — arriverait bien plus tard.
+    #[test]
+    fn two_providers_never_share_a_vault_entry() {
+        assert_ne!(
+            vault_key(&GOOGLE, "moi@exemple.fr"),
+            vault_key(&MICROSOFT, "moi@exemple.fr")
+        );
+    }
 }

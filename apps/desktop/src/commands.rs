@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 use std::time::Instant;
 
-use mail_auth::{AccountSession, Authenticated, GenericCredentials, GmailAuth};
+use mail_auth::{AccountSession, Authenticated, Authenticator, GenericCredentials};
 use mail_core::AccountConfig;
 use mail_core::{Action, OutboxState, Store, SyncEngine};
 use mail_imap::ImapServer;
@@ -22,13 +22,6 @@ use tauri::{AppHandle, Manager, State};
 use crate::AppState;
 
 const MAILBOX: &str = "INBOX";
-const IMAP_HOST: &str = "imap.gmail.com";
-const IMAP_PORT: u16 = 993;
-const SMTP_HOST: &str = "smtp.gmail.com";
-/// Port de soumission Gmail : 465, TLS implicite. Explicite plutôt que
-/// supposé — `smtp.office365.com` n'écoute qu'en 587/STARTTLS, et c'est
-/// ce port câblé en dur qui constituait le bug #3.
-const SMTP_PORT: u16 = 465;
 const LIST_LIMIT_MAX: usize = 500;
 const SEARCH_LIMIT: usize = 50;
 /// Horizon de récence du rattrapage des corps (ADR 0007) : 12 mois. C'est
@@ -107,11 +100,12 @@ pub async fn connect_accounts(
         let mut infos = Vec::new();
         for email in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
             let id = store
-                .adopt_or_create_account(email, "gmail")
+                .adopt_or_create_account(email, mail_auth::GOOGLE.account_kind)
                 .map_err(|err| err.to_string())?;
             lock_accounts(&state)?.insert(
                 email.to_string(),
-                AccountSession::Gmail(Authenticated {
+                AccountSession::OAuth(Authenticated {
+                    provider: &mail_auth::GOOGLE,
                     email: email.to_string(),
                     access_token: "jeton-e2e-invalide".to_string(),
                 }),
@@ -136,20 +130,18 @@ pub async fn connect_accounts(
     let (connected, mut problems) = tauri::async_runtime::spawn_blocking(move || {
         let mut list = Vec::new();
         let mut problems: Vec<String> = Vec::new();
-        // Une configuration Gmail absente ne concerne QUE les comptes
-        // Gmail : elle ne doit pas empêcher un compte IMAP de revenir.
-        let gmail_auth = GmailAuth::from_env();
         for account in accounts {
+            // La configuration OAuth manquante d'un fournisseur ne concerne
+            // QUE ses comptes : elle ne doit empêcher aucun autre de revenir.
             let outcome = match account.provider.as_str() {
-                "gmail" => match &gmail_auth {
-                    Ok(auth) => auth
-                        .authenticate_silent(&account.email)
-                        .map(|session| Some(AccountSession::Gmail(session)))
-                        .map_err(|err| err.to_string()),
-                    Err(err) => Err(err.to_string()),
-                },
                 "imap" => connect_generic(&path_for_spawn, &account),
-                other => Err(format!("fournisseur inconnu : {other}")),
+                kind => match mail_auth::for_account_kind(kind) {
+                    Some(provider) => Authenticator::from_env(provider)
+                        .and_then(|auth| auth.authenticate_silent(&account.email))
+                        .map(|session| Some(AccountSession::OAuth(session)))
+                        .map_err(|err| err.to_string()),
+                    None => Err(format!("fournisseur inconnu : {kind}")),
+                },
             };
             match outcome {
                 Ok(Some(session)) => list.push(session),
@@ -161,11 +153,12 @@ pub async fn connect_accounts(
             }
         }
         // Repli hérité Phase 2 : un compte Gmail sans provider explicite.
+        // Propre à Google — la Phase 2 ne connaissait que lui.
         if list.is_empty()
-            && let Ok(auth) = &gmail_auth
+            && let Ok(auth) = Authenticator::google_from_env()
             && let Ok(account) = auth.authenticate_silent_legacy()
         {
-            list.push(AccountSession::Gmail(account));
+            list.push(AccountSession::OAuth(account));
         }
         (list, problems)
     })
@@ -177,7 +170,7 @@ pub async fn connect_accounts(
     for session in connected {
         let email = session.email().to_string();
         let provider = match &session {
-            AccountSession::Gmail(_) => "gmail",
+            AccountSession::OAuth(auth) => auth.provider.account_kind,
             AccountSession::Generic(_) => "imap",
         };
         let id = store
@@ -218,9 +211,10 @@ pub async fn add_account(
     state: State<'_, AppState>,
 ) -> Result<AccountInfo, String> {
     let account = tauri::async_runtime::spawn_blocking(move || {
-        GmailAuth::from_env()
+        Authenticator::google_from_env()
             .map_err(|err| err.to_string())?
-            .authenticate_interactive()
+            // Google livre l'identité du compte : rien à déclarer.
+            .authenticate_interactive(None)
             .map_err(|err| err.to_string())
     })
     .await
@@ -228,13 +222,13 @@ pub async fn add_account(
 
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let id = store
-        .adopt_or_create_account(&account.email, "gmail")
+        .adopt_or_create_account(&account.email, account.provider.account_kind)
         .map_err(|err| err.to_string())?;
     let info = AccountInfo {
         id,
         email: account.email.clone(),
     };
-    lock_accounts(&state)?.insert(account.email.clone(), AccountSession::Gmail(account));
+    lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(account));
     Ok(info)
 }
 
@@ -1111,28 +1105,33 @@ fn purge_draft_tombstones(
 // Connexions et état partagé.
 // ---------------------------------------------------------------------
 
-/// Ouvre une connexion SMTP adaptée au type de compte. Pour Gmail, un
-/// échec déclenche un refresh silencieux ; pour un compte générique, le
-/// mot de passe est fixe (pas de retry possible).
+/// Ouvre une connexion SMTP adaptée au type de compte. Pour un compte
+/// OAuth2, un échec déclenche un refresh silencieux ; pour un compte
+/// générique, le mot de passe est fixe (pas de retry possible).
+///
+/// Les serveurs viennent du fournisseur de la session, jamais d'une
+/// constante d'application : c'est ce qui rend un deuxième fournisseur
+/// possible sans toucher à cette fonction.
 fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountSession>), String> {
     match session {
-        AccountSession::Gmail(auth) => {
-            match SmtpMailer::connect_xoauth2(SMTP_HOST, SMTP_PORT, &auth.email, &auth.access_token)
+        AccountSession::OAuth(auth) => {
+            let smtp = auth.provider.smtp;
+            match SmtpMailer::connect_xoauth2(smtp.host, smtp.port, &auth.email, &auth.access_token)
             {
                 Ok(mailer) => Ok((mailer, None)),
                 Err(_) => {
-                    let fresh = GmailAuth::from_env()
+                    let fresh = Authenticator::from_env(auth.provider)
                         .map_err(|err| err.to_string())?
                         .authenticate_silent(&auth.email)
                         .map_err(|err| err.to_string())?;
                     let mailer = SmtpMailer::connect_xoauth2(
-                        SMTP_HOST,
-                        SMTP_PORT,
+                        smtp.host,
+                        smtp.port,
                         &fresh.email,
                         &fresh.access_token,
                     )
                     .map_err(|err| err.to_string())?;
-                    Ok((mailer, Some(AccountSession::Gmail(fresh))))
+                    Ok((mailer, Some(AccountSession::OAuth(fresh))))
                 }
             }
         }
@@ -1149,28 +1148,29 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
     }
 }
 
-/// Ouvre une connexion IMAP adaptée au type de compte. Pour Gmail, un
-/// échec déclenche un refresh silencieux ; pour un compte générique, le
-/// mot de passe est fixe.
+/// Ouvre une connexion IMAP adaptée au type de compte. Pour un compte
+/// OAuth2, un échec déclenche un refresh silencieux ; pour un compte
+/// générique, le mot de passe est fixe.
 fn connect_imap(session: &AccountSession) -> Result<(ImapServer, Option<AccountSession>), String> {
     match session {
-        AccountSession::Gmail(auth) => {
-            match ImapServer::connect_xoauth2(IMAP_HOST, IMAP_PORT, &auth.email, &auth.access_token)
+        AccountSession::OAuth(auth) => {
+            let imap = auth.provider.imap;
+            match ImapServer::connect_xoauth2(imap.host, imap.port, &auth.email, &auth.access_token)
             {
                 Ok(server) => Ok((server, None)),
                 Err(_) => {
-                    let fresh = GmailAuth::from_env()
+                    let fresh = Authenticator::from_env(auth.provider)
                         .map_err(|err| err.to_string())?
                         .authenticate_silent(&auth.email)
                         .map_err(|err| err.to_string())?;
                     let server = ImapServer::connect_xoauth2(
-                        IMAP_HOST,
-                        IMAP_PORT,
+                        imap.host,
+                        imap.port,
                         &fresh.email,
                         &fresh.access_token,
                     )
                     .map_err(|err| err.to_string())?;
-                    Ok((server, Some(AccountSession::Gmail(fresh))))
+                    Ok((server, Some(AccountSession::OAuth(fresh))))
                 }
             }
         }

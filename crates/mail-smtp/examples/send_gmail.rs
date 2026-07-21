@@ -12,12 +12,12 @@
 use std::time::Instant;
 
 use anyhow::Context;
-use mail_auth::GmailAuth;
+use mail_auth::Authenticator;
 use mail_core::{OutboxState, Store};
 use mail_smtp::SmtpMailer;
 
 fn main() -> anyhow::Result<()> {
-    let auth = GmailAuth::from_env().context("configuration OAuth")?;
+    let auth = Authenticator::google_from_env().context("configuration OAuth")?;
     let account = match std::env::var("DISCOVERY_ACCOUNT") {
         Ok(email) => auth.authenticate_silent(&email),
         Err(_) => auth.authenticate_silent_legacy(),

@@ -7,11 +7,11 @@ use std::net::{TcpListener, TcpStream};
 
 use oauth2::basic::{BasicClient, BasicTokenResponse};
 use oauth2::{
-    AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointNotSet, EndpointSet,
-    PkceCodeChallenge, RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl,
+    AuthUrl, AuthorizationCode, ClientId, ClientSecret as OauthSecret, CsrfToken, EndpointNotSet,
+    EndpointSet, PkceCodeChallenge, RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl,
 };
 
-use crate::{AUTH_URL, SCOPE_EMAIL, SCOPE_MAIL, TOKEN_URL, USERINFO_URL};
+use crate::provider::{ClientSecret, Identity, Provider};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
@@ -25,10 +25,10 @@ pub enum AuthError {
     OAuth(String),
 
     #[error(
-        "le consentement Google n'inclut pas l'accès Gmail (accordé : {0:?}) — \
-         recommencez en cochant la case Gmail sur l'écran d'autorisation"
+        "le consentement {0} n'inclut pas l'accès au courrier (accordé : {1:?}) — \
+         recommencez en cochant la case correspondante sur l'écran d'autorisation"
     )]
-    MissingMailScope(Vec<String>),
+    MissingMailScope(&'static str, Vec<String>),
 
     #[error("impossible d'ouvrir le navigateur — ouvrez manuellement : {0}")]
     BrowserFallback(String),
@@ -41,11 +41,24 @@ pub(crate) type OauthClient =
     BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
 pub(crate) type HttpClient = oauth2::reqwest::blocking::Client;
 
-pub(crate) fn oauth_client(client_id: &str, client_secret: &str) -> Result<OauthClient, AuthError> {
-    Ok(BasicClient::new(ClientId::new(client_id.to_string()))
-        .set_client_secret(ClientSecret::new(client_secret.to_string()))
-        .set_auth_uri(AuthUrl::new(AUTH_URL.to_string()).map_err(config_err)?)
-        .set_token_uri(TokenUrl::new(TOKEN_URL.to_string()).map_err(config_err)?))
+/// Construit le client OAuth2 du fournisseur.
+///
+/// Le secret n'est posé que si le fournisseur en attend un : Azure AD
+/// **refuse** l'échange d'un client public qui en présente un.
+pub(crate) fn oauth_client(
+    provider: &Provider,
+    client_id: &str,
+    client_secret: Option<&str>,
+) -> Result<OauthClient, AuthError> {
+    let client = BasicClient::new(ClientId::new(client_id.to_string()))
+        .set_auth_uri(AuthUrl::new(provider.auth_url.to_string()).map_err(config_err)?)
+        .set_token_uri(TokenUrl::new(provider.token_url.to_string()).map_err(config_err)?);
+    Ok(match (provider.client_secret, client_secret) {
+        (ClientSecret::Required, Some(secret)) => {
+            client.set_client_secret(OauthSecret::new(secret.to_string()))
+        }
+        _ => client,
+    })
 }
 
 pub(crate) fn http_client() -> Result<HttpClient, AuthError> {
@@ -67,26 +80,33 @@ pub(crate) fn refresh_access_token(
 }
 
 /// Parcours interactif : listener loopback, consentement navigateur, échange
-/// PKCE. Bloquant jusqu'à la redirection de Google.
+/// PKCE. Bloquant jusqu'à la redirection du fournisseur.
 pub(crate) fn interactive_tokens(
+    provider: &Provider,
     client: OauthClient,
     http: &HttpClient,
 ) -> Result<BasicTokenResponse, AuthError> {
+    // L'écoute est TOUJOURS sur la boucle locale ; seul le nom annoncé au
+    // fournisseur change (`localhost` chez Microsoft, `127.0.0.1` chez
+    // Google) — les deux résolvent vers la même interface.
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let port = listener.local_addr()?.port();
     let client = client.set_redirect_uri(
-        RedirectUrl::new(format!("http://127.0.0.1:{port}")).map_err(config_err)?,
+        RedirectUrl::new(format!("http://{}:{port}", provider.redirect_host))
+            .map_err(config_err)?,
     );
 
     let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
-    let (auth_url, csrf) = client
+    let mut request = client
         .authorize_url(CsrfToken::new_random)
-        .add_scope(Scope::new(SCOPE_MAIL.to_string()))
-        .add_scope(Scope::new(SCOPE_EMAIL.to_string()))
-        .add_extra_param("access_type", "offline")
-        .add_extra_param("prompt", "consent")
-        .set_pkce_challenge(pkce_challenge)
-        .url();
+        .set_pkce_challenge(pkce_challenge);
+    for scope in provider.scopes {
+        request = request.add_scope(Scope::new((*scope).to_string()));
+    }
+    for (key, value) in provider.extra_auth_params {
+        request = request.add_extra_param(*key, *value);
+    }
+    let (auth_url, csrf) = request.url();
 
     if webbrowser::open(auth_url.as_str()).is_err() {
         return Err(AuthError::BrowserFallback(auth_url.to_string()));
@@ -103,27 +123,55 @@ pub(crate) fn interactive_tokens(
         .map_err(|err| AuthError::OAuth(err.to_string()))
 }
 
-/// Google accepte le consentement même avec des cases décochées : seule la
+/// Les deux fournisseurs délivrent un jeton même sur consentement partiel
+/// (cases décochées chez Google, scopes refusés chez Microsoft) : seule la
 /// liste des scopes *accordés* fait foi. Une réponse sans champ scope
 /// (certains rafraîchissements) est acceptée : le consentement a déjà été
 /// validé au moment du stockage du refresh token.
-pub(crate) fn ensure_mail_scope(tokens: &BasicTokenResponse) -> Result<(), AuthError> {
+pub(crate) fn ensure_mail_scope(
+    provider: &Provider,
+    tokens: &BasicTokenResponse,
+) -> Result<(), AuthError> {
     match tokens.scopes() {
         Some(scopes) => {
             let granted: Vec<String> = scopes.iter().map(|s| s.as_str().to_string()).collect();
-            if granted.iter().any(|scope| scope == SCOPE_MAIL) {
+            if granted
+                .iter()
+                .any(|scope| scope.contains(provider.granted_scope_marker))
+            {
                 Ok(())
             } else {
-                Err(AuthError::MissingMailScope(granted))
+                Err(AuthError::MissingMailScope(provider.name, granted))
             }
         }
         None => Ok(()),
     }
 }
 
-pub(crate) fn fetch_email(http: &HttpClient, access_token: &str) -> Result<String, AuthError> {
+/// Résout l'email du compte selon la stratégie d'identité du fournisseur.
+///
+/// `declared` est l'email fourni par l'utilisateur ; il n'est utilisé que
+/// si le fournisseur ne sait pas livrer l'identité lui-même.
+pub(crate) fn resolve_email(
+    provider: &Provider,
+    http: &HttpClient,
+    access_token: &str,
+    declared: Option<&str>,
+) -> Result<String, AuthError> {
+    match provider.identity {
+        Identity::Userinfo(url) => fetch_email(http, url, access_token),
+        Identity::Declared => declared.map(str::to_string).ok_or_else(|| {
+            AuthError::Config(format!(
+                "{} ne livre pas l'adresse du compte : elle doit être saisie",
+                provider.name
+            ))
+        }),
+    }
+}
+
+fn fetch_email(http: &HttpClient, url: &str, access_token: &str) -> Result<String, AuthError> {
     let body = http
-        .get(USERINFO_URL)
+        .get(url)
         .bearer_auth(access_token)
         .send()
         .map_err(network_err)?
@@ -205,6 +253,7 @@ mod tests {
     use oauth2::{AccessToken, EmptyExtraTokenFields, StandardTokenResponse};
 
     use super::*;
+    use crate::provider::{GOOGLE, MICROSOFT};
 
     fn token_response(scopes: Option<Vec<&str>>) -> BasicTokenResponse {
         let mut response = StandardTokenResponse::new(
@@ -246,20 +295,53 @@ mod tests {
 
     #[test]
     fn accepts_token_with_mail_scope() {
-        let tokens = token_response(Some(vec![SCOPE_MAIL, SCOPE_EMAIL]));
-        assert!(ensure_mail_scope(&tokens).is_ok());
+        let tokens = token_response(Some(vec![
+            "https://mail.google.com/",
+            "https://www.googleapis.com/auth/userinfo.email",
+        ]));
+        assert!(ensure_mail_scope(&GOOGLE, &tokens).is_ok());
     }
 
     #[test]
     fn rejects_token_missing_mail_scope() {
-        let tokens = token_response(Some(vec![SCOPE_EMAIL]));
-        let err = ensure_mail_scope(&tokens).expect_err("scope manquant attendu");
-        assert!(matches!(err, AuthError::MissingMailScope(_)));
+        let tokens = token_response(Some(vec!["https://www.googleapis.com/auth/userinfo.email"]));
+        let err = ensure_mail_scope(&GOOGLE, &tokens).expect_err("scope manquant attendu");
+        assert!(matches!(err, AuthError::MissingMailScope(_, _)));
     }
 
     #[test]
     fn accepts_refresh_response_without_scope_field() {
         let tokens = token_response(None);
-        assert!(ensure_mail_scope(&tokens).is_ok());
+        assert!(ensure_mail_scope(&GOOGLE, &tokens).is_ok());
+    }
+
+    /// Le consentement Microsoft se vérifie sur SES scopes à lui. Le
+    /// marqueur Google n'y apparaît jamais : sans règle par fournisseur,
+    /// tout compte Microsoft serait refusé alors qu'il est parfaitement
+    /// autorisé.
+    #[test]
+    fn accepts_microsoft_token_with_its_own_imap_scope() {
+        let tokens = token_response(Some(vec![
+            "https://outlook.office.com/IMAP.AccessAsUser.All",
+            "https://outlook.office.com/SMTP.Send",
+        ]));
+        assert!(ensure_mail_scope(&MICROSOFT, &tokens).is_ok());
+        assert!(
+            ensure_mail_scope(&GOOGLE, &tokens).is_err(),
+            "les règles ne doivent pas être interchangeables"
+        );
+    }
+
+    /// Le cas réellement dangereux : un consentement partiel où seul
+    /// l'envoi est accordé. La synchro serait morte, et le message
+    /// d'erreur doit nommer le bon fournisseur.
+    #[test]
+    fn rejects_microsoft_token_granted_only_for_sending() {
+        let tokens = token_response(Some(vec!["https://outlook.office.com/SMTP.Send"]));
+        let err = ensure_mail_scope(&MICROSOFT, &tokens).expect_err("scope IMAP manquant attendu");
+        match err {
+            AuthError::MissingMailScope(name, _) => assert_eq!(name, "Microsoft"),
+            other => panic!("attendu un scope manquant, obtenu {other:?}"),
+        }
     }
 }

@@ -27,7 +27,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
-use mail_auth::GmailAuth;
+use mail_auth::Authenticator;
 use mail_core::Store;
 
 const MAILBOX: &str = "INBOX";
@@ -212,7 +212,7 @@ fn file_size(path: &Path) -> Result<u64> {
 fn connect(account: &mail_core::Account) -> Result<mail_imap::ImapServer> {
     match account.provider.as_str() {
         "gmail" => {
-            let auth = GmailAuth::from_env()
+            let auth = Authenticator::google_from_env()
                 .map_err(|err| anyhow::anyhow!("{err}"))
                 .context("GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET doivent être définies")?;
             let session = auth

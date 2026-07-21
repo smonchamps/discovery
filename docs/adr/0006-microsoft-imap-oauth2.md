@@ -53,7 +53,31 @@ l'asymétrie d'effort est écrasante :
 |---|---|---|
 | Moteur de synchro, boîte d'envoi et ses règles d'or, brouillons, stockage | **réutilisés sans une ligne de neuf** | à réécrire contre REST |
 | Adaptateurs | déjà paramétrés par hôte (`connect_xoauth2(host, port, …)`) | nouvel adaptateur `MailServer` + `MailTransport` |
-| Reste à faire | endpoints/scopes par fournisseur, hôtes par compte | pagination, delta, quotas, modèle propre |
+| Reste à faire | ~~endpoints/scopes par fournisseur, hôtes par compte~~ → **fait** ; reste l'UI d'ajout | pagination, delta, quotas, modèle propre |
+
+### La couche d'authentification, généralisée
+
+`GmailAuth` était un nom qui mentait : la classe portait Google en dur
+dans ses constantes, et l'application ses serveurs dans les siennes.
+Le parcours est désormais **unique** ; ce qui distingue un fournisseur
+est décrit en **données** dans `mail-auth::provider` — endpoints, scopes,
+règle de vérification du consentement, hôte de redirection, politique de
+secret client, stratégie d'identité, serveurs IMAP/SMTP.
+
+Trois choix méritent d'être gelés ici :
+
+- **Les descripteurs sont testés contre le spike**, pas contre la doc.
+  Les valeurs Microsoft qui figurent dans le code sont celles qu'un
+  compte réel a effectivement acceptées.
+- **Trois identifiants sont épinglés par des tests** : la clé du coffre
+  (`gmail-refresh:`), la valeur en base (`accounts.provider = "gmail"`)
+  et leur unicité entre fournisseurs. Aucun de ces renommages ne casse
+  quoi que ce soit à la compilation ; tous déconnecteraient
+  silencieusement les comptes existants.
+- **Microsoft ne livre pas l'identité du compte** dans le périmètre de
+  scopes mesuré : `Identity::Declared`, l'adresse est saisie. La piste
+  `openid profile email` + `graph.microsoft.com/oidc/userinfo` est
+  documentée dans le code mais **non mesurée** — donc non retenue.
 
 ### Les deux pièges, gelés ici
 
