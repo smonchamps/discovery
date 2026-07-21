@@ -1,0 +1,31 @@
+#!/bin/sh
+# Gate pré-push : le dernier rempart avant que du code quitte la machine.
+#
+# Il existe parce qu'un runner GitHub hébergé ne peut PAS ouvrir de fenêtre
+# WebView2 (mesuré : application vivante, muette, sans CDP — voir
+# docs/adr/0005-gate-e2e-hors-ci-hebergee.md). Les parcours E2E ne tournent
+# donc que d'ici.
+#
+# Ce qu'il empêche, concrètement : livrer en annonçant « tests verts » sans
+# qu'un seul parcours réel ait été joué. C'est exactement ce qui a laissé
+# passer le port SMTP ignoré et le menu d'ajout affiché en permanence.
+#
+# Ordre volontaire : du plus rapide au plus lent, pour échouer tôt.
+#
+# Contournement d'urgence : git push --no-verify (en connaissance de cause).
+set -e
+
+echo "[1/4] format"
+cargo fmt --all -- --check
+
+echo "[2/4] clippy (warnings = erreurs)"
+cargo clippy --workspace --all-targets -- -D warnings
+
+echo "[3/4] tests Rust"
+cargo test --workspace
+
+echo "[4/4] E2E — la vraie fenêtre pilotée via CDP"
+cd e2e
+npm test
+
+echo "Gate pré-push complet : la CI devrait être verte."

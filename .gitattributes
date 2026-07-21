@@ -1,0 +1,5 @@
+# Les hooks sont des scripts shell exécutés par Git Bash : en CRLF, le
+# shebang casse (« bad interpreter »). On force LF, quelle que soit la
+# configuration autocrlf de la machine.
+.githooks/** text eol=lf
+*.sh text eol=lf

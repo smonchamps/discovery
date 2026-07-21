@@ -26,7 +26,24 @@ npm test
 ```
 
 La suite construit l'application (debug), seed 200 messages avec corps,
-ouvre la fenêtre et déroule les parcours en ~5 s.
+ouvre la fenêtre et déroule les parcours en ~10 s.
+
+## Le gate : hook pré-push (à armer sur chaque machine)
+
+Ces parcours **ne tournent pas dans la CI hébergée** : un runner GitHub
+n'ouvre pas de fenêtre WebView2 (mesuré — [ADR 0005](../docs/adr/0005-gate-e2e-hors-ci-hebergee.md)).
+Ils sont donc joués par un hook `pre-push` versionné. Sur un dépôt
+fraîchement cloné, l'armer une fois :
+
+```powershell
+git config core.hooksPath .githooks
+```
+
+Le hook ([.githooks/pre-push](../.githooks/pre-push)) enchaîne `cargo fmt
+--check`, `cargo clippy -D warnings`, `cargo test --workspace`, puis ces
+E2E. S'il passe, la CI est verte par construction.
+
+En cas d'urgence : `git push --no-verify` — en connaissance de cause.
 
 ## Parcours couverts
 
