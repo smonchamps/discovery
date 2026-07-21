@@ -95,6 +95,37 @@ L'horizon de 12 mois est un **réglage**, pas un dogme : le coût par
 message étant désormais connu, tout N se convertit directement en
 mégaoctets.
 
+## Validation terrain (2026-07-21, trois comptes réels)
+
+Le rattrapage complet a tourné sur la boîte réelle : reprise après arrêt,
+interruption propre, et — le test qui a déclenché tout ce chantier — **le
+mot cherché dans le corps d'un message jamais ouvert remonte enfin**.
+
+| | Prédit par le banc | Mesuré en production |
+|---|---|---|
+| Base finale (~2 730 messages) | ~170 Mo | **97 Mo** |
+| Coût par corps stocké | 61,9 Ko | **~34 Ko** |
+
+**Le banc surestimait de 45 %, et l'écart s'explique.** Il échantillonnait
+les 200 messages *les plus récents* — c'est-à-dire la couche la plus
+chargée en infolettres HTML lourdes. Le corpus complet, lui, contient
+aussi les échanges personnels, bien plus légers. Le chiffre du banc était
+un **majorant**, comme celui de la durée ; les deux se sont confirmés
+majorants.
+
+Conséquences sur les décisions prises plus haut :
+
+- le budget **< 1 Go** n'est pas serré, il est confortable : la boîte
+  réelle en occupe **10 %** ;
+- l'extrapolation du gate 3 (~370 Mo à 12 mois sur 3 comptes) est elle
+  aussi un majorant — à ~34 Ko/corps elle retombe vers ~200 Mo ;
+- le levier « indexer sans stocker » **s'éloigne** d'autant. Il reste
+  documenté, il n'est plus à l'ordre du jour.
+
+Reste ouvert : le **débit réel groupé** face au majorant de 192 ms/corps.
+Non mesuré ici, la durée n'ayant pas été relevée. Sans conséquence sur une
+décision en cours — à instrumenter le jour où le rattrapage gênera.
+
 ## Conséquences
 
 - **Implémentation** : pompe de fond, reprenable après coupure, qui
