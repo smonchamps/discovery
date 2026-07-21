@@ -37,6 +37,35 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: e2e/package-lock.json
+      # L'app est une fenêtre WebView2 : sans le runtime, elle démarre,
+      # reste vivante et muette, et n'ouvre jamais son port CDP (constaté
+      # sur le premier passage en CI). Windows Server n'embarque pas Edge
+      # comme Windows 11 : on vérifie, et on installe si besoin.
+      - name: WebView2 — vérifier la présence, installer si absent
+        shell: pwsh
+        run: |
+          $clients = @(
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+            'HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          )
+          $version = $null
+          foreach ($client in $clients) {
+            if (Test-Path $client) { $version = (Get-ItemProperty $client).pv }
+          }
+          if ($version) {
+            Write-Host "WebView2 present, version $version"
+            exit 0
+          }
+          Write-Host 'WebView2 ABSENT — installation du runtime Evergreen'
+          $setup = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $setup
+          & $setup /silent /install
+          if ($LASTEXITCODE -ne 0) { throw "installation WebView2 echouee (code $LASTEXITCODE)" }
+          foreach ($client in $clients) {
+            if (Test-Path $client) { $version = (Get-ItemProperty $client).pv }
+          }
+          Write-Host "WebView2 installe, version $version"
+
       # Pré-construire ICI, hors du hook Playwright : launchApp lance
       # lui-même `cargo build`/`cargo run`, mais compiler à froid depuis
       # le beforeAll dépasserait son timeout (60 s). Une étape par
