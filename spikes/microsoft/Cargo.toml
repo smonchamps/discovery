@@ -1,0 +1,25 @@
+# Spike jetable, hors du workspace de production : ses dépendances ne
+# doivent pas entrer dans le Cargo.lock de prod (même discipline que
+# spikes/search-engine, où Tantivy est resté dehors).
+[workspace]
+
+[package]
+name = "spike-microsoft"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+imap = "3.0.0-alpha.14"
+imap-proto = "0.16"
+lettre = { version = "0.11", default-features = false, features = [
+    "smtp-transport",
+    "rustls-tls",
+    "builder",
+] }
+oauth2 = { version = "5", default-features = false, features = [
+    "reqwest-blocking",
+    "rustls-tls",
+] }
+url = "2"
+webbrowser = "1"
