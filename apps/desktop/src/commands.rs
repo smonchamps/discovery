@@ -193,7 +193,11 @@ pub async fn add_account(
     Ok(info)
 }
 
+/// Les champs arrivent de l'UI en camelCase. Tauri ne convertit que les
+/// ARGUMENTS de commande, pas les champs d'une struct imbriquée : sans ce
+/// `rename_all`, `imapHost` ne trouverait pas `imap_host`.
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GenericAccountInput {
     pub email: String,
     pub username: Option<String>,

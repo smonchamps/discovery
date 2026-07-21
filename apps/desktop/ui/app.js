@@ -813,14 +813,18 @@ el('imap-form').addEventListener('submit', async (event) => {
 
   setStatus('vérification du compte IMAP…');
   try {
+    // La commande prend UN argument `input` : les champs vont dans un
+    // objet imbriqué, pas à plat (sinon Tauri refuse l'appel).
     const account = await invoke('add_generic_account', {
-      email,
-      username: username === email ? null : username,
-      password,
-      imapHost,
-      imapPort,
-      smtpHost,
-      smtpPort,
+      input: {
+        email,
+        username: username === email ? null : username,
+        password,
+        imapHost,
+        imapPort,
+        smtpHost,
+        smtpPort,
+      },
     });
     if (!connectedAccounts.some((known) => known.id === account.id)) {
       connectedAccounts.push(account);
