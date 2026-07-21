@@ -33,6 +33,7 @@ paie en vitesse et en fiabilité.
 | Ouverture d'un message | < 50 ms | Phase 1 |
 | Recherche sur 100 000 messages | < 100 ms | Phase 3 |
 | RAM en usage courant | < 200 Mo | Phase 1 |
+| Base locale (3 comptes, corps rattrapés) | < 1 Go | Phase 3 ([ADR 0007](adr/0007-rattrapage-des-corps.md)) |
 | Défilement de la liste | 60 fps | Phase 1 |
 | Taille de l'installeur Windows | < 15 Mo | Phase 1 |
 | Perte de données | 0, prouvé par tests de crash-récupération | Phase 2 |
