@@ -84,12 +84,22 @@ impl Store {
     /// filet, il ne doit jamais avoir de maille manquante.
     ///
     /// `base_epoch` est l'`updated_epoch` que l'éditeur croit modifier.
-    /// S'il ne correspond plus à celui en base, **quelqu'un d'autre a
-    /// écrit entre-temps** — le tirage, typiquement, qui vient de
-    /// remplacer ce brouillon par une version retouchée ailleurs. Écraser
-    /// détruirait ce texte-là. On garde donc les DEUX et l'utilisateur
-    /// arbitre : la règle d'or du module, appliquée à l'édition
-    /// concurrente.
+    /// C'est une **affirmation** : « je modifie la ligne que j'ai lue ».
+    /// Elle se dément de deux façons, et les deux comptent :
+    ///
+    /// 1. l'horodatage en base a changé — quelqu'un a réécrit la ligne ;
+    /// 2. **la ligne a disparu** — le tirage l'a *remplacée*, car il ne
+    ///    met pas à jour : il retire le miroir périmé et importe la
+    ///    version fraîche sous un nouvel identifiant
+    ///    ([`plan_draft_pull`]). C'est le seul des deux cas que le terrain
+    ///    produise vraiment, et c'était celui qui passait inaperçu : ne
+    ///    comparant que des horodatages, la détection se taisait dès qu'il
+    ///    n'y en avait plus qu'un.
+    ///
+    /// Dans les deux cas, écraser — ou ré-insérer en silence — laisse
+    /// l'utilisateur avec deux textes dont il ignore l'existence. On garde
+    /// donc les DEUX **et on le dit** : la règle d'or du module appliquée
+    /// à l'édition concurrente.
     ///
     /// `None` désactive la détection — pour les appelants qui ne
     /// détiennent pas de copie en mémoire, et n'ont donc rien à écraser.
@@ -117,9 +127,18 @@ impl Store {
                         |row| row.get(0),
                     )
                     .optional()?;
-                if let (Some(stored), Some(base)) = (stored, base_epoch)
-                    && stored != base
-                {
+                let conflit = match (stored, base_epoch) {
+                    // La ligne a été réécrite sous le composeur.
+                    (Some(stored), Some(base)) => stored != base,
+                    // Elle a disparu sous lui : remplacée par le tirage,
+                    // ou jetée depuis une autre vue. Le filet la ré-insère
+                    // de toute façon — mais en silence, les deux textes
+                    // devenaient indiscernables.
+                    (None, Some(_)) => true,
+                    // Aucune copie en mémoire : rien à écraser.
+                    (_, None) => false,
+                };
+                if conflit {
                     let forked =
                         self.insert_draft(account_id, to_raw, subject, body, reply_to_uid, now)?;
                     return Ok(DraftSaved {
@@ -1113,6 +1132,99 @@ mod tests_concurrence {
         assert!(!second.forked);
         assert_eq!(second.id, premier.id);
         assert_eq!(store.drafts().unwrap().len(), 1);
+    }
+
+    /// Le tirage ne met PAS le brouillon à jour : il le **remplace**
+    /// ([`plan_draft_pull`]) — le miroir périmé est retiré, la version
+    /// fraîche arrive sous un nouvel identifiant. Le composeur, lui, tient
+    /// toujours l'ancien : la ligne qu'il croit modifier n'existe plus.
+    ///
+    /// C'est un conflit au même titre qu'une réécriture en place, et le
+    /// seul que le terrain produise vraiment. La détection ne le voyait
+    /// pas : elle compare deux horodatages, et il n'y en a plus qu'un.
+    /// Symptôme rapporté : « le message rouge ne s'affiche pas ».
+    #[test]
+    fn un_brouillon_remplace_par_le_tirage_est_aussi_un_conflit() {
+        let (store, account) = store();
+        let ouvert = store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "Devis",
+                    body: "version composeur",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap();
+        // Un brouillon PLUS RÉCENT existe, et c'est ce qui rend le défaut
+        // visible. SQLite attribue `max(rowid) + 1` : si le brouillon
+        // édité était le dernier, l'import reprendrait l'identifiant qu'il
+        // vient de libérer, la ligne réapparaîtrait sous le composeur et
+        // la détection retomberait sur ses pieds **par accident**. Un seul
+        // brouillon plus jeune suffit à supprimer cette coïncidence — d'où
+        // un défaut qui ne se manifeste qu'une fois sur deux, exactement
+        // ce que le terrain a rapporté.
+        store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "x@y.fr",
+                    subject: "Autre",
+                    body: "z",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap();
+        store
+            .record_draft_pushed(ouvert.id, Some(7), ouvert.updated_epoch)
+            .unwrap();
+
+        // Retouché dans le webmail : le serveur expurge 7 et crée 8.
+        let local = store.drafts_of(account).unwrap();
+        let plan = plan_draft_pull(&local, &[8], &[]);
+        assert_eq!(plan.stale, vec![ouvert.id], "le miroir périmé part");
+        for id in plan.stale {
+            store.drop_stale_draft(id).unwrap();
+        }
+        for uid in plan.fetch {
+            store
+                .import_remote_draft(account, uid, "a@b.fr", "Devis", "version venue d'ailleurs")
+                .unwrap();
+        }
+
+        // Le composeur se ferme et sauvegarde ce qu'il tenait.
+        let bilan = store
+            .save_draft(
+                account,
+                Some(ouvert.id),
+                Some(ouvert.updated_epoch),
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "Devis",
+                    body: "version composeur",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap();
+
+        assert!(
+            bilan.forked,
+            "la ligne visée avait disparu sous le composeur : le taire \
+             laisse l'utilisateur avec deux textes sans le savoir"
+        );
+        let textes: Vec<String> = store
+            .drafts()
+            .unwrap()
+            .into_iter()
+            .map(|draft| draft.body)
+            .collect();
+        assert!(textes.contains(&"version composeur".to_string()));
+        assert!(textes.contains(&"version venue d'ailleurs".to_string()));
     }
 }
 
