@@ -3,8 +3,11 @@
 > **Ce document est l'instruction de projet.** Il n'y a pas de `CLAUDE.md`
 > ici : tout ce qui ne se déduit pas du code est écrit là.
 >
-> État au **2026-07-25**, branche `main`, commit `cccbc71`. Arbre propre,
-> **292 tests Rust · 18/18 E2E · clippy muet**. Aucun code en vol.
+> État au **2026-07-25**, branche `main`. Arbre propre,
+> **293 tests Rust · 19/19 E2E · clippy muet**. Aucun code en vol.
+>
+> Le chantier des brouillons est **clos et validé sur le terrain** (§1) :
+> il ne reste que le gate 3 et la revue de clôture (§8).
 
 ---
 
@@ -36,43 +39,56 @@ une **boucle de validation terrain** avec l'utilisateur, sur le dernier
 chantier livré : le **tirage des brouillons** (éditer ici un brouillon
 commencé dans un webmail).
 
-### 1.1 Le symptôme non expliqué
+### 1.1 Ce que la mesure a établi (2026-07-25)
 
-Composeur ouvert dans Discovery sur un brouillon, modification du même
-brouillon dans Gmail web, puis synchronisation :
+Le diagnostic a tranché : **le tirage fonctionne**. Sur la base réelle, un
+brouillon « miroir (remplaçable) » portait un `uid distant` récent (478),
+rapatrié du webmail.
 
-> « la liste des brouillons ne se met pas à jour »
+Il a aussi désigné la vraie cause du symptôme, et ce n'était pas un défaut
+de synchronisation : les deux versions étaient **indiscernables à
+l'écran**. Sujet 14 car. et destinataire 22 car. des deux côtés, seul le
+corps différait — 28 contre 48 — et le bandeau ne l'affichait pas.
+L'hypothèse « la consigne de test était fausse » était la bonne.
 
-Deux explications restent ouvertes, et elles n'appellent pas le même
-travail :
+*Note incidente, non conclue :* 477 et 478 **coexistaient** côté serveur,
+zéro tombstone. Le module suppose pourtant qu'éditer un brouillon ailleurs
+**remplace** le message (ancien UID expurgé, nouveau créé). Soit Gmail ne
+remplace pas toujours, soit un brouillon neuf avait été commencé côté web.
+Les données ne départagent pas — à garder en tête.
 
-| Hypothèse | Ce qu'il faudrait faire |
-|---|---|
-| **La consigne de test était fausse.** Le bandeau n'affiche que sujet et destinataire ; deux versions du même brouillon y sont *visuellement identiques*, seul le corps change et il n'est pas affiché. | Rien à corriger dans le tirage. Éventuellement montrer un extrait du corps. |
-| **Le tirage n'a rien fait.** | Vrai défaut, à diagnostiquer et corriger le jour même. |
+### 1.2 Ce qui a été livré en réponse
 
-### 1.2 Trancher — l'outil existe
+1. **L'extrait du corps dans le bandeau** — le signal qui manquait. Prouvé
+   par un test E2E qui crée deux brouillons de même sujet et de même
+   destinataire et exige qu'ils se distinguent. Sans lui, toute consigne de
+   validation portant sur les brouillons est invérifiable.
+2. **Un trou latent, trouvé en enquêtant.** Sur le chemin du
+   *remplacement* — celui que le module documente comme normal — le tirage
+   **supprime** la ligne que le composeur croit modifier. La détection de
+   conflit ne comparait que des horodatages : il n'en restait qu'un, elle
+   se taisait. Voir l'enseignement au §9.
+3. **La poussée n'efface plus l'avertissement.** `pushDrafts` revenait du
+   réseau une seconde plus tard et posait son bilan par-dessus. Le
+   brouillon conservé à part étant neuf, donc toujours à pousser, la
+   collision était **certaine**, pas fortuite.
 
-```powershell
-cargo run -p mail-core --example diagnostic_brouillons --release -- "$env:APPDATA\dev.discovery.app\discovery.db"
-```
+### 1.3 Validé sur le terrain (2026-07-25)
 
-Lecture : un brouillon marqué **« miroir (remplaçable) »** avec un `uid
-distant` récent prouve que le tirage fonctionne. Des brouillons tous
-« jamais poussé » prouveraient le contraire.
+Les trois points sont vérifiés sur les vrais comptes. L'extrait se
+constate directement : les deux brouillons gmail, jusque-là identiques à
+l'écran, portent désormais des textes distincts.
 
-**Ne code rien avant d'avoir la réponse.** Sur le défaut précédent
-(43 messages étrangers dans une même conversation), mes trois hypothèses
-étaient fausses ; le diagnostic a désigné la vraie cause en une commande.
+Le chemin du remplacement ne s'est pas produit lors du run mesuré et il
+est difficile à forcer via Gmail. **Le parcours déterministe qui l'exerce
+sans réseau — à réutiliser :**
 
-### 1.3 Rejouer le parcours
+> ouvrir un brouillon (« Reprendre »), **laisser le composeur ouvert**,
+> cliquer « Supprimer » sur cette même ligne dans le bandeau, puis fermer
+> le composeur.
 
-Avec le binaire courant, demander à l'utilisateur : ouvrir un brouillon,
-**laisser le composeur ouvert**, modifier le brouillon dans Gmail web,
-synchroniser, **puis fermer le composeur**. L'avertissement rouge
-(« votre version a été conservée à part ») doit apparaître **et rester**.
-Il était auparavant écrasé une ligne plus loin par « brouillon conservé » ;
-corrigé en `a738246`, **non revérifié sur le terrain**.
+La ligne rouge « ce brouillon avait changé ailleurs… » apparaît **et
+reste** — c'est le point 3 qui la fait rester.
 
 ### 1.4 Ensuite — le gate 3, puis la clôture
 
@@ -260,6 +276,20 @@ Bash). Syntaxes différentes.
   PowerShell 5.1 réencode en UTF-16 avec BOM et corrompt les accents.
   Éditer via l'outil `Edit`, Python, ou Bash. Tout est en **UTF-8**.
 - Pour un affichage non-ASCII depuis Python : `PYTHONIOENCODING=utf-8`.
+- **L'assistant ne voit PAS la vraie base.** L'application de bureau Claude
+  est empaquetée MSIX : le shell qu'elle lance lit un `%APPDATA%`
+  **redirigé**, et `%APPDATA%\dev.discovery.app\discovery.db` y résout vers
+  une copie privée périmée
+  (`%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\`). Mesuré le
+  2026-07-25 : cette copie datait du 12/07 et n'avait même pas de table
+  `drafts`. La vue est *fusionnée*, pas gelée — les fichiers voisins
+  (`discovery-banc.db`) apparaissent normalement, seul `discovery.db` est
+  masqué, ce qui rend le piège discret.
+
+  **Conséquence :** les diagnostics du §9 doivent être lancés **par
+  l'utilisateur**, qui colle la sortie. Corollaire de méthode : annoncer
+  d'abord ce qu'on s'attend à y lire, pour que l'aller-retour soit une
+  mesure et non une collecte.
 
 ### 7.2 Les notifications exigent l'application INSTALLÉE
 `tauri-winrt-notification` exige une **identité applicative
@@ -448,6 +478,30 @@ Le tirage des brouillons a été branché sur une ressource que le composeur
 venue d'ailleurs. Corrigé par détection de conflit — l'éditeur renvoie
 l'horodatage qu'il croit modifier, et son texte est **conservé à part**
 plutôt qu'écrasé.
+
+### Un test vert peut encoder un modèle FAUX de l'autre écrivain
+
+Cette détection était éprouvée en simulant l'autre écrivain par une
+**réécriture en place**. Or le vrai autre écrivain — le tirage — ne
+réécrit pas : il **retire** le miroir périmé et importe la version fraîche
+sous un nouvel identifiant (`plan_draft_pull`). La ligne que le composeur
+croyait modifier ayant disparu, la détection ne comparait plus qu'un seul
+horodatage, et se taisait. Test vert, terrain muet.
+
+Deux règles en découlent :
+
+1. simuler l'autre écrivain en **appelant son vrai chemin** — ici
+   `plan_draft_pull`, puis `drop_stale_draft`/`import_remote_draft` — et
+   jamais par une approximation qui lui ressemble ;
+2. se méfier des défauts que le hasard masque. SQLite attribue
+   `max(rowid) + 1` : quand le brouillon édité était le dernier, l'import
+   reprenait l'identifiant qu'on venait de libérer, la ligne réapparaissait
+   sous le composeur et la détection retombait sur ses pieds **par
+   accident**. Un défaut qui ne se manifeste qu'une fois sur deux est un
+   défaut qu'on croit corrigé.
+
+Corollaire du §2.5, vérifié une fois de plus : c'est le terrain qui a
+signalé « le message rouge ne s'affiche pas », et aucun des 292 tests.
 
 ---
 
