@@ -21,6 +21,11 @@ let currentIndex = null;
 let composeReplyUid = null; // UID du message auquel on répond, sinon null
 let composeAccountId = null; // compte émetteur de la composition en cours
 let composeDraftId = null;  // id du brouillon en cours d'édition, sinon null
+// Horodatage de la version que le composeur a LUE. Renvoyé a chaque
+// sauvegarde : c'est ce qui permet au noyau de detecter qu'un autre a
+// ecrit entre-temps — le tirage, typiquement — et de conserver les deux
+// textes au lieu d'en ecraser un.
+let composeDraftEpoch = null;
 let draftSaveTimer = null;  // autosauvegarde debouncée pendant la frappe
 let connectedAccounts = []; // comptes connectés {id, email} — l'ordre du registre
 let searchMode = false;     // la recherche remplace-t-elle la boîte unifiée ?
@@ -334,6 +339,11 @@ async function refresh() {
     setStatus(`erreur de synchronisation : ${err}`, true);
   }
   await reloadList();
+  // La synchro TIRE les brouillons commencés ailleurs : sans ce
+  // rafraîchissement, ils resteraient invisibles jusqu'au prochain
+  // évènement, et la liste afficherait encore ceux qu'elle vient de
+  // remplacer.
+  await refreshDrafts();
   // Le réseau est peut-être revenu : la boîte d'envoi retente sa chance,
   // et les brouillons se reflètent dans Gmail.
   await flushOutbox();
@@ -764,9 +774,10 @@ async function startCompose(options) {
   openCompose(options);
 }
 
-function openCompose({ to = '', subject = '', body = '', replyToUid = null, draftId = null, accountId = null, title = 'Nouveau message' } = {}) {
+function openCompose({ to = '', subject = '', body = '', replyToUid = null, draftId = null, draftEpoch = null, accountId = null, title = 'Nouveau message' } = {}) {
   composeReplyUid = replyToUid;
   composeDraftId = draftId;
+  composeDraftEpoch = draftEpoch;
   // Le compte émetteur : celui du message répondu/repris, sinon le premier.
   composeAccountId = accountId
     ?? (connectedAccounts.length > 0 ? connectedAccounts[0].id : null);
@@ -792,6 +803,7 @@ function hideCompose() {
   composeReplyUid = null;
   composeAccountId = null;
   composeDraftId = null;
+  composeDraftEpoch = null;
   el('compose').hidden = true;
   if (currentMessage) {
     el('detail').hidden = false;
@@ -834,20 +846,32 @@ async function saveDraftNow() {
   clearTimeout(draftSaveTimer);
   if (el('compose').hidden || composeIsEmpty() || composeAccountId === null) return;
   try {
-    const id = await invoke('save_draft', {
+    const saved = await invoke('save_draft', {
       accountId: composeAccountId,
       id: composeDraftId,
-      to: el('compose-to').value,
-      subject: el('compose-subject').value,
-      body: el('compose-body').value,
-      replyToUid: composeReplyUid,
+      baseEpoch: composeDraftEpoch,
+      content: {
+        to: el('compose-to').value,
+        subject: el('compose-subject').value,
+        body: el('compose-body').value,
+        replyToUid: composeReplyUid,
+      },
     });
     if (el('compose').hidden) {
       // Le panneau s'est fermé pendant la sauvegarde (envoi parti) :
       // ne pas ressusciter un brouillon déjà réglé.
-      await invoke('delete_draft', { id }).catch(() => {});
-    } else {
-      composeDraftId = id;
+      await invoke('delete_draft', { id: saved.id }).catch(() => {});
+      return;
+    }
+    composeDraftId = saved.id;
+    composeDraftEpoch = saved.updated_epoch;
+    if (saved.forked) {
+      // Ne JAMAIS taire ce cas : deux textes existent desormais, et
+      // l'utilisateur est le seul a pouvoir trancher. Le lui cacher
+      // reviendrait a lui faire perdre celui qu'il ne verra pas.
+      setStatus('ce brouillon avait changé ailleurs — votre version a été '
+        + 'conservée à part, les deux sont dans la liste', true);
+      await refreshDrafts();
     }
   } catch {
     // La prochaine frappe retentera — le filet n'alarme pas pour rien.
@@ -1003,6 +1027,7 @@ function draftRow(draft) {
     body: draft.body,
     replyToUid: draft.reply_to_uid,
     draftId: draft.id,
+    draftEpoch: draft.updated_epoch,
     accountId: draft.account_id,
     title: 'Brouillon',
   }));

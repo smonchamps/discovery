@@ -28,6 +28,33 @@ use crate::envelope::Uid;
 use crate::error::Error;
 use crate::store::Store;
 
+/// Le contenu d'un brouillon, tel que l'éditeur le tient.
+///
+/// Regroupé plutôt qu'étalé en paramètres : ces quatre champs voyagent
+/// toujours ensemble, et une signature qui les sépare invite à en
+/// intervertir deux — ils sont tous des chaînes.
+///
+/// Rien n'est validé ici : une adresse à moitié tapée doit se conserver
+/// telle quelle. La validation stricte n'intervient qu'à l'envoi.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DraftContent<'a> {
+    pub to_raw: &'a str,
+    pub subject: &'a str,
+    pub body: &'a str,
+    pub reply_to_uid: Option<Uid>,
+}
+
+/// Ce qu'une sauvegarde a réellement fait.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraftSaved {
+    pub id: i64,
+    /// À repasser en `base_epoch` à la sauvegarde suivante.
+    pub updated_epoch: i64,
+    /// La version en base avait changé sous les doigts de l'éditeur : son
+    /// texte a été conservé **à part** au lieu d'écraser l'autre.
+    pub forked: bool,
+}
+
 /// Un brouillon tel que laissé par l'utilisateur.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SavedDraft {
@@ -50,23 +77,57 @@ pub struct SavedDraft {
 }
 
 impl Store {
-    /// Enregistre (`id: None`) ou met à jour un brouillon ; retourne son id.
+    /// Enregistre (`id: None`) ou met à jour un brouillon.
     ///
     /// Un id périmé (brouillon supprimé entre-temps par une autre vue)
     /// ré-insère au lieu de perdre silencieusement le texte — c'est un
     /// filet, il ne doit jamais avoir de maille manquante.
+    ///
+    /// `base_epoch` est l'`updated_epoch` que l'éditeur croit modifier.
+    /// S'il ne correspond plus à celui en base, **quelqu'un d'autre a
+    /// écrit entre-temps** — le tirage, typiquement, qui vient de
+    /// remplacer ce brouillon par une version retouchée ailleurs. Écraser
+    /// détruirait ce texte-là. On garde donc les DEUX et l'utilisateur
+    /// arbitre : la règle d'or du module, appliquée à l'édition
+    /// concurrente.
+    ///
+    /// `None` désactive la détection — pour les appelants qui ne
+    /// détiennent pas de copie en mémoire, et n'ont donc rien à écraser.
     pub fn save_draft(
         &self,
         account_id: i64,
         id: Option<i64>,
-        to_raw: &str,
-        subject: &str,
-        body: &str,
-        reply_to_uid: Option<Uid>,
-    ) -> Result<i64, Error> {
+        base_epoch: Option<i64>,
+        content: DraftContent<'_>,
+    ) -> Result<DraftSaved, Error> {
+        let DraftContent {
+            to_raw,
+            subject,
+            body,
+            reply_to_uid,
+        } = content;
         let now = Utc::now().timestamp_millis();
         match id {
             Some(id) => {
+                let stored: Option<i64> = self
+                    .conn()
+                    .query_row(
+                        "SELECT updated_epoch FROM drafts WHERE id = ?1",
+                        [id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                if let (Some(stored), Some(base)) = (stored, base_epoch)
+                    && stored != base
+                {
+                    let forked =
+                        self.insert_draft(account_id, to_raw, subject, body, reply_to_uid, now)?;
+                    return Ok(DraftSaved {
+                        id: forked,
+                        updated_epoch: now,
+                        forked: true,
+                    });
+                }
                 // MAX(…, +1) : l'horodatage avance STRICTEMENT à chaque
                 // vraie modification — une édition dans la même milliseconde
                 // que la photo d'une poussée resterait sinon invisible
@@ -89,17 +150,44 @@ impl Store {
                         OR drafts.reply_to_uid IS NOT excluded.reply_to_uid",
                     params![id, account_id, to_raw, subject, body, reply_to_uid, now],
                 )?;
-                Ok(id)
-            }
-            None => {
-                self.conn().execute(
-                    "INSERT INTO drafts (account_id, to_raw, subject, body, reply_to_uid, updated_epoch)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                    params![account_id, to_raw, subject, body, reply_to_uid, now],
+                // Relu, et non supposé : le `WHERE` ci-dessus peut avoir
+                // laissé l'horodatage intact (sauvegarde identique), et
+                // rendre `now` ferait échouer la détection au tour
+                // suivant sur un conflit qui n'existe pas.
+                let updated_epoch = self.conn().query_row(
+                    "SELECT updated_epoch FROM drafts WHERE id = ?1",
+                    [id],
+                    |row| row.get(0),
                 )?;
-                Ok(self.conn().last_insert_rowid())
+                Ok(DraftSaved {
+                    id,
+                    updated_epoch,
+                    forked: false,
+                })
             }
+            None => Ok(DraftSaved {
+                id: self.insert_draft(account_id, to_raw, subject, body, reply_to_uid, now)?,
+                updated_epoch: now,
+                forked: false,
+            }),
         }
+    }
+
+    fn insert_draft(
+        &self,
+        account_id: i64,
+        to_raw: &str,
+        subject: &str,
+        body: &str,
+        reply_to_uid: Option<Uid>,
+        now: i64,
+    ) -> Result<i64, Error> {
+        self.conn().execute(
+            "INSERT INTO drafts (account_id, to_raw, subject, body, reply_to_uid, updated_epoch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![account_id, to_raw, subject, body, reply_to_uid, now],
+        )?;
+        Ok(self.conn().last_insert_rowid())
     }
 
     /// Les brouillons, les plus récents d'abord.
@@ -393,12 +481,16 @@ mod tests {
             .save_draft(
                 account,
                 None,
-                "adresse-incomp",
-                "Sujet",
-                "corps\nsur deux lignes",
-                Some(42),
+                None,
+                DraftContent {
+                    to_raw: "adresse-incomp",
+                    subject: "Sujet",
+                    body: "corps\nsur deux lignes",
+                    reply_to_uid: Some(42),
+                },
             )
-            .unwrap();
+            .unwrap()
+            .id;
 
         let drafts = store.drafts().unwrap();
         assert_eq!(drafts.len(), 1);
@@ -414,11 +506,33 @@ mod tests {
     fn save_with_id_updates_in_place() {
         let (store, account) = store();
         let id = store
-            .save_draft(account, None, "", "v1", "texte", None)
-            .unwrap();
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "v1",
+                    body: "texte",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
         let same = store
-            .save_draft(account, Some(id), "a@b.fr", "v2", "texte enrichi", None)
-            .unwrap();
+            .save_draft(
+                account,
+                Some(id),
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "v2",
+                    body: "texte enrichi",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
 
         assert_eq!(same, id);
         let drafts = store.drafts().unwrap();
@@ -433,12 +547,33 @@ mod tests {
     fn save_with_stale_id_still_persists_the_text() {
         let (store, account) = store();
         let id = store
-            .save_draft(account, None, "", "s", "précieux", None)
-            .unwrap();
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "s",
+                    body: "précieux",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
         store.delete_draft(id).unwrap();
 
         store
-            .save_draft(account, Some(id), "", "s", "précieux", None)
+            .save_draft(
+                account,
+                Some(id),
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "s",
+                    body: "précieux",
+                    reply_to_uid: None,
+                },
+            )
             .unwrap();
 
         let drafts = store.drafts().unwrap();
@@ -450,10 +585,30 @@ mod tests {
     fn drafts_lists_most_recent_first() {
         let (store, account) = store();
         store
-            .save_draft(account, None, "", "premier", "a", None)
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "premier",
+                    body: "a",
+                    reply_to_uid: None,
+                },
+            )
             .unwrap();
         store
-            .save_draft(account, None, "", "second", "b", None)
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "second",
+                    body: "b",
+                    reply_to_uid: None,
+                },
+            )
             .unwrap();
 
         let drafts = store.drafts().unwrap();
@@ -464,7 +619,20 @@ mod tests {
     #[test]
     fn delete_draft_removes_it() {
         let (store, account) = store();
-        let id = store.save_draft(account, None, "", "s", "b", None).unwrap();
+        let id = store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "s",
+                    body: "b",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
         store.delete_draft(id).unwrap();
         assert!(store.drafts().unwrap().is_empty());
     }
@@ -473,8 +641,19 @@ mod tests {
     fn fresh_and_edited_drafts_are_to_push_until_recorded() {
         let (store, account) = store();
         let id = store
-            .save_draft(account, None, "", "s", "v1", None)
-            .unwrap();
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "s",
+                    body: "v1",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
         assert_eq!(
             store.drafts_to_push(account).unwrap().len(),
             1,
@@ -491,7 +670,17 @@ mod tests {
         );
 
         store
-            .save_draft(account, Some(id), "", "s", "v2", None)
+            .save_draft(
+                account,
+                Some(id),
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "s",
+                    body: "v2",
+                    reply_to_uid: None,
+                },
+            )
             .unwrap();
         assert_eq!(
             store.drafts_to_push(account).unwrap().len(),
@@ -507,13 +696,34 @@ mod tests {
     fn identical_resave_does_not_mark_dirty_again() {
         let (store, account) = store();
         let id = store
-            .save_draft(account, None, "a@b.fr", "s", "texte", Some(1))
-            .unwrap();
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "s",
+                    body: "texte",
+                    reply_to_uid: Some(1),
+                },
+            )
+            .unwrap()
+            .id;
         let epoch = store.drafts_to_push(account).unwrap()[0].updated_epoch;
         store.record_draft_pushed(id, Some(101), epoch).unwrap();
 
         store
-            .save_draft(account, Some(id), "a@b.fr", "s", "texte", Some(1))
+            .save_draft(
+                account,
+                Some(id),
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "s",
+                    body: "texte",
+                    reply_to_uid: Some(1),
+                },
+            )
             .unwrap();
 
         assert!(
@@ -528,15 +738,36 @@ mod tests {
     fn edit_during_push_stays_dirty() {
         let (store, account) = store();
         let id = store
-            .save_draft(account, None, "", "s", "v1", None)
-            .unwrap();
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "s",
+                    body: "v1",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
         let snapshot = store.drafts_to_push(account).unwrap()[0].updated_epoch;
 
         // L'utilisateur édite pendant que la poussée est en vol — même
         // dans la même milliseconde, l'horodatage strictement croissant
         // rend l'édition détectable…
         store
-            .save_draft(account, Some(id), "", "s", "v2 éditée en vol", None)
+            .save_draft(
+                account,
+                Some(id),
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "s",
+                    body: "v2 éditée en vol",
+                    reply_to_uid: None,
+                },
+            )
             .unwrap();
         // …puis la poussée (de v1) aboutit et se consigne avec SA photo.
         store.record_draft_pushed(id, Some(101), snapshot).unwrap();
@@ -550,8 +781,19 @@ mod tests {
     fn replacement_tombstones_the_previous_remote_copy() {
         let (store, account) = store();
         let id = store
-            .save_draft(account, None, "", "s", "v1", None)
-            .unwrap();
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "s",
+                    body: "v1",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
         store.record_draft_pushed(id, Some(101), 1).unwrap();
 
         store.record_draft_pushed(id, Some(202), 2).unwrap();
@@ -565,12 +807,34 @@ mod tests {
     fn delete_tombstones_the_remote_copy_but_only_if_pushed() {
         let (store, account) = store();
         let pushed = store
-            .save_draft(account, None, "", "poussé", "b", None)
-            .unwrap();
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "poussé",
+                    body: "b",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
         store.record_draft_pushed(pushed, Some(303), 1).unwrap();
         let local_only = store
-            .save_draft(account, None, "", "local", "b", None)
-            .unwrap();
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "local",
+                    body: "b",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
 
         store.delete_draft(pushed).unwrap();
         store.delete_draft(local_only).unwrap();
@@ -590,8 +854,34 @@ mod tests {
         let other = store
             .adopt_or_create_account("autre@exemple.fr", "gmail")
             .unwrap();
-        let draft_a = store.save_draft(account, None, "", "a", "x", None).unwrap();
-        let draft_b = store.save_draft(other, None, "", "b", "y", None).unwrap();
+        let draft_a = store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "a",
+                    body: "x",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
+        let draft_b = store
+            .save_draft(
+                other,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "b",
+                    body: "y",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
         let epoch_a = store.drafts_to_push(account).unwrap()[0].updated_epoch;
         store
             .record_draft_pushed(draft_a, Some(11), epoch_a)
@@ -631,7 +921,20 @@ mod tests {
             !store.align_drafts_uidvalidity(account, 7).unwrap(),
             "première vue"
         );
-        let id = store.save_draft(account, None, "", "s", "b", None).unwrap();
+        let id = store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "",
+                    subject: "s",
+                    body: "b",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap()
+            .id;
         store.record_draft_pushed(id, Some(404), 1).unwrap();
         store.record_draft_pushed(id, Some(505), 2).unwrap(); // 404 en tombstone
 
@@ -652,6 +955,164 @@ mod tests {
             1,
             "tout est à re-pousser"
         );
+    }
+}
+
+/// L'édition concurrente : deux écrivains sur le même brouillon.
+#[cfg(test)]
+mod tests_concurrence {
+    use super::*;
+
+    fn store() -> (Store, i64) {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap();
+        (store, account)
+    }
+
+    /// LE défaut du terrain : le composeur tient une copie en mémoire, le
+    /// tirage remplace le brouillon sous lui, et la sauvegarde suivante
+    /// écrasait la version venue d'ailleurs.
+    ///
+    /// Les deux textes doivent survivre. C'est la règle d'or du module —
+    /// un doublon est acceptable, du texte perdu jamais — appliquée à
+    /// l'édition concurrente.
+    #[test]
+    fn une_edition_concurrente_conserve_les_deux_textes() {
+        let (store, account) = store();
+        let ouvert = store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "Devis",
+                    body: "version composeur",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap();
+
+        // Quelqu'un d'autre écrit : le tirage, en pratique.
+        store
+            .save_draft(
+                account,
+                Some(ouvert.id),
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "Devis",
+                    body: "version venue d'ailleurs",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap();
+
+        // Le composeur sauvegarde, en croyant modifier ce qu'il a lu.
+        let bilan = store
+            .save_draft(
+                account,
+                Some(ouvert.id),
+                Some(ouvert.updated_epoch),
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "Devis",
+                    body: "version composeur",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap();
+
+        assert!(bilan.forked, "le texte de l'autre côté n'est pas écrasé");
+        assert_ne!(bilan.id, ouvert.id, "il est conservé à part");
+        let textes: Vec<String> = store
+            .drafts()
+            .unwrap()
+            .into_iter()
+            .map(|draft| draft.body)
+            .collect();
+        assert_eq!(textes.len(), 2);
+        assert!(textes.contains(&"version composeur".to_string()));
+        assert!(textes.contains(&"version venue d'ailleurs".to_string()));
+    }
+
+    /// L'aller-retour : l'horodatage rendu doit permettre d'enchaîner les
+    /// sauvegardes sans déclencher de faux conflit. Le piège est réel —
+    /// une sauvegarde au contenu identique ne touche PAS à l'horodatage,
+    /// donc rendre « maintenant » ferait diverger l'éditeur de la base.
+    #[test]
+    fn l_horodatage_rendu_permet_d_enchainer_les_sauvegardes() {
+        let (store, account) = store();
+        let mut bilan = store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "Devis",
+                    body: "un",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap();
+
+        for texte in ["deux", "deux", "trois"] {
+            bilan = store
+                .save_draft(
+                    account,
+                    Some(bilan.id),
+                    Some(bilan.updated_epoch),
+                    DraftContent {
+                        to_raw: "a@b.fr",
+                        subject: "Devis",
+                        body: texte,
+                        reply_to_uid: None,
+                    },
+                )
+                .unwrap();
+            assert!(!bilan.forked, "aucun conflit : c'est le même éditeur");
+        }
+        assert_eq!(store.drafts().unwrap().len(), 1);
+    }
+
+    /// Sans `base_epoch`, rien ne change : les appelants qui ne tiennent
+    /// aucune copie en mémoire n'ont rien à écraser.
+    #[test]
+    fn sans_horodatage_de_reference_la_sauvegarde_met_a_jour_en_place() {
+        let (store, account) = store();
+        let premier = store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "Devis",
+                    body: "un",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap();
+        let second = store
+            .save_draft(
+                account,
+                Some(premier.id),
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    subject: "Devis",
+                    body: "deux",
+                    reply_to_uid: None,
+                },
+            )
+            .unwrap();
+
+        assert!(!second.forked);
+        assert_eq!(second.id, premier.id);
+        assert_eq!(store.drafts().unwrap().len(), 1);
     }
 }
 

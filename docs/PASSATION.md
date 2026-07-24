@@ -447,6 +447,17 @@ Après la recherche, dans l'ordre du plan et des reports assumés :
    pure et testée (`plan_draft_pull`) ; trois règles, dont un garde-fou :
    **une liste distante vide ne retire jamais rien** — c'est la forme
    d'un échec partiel, et se tromper là coûte du texte.
+
+   ⚠️ **Deux écrivains sur la même ressource.** La validation terrain a
+   révélé que le tirage remplaçait un brouillon *pendant que le composeur
+   en tenait une copie en mémoire* : la sauvegarde suivante écrasait la
+   version venue d'ailleurs. Corrigé par une détection de conflit —
+   l'éditeur renvoie l'`updated_epoch` qu'il croit modifier
+   (`save_draft(base_epoch)`), et si la base a bougé, son texte est
+   **conservé à part** au lieu d'écraser. Deux brouillons, et
+   l'utilisateur arbitre. C'est la règle d'or du module appliquée à
+   l'édition concurrente. Leçon générale : **ajouter un écrivain à une
+   ressource qui en a déjà un exige une coordination explicite.**
 7. **Clôture Phase 3** : `docs/PHASE3.md` (revue de clôture), gate 3 —
    budgets tenus avec **3 comptes / 200 000 messages cumulés**.
 

@@ -1329,23 +1329,65 @@ pub struct DraftRow {
     pub subject: String,
     pub body: String,
     pub reply_to_uid: Option<u32>,
+    /// L'éditeur le renvoie à la sauvegarde : c'est ce qui lui permet de
+    /// détecter qu'un autre a écrit entre-temps.
+    pub updated_epoch: i64,
+}
+
+/// Ce qu'une sauvegarde a fait — l'éditeur en a besoin pour la suivante.
+#[derive(Serialize)]
+pub struct DraftSavedRow {
+    pub id: i64,
+    pub updated_epoch: i64,
+    /// Le brouillon avait changé ailleurs : le texte de l'éditeur a été
+    /// conservé à part. À dire à l'utilisateur, jamais à taire.
+    pub forked: bool,
 }
 
 /// Sauvegarde un brouillon — texte brut, jamais validé : c'est un filet.
+/// Le contenu tel que l'éditeur l'envoie — regroupé pour la même raison
+/// qu'au noyau : quatre chaînes voisines invitent à en intervertir deux.
+///
+/// `camelCase` : Tauri ne convertit les noms qu'au premier niveau des
+/// arguments. Sans cette annotation, l'UI devrait envoyer `reply_to_uid`
+/// ici et `replyToUid` ailleurs — une incohérence qui ne se voit qu'à
+/// l'exécution.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftContentArg {
+    to: String,
+    subject: String,
+    body: String,
+    reply_to_uid: Option<u32>,
+}
+
 #[tauri::command]
 pub fn save_draft(
     app: AppHandle,
     account_id: i64,
     id: Option<i64>,
-    to: String,
-    subject: String,
-    body: String,
-    reply_to_uid: Option<u32>,
-) -> Result<i64, String> {
+    base_epoch: Option<i64>,
+    content: DraftContentArg,
+) -> Result<DraftSavedRow, String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store
-        .save_draft(account_id, id, &to, &subject, &body, reply_to_uid)
-        .map_err(|err| err.to_string())
+    let saved = store
+        .save_draft(
+            account_id,
+            id,
+            base_epoch,
+            mail_core::DraftContent {
+                to_raw: &content.to,
+                subject: &content.subject,
+                body: &content.body,
+                reply_to_uid: content.reply_to_uid,
+            },
+        )
+        .map_err(|err| err.to_string())?;
+    Ok(DraftSavedRow {
+        id: saved.id,
+        updated_epoch: saved.updated_epoch,
+        forked: saved.forked,
+    })
 }
 
 #[tauri::command]
@@ -1356,6 +1398,7 @@ pub fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
         .map_err(|err| err.to_string())?
         .into_iter()
         .map(|draft| DraftRow {
+            updated_epoch: draft.updated_epoch,
             id: draft.id,
             account_id: draft.account_id,
             to: draft.to_raw,
