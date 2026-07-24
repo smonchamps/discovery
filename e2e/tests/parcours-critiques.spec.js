@@ -231,3 +231,33 @@ test('conversations : une ligne par fil, compteur visible, échange navigable', 
   await expect(page.locator('#detail-subject')).toContainText('n°189');
   await expect(page.locator('#thread-strip .thread-item').first()).toHaveClass(/current/);
 });
+
+/// Deux versions d'un même brouillon — même sujet, même destinataire,
+/// seul le corps diffère — étaient RIGOUREUSEMENT indiscernables dans le
+/// bandeau, qui n'affiche pas le corps.
+///
+/// Ce n'est pas un confort. Le diagnostic du 2026-07-25 sur la base
+/// réelle montrait sujet 14 car. et destinataire 22 car. des deux côtés,
+/// corps 28 contre 48 : le tirage faisait son travail, et rien à l'écran
+/// ne permettait de le constater. La consigne de validation envoyée à
+/// l'utilisateur était donc invérifiable — §9, « vérifier qu'un signal
+/// demandé est OBSERVABLE ».
+test('brouillons : deux versions de même sujet se distinguent au corps', async () => {
+  await page.keyboard.press('Escape');
+
+  for (const corps of ['Première version du devis.', 'Seconde version, tout autre.']) {
+    await page.keyboard.press('c');
+    await expect(page.locator('#compose')).toBeVisible();
+    await page.locator('#compose-to').fill('alice@exemple.fr');
+    await page.locator('#compose-subject').fill('Devis');
+    await page.locator('#compose-body').fill(corps);
+    await page.keyboard.press('Escape'); // sortir du champ…
+    await page.keyboard.press('Escape'); // …fermer : conserver
+    await expect(page.locator('#compose')).toBeHidden();
+  }
+
+  const versions = page.locator('#drafts-list .bar-row', { hasText: 'Devis' });
+  await expect(versions).toHaveCount(2);
+  await expect(page.locator('#drafts-list')).toContainText('Première version');
+  await expect(page.locator('#drafts-list')).toContainText('Seconde version');
+});

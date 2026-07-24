@@ -161,6 +161,23 @@ button:hover {
   gap: 8px;
 }
 
+/* L'extrait de corps : ce qui distingue deux versions d'un même
+   brouillon quand sujet et destinataire sont identiques. Mesuré sur la
+   base réelle — sans lui, les deux lignes sont rigoureusement égales.
+
+   `min-width: 0` n'est pas décoratif : sans lui un item flex refuse de
+   descendre sous la largeur de son contenu, l'ellipse ne se déclenche
+   jamais et la ligne pousse les boutons hors du bandeau. */
+.draft-excerpt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #6b8299;
+  font-style: italic;
+}
+
 .bar-row span {
   flex: 1;
   overflow: hidden;

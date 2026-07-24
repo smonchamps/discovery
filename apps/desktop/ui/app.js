@@ -352,9 +352,14 @@ async function refresh() {
 
 /// Poussée des brouillons vers Gmail — silencieuse : hors ligne, le
 /// cycle suivant retentera, rien à dire ; on ne parle qu'en cas de succès.
-function pushDrafts() {
+///
+/// `discret` fait taire jusqu'à ce succès : l'appelant vient d'afficher
+/// quelque chose que l'utilisateur doit lire, et ce bilan-ci — qui arrive
+/// du réseau bien après — le recouvrirait.
+function pushDrafts({ discret = false } = {}) {
   invoke('sync_drafts')
     .then((summary) => {
+      if (discret) return;
       if (summary.pushed > 0 || summary.purged > 0) {
         setStatus(`brouillons Gmail : ${summary.pushed} poussé(s), ${summary.purged} purgé(s)`);
       }
@@ -817,6 +822,7 @@ function hideCompose() {
 /// cas où fermer supprime, et c'est l'utilisateur qui a effacé.
 async function closeCompose() {
   if (el('compose').hidden) return;
+  let forked = false;
   if (composeIsEmpty()) {
     if (composeDraftId !== null) {
       await invoke('delete_draft', { id: composeDraftId }).catch(() => {});
@@ -827,14 +833,20 @@ async function closeCompose() {
     // regarder ecrasait l'avertissement de conflit une ligne apres que
     // saveDraftNow l'ait affiche : la fusion avait bien lieu, mais rien
     // ne le disait -- le defaut trouve en validation terrain.
-    setStatus(saved && saved.forked
+    forked = Boolean(saved && saved.forked);
+    setStatus(forked
       ? 'ce brouillon avait changé ailleurs — votre version a été conservée '
-        + 'à part, les deux sont dans la liste'
-      : 'brouillon conservé', Boolean(saved && saved.forked));
+        + 'à part, retrouvez-la dans la liste'
+      : 'brouillon conservé', forked);
   }
   hideCompose();
   await refreshDrafts();
-  pushDrafts();
+  // Et la poussée non plus ne doit pas l'effacer. Elle revient du réseau
+  // une seconde plus tard et posait SON bilan par-dessus — or le
+  // brouillon conservé à part est neuf, donc toujours à pousser : la
+  // collision était certaine, pas fortuite. L'avertissement est la seule
+  // ligne qui signale à l'utilisateur qu'il a deux textes à arbitrer.
+  pushDrafts({ discret: forked });
 }
 
 function composeIsEmpty() {
@@ -881,7 +893,7 @@ async function saveDraftNow() {
       // l'utilisateur est le seul a pouvoir trancher. Le lui cacher
       // reviendrait a lui faire perdre celui qu'il ne verra pas.
       setStatus('ce brouillon avait changé ailleurs — votre version a été '
-        + 'conservée à part, les deux sont dans la liste', true);
+        + 'conservée à part, retrouvez-la dans la liste', true);
       await refreshDrafts();
     }
     return saved;
@@ -1025,12 +1037,40 @@ async function refreshDrafts() {
   bar.hidden = false;
 }
 
+/// Longueur de l'extrait de corps affiché dans le bandeau. Assez pour
+/// séparer deux versions d'un même brouillon, assez court pour tenir sur
+/// une ligne à côté des deux boutons.
+const EXTRAIT_BROUILLON_MAX = 70;
+
+/// Ce qui distingue deux versions d'un même brouillon quand le sujet et
+/// le destinataire sont identiques : le corps, réduit à une ligne.
+///
+/// Découpé en **points de code** (`Array.from`) et non en unités UTF-16 :
+/// `slice` couperait un emoji en deux moitiés invalides.
+function extraitBrouillon(body) {
+  const ligne = (body || '').replace(/\s+/g, ' ').trim();
+  const points = Array.from(ligne);
+  if (points.length <= EXTRAIT_BROUILLON_MAX) return ligne;
+  const coupe = points.slice(0, EXTRAIT_BROUILLON_MAX).join('');
+  // Reculer jusqu'au dernier espace pour ne pas trancher un mot — sauf
+  // si cela ampute trop (un seul mot très long), auquel cas on coupe net.
+  const espace = coupe.lastIndexOf(' ');
+  return `${espace > EXTRAIT_BROUILLON_MAX / 2 ? coupe.slice(0, espace) : coupe}…`;
+}
+
 function draftRow(draft) {
   const row = document.createElement('div');
   row.className = 'bar-row';
   const label = document.createElement('span');
   label.textContent = `« ${draft.subject || '(sans objet)'} »${draft.to ? ` à ${draft.to}` : ''}`;
   label.title = label.textContent;
+
+  // Sans lui, deux versions du même brouillon sont indiscernables — et
+  // toute consigne de validation qui porte sur elles est invérifiable.
+  // Le corps est déjà là (« Reprendre » s'en sert) : aucun aller-retour.
+  const extrait = document.createElement('span');
+  extrait.className = 'draft-excerpt';
+  extrait.textContent = extraitBrouillon(draft.body);
 
   const resume = document.createElement('button');
   resume.textContent = 'Reprendre';
@@ -1052,7 +1092,7 @@ function draftRow(draft) {
     await refreshDrafts();
   });
 
-  row.append(label, resume, discard);
+  row.append(label, extrait, resume, discard);
   return row;
 }
 
