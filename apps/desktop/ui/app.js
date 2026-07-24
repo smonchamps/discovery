@@ -87,7 +87,7 @@ function renderSearchResults() {
 function buildResultRow(message) {
   const row = document.createElement('div');
   row.className = 'row search-result';
-  if (!message.seen) row.classList.add('unread');
+  if (isUnread(message)) row.classList.add('unread');
   if (message.flagged) row.classList.add('flagged');
   if (currentMessage
     && message.uid === currentMessage.uid
@@ -109,12 +109,39 @@ function buildResultRow(message) {
   return row;
 }
 
-/// Marqueurs de bout de ligne : trombone puis pastille de compte, dans
-/// UN conteneur commun. Les poser separement les ferait se chevaucher
-/// des qu'un message cumule les deux.
+// Une conversation est non lue tant qu'il lui reste UN message non lu,
+// meme si celui qu'on affiche est deja lu. Lire l'etat du seul message
+// visible donnerait la reponse inverse sur un fil deja parcouru.
+// Les resultats de recherche portent 1/0 selon leur propre etat : la
+// meme fonction sert donc partout.
+function isUnread(message) {
+  return message.thread_unseen > 0;
+}
+
+// La ligne reste selectionnee tant qu'on lit DANS la conversation, meme
+// en passant d'un message a l'autre : c'est le fil qu'on a ouvert.
+function isSelectedRow(message) {
+  if (!currentMessage) return false;
+  if (currentMessage.thread_id && message.thread_id) {
+    return currentMessage.thread_id === message.thread_id;
+  }
+  return message.uid === currentMessage.uid
+    && message.account_id === currentMessage.account_id;
+}
+
+/// Marqueurs de bout de ligne : compteur du fil, trombone, puis pastille
+/// de compte, dans UN conteneur commun. Les poser separement les ferait
+/// se chevaucher des qu'un message les cumule.
 function appendRowMarks(row, message) {
   const marks = document.createElement('span');
   marks.className = 'row-marks';
+  if (message.thread_size > 1) {
+    const count = document.createElement('span');
+    count.className = 'thread-count';
+    count.textContent = message.thread_size;
+    count.title = `${message.thread_size} messages dans cette conversation`;
+    marks.appendChild(count);
+  }
   if (message.has_attachment) {
     const clip = document.createElement('span');
     clip.className = 'clip';
@@ -331,8 +358,12 @@ async function reloadList() {
   try {
     const first = await fetchPage(0);
     total = first.total;
+    // « conversations », pas « messages » : la liste en groupe plusieurs
+    // par ligne, et annoncer un nombre de messages qu'on n'affiche pas
+    // serait faux — c'est aussi ce nombre qui dimensionne le defilement.
+    const unit = total > 1 ? 'conversations' : 'conversation';
     el('perf').textContent =
-      `${total} messages — page servie en ${(first.elapsed_us / 1000).toFixed(2)} ms`;
+      `${total} ${unit} — page servie en ${(first.elapsed_us / 1000).toFixed(2)} ms`;
   } catch {
     total = 0;
   }
@@ -400,15 +431,9 @@ function buildRow(index) {
     row.classList.add('loading');
     return row;
   }
-  if (!message.seen) row.classList.add('unread');
+  if (isUnread(message)) row.classList.add('unread');
   if (message.flagged) row.classList.add('flagged');
-  // L'identité d'un message est (compte, uid) : deux comptes peuvent
-  // partager un même UID.
-  if (currentMessage
-    && message.uid === currentMessage.uid
-    && message.account_id === currentMessage.account_id) {
-    row.classList.add('selected');
-  }
+  if (isSelectedRow(message)) row.classList.add('selected');
   for (const [cls, text] of [
     ['date', message.date],
     ['sender', message.sender],
@@ -432,6 +457,7 @@ async function openMessage(message, index) {
   // suivra à la prochaine synchro via la file d'actions.
   if (!message.seen) {
     message.seen = true;
+    markThreadRead(message);
     invoke('mark_seen', {
       accountId: message.account_id,
       uid: message.uid,
@@ -450,9 +476,67 @@ async function openMessage(message, index) {
   el('detail-note').hidden = true;
   el('detail-frame').setAttribute('srcdoc', '');
   renderAttachments([]);
+  renderThread([], message);
   setStatus('chargement du message…');
   await loadBody(message, false);
   await refreshAttachments(message);
+  await refreshThread(message);
+}
+
+// --- Conversations --------------------------------------------------
+
+// Le compteur non-lu du fil vit sur la ligne de LISTE, qui n'est pas
+// l'objet ouvert quand on lit un message depuis le bandeau. Sans ce
+// decompte, un fil resterait en gras apres avoir ete lu en entier.
+function markThreadRead(message) {
+  if (!message.thread_id) return;
+  for (const page of pages.values()) {
+    for (const row of page) {
+      if (row && row.thread_id === message.thread_id && row.thread_unseen > 0) {
+        row.thread_unseen -= 1;
+      }
+    }
+  }
+}
+
+async function refreshThread(message) {
+  if (!message.thread_id || message.thread_size <= 1) {
+    renderThread([], message);
+    return;
+  }
+  try {
+    const messages = await invoke('thread_messages', { threadId: message.thread_id });
+    // Le message affiche a pu changer pendant l'aller-retour.
+    if (currentMessage && currentMessage.uid === message.uid
+      && currentMessage.account_id === message.account_id) {
+      renderThread(messages, message);
+    }
+  } catch (err) {
+    // Purement local : un echec ici ne peut pas venir du reseau. On le
+    // dit plutot que de laisser un bandeau vide inexplique.
+    setStatus(`conversation indisponible : ${err}`, true);
+  }
+}
+
+function renderThread(messages, current) {
+  const strip = el('thread-strip');
+  strip.replaceChildren();
+  strip.hidden = messages.length <= 1;
+  if (strip.hidden) return;
+
+  for (const message of messages) {
+    const item = document.createElement('button');
+    item.className = 'thread-item';
+    if (message.uid === current.uid && message.account_id === current.account_id) {
+      item.classList.add('current');
+    }
+    if (!message.seen) item.classList.add('unread');
+    // textContent, jamais innerHTML : ces chaines viennent d'un mail.
+    item.textContent = `${message.date} — ${message.sender}`;
+    item.title = message.subject;
+    item.addEventListener('click', () => openMessage(message, currentIndex));
+    strip.appendChild(item);
+  }
 }
 
 // --- Pièces jointes -------------------------------------------------

@@ -207,6 +207,7 @@ reprise transparente de l'entrée héritée mono-compte
 | [0002](adr/0002-shell-desktop-tauri.md) | Shell desktop = Tauri 2 (WebView2) | La RAM qui fait foi = working set **privé**, pas le commit |
 | [0003](adr/0003-boite-envoi-smtp.md) | Boîte d'envoi SMTP + règles d'or | Journal AVANT réseau ; quarantaine anti-fantôme ; texte brut assumé (v1) |
 | [0004](adr/0004-moteur-de-recherche-fts5.md) | Recherche = SQLite **FTS5** (Tantivy en plan B chiffré) | L'index vit DANS la base (transactionnel) ; `unicode61 remove_diacritics 2` ; garde-fous requêtes larges |
+| [0008](adr/0008-regroupement-en-conversations.md) | Conversations = union-find sur en-têtes RFC 5322 | JAMAIS de repli par sujet ; agrégat matérialisé recalculé, jamais incrémenté ; `In-Reply-To` gratuit, `References` par passe bornée |
 
 Décisions gelées issues de la Phase 0 ([PHASE0.md](PHASE0.md) §2) : SQLite
 local ; CONDSTORE pour la détection de changements (Gmail n'expose pas
@@ -421,7 +422,12 @@ Après la recherche, dans l'ordre du plan et des reports assumés :
 3. ~~**Notifications Windows.**~~ ✅ **FAIT et validé terrain** — règles
    pures dans `mail-core::notify`, bulle unique, jamais sur une synchro
    initiale. ⚠️ exige l'application installée : voir §9.1.
-4. **Threading des conversations.**
+4. ~~**Threading des conversations**~~ ✅ **FAIT**, validation terrain en
+   attente. Union-find sur les identifiants RFC 5322, agrégat matérialisé
+   dans `threads`, acquisition à deux vitesses — voir
+   [ADR 0008](adr/0008-regroupement-en-conversations.md). Refus explicite
+   du repli par sujet : il fusionne des messages étrangers, ce qui est une
+   faute de correction, pas d'ergonomie.
 5. ~~**Dossiers / déplacer**~~ ✅ **FAIT et validé terrain**, boucle
    hors-ligne comprise. La liste des dossiers est **mise en cache comme
    les enveloppes** : choisir une destination ne demande jamais le

@@ -32,6 +32,17 @@ impl FetchedBody {
     }
 }
 
+/// Les en-têtes qui rattachent un message à sa conversation.
+///
+/// `None` et `Some("")` ne disent PAS la même chose : le premier signifie
+/// « pas encore lu », le second « lu, et le message n'en a pas ». Confondre
+/// les deux ferait redemander éternellement les mêmes messages.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ThreadHeaders {
+    pub in_reply_to: Option<String>,
+    pub references: Option<String>,
+}
+
 /// État d'une boîte au moment de sa sélection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MailboxSnapshot {
@@ -92,6 +103,25 @@ pub trait MailServer {
         mailbox: &str,
         uids: &[Uid],
     ) -> Result<Vec<(Uid, FetchedBody)>, Error>;
+
+    /// Les en-têtes de fil de PLUSIEURS messages, en une commande.
+    ///
+    /// Séparé de l'ENVELOPE **par une mesure** : celle-ci porte
+    /// `In-Reply-To` mais pas `References` (RFC 3501 §7.4.2), et obtenir
+    /// `References` impose de lire le bloc d'en-têtes complet — dix fois
+    /// plus gros qu'une enveloppe. L'ajouter à la synchronisation
+    /// décuplerait le coût de « enveloppes d'abord » ; ces en-têtes sont
+    /// donc rapatriés APRÈS, en tâche de fond.
+    ///
+    /// Or `References` n'est pas un raffinement : dans une boîte de
+    /// réception, le message intermédiaire d'un échange est celui qu'on a
+    /// soi-même envoyé, et il n'y figure pas. Sans lui, la moitié des
+    /// conversations reste coupée en deux.
+    fn fetch_thread_headers(
+        &mut self,
+        mailbox: &str,
+        uids: &[Uid],
+    ) -> Result<Vec<(Uid, ThreadHeaders)>, Error>;
 
     /// Les OCTETS d'une pièce jointe, désignée par son rang dans le
     /// message. `None` si le message ou la pièce n'existe plus.

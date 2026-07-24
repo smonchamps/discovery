@@ -92,6 +92,71 @@ pub fn backfill_bodies(
     })
 }
 
+/// En-têtes demandés en une commande. Bien plus que les corps : un bloc
+/// d'en-têtes pèse ~3 ko contre ~50 ko pour un message entier, et la
+/// dépense qui compte ici est l'aller-retour, pas les octets.
+pub const THREAD_HEADER_BATCH: usize = 200;
+
+/// Rapatrie les en-têtes de fil manquants, du plus récent au plus ancien,
+/// et recolle les conversations au passage.
+///
+/// Même forme que [`backfill_bodies`] — bornée, reprenable, groupée — mais
+/// une raison d'être différente : celle-ci ne complète pas la recherche,
+/// elle répare le REGROUPEMENT. Un message dont on n'a jamais lu les
+/// `References` reste seul dans son fil alors qu'il appartient à un
+/// échange.
+pub fn backfill_thread_headers(
+    server: &mut dyn MailServer,
+    store: &mut Store,
+    account_id: i64,
+    mailbox: &str,
+    since_epoch: i64,
+    budget: usize,
+) -> Result<BackfillReport, Error> {
+    let Some(state) = store.sync_state(account_id, mailbox)? else {
+        return Ok(BackfillReport {
+            fetched: 0,
+            remaining: 0,
+        });
+    };
+
+    let mut fetched = 0usize;
+    // Même garde que pour les corps : un message que le serveur ne sert
+    // plus reviendrait sinon à chaque tour, et la pompe tournerait sans fin.
+    let mut attempted: HashSet<Uid> = HashSet::new();
+
+    while fetched < budget {
+        let window =
+            (budget - fetched + attempted.len()).min(THREAD_HEADER_BATCH + attempted.len());
+        let candidates =
+            store.thread_headers_to_backfill(account_id, mailbox, since_epoch, window)?;
+        let batch: Vec<Uid> = candidates
+            .into_iter()
+            .filter(|uid| !attempted.contains(uid))
+            .take((budget - fetched).min(THREAD_HEADER_BATCH))
+            .collect();
+        if batch.is_empty() {
+            break;
+        }
+        attempted.extend(batch.iter().copied());
+
+        for (uid, headers) in server.fetch_thread_headers(mailbox, &batch)? {
+            store.set_thread_headers(
+                state.mailbox_id,
+                uid,
+                headers.in_reply_to.as_deref(),
+                headers.references.as_deref().unwrap_or_default(),
+            )?;
+            fetched += 1;
+        }
+    }
+
+    Ok(BackfillReport {
+        fetched,
+        remaining: store.thread_headers_pending_count(account_id, mailbox, since_epoch)?,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,5 +308,102 @@ mod tests {
 
         assert_eq!(report.fetched, 0);
         assert!(server.body_batches.is_empty());
+    }
+
+    /// Décor du rattrapage d'en-têtes : deux messages du même échange, mais
+    /// le message intermédiaire — celui qu'on aurait envoyé — n'est pas
+    /// dans la boîte. Rien ne les relie tant que `References` n'est pas lu.
+    fn echange_coupe() -> (FakeServer, Store, i64) {
+        let mut server = FakeServer::new(false);
+        server.add(1, "Devis");
+        server.add(3, "Re: Devis");
+        server.set_references(3, "<fake-1@example.com> <fake-2@example.com>");
+
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap();
+        crate::SyncEngine::default()
+            .sync(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+        (server, store, account)
+    }
+
+    fn conversations(store: &Store) -> usize {
+        store.unified_recent("INBOX", 0, 50).unwrap().len()
+    }
+
+    /// La raison d'être de la passe, en une assertion : deux lignes avant,
+    /// une seule après.
+    #[test]
+    fn les_entetes_rapatries_recollent_un_fil_coupe() {
+        let (mut server, mut store, account) = echange_coupe();
+        assert_eq!(conversations(&store), 2, "faute du chaînon manquant");
+
+        let report =
+            backfill_thread_headers(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
+
+        assert_eq!(report.fetched, 2);
+        assert_eq!(report.remaining, 0);
+        assert_eq!(conversations(&store), 1, "l'échange est reconstitué");
+    }
+
+    /// Un message SANS `References` doit sortir définitivement de la liste
+    /// des manquants. Sinon la passe le redemanderait à chaque
+    /// synchronisation, pour toujours.
+    #[test]
+    fn un_message_sans_references_n_est_pas_redemande() {
+        let (mut server, mut store, account) = echange_coupe();
+        backfill_thread_headers(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
+
+        let encore =
+            backfill_thread_headers(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
+
+        assert_eq!(encore.fetched, 0, "plus rien à lire");
+        assert_eq!(server.header_batches.len(), 1, "aucun second aller-retour");
+    }
+
+    /// Groupée, comme les corps : un aller-retour par message rendrait la
+    /// passe intenable sur une boîte remplie.
+    #[test]
+    fn la_passe_demande_les_entetes_par_lots() {
+        let mut server = FakeServer::new(false);
+        for uid in 1..=5 {
+            server.add(uid, &format!("sujet {uid}"));
+        }
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap();
+        crate::SyncEngine::default()
+            .sync(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+
+        backfill_thread_headers(&mut server, &mut store, account, "INBOX", 0, 100).unwrap();
+
+        assert_eq!(server.header_batches, vec![vec![5, 4, 3, 2, 1]]);
+    }
+
+    /// Bornée : un budget épuisé laisse le reste pour le passage suivant,
+    /// et le rapport le dit.
+    #[test]
+    fn le_budget_borne_un_passage_et_le_reste_est_annonce() {
+        let mut server = FakeServer::new(false);
+        for uid in 1..=5 {
+            server.add(uid, &format!("sujet {uid}"));
+        }
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap();
+        crate::SyncEngine::default()
+            .sync(&mut server, &mut store, account, "INBOX")
+            .unwrap();
+
+        let report =
+            backfill_thread_headers(&mut server, &mut store, account, "INBOX", 0, 2).unwrap();
+
+        assert_eq!(report.fetched, 2);
+        assert_eq!(report.remaining, 3);
     }
 }

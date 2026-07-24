@@ -24,7 +24,7 @@ test.afterAll(async () => {
 test("lire : la liste s'affiche, le plus récent d'abord, et le corps s'ouvre", async () => {
   await expect(page.locator('.row').first()).toBeVisible();
   await expect(page.locator('.row').first()).toContainText('n°200');
-  await expect(page.locator('#perf')).toContainText('200 messages');
+  await expect(page.locator('#perf')).toContainText('160 conversations');
 
   await page.locator('.row').first().click();
 
@@ -38,7 +38,9 @@ test("lire : la liste s'affiche, le plus récent d'abord, et le corps s'ouvre", 
 test('trier : « e » archive le message ouvert, la liste et le compte suivent', async () => {
   await page.keyboard.press('e');
 
-  await expect(page.locator('#perf')).toContainText('199 messages');
+  // Le n°200 repondait au n°199 : les archiver l'un apres l'autre vide
+  // le meme fil, et le nombre de CONVERSATIONS ne bouge qu'au second.
+  await expect(page.locator('#perf')).toContainText('160 conversations');
   await expect(page.locator('.row').first()).toContainText('n°199');
   // L'auto-avance ouvre le message suivant : le triage ne casse pas le flux.
   await expect(page.locator('#detail-subject')).toContainText('n°199');
@@ -134,7 +136,12 @@ test('pièces jointes : listées quand il y en a, absentes sinon', async () => {
   await page.keyboard.press('Escape');
   await expect(page.locator('#scroll-space')).toBeVisible();
 
-  // n°190 porte une pièce jointe (multiple de dix), n°189 non.
+  // n°190 porte une pièce jointe (multiple de dix), n°188 non.
+  //
+  // Et surtout PAS n°189 : depuis le regroupement, le n°190 lui répond,
+  // donc le 189 n'a plus de ligne à lui — c'est le n°190 qui représente
+  // leur conversation. Choisir un message qui n'est pas en tête de fil,
+  // c'est chercher une ligne qui n'existe pas.
   await page.locator('.row', { hasText: 'n°190' }).first().click();
   await expect(page.locator('#detail-subject')).toContainText('n°190');
   await expect(page.locator('#attachments')).toBeVisible();
@@ -142,8 +149,8 @@ test('pièces jointes : listées quand il y en a, absentes sinon', async () => {
   await expect(page.locator('#attachments .attachment')).toContainText('facture-190.pdf');
   await expect(page.locator('#attachments .attachment')).toContainText('20 Ko');
 
-  await page.locator('.row', { hasText: 'n°189' }).first().click();
-  await expect(page.locator('#detail-subject')).toContainText('n°189');
+  await page.locator('.row', { hasText: 'n°188' }).first().click();
+  await expect(page.locator('#detail-subject')).toContainText('n°188');
   await expect(page.locator('#attachments')).toBeHidden();
 });
 
@@ -198,4 +205,29 @@ test('déplacer : Échap referme sans rien faire', async () => {
 
   await expect(page.locator('#move-dialog')).toBeHidden();
   await expect(page.locator('#rows')).toContainText(subject);
+});
+
+/// Le regroupement, vu de l'utilisateur : une conversation tient sur UNE
+/// ligne, annonce combien elle contient, et s'ouvre sur son dernier
+/// message avec le reste de l'échange à portée de clic.
+///
+/// Le décor fait répondre un message sur cinq au précédent : la ligne du
+/// n°190 porte donc le n°189 avec elle.
+test('conversations : une ligne par fil, compteur visible, échange navigable', async () => {
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#scroll-space')).toBeVisible();
+
+  const fil = page.locator('.row', { hasText: 'n°190' }).first();
+  await expect(fil.locator('.thread-count')).toHaveText('2');
+  // Le message intermédiaire n'a pas de ligne à lui : c'est tout l'objet.
+  await expect(page.locator('.row', { hasText: 'n°189' })).toHaveCount(0);
+
+  await fil.click();
+  await expect(page.locator('#detail-subject')).toContainText('n°190');
+  await expect(page.locator('#thread-strip .thread-item')).toHaveCount(2);
+
+  // Ouvrir le message plus ancien depuis le bandeau, sans quitter le fil.
+  await page.locator('#thread-strip .thread-item').first().click();
+  await expect(page.locator('#detail-subject')).toContainText('n°189');
+  await expect(page.locator('#thread-strip .thread-item').first()).toHaveClass(/current/);
 });

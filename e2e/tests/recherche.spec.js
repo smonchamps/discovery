@@ -42,7 +42,7 @@ test("recherche : ouvrir un résultat affiche le message, Échap revient à l'un
   await expect(page.locator('#search')).toBeHidden();
   await expect(page.locator('#search-results')).toBeHidden();
   await expect(page.locator('#scroll-space')).toBeVisible();
-  await expect(page.locator('#perf')).toContainText('200 messages');
+  await expect(page.locator('#perf')).toContainText('160 conversations');
 });
 
 /// Le décor E2E a un corps pour chaque message : il n'y a donc rien à

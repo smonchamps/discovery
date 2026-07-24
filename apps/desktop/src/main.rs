@@ -45,6 +45,7 @@ fn main() {
             commands::add_generic_account,
             commands::sync_inbox,
             commands::list_messages,
+            commands::thread_messages,
             commands::search_messages,
             commands::message_body,
             commands::message_attachments,

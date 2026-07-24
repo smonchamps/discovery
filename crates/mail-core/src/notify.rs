@@ -99,6 +99,7 @@ mod tests {
             sender: sender.map(str::to_string),
             sender_address: None,
             message_id: None,
+            in_reply_to: None,
             date: None,
             seen: false,
             flagged: false,

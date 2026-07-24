@@ -77,6 +77,11 @@ fn main() -> Result<(), mail_core::Error> {
                 (index * 7) % SENDERS.len()
             )),
             message_id: Some(format!("<seed-{uid}@exemple.fr>")),
+            // Un message sur cinq répond au précédent : sans vraie
+            // conversation dans le jeu d'essai, un regroupement cassé
+            // passerait tous les tests.
+            in_reply_to: (uid % 5 == 0 && uid > 1)
+                .then(|| format!("<seed-{}@exemple.fr>", uid - 1)),
             date: Utc
                 .timestamp_opt(1_600_000_000 + i64::from(uid) * 60, 0)
                 .single(),

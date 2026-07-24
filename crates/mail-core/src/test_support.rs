@@ -8,7 +8,7 @@ use chrono::{TimeZone, Utc};
 
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
-use crate::remote::{FetchedBody, MailServer, MailboxSnapshot};
+use crate::remote::{FetchedBody, MailServer, MailboxSnapshot, ThreadHeaders};
 
 pub(crate) struct FakeServer {
     pub(crate) uid_validity: u32,
@@ -21,6 +21,10 @@ pub(crate) struct FakeServer {
     /// Lots de corps demandés, dans l'ordre : c'est ce qui prouve que le
     /// rattrapage groupe au lieu d'enchaîner les allers-retours.
     pub(crate) body_batches: Vec<Vec<Uid>>,
+    /// `References` servies par le serveur simulé, par UID.
+    pub(crate) references: BTreeMap<Uid, String>,
+    /// Lots d'en-têtes demandés : la preuve que la passe groupe.
+    pub(crate) header_batches: Vec<Vec<Uid>>,
     pub(crate) folders: Vec<crate::remote::Folder>,
     /// Déplacements reçus : (uid, dossier cible réseau).
     pub(crate) moved: Vec<(Uid, String)>,
@@ -43,12 +47,20 @@ impl FakeServer {
             fetch_batches: Vec::new(),
             body_fetches: 0,
             body_batches: Vec::new(),
+            references: BTreeMap::new(),
+            header_batches: Vec::new(),
             folders: Vec::new(),
             moved: Vec::new(),
             attachment_bytes: BTreeMap::new(),
             action_calls: Vec::new(),
             actions_fail: false,
         }
+    }
+
+    /// Pose les `References` que le serveur servira pour ce message —
+    /// l'en-tête que l'ENVELOPE ne porte pas.
+    pub(crate) fn set_references(&mut self, uid: Uid, references: &str) {
+        self.references.insert(uid, references.to_string());
     }
 
     pub(crate) fn add(&mut self, uid: Uid, subject: &str) {
@@ -59,6 +71,7 @@ impl FakeServer {
             sender: Some("alice@example.com".to_string()),
             sender_address: Some("alice@example.com".to_string()),
             message_id: Some(format!("<fake-{uid}@example.com>")),
+            in_reply_to: None,
             // La date suit l'UID : plus l'UID est grand, plus c'est récent.
             date: Some(
                 Utc.timestamp_opt(1_700_000_000 + i64::from(uid), 0)
@@ -157,6 +170,31 @@ impl MailServer for FakeServer {
                 self.bodies
                     .get(uid)
                     .map(|html| (*uid, FetchedBody::html(html)))
+            })
+            .collect())
+    }
+
+    /// Le serveur simulé rend les en-têtes qu'on lui a posés via
+    /// [`Self::set_thread_headers`], et enregistre les lots demandés.
+    fn fetch_thread_headers(
+        &mut self,
+        _mailbox: &str,
+        uids: &[Uid],
+    ) -> Result<Vec<(Uid, ThreadHeaders)>, Error> {
+        self.header_batches.push(uids.to_vec());
+        Ok(uids
+            .iter()
+            .filter_map(|uid| {
+                self.messages.get(uid)?;
+                Some((
+                    *uid,
+                    ThreadHeaders {
+                        in_reply_to: None,
+                        // Toujours `Some` : le serveur a répondu, même si
+                        // le message n'a pas de `References`.
+                        references: Some(self.references.get(uid).cloned().unwrap_or_default()),
+                    },
+                ))
             })
             .collect())
     }

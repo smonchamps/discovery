@@ -30,6 +30,13 @@ const BACKFILL_HORIZON_DAYS: i64 = 365;
 /// Corps rapatriés par appel, tous comptes confondus. Borner le lot rend
 /// l'interruption gratuite : l'UI cesse simplement de rappeler.
 const BACKFILL_BUDGET: usize = 200;
+/// En-têtes de fil rapatriés par compte et par synchronisation.
+///
+/// Généreux devant le budget des corps (200) parce que la dépense n'est
+/// pas la même : un bloc d'en-têtes pèse ~3 ko contre ~50 ko pour un
+/// message entier. Sur la boîte de l'utilisateur (~2 700 messages), deux
+/// synchronisations suffisent à regrouper la boîte entière.
+const THREAD_HEADER_BUDGET: usize = 2_000;
 /// Arrivees remontees par compte pour les notifications. Au-dela, seul
 /// le NOMBRE compte — la bulle resume de toute facon.
 const NOTIFY_MAX_ARRIVALS: usize = 50;
@@ -64,6 +71,14 @@ pub struct MessageRow {
     pub seen: bool,
     pub flagged: bool,
     pub has_attachment: bool,
+    /// La conversation à laquelle appartient la ligne — c'est par elle
+    /// qu'on demande le reste de l'échange.
+    pub thread_id: Option<i64>,
+    /// Messages de la conversation présents dans la boîte. 1 = isolé.
+    pub thread_size: u32,
+    /// Non-lus de la conversation : c'est LUI qui décide du gras, et non
+    /// l'état du seul message affiché.
+    pub thread_unseen: u32,
 }
 
 #[tauri::command]
@@ -390,14 +405,17 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             for (account_id, session) in jobs {
                 let email = session.email().to_string();
                 match run_sync(&session, account_id, &path) {
-                    Ok((report, fresh, mut new_unread)) => {
+                    Ok(mut outcome) => {
                         accounts += 1;
-                        fetched += report.fetched;
-                        deleted += report.deleted;
-                        replayed += report.replayed;
-                        arrivals.append(&mut new_unread);
-                        if let Some(fresh) = fresh {
+                        fetched += outcome.report.fetched;
+                        deleted += outcome.report.deleted;
+                        replayed += outcome.report.replayed;
+                        arrivals.append(&mut outcome.arrivals);
+                        if let Some(fresh) = outcome.refreshed {
                             refreshed.push(fresh);
+                        }
+                        if let Some(problem) = outcome.threading_problem {
+                            errors.push(format!("{email} : {problem}"));
                         }
                     }
                     Err(err) => errors.push(format!("{email} : {err}")),
@@ -431,18 +449,23 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     })
 }
 
+/// Ce qu'une synchronisation de compte rapporte, au-delà des décomptes.
+struct SyncOutcome {
+    report: mail_core::SyncReport,
+    /// Session dont le jeton vient d'être renouvelé, à remettre en cache.
+    refreshed: Option<AccountSession>,
+    /// Arrivées à annoncer, déjà filtrées par les règles du noyau.
+    arrivals: Vec<mail_core::Envelope>,
+    /// Échec de la passe d'en-têtes, s'il y en a eu un. Non bloquant,
+    /// mais rapporté.
+    threading_problem: Option<String>,
+}
+
 fn run_sync(
     session: &AccountSession,
     account_id: i64,
     db_path: &Path,
-) -> Result<
-    (
-        mail_core::SyncReport,
-        Option<AccountSession>,
-        Vec<mail_core::Envelope>,
-    ),
-    String,
-> {
+) -> Result<SyncOutcome, String> {
     let (mut server, refreshed) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     // L'UID le plus haut AVANT la synchro : c'est lui qui separe
@@ -456,16 +479,34 @@ fn run_sync(
     let report = SyncEngine::default()
         .sync(&mut server, &mut store, account_id, MAILBOX)
         .map_err(|err| err.to_string())?;
+
+    // La passe d'en-têtes profite de la connexion déjà ouverte : c'est ce
+    // qui la rend gratuite en allers-retours. Son échec ne doit PAS faire
+    // échouer la synchronisation — le courrier est arrivé, c'est le seul
+    // résultat qui compte — mais il est rapporté, jamais avalé. Sans
+    // trace, une boîte qui refuse de se regrouper serait indiagnosticable.
+    let threading_problem = mail_core::backfill_thread_headers(
+        &mut server,
+        &mut store,
+        account_id,
+        MAILBOX,
+        backfill_horizon(),
+        THREAD_HEADER_BUDGET,
+    )
+    .err()
+    .map(|err| format!("conversations incomplètes : {err}"));
+
     server.logout();
 
     let arrivals = store
         .new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS)
         .map_err(|err| err.to_string())?;
-    Ok((
+    Ok(SyncOutcome {
         report,
         refreshed,
-        mail_core::arrivals_to_notify(report.mode, arrivals),
-    ))
+        arrivals: mail_core::arrivals_to_notify(report.mode, arrivals),
+        threading_problem,
+    })
 }
 
 /// Affiche la bulle système d'un lot d'arrivées, s'il y a lieu.
@@ -502,6 +543,23 @@ pub struct MessagePage {
     pub elapsed_us: u64,
 }
 
+/// Les messages d'une conversation, du plus ancien au plus récent.
+///
+/// Purement locale : ouvrir un fil ne demande jamais le réseau, comme
+/// choisir un dossier de destination. C'est la leçon des dossiers, qui
+/// avaient été livrés en interrogeant le serveur — inutilisables dès la
+/// première coupure.
+#[tauri::command]
+pub fn thread_messages(app: AppHandle, thread_id: i64) -> Result<Vec<MessageRow>, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    Ok(store
+        .thread_messages(thread_id)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .map(to_message_row)
+        .collect())
+}
+
 /// Mapping partagé entre la boîte unifiée et les résultats de recherche.
 fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
     MessageRow {
@@ -524,6 +582,9 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
             .unwrap_or_default(),
         seen: row.envelope.seen,
         flagged: row.envelope.flagged,
+        thread_id: row.thread_id,
+        thread_size: row.thread_size,
+        thread_unseen: row.thread_unseen,
     }
 }
 

@@ -25,7 +25,7 @@ test.afterAll(async () => {
 
 test('boîte unifiée : les deux comptes fusionnés, pastilles visibles', async () => {
   await expect(page.locator('.account-chip')).toHaveCount(2);
-  await expect(page.locator('#perf')).toContainText('50 messages');
+  await expect(page.locator('#perf')).toContainText('40 conversations');
   await expect(page.locator('.row').first()).toBeVisible();
   await expect(page.locator('.row .account-dot').first()).toBeVisible();
 });

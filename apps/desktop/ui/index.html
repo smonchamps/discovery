@@ -99,6 +99,12 @@
           <button id="show-images">Afficher les images</button>
         </p>
       </header>
+      <!-- Hors du <header> a dessein : la regle globale `header {
+           display: flex }` (la barre du haut) s'applique AUSSI a
+           #detail-header, qui est un <header>. Un bandeau pleine largeur
+           y devient un item de ligne ecrase a 0 px et pousse hors ecran —
+           mesure a l'appui. #detail, lui, est une colonne. -->
+      <div id="thread-strip" hidden></div>
       <iframe id="detail-frame" sandbox title="Contenu du message"></iframe>
     </article>
     <section id="compose" hidden>

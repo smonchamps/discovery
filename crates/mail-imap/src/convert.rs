@@ -153,16 +153,70 @@ pub(crate) fn envelope_from_parts(
     let message_id = proto
         .and_then(|envelope| envelope.message_id.as_deref())
         .and_then(text_header);
+    // L'ENVELOPE porte `In-Reply-To` (RFC 3501 §7.4.2). Le regroupement en
+    // fils commence donc SANS un octet de plus sur le réseau : c'est ce
+    // qui a permis de ne pas alourdir la synchro « enveloppes d'abord ».
+    // `References`, absent de l'ENVELOPE, exige une passe séparée.
+    let in_reply_to = proto
+        .and_then(|envelope| envelope.in_reply_to.as_deref())
+        .and_then(text_header);
     Envelope {
         uid,
         subject,
         sender: from.and_then(sender_display),
         sender_address: from.and_then(address_literal),
         message_id,
+        in_reply_to,
         date,
         seen,
         flagged,
     }
+}
+
+/// Lit les deux en-têtes de regroupement dans un bloc d'en-têtes brut.
+///
+/// Analyse à la main plutôt que par `mail-parser` : on ne veut ici que des
+/// chaînes d'identifiants recopiées telles quelles, sans normalisation.
+/// Un analyseur MIME complet déciderait à notre place de ce qu'est un
+/// identifiant valide ; cette décision appartient au noyau, qui sait
+/// traiter les formes hors norme que la vraie vie produit.
+pub(crate) fn thread_headers(raw: &[u8]) -> mail_core::ThreadHeaders {
+    let text = String::from_utf8_lossy(raw);
+    mail_core::ThreadHeaders {
+        in_reply_to: header_value(&text, "in-reply-to"),
+        // Toujours `Some` : une chaîne vide dit « lu, et il n'y en a
+        // pas », ce qui n'est pas la même chose que « pas encore lu ».
+        references: Some(header_value(&text, "references").unwrap_or_default()),
+    }
+}
+
+/// La valeur d'un en-tête, replis compris (RFC 5322 §2.2.3 : une ligne
+/// commençant par une espace ou une tabulation prolonge la précédente).
+fn header_value(text: &str, name: &str) -> Option<String> {
+    let mut lines = text.lines();
+    while let Some(line) = lines.next() {
+        // Ligne vide = fin des en-têtes ; ce qui suit est le corps, et un
+        // corps peut très bien contenir « References: » en clair.
+        if line.is_empty() {
+            return None;
+        }
+        let Some((field, value)) = line.split_once(':') else {
+            continue;
+        };
+        if !field.trim().eq_ignore_ascii_case(name) {
+            continue;
+        }
+        let mut value = value.trim().to_string();
+        for folded in lines.by_ref() {
+            if !folded.starts_with([' ', '\t']) {
+                break;
+            }
+            value.push(' ');
+            value.push_str(folded.trim());
+        }
+        return Some(value);
+    }
+    None
 }
 
 /// Nom d'affichage s'il existe (décodé), sinon `mailbox@host`.
@@ -815,5 +869,52 @@ Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--B--\r\n";
         let expected = ArchiveStrategy::MoveTo("Archives".to_string());
         assert_eq!(archive_strategy(all_first), expected);
         assert_eq!(archive_strategy(archive_first), expected);
+    }
+
+    #[test]
+    fn lit_les_deux_entetes_de_regroupement() {
+        let raw = b"Subject: Devis\r\nIn-Reply-To: <a@b>\r\nReferences: <r@b> <a@b>\r\n\r\n";
+        let headers = thread_headers(raw);
+        assert_eq!(headers.in_reply_to.as_deref(), Some("<a@b>"));
+        assert_eq!(headers.references.as_deref(), Some("<r@b> <a@b>"));
+    }
+
+    /// `References` est l'en-tête qui se replie le plus souvent : il
+    /// s'allonge à chaque tour de conversation. Ne lire que la première
+    /// ligne perdrait justement la racine.
+    #[test]
+    fn un_entete_replie_se_lit_en_entier() {
+        let raw = b"References: <a@b>\r\n <c@d>\r\n\t<e@f>\r\nSubject: x\r\n\r\n";
+        assert_eq!(
+            thread_headers(raw).references.as_deref(),
+            Some("<a@b> <c@d> <e@f>")
+        );
+    }
+
+    #[test]
+    fn le_nom_de_l_entete_est_insensible_a_la_casse() {
+        let raw = b"REFERENCES: <a@b>\r\nin-reply-to: <c@d>\r\n\r\n";
+        let headers = thread_headers(raw);
+        assert_eq!(headers.references.as_deref(), Some("<a@b>"));
+        assert_eq!(headers.in_reply_to.as_deref(), Some("<c@d>"));
+    }
+
+    /// Absence d'en-tête : `Some("")`, et non `None`. C'est la marque
+    /// « lu, il n'y en a pas » — sans elle, la passe redemanderait ce
+    /// message indéfiniment.
+    #[test]
+    fn l_absence_de_references_se_distingue_de_l_absence_de_lecture() {
+        let headers = thread_headers(b"Subject: seul\r\n\r\n");
+        assert_eq!(headers.references.as_deref(), Some(""));
+        assert_eq!(headers.in_reply_to, None);
+    }
+
+    /// La ligne vide termine les en-têtes. Un corps peut contenir
+    /// « References: » en clair — une citation, un extrait de code — et le
+    /// lire là donnerait un rattachement inventé.
+    #[test]
+    fn un_entete_cite_dans_le_corps_est_ignore() {
+        let raw = b"Subject: x\r\n\r\nReferences: <faux@b>\r\n";
+        assert_eq!(thread_headers(raw).references.as_deref(), Some(""));
     }
 }

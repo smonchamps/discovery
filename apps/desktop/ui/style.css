@@ -608,3 +608,68 @@ footer {
   justify-content: flex-end;
   margin-top: 4px;
 }
+
+/* Compteur de conversation : discret, mais assez lisible pour se voir au
+   defilement. Il partage l'ancrage des autres marqueurs de ligne. */
+.row .thread-count {
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--muted);
+  background: #eceff3;
+  border-radius: 8px;
+  padding: 2px 6px;
+}
+
+.row.selected .thread-count {
+  background: #d6e4fd;
+  color: #1a4a9c;
+}
+
+/* Bandeau de conversation : l'echange, sous l'en-tete du message ouvert.
+   Il defile horizontalement — un fil long ne doit jamais pousser le
+   corps du message hors de l'ecran. */
+#thread-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  /* Bande de #detail, qui est une colonne flex : sans `flex: none` elle
+     se ferait comprimer par l'iframe voisine, qui porte `flex: 1`. */
+  flex: none;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  background: #fbfcfd;
+}
+
+/* Garde-fou `[hidden]` — meme piege que `#add-menu` et les dialogues. */
+#thread-strip[hidden] {
+  display: none;
+}
+
+.thread-item {
+  flex: none;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 14px;
+  background: #f2f4f7;
+  border-color: #dfe3e8;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thread-item:hover {
+  background: #e8f0fe;
+  border-color: var(--accent);
+}
+
+.thread-item.unread {
+  font-weight: 600;
+}
+
+.thread-item.current {
+  background: #e8f0fe;
+  border-color: var(--accent);
+  color: #1a4a9c;
+}

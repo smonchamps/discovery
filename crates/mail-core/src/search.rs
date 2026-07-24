@@ -458,6 +458,7 @@ mod tests {
             sender: Some(sender.to_string()),
             sender_address: Some(address.to_string()),
             message_id: None,
+            in_reply_to: None,
             date: Some(Utc.timestamp_opt(epoch, 0).unwrap()),
             seen: false,
             flagged: false,

@@ -14,7 +14,7 @@ mod mutf7;
 
 use imap_proto::NameAttribute;
 use imap_proto::types::UidSetMember;
-use mail_core::{Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, Uid};
+use mail_core::{Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, ThreadHeaders, Uid};
 
 /// Chaîne SASL XOAUTH2 (Gmail, Microsoft) : jamais de mot de passe.
 struct XOAuth2 {
@@ -278,6 +278,33 @@ impl MailServer for ImapServer {
         Ok(fetches
             .iter()
             .filter_map(convert::fetch_to_envelope)
+            .collect())
+    }
+
+    /// `BODY.PEEK[HEADER]` — le bloc d'en-têtes ENTIER, faute de mieux :
+    /// la crate `imap` n'expose `header()` que pour cette section-là, et
+    /// pas pour `HEADER.FIELDS (REFERENCES)`, qui serait vingt fois plus
+    /// petite. L'écart est assumé parce que la passe est bornée et ne
+    /// repasse jamais sur un message déjà lu.
+    ///
+    /// `PEEK` : lire des en-têtes ne doit pas davantage poser `\Seen` que
+    /// lire un corps.
+    fn fetch_thread_headers(
+        &mut self,
+        mailbox: &str,
+        uids: &[Uid],
+    ) -> Result<Vec<(Uid, ThreadHeaders)>, Error> {
+        if uids.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.ensure_selected(mailbox)?;
+        let fetches = self
+            .session
+            .uid_fetch(convert::uid_set(uids), "(UID BODY.PEEK[HEADER])")
+            .map_err(server_err)?;
+        Ok(fetches
+            .iter()
+            .filter_map(|fetch| Some((fetch.uid?, convert::thread_headers(fetch.header()?))))
             .collect())
     }
 

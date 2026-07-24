@@ -20,6 +20,13 @@ pub struct Envelope {
     pub sender_address: Option<String>,
     /// `Message-ID` RFC 5322 — pour répondre dans le fil (`In-Reply-To`).
     pub message_id: Option<String>,
+    /// `In-Reply-To` : l'ancêtre direct, tel que l'annonce l'expéditeur.
+    ///
+    /// Il arrive **gratuitement** avec l'ENVELOPE IMAP, dans les mêmes
+    /// octets que le sujet et l'expéditeur. C'est ce qui rend le premier
+    /// niveau de regroupement sans coût réseau ; `References`, lui, exige
+    /// une passe séparée sur les en-têtes complets.
+    pub in_reply_to: Option<String>,
     pub date: Option<DateTime<Utc>>,
     pub seen: bool,
     /// `\Flagged` — l'étoile chez Gmail.

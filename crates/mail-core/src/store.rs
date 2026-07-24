@@ -16,6 +16,7 @@ use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
 use crate::remote::Folder;
 use crate::search;
+use crate::thread;
 
 const SCHEMA: &str = "
 PRAGMA foreign_keys = ON;
@@ -40,6 +41,12 @@ CREATE TABLE IF NOT EXISTS envelopes (
     sender         TEXT,
     sender_address TEXT,
     message_id     TEXT,
+    -- Les deux en-tetes du regroupement en fils. `in_reply_to` vient de
+    -- l'ENVELOPE (gratuit) ; `refs` vient d'une passe separee sur les
+    -- en-tetes complets, et reste NULL en attendant.
+    in_reply_to    TEXT,
+    refs           TEXT,
+    thread_id      INTEGER,
     date_epoch     INTEGER,
     seen           INTEGER NOT NULL DEFAULT 0,
     flagged        INTEGER NOT NULL DEFAULT 0,
@@ -149,6 +156,19 @@ pub struct UnifiedRow {
     /// recherche dans le texte. Le trombone apparait donc au fil du
     /// rattrapage, jamais a tort.
     pub has_attachment: bool,
+    /// Le fil auquel ce message appartient. `None` seulement pendant la
+    /// fenêtre où une base héritée n'a pas encore été adoptée.
+    pub thread_id: Option<i64>,
+    /// Nombre de messages du fil PRÉSENTS DANS LA BOÎTE. 1 = message isolé.
+    ///
+    /// « Dans la boîte » est une restriction assumée : on ne regroupe que
+    /// ce qu'on a. Les messages qu'on a soi-même envoyés vivent dans
+    /// « Envoyés » et ne sont pas comptés — le fil montre donc la moitié
+    /// reçue de l'échange, ce qui est aussi ce que la liste affiche.
+    pub thread_size: u32,
+    /// Non-lus du fil. Un fil se montre non lu tant qu'il en reste un,
+    /// même si son dernier message est lu.
+    pub thread_unseen: u32,
 }
 
 /// Colonnes du SELECT unifié, partagées par [`Store::unified_recent`] et
@@ -156,7 +176,13 @@ pub struct UnifiedRow {
 /// La derniere colonne est un EXISTS sur `attachments` : la liste doit
 /// pouvoir afficher le trombone sans une requete par ligne. La cle
 /// primaire (mailbox_id, uid, idx) rend ce test indexe.
-pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, EXISTS(SELECT 1 FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid)";
+pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, EXISTS(SELECT 1 FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to";
+
+/// Le SELECT de la liste groupée : les colonnes ci-dessus, plus l'agrégat
+/// du fil. Il exige la jointure sur `threads` (alias `t`), que la
+/// recherche n'a pas — un résultat de recherche est UN message, pas une
+/// conversation.
+pub(crate) const THREAD_AGGREGATE: &str = ", t.size, t.unseen";
 
 pub struct Store(Connection);
 
@@ -180,6 +206,7 @@ impl Store {
         // plutôt que d'échouer en SQLITE_BUSY sur une écriture concurrente.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;
+        conn.execute_batch(thread::SCHEMA)?;
         migrate(&conn)?;
         Ok(Self(conn))
     }
@@ -339,6 +366,7 @@ impl Store {
     /// intention sur un UID invalidé est irréalisable par construction).
     pub fn reset_mailbox(&self, mailbox_id: i64, uid_validity: u32) -> Result<(), Error> {
         search::deindex_mailbox(&self.0, mailbox_id)?;
+        thread::clear_mailbox(&self.0, mailbox_id)?;
         self.0.execute(
             "DELETE FROM pending_actions WHERE mailbox_id = ?1",
             [mailbox_id],
@@ -375,15 +403,34 @@ impl Store {
         envelopes: &[Envelope],
     ) -> Result<(), Error> {
         let tx = self.0.transaction()?;
+        let mut touched: Vec<i64> = Vec::new();
         {
+            // `INSERT OR REPLACE` remettrait à NULL toute colonne absente
+            // de la liste — et `refs` comme `thread_id` sont écrits par
+            // d'AUTRES chemins que la synchro. Une re-synchronisation
+            // effacerait donc silencieusement le travail de rattrapage des
+            // en-têtes, exactement comme elle aurait effacé les pièces
+            // jointes. On énumère donc les colonnes que la synchro possède,
+            // et elles seules.
             let mut stmt = tx.prepare(
-                "INSERT OR REPLACE INTO envelopes
+                "INSERT INTO envelopes
                  (mailbox_id, uid, subject, sender, sender_address, message_id,
-                  date_epoch, seen, flagged)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                  in_reply_to, date_epoch, seen, flagged)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 ON CONFLICT (mailbox_id, uid) DO UPDATE SET
+                     subject = excluded.subject,
+                     sender = excluded.sender,
+                     sender_address = excluded.sender_address,
+                     message_id = excluded.message_id,
+                     in_reply_to = excluded.in_reply_to,
+                     date_epoch = excluded.date_epoch,
+                     seen = excluded.seen,
+                     flagged = excluded.flagged",
             )?;
             let mut body_stmt =
                 tx.prepare("SELECT html FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
+            let mut refs_stmt =
+                tx.prepare("SELECT refs FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
             for envelope in envelopes {
                 stmt.execute(params![
                     mailbox_id,
@@ -392,10 +439,34 @@ impl Store {
                     envelope.sender,
                     envelope.sender_address,
                     envelope.message_id,
+                    envelope.in_reply_to,
                     envelope.date.map(|d| d.timestamp()),
                     envelope.seen,
                     envelope.flagged,
                 ])?;
+
+                // Les `References` déjà acquises comptent dans le
+                // rattachement : une re-synchronisation ne doit pas
+                // dégrouper un fil que la passe d'en-têtes avait recollé.
+                let references: Option<String> = refs_stmt
+                    .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
+                    .optional()?
+                    .flatten();
+                let thread = thread::attach(
+                    &tx,
+                    mailbox_id,
+                    envelope.message_id.as_deref(),
+                    envelope.in_reply_to.as_deref(),
+                    references.as_deref(),
+                )?;
+                tx.execute(
+                    "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
+                    params![mailbox_id, envelope.uid, thread],
+                )?;
+                if !touched.contains(&thread) {
+                    touched.push(thread);
+                }
+
                 let html: Option<String> = body_stmt
                     .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
                     .optional()?;
@@ -409,9 +480,82 @@ impl Store {
                     html.as_deref(),
                 )?;
             }
+            // Après la boucle, et une seule fois par fil : recalculer à
+            // chaque message ferait N fois le travail sur une conversation
+            // de N messages arrivant dans le même lot.
+            for thread in &touched {
+                thread::refresh(&tx, *thread)?;
+            }
         }
         tx.commit()?;
         Ok(())
+    }
+
+    /// Enregistre les en-têtes de fil lus dans le bloc d'en-têtes complet,
+    /// et recolle le fil s'il y a lieu.
+    ///
+    /// `references` vaut `""` quand le message n'en porte pas : c'est la
+    /// marque « déjà lu, rien à y trouver ». Écrire NULL le ferait
+    /// redemander à chaque passage, indéfiniment.
+    ///
+    /// Retourne `true` si le rattachement a changé — l'appelant sait alors
+    /// que la liste affichée n'est plus à jour.
+    pub fn set_thread_headers(
+        &mut self,
+        mailbox_id: i64,
+        uid: Uid,
+        in_reply_to: Option<&str>,
+        references: &str,
+    ) -> Result<bool, Error> {
+        let tx = self.0.transaction()?;
+        let before: Option<i64> = tx
+            .query_row(
+                "SELECT thread_id FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
+                params![mailbox_id, uid],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        let context: Option<(Option<String>, Option<String>)> = tx
+            .query_row(
+                "SELECT message_id, in_reply_to FROM envelopes
+                 WHERE mailbox_id = ?1 AND uid = ?2",
+                params![mailbox_id, uid],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((message_id, known_parent)) = context else {
+            // Le message a disparu entre la lecture des en-têtes et leur
+            // écriture (archivé, supprimé) : il n'y a plus rien à rattacher.
+            return Ok(false);
+        };
+
+        // `COALESCE` : le bloc d'en-têtes fait autorité quand il dit
+        // quelque chose, mais un `In-Reply-To` déjà donné par l'ENVELOPE ne
+        // doit pas être effacé par une lecture qui n'en trouve pas.
+        tx.execute(
+            "UPDATE envelopes SET refs = ?3, in_reply_to = COALESCE(?4, in_reply_to)
+             WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid, references, in_reply_to],
+        )?;
+        let parent = in_reply_to.map(str::to_string).or(known_parent);
+        let thread = thread::attach(
+            &tx,
+            mailbox_id,
+            message_id.as_deref(),
+            parent.as_deref(),
+            Some(references),
+        )?;
+        tx.execute(
+            "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid, thread],
+        )?;
+        thread::refresh(&tx, thread)?;
+        if let Some(previous) = before.filter(|previous| *previous != thread) {
+            thread::refresh(&tx, previous)?;
+        }
+        tx.commit()?;
+        Ok(before != Some(thread))
     }
 
     /// Supprime les enveloppes absentes du serveur ; retourne leur nombre.
@@ -430,6 +574,7 @@ impl Store {
             .filter(|uid| !present.contains(uid))
             .collect();
         let tx = self.0.transaction()?;
+        let mut touched: Vec<i64> = Vec::new();
         {
             let mut envelopes =
                 tx.prepare("DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
@@ -437,10 +582,20 @@ impl Store {
             let mut actions =
                 tx.prepare("DELETE FROM pending_actions WHERE mailbox_id = ?1 AND uid = ?2")?;
             for uid in &stale {
+                // Relever le fil AVANT de supprimer l'enveloppe : après,
+                // le lien est perdu et l'agrégat resterait faux.
+                if let Some(thread) = thread::thread_of(&tx, mailbox_id, *uid)?
+                    .filter(|thread| !touched.contains(thread))
+                {
+                    touched.push(thread);
+                }
                 search::deindex_message(&tx, mailbox_id, *uid)?;
                 envelopes.execute(params![mailbox_id, uid])?;
                 bodies.execute(params![mailbox_id, uid])?;
                 actions.execute(params![mailbox_id, uid])?;
+            }
+            for thread in &touched {
+                thread::refresh(&tx, *thread)?;
             }
         }
         tx.commit()?;
@@ -450,6 +605,7 @@ impl Store {
     /// Retire localement une enveloppe et son corps (archivage/suppression
     /// optimiste) ; le serveur suivra via la file d'actions.
     pub fn remove_local(&self, mailbox_id: i64, uid: Uid) -> Result<(), Error> {
+        let thread = thread::thread_of(&self.0, mailbox_id, uid)?;
         search::deindex_message(&self.0, mailbox_id, uid)?;
         self.0.execute(
             "DELETE FROM bodies WHERE mailbox_id = ?1 AND uid = ?2",
@@ -459,6 +615,9 @@ impl Store {
             "DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid],
         )?;
+        if let Some(thread) = thread {
+            thread::refresh(&self.0, thread)?;
+        }
         Ok(())
     }
 
@@ -470,6 +629,14 @@ impl Store {
              WHERE mailbox_id = ?1 AND uid = ?2 AND seen != ?3",
             params![mailbox_id, uid, seen],
         )?;
+        if changed > 0 {
+            // Le compteur de non-lus du fil vient de bouger. L'oublier
+            // laisserait une conversation en gras alors qu'on vient de
+            // lire son dernier message non lu.
+            if let Some(thread) = thread::thread_of(&self.0, mailbox_id, uid)? {
+                thread::refresh(&self.0, thread)?;
+            }
+        }
         Ok(changed > 0)
     }
 
@@ -691,7 +858,7 @@ impl Store {
     ) -> Result<Vec<Envelope>, Error> {
         let mut statement = self.0.prepare(
             "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
-                    e.date_epoch, e.seen, e.flagged
+                    e.date_epoch, e.seen, e.flagged, e.in_reply_to
              FROM envelopes e
              JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
@@ -699,21 +866,10 @@ impl Store {
              ORDER BY e.uid
              LIMIT ?4",
         )?;
-        let rows =
-            statement.query_map(params![account_id, mailbox, uid_gt, limit as i64], |row| {
-                Ok(Envelope {
-                    uid: row.get(0)?,
-                    subject: row.get(1)?,
-                    sender: row.get(2)?,
-                    sender_address: row.get(3)?,
-                    message_id: row.get(4)?,
-                    date: row
-                        .get::<_, Option<i64>>(5)?
-                        .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
-                    seen: row.get(6)?,
-                    flagged: row.get(7)?,
-                })
-            })?;
+        let rows = statement.query_map(
+            params![account_id, mailbox, uid_gt, limit as i64],
+            row_to_envelope,
+        )?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
@@ -758,6 +914,57 @@ impl Store {
         Ok(uids)
     }
 
+    /// Les messages dont les en-têtes de fil n'ont pas encore été lus, du
+    /// plus récent au plus ancien.
+    ///
+    /// `refs IS NULL` = jamais lu. Un message sans `References` reçoit
+    /// `""` et sort définitivement de cette liste.
+    pub fn thread_headers_to_backfill(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        since_epoch: i64,
+        limit: usize,
+    ) -> Result<Vec<Uid>, Error> {
+        let mut stmt = self.0.prepare(
+            "SELECT e.uid
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2
+               AND e.date_epoch IS NOT NULL AND e.date_epoch >= ?3
+               AND e.refs IS NULL
+             ORDER BY e.date_epoch DESC, e.uid DESC
+             LIMIT ?4",
+        )?;
+        let uids = stmt
+            .query_map(
+                params![account_id, mailbox, since_epoch, limit as i64],
+                |row| row.get(0),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(uids)
+    }
+
+    /// Combien de messages attendent encore leurs en-têtes de fil.
+    pub fn thread_headers_pending_count(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        since_epoch: i64,
+    ) -> Result<u64, Error> {
+        let count: i64 = self.0.query_row(
+            "SELECT COUNT(*)
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2
+               AND e.date_epoch IS NOT NULL AND e.date_epoch >= ?3
+               AND e.refs IS NULL",
+            params![account_id, mailbox, since_epoch],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
     /// Combien de messages attendent encore leur corps dans l'horizon —
     /// de quoi afficher un avancement honnête.
     pub fn bodies_pending_count(
@@ -793,7 +1000,7 @@ impl Store {
     ) -> Result<Vec<Envelope>, Error> {
         let mut stmt = self.0.prepare(
             "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
-                    e.date_epoch, e.seen, e.flagged
+                    e.date_epoch, e.seen, e.flagged, e.in_reply_to
              FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
              ORDER BY e.date_epoch DESC, e.uid DESC
@@ -817,33 +1024,67 @@ impl Store {
         offset: usize,
         limit: usize,
     ) -> Result<Vec<UnifiedRow>, Error> {
+        // Une ligne par CONVERSATION, représentée par son dernier message.
+        //
+        // Le départ se fait depuis `threads`, pas depuis `envelopes` : un
+        // `GROUP BY thread_id` avec un `MAX(date)` obligerait SQLite à
+        // parcourir puis trier les 200 000 enveloppes à chaque page de
+        // défilement. Ici l'index `idx_threads_date` porte à la fois le
+        // tri et la pagination — le coût d'une page ne dépend plus de la
+        // taille de la boîte. C'est l'agrégat matérialisé qui paie ça, et
+        // il se maintient dans la transaction d'écriture.
         let mut stmt = self.0.prepare(&format!(
-            "{SELECT_UNIFIED}
-             FROM envelopes e
-             JOIN mailboxes m ON m.id = e.mailbox_id
+            "{SELECT_UNIFIED}{THREAD_AGGREGATE}
+             FROM threads t
+             JOIN envelopes e ON e.mailbox_id = t.mailbox_id AND e.uid = t.last_uid
+             JOIN mailboxes m ON m.id = t.mailbox_id
              JOIN accounts a ON a.id = m.account_id
              WHERE m.name = ?1
-             ORDER BY e.date_epoch DESC, e.uid DESC, a.id
+             ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id
              LIMIT ?2 OFFSET ?3"
         ))?;
         let rows = stmt
             .query_map(
                 params![mailbox, limit as i64, offset as i64],
-                row_to_unified,
+                row_to_threaded,
             )?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
-    /// Total de la boîte unifiée, tous comptes confondus.
+    /// Total de la boîte unifiée — en CONVERSATIONS, puisque c'est ce que
+    /// la liste affiche. Compter les messages ferait défiler dans le vide.
     pub fn unified_count(&self, mailbox: &str) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
-            "SELECT COUNT(*) FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
+            "SELECT COUNT(*) FROM threads t JOIN mailboxes m ON m.id = t.mailbox_id
              WHERE m.name = ?1",
             [mailbox],
             |row| row.get(0),
         )?;
         Ok(count as u64)
+    }
+
+    /// Les messages d'une conversation, du plus ancien au plus récent —
+    /// l'ordre de lecture d'un échange.
+    pub fn thread_messages(&self, thread_id: i64) -> Result<Vec<UnifiedRow>, Error> {
+        // Jointure sur `threads`, et non le mapping « message seul » :
+        // chaque message doit repartir en connaissant la taille de SON
+        // fil. Sans elle il vaudrait 1, et l'écran conclurait qu'il n'y a
+        // pas de conversation à montrer — au moment précis où on la
+        // parcourt.
+        let mut stmt = self.0.prepare(&format!(
+            "{SELECT_UNIFIED}{THREAD_AGGREGATE}
+             FROM envelopes e
+             JOIN threads t ON t.id = e.thread_id
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             JOIN accounts a ON a.id = m.account_id
+             WHERE e.thread_id = ?1
+             ORDER BY e.date_epoch ASC, e.uid ASC"
+        ))?;
+        let rows = stmt
+            .query_map([thread_id], row_to_threaded)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Une enveloppe précise — le contexte nécessaire pour répondre
@@ -858,7 +1099,7 @@ impl Store {
             .0
             .query_row(
                 "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
-                        e.date_epoch, e.seen, e.flagged
+                        e.date_epoch, e.seen, e.flagged, e.in_reply_to
                  FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
                  WHERE m.account_id = ?1 AND m.name = ?2 AND e.uid = ?3",
                 params![account_id, mailbox, uid],
@@ -919,6 +1160,11 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
             ("sender_address", "TEXT"),
             ("message_id", "TEXT"),
             ("flagged", "INTEGER NOT NULL DEFAULT 0"),
+            ("in_reply_to", "TEXT"),
+            ("refs", "TEXT"),
+            // NULL = « pas encore rattaché ». C'est ce que
+            // `thread::migrate_threads` cherche, plus bas.
+            ("thread_id", "INTEGER"),
         ],
     )?;
     add_missing_columns(
@@ -940,7 +1186,18 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
             ("username", "TEXT"),
         ],
     )?;
-    search::migrate_search(conn)
+    search::migrate_search(conn)?;
+    // L'index vient APRÈS `add_missing_columns`, pas dans `SCHEMA` : sur
+    // une base héritée, `CREATE TABLE IF NOT EXISTS envelopes` ne fait
+    // rien et la colonne `thread_id` n'existe pas encore au moment où le
+    // schéma s'exécute. Deux tests de migration l'ont prouvé.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_envelopes_thread
+             ON envelopes(thread_id, date_epoch DESC);",
+    )?;
+    // En dernier : la colonne et l'index doivent exister avant d'adopter
+    // les messages hérités.
+    thread::migrate_threads(conn)
 }
 
 /// Bascule Phase 2 → 3 : les contraintes de trois tables changent
@@ -1035,6 +1292,7 @@ fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
             .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
         seen: row.get(6)?,
         flagged: row.get(7)?,
+        in_reply_to: row.get(8)?,
     })
 }
 
@@ -1055,8 +1313,25 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
                 .and_then(|epoch| DateTime::from_timestamp(epoch, 0)),
             seen: row.get(8)?,
             flagged: row.get(9)?,
+            in_reply_to: row.get(12)?,
         },
         has_attachment: row.get(10)?,
+        thread_id: row.get(11)?,
+        // Valeurs d'un message vu SEUL — c'est le cas de la recherche, qui
+        // ne joint pas `threads`. La liste groupée les écrase avec
+        // l'agrégat réel via [`row_to_threaded`].
+        thread_size: 1,
+        thread_unseen: u32::from(!row.get::<_, bool>(8)?),
+    })
+}
+
+/// Mapping de la liste groupée : les colonnes unifiées, puis l'agrégat du
+/// fil ajouté par [`THREAD_AGGREGATE`].
+fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
+    Ok(UnifiedRow {
+        thread_size: row.get(13)?,
+        thread_unseen: row.get(14)?,
+        ..row_to_unified(row)?
     })
 }
 
@@ -1073,6 +1348,7 @@ mod tests {
             sender: Some("Alice Martin".to_string()),
             sender_address: Some("alice@example.com".to_string()),
             message_id: Some(format!("<m{uid}@example.com>")),
+            in_reply_to: None,
             date: Some(Utc.timestamp_opt(epoch, 0).unwrap()),
             seen,
             flagged: uid.is_multiple_of(2),
@@ -1117,6 +1393,7 @@ mod tests {
             sender: None,
             sender_address: None,
             message_id: None,
+            in_reply_to: None,
             date: None,
             seen: false,
             flagged: false,
@@ -1966,5 +2243,274 @@ mod tests {
             store.bodies_to_backfill(other, "INBOX", 0, 10).unwrap(),
             vec![1]
         );
+    }
+
+    // -----------------------------------------------------------------
+    // Regroupement en conversations
+    // -----------------------------------------------------------------
+
+    /// Une réponse à `parent`, dans le format de [`envelope`] — dont le
+    /// `Message-ID` est `<m{uid}@example.com>`.
+    fn reply(uid: Uid, subject: &str, epoch: i64, seen: bool, parent: Uid) -> Envelope {
+        Envelope {
+            in_reply_to: Some(format!("<m{parent}@example.com>")),
+            ..envelope(uid, subject, epoch, seen)
+        }
+    }
+
+    fn unified(store: &Store) -> Vec<UnifiedRow> {
+        store.unified_recent("INBOX", 0, 50).unwrap()
+    }
+
+    fn uids(rows: &[UnifiedRow]) -> Vec<Uid> {
+        rows.iter().map(|row| row.envelope.uid).collect()
+    }
+
+    /// Le cœur du chantier : deux messages, une seule ligne.
+    #[test]
+    fn la_liste_montre_une_ligne_par_conversation() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "Devis", 100, true),
+                    reply(2, "Re: Devis", 200, true, 1),
+                ],
+            )
+            .unwrap();
+
+        let rows = unified(&store);
+        assert_eq!(rows.len(), 1, "un fil, et non deux messages");
+        assert_eq!(rows[0].thread_size, 2);
+        assert_eq!(
+            rows[0].envelope.uid, 2,
+            "la ligne montre le DERNIER message"
+        );
+        assert_eq!(
+            store.unified_count("INBOX").unwrap(),
+            1,
+            "le défilement compte des conversations, sinon il défile dans le vide"
+        );
+    }
+
+    #[test]
+    fn une_reponse_fait_remonter_tout_le_fil() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "Devis", 100, true),
+                    envelope(2, "Facture", 200, true),
+                ],
+            )
+            .unwrap();
+        assert_eq!(uids(&unified(&store)), vec![2, 1]);
+
+        store
+            .upsert_envelopes(id, &[reply(3, "Re: Devis", 300, true, 1)])
+            .unwrap();
+
+        let rows = unified(&store);
+        assert_eq!(
+            uids(&rows),
+            vec![3, 2],
+            "le devis repasse devant la facture"
+        );
+        assert_eq!(rows[0].thread_size, 2);
+    }
+
+    /// Un fil dont le dernier message est lu, mais qui garde un non-lu
+    /// plus haut, doit rester en gras. Lire l'état du seul message affiché
+    /// donnerait la réponse inverse.
+    #[test]
+    fn un_fil_reste_non_lu_tant_qu_un_de_ses_messages_l_est() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "Devis", 100, false),
+                    reply(2, "Re: Devis", 200, true, 1),
+                ],
+            )
+            .unwrap();
+
+        let rows = unified(&store);
+        assert!(rows[0].envelope.seen, "le dernier message est lu…");
+        assert_eq!(rows[0].thread_unseen, 1, "…mais le fil garde un non-lu");
+
+        store.set_seen_local(id, 1, true).unwrap();
+        assert_eq!(
+            unified(&store)[0].thread_unseen,
+            0,
+            "lire le message manquant éteint le fil"
+        );
+    }
+
+    /// Le cas qui justifie la passe sur les en-têtes complets : dans une
+    /// boîte de réception, le message du milieu d'un échange est celui
+    /// qu'on a soi-même ENVOYÉ — il n'y est pas. `In-Reply-To` seul laisse
+    /// donc deux fils ; `References`, qui porte aussi la racine, les
+    /// recolle.
+    #[test]
+    fn les_references_recollent_deux_moities_de_fil() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "Devis", 100, true),
+                    // Répond à <m2@…> : notre propre réponse, absente.
+                    reply(3, "Re: Devis", 300, true, 2),
+                ],
+            )
+            .unwrap();
+        assert_eq!(unified(&store).len(), 2, "deux fils, faute du chaînon");
+
+        assert!(
+            store
+                .set_thread_headers(id, 3, None, "<m1@example.com> <m2@example.com>")
+                .unwrap(),
+            "le rattachement a changé"
+        );
+
+        let rows = unified(&store);
+        assert_eq!(rows.len(), 1, "les deux moitiés se rejoignent");
+        assert_eq!(rows[0].thread_size, 2);
+        assert_eq!(rows[0].envelope.uid, 3);
+    }
+
+    /// Une re-synchronisation réécrit l'enveloppe. Si elle écrasait les
+    /// `References` déjà acquises, elle DÉGROUPERAIT un fil recollé : le
+    /// regroupement se déferait tout seul, sans que rien ne le signale.
+    /// C'est le piège qui avait coûté les pièces jointes.
+    #[test]
+    fn une_resynchronisation_ne_degroupe_pas_un_fil_recolle() {
+        let (mut store, id) = store_with_mailbox();
+        let arrivee = [
+            envelope(1, "Devis", 100, true),
+            reply(3, "Re: Devis", 300, true, 2),
+        ];
+        store.upsert_envelopes(id, &arrivee).unwrap();
+        store
+            .set_thread_headers(id, 3, None, "<m1@example.com> <m2@example.com>")
+            .unwrap();
+        assert_eq!(unified(&store).len(), 1);
+
+        store.upsert_envelopes(id, &arrivee).unwrap();
+
+        let rows = unified(&store);
+        assert_eq!(rows.len(), 1, "le fil tient la re-synchronisation");
+        assert_eq!(rows[0].thread_size, 2);
+    }
+
+    /// Le piège des pièces jointes appliqué aux fils : une base d'avant le
+    /// regroupement a `thread_id` NULL partout. La liste part de
+    /// `threads` — sans adoption, elle serait VIDE à la première
+    /// ouverture, et pour toujours.
+    #[test]
+    fn une_base_heritee_voit_tous_ses_messages_adoptes() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "Devis", 100, true),
+                    envelope(2, "Facture", 200, true),
+                ],
+            )
+            .unwrap();
+
+        // On rembobine à l'état d'une base d'avant les fils.
+        store
+            .conn()
+            .execute_batch(
+                "UPDATE envelopes SET thread_id = NULL;
+                 DELETE FROM thread_links;
+                 DELETE FROM threads;",
+            )
+            .unwrap();
+        assert!(
+            unified(&store).is_empty(),
+            "sans adoption, la boîte entière disparaît de l'écran"
+        );
+
+        crate::thread::migrate_threads(store.conn()).unwrap();
+
+        assert_eq!(uids(&unified(&store)), vec![2, 1]);
+        assert_eq!(store.unified_count("INBOX").unwrap(), 2);
+    }
+
+    /// Le désordre d'arrivée ne doit rien changer : ici la réponse précède
+    /// son parent dans le même lot.
+    #[test]
+    fn un_fil_se_lit_du_plus_ancien_au_plus_recent() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    reply(2, "Re: Devis", 200, true, 1),
+                    envelope(1, "Devis", 100, true),
+                ],
+            )
+            .unwrap();
+
+        let rows = unified(&store);
+        assert_eq!(rows.len(), 1, "l'ordre d'arrivée ne casse pas le fil");
+        let thread = rows[0].thread_id.unwrap();
+        let messages = store.thread_messages(thread).unwrap();
+        assert_eq!(uids(&messages), vec![1, 2]);
+        // Chaque message repart en connaissant la taille de SON fil :
+        // sinon l'écran qui le rouvre conclurait qu'il est seul.
+        assert!(messages.iter().all(|m| m.thread_size == 2));
+    }
+
+    #[test]
+    fn retirer_les_messages_d_un_fil_le_fait_disparaitre() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "Devis", 100, true),
+                    reply(2, "Re: Devis", 200, true, 1),
+                ],
+            )
+            .unwrap();
+
+        store.remove_local(id, 2).unwrap();
+        let rows = unified(&store);
+        assert_eq!(uids(&rows), vec![1], "le fil retombe sur ce qui reste");
+        assert_eq!(rows[0].thread_size, 1);
+
+        store.remove_local(id, 1).unwrap();
+        assert!(unified(&store).is_empty());
+        assert_eq!(store.unified_count("INBOX").unwrap(), 0);
+    }
+
+    /// UIDVALIDITY invalidée : les fils partent avec le reste, et
+    /// l'annuaire ne doit pas empêcher une repopulation propre.
+    #[test]
+    fn reset_mailbox_efface_aussi_les_fils() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "Devis", 100, true),
+                    reply(2, "Re: Devis", 200, true, 1),
+                ],
+            )
+            .unwrap();
+        store.reset_mailbox(id, 2).unwrap();
+        assert!(unified(&store).is_empty());
+
+        store
+            .upsert_envelopes(id, &[envelope(1, "Devis", 100, true)])
+            .unwrap();
+        assert_eq!(unified(&store).len(), 1, "la boîte se repeuple sans butée");
     }
 }
