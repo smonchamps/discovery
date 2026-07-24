@@ -425,8 +425,9 @@ Après la recherche, dans l'ordre du plan et des reports assumés :
 4. ~~**Threading des conversations**~~ ✅ **FAIT et validé terrain**, au
    deuxième tour : la première version réunissait 43 messages étrangers
    dans un fil, faute d'exiger l'arobase d'un `Message-ID` (ADR 0008
-   §1 bis). Valeur mesurée sur la boîte réelle : **25 messages regroupés
-   en 15 conversations sur 2 813**. Modeste, et c'est le prix d'une
+   §1 bis). Valeur mesurée sur la boîte réelle : **40 messages
+   regroupés en 15 conversations sur 2 813** — 25 lignes de liste
+   économisées. Modeste, et c'est le prix d'une
    décision assumée — on ne regroupe que ce que la boîte contient, et nos
    propres réponses vivent dans « Envoyés », que la v1 ne synchronise
    pas. Union-find sur les identifiants RFC 5322, agrégat matérialisé
