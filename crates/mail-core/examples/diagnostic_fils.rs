@@ -20,6 +20,21 @@ use rusqlite::{Connection, OptionalExtension};
 /// longueur de la partie locale, domaine. De quoi reconnaître un
 /// `Message-ID` réutilisé, vide ou hors norme sans en divulguer un seul.
 fn shape(raw: &str) -> String {
+    forme(raw, true)
+}
+
+/// Forme d'un jeton d'ANNUAIRE.
+///
+/// Contrairement à [`shape`], on ne dit rien des chevrons : l'annuaire ne
+/// stocke que la forme canonique, qui les a déjà retirés. Les mentionner
+/// ferait lire « SANS CHEVRONS » sur des identifiants parfaitement
+/// normaux — un faux signal d'alarme, exactement ce qu'un diagnostic ne
+/// doit pas produire.
+fn shape_canonical(raw: &str) -> String {
+    forme(raw, false)
+}
+
+fn forme(raw: &str, montrer_chevrons: bool) -> String {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return "(vide)".to_string();
@@ -36,8 +51,12 @@ fn shape(raw: &str) -> String {
     } else {
         String::new()
     };
-    let brackets = if bracketed { "<…>" } else { "SANS CHEVRONS" };
-    format!("{brackets} partie locale {local} car., domaine « {domain} »{plural}")
+    let brackets = match (montrer_chevrons, bracketed) {
+        (false, _) => String::new(),
+        (true, true) => "<…> ".to_string(),
+        (true, false) => "SANS CHEVRONS ".to_string(),
+    };
+    format!("{brackets}partie locale {local} car., domaine « {domain} »{plural}")
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -225,7 +244,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 "FANTÔME (personne ne le porte)"
             };
-            println!("  cité par {cites} messages — {nature} — {}", shape(jeton));
+            println!(
+                "  cité par {cites} messages — {nature} — {}",
+                shape_canonical(jeton)
+            );
         }
     }
 
