@@ -171,6 +171,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // 3 bis. LES ANCRES — la vraie question.
+    //
+    // Comparer les en-têtes entiers ne suffit pas : deux messages dont
+    // les `References` diffèrent de bout en bout peuvent citer un même
+    // ancêtre. C'est CE jeton-là qui les réunit, et une seule ancre
+    // fausse fait s'effondrer de proche en proche tout ce qui la touche.
+    //
+    // On repart donc de l'annuaire, qui contient les jetons tels que le
+    // regroupement les a retenus.
+    println!("\n--- les ancres des deux plus gros fils ---");
+    let mut stmt = conn.prepare("SELECT id FROM threads ORDER BY size DESC LIMIT 2")?;
+    let sommets: Vec<i64> = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+
+    for thread in sommets {
+        let mut stmt = conn.prepare("SELECT message_id FROM thread_links WHERE thread_id = ?1")?;
+        let jetons: Vec<String> = stmt
+            .query_map([thread], |row| row.get(0))?
+            .collect::<Result<_, _>>()?;
+
+        // `instr` et non `LIKE` : un identifiant contient volontiers des
+        // `_`, que `LIKE` interpréterait comme un joker.
+        let mut portee: Vec<(i64, bool, String)> = Vec::new();
+        for jeton in &jetons {
+            let cites: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM envelopes
+                 WHERE thread_id = ?1
+                   AND (instr(COALESCE(message_id, ''), ?2) > 0
+                     OR instr(COALESCE(in_reply_to, ''), ?2) > 0
+                     OR instr(COALESCE(refs, ''), ?2) > 0)",
+                rusqlite::params![thread, jeton],
+                |row| row.get(0),
+            )?;
+            // Une ancre que PERSONNE ne possède est un fantôme : aucun
+            // message de la base ne s'appelle ainsi. Légitime quand
+            // l'ancêtre est ailleurs (dans « Envoyés »), suspect quand
+            // des dizaines de messages étrangers s'y accrochent.
+            let possede: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM envelopes WHERE instr(COALESCE(message_id, ''), ?1) > 0",
+                [jeton],
+                |row| row.get(0),
+            )?;
+            portee.push((cites, possede > 0, jeton.clone()));
+        }
+        portee.sort_by(|a, b| b.0.cmp(&a.0));
+
+        println!("\nfil #{thread} — {} jetons d'annuaire", jetons.len());
+        for (cites, possede, jeton) in portee.iter().take(5) {
+            let nature = if *possede {
+                "possédé par un message"
+            } else {
+                "FANTÔME (personne ne le porte)"
+            };
+            println!("  cité par {cites} messages — {nature} — {}", shape(jeton));
+        }
+    }
+
     // 4. Le piège classique : un expéditeur qui réutilise son Message-ID.
     println!("\n--- Message-ID réutilisés (toute la base) ---");
     let mut stmt = conn.prepare(
