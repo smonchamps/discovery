@@ -65,7 +65,7 @@ fn canonical_ids(raw: &str) -> Vec<String> {
         let Some(close) = after.find('>') else { break };
         bracketed = true;
         let id = after[..close].trim();
-        if !id.is_empty() {
+        if is_message_id(id) {
             ids.push(id.to_string());
         }
         rest = &after[close + 1..];
@@ -76,12 +76,38 @@ fn canonical_ids(raw: &str) -> Vec<String> {
         //
         // Le repli se décide sur la PRÉSENCE de chevrons, jamais sur le
         // fait qu'on en ait tiré quelque chose : un `Message-ID: <>` — un
-        // logiciel fautif en produit — retomberait sinon ici et donnerait
-        // l'identifiant littéral « <> », que TOUS les messages malformés
-        // partageraient. Ils fusionneraient en un seul fil géant.
-        ids = raw.split_whitespace().map(str::to_string).collect();
+        // logiciel fautif en produit — retomberait sinon ici.
+        ids = raw
+            .split_whitespace()
+            .filter(|token| is_message_id(token))
+            .map(str::to_string)
+            .collect();
     }
     ids
+}
+
+/// Ce jeton est-il un `Message-ID` plausible ?
+///
+/// RFC 5322 §3.6.4 : `msg-id = "<" id-left "@" id-right ">"`. **L'arobase
+/// est obligatoire**, et c'est elle qui sépare un identifiant d'un mot.
+///
+/// Ce n'est pas du purisme, c'est le garde-fou qui manquait. Sans lui, un
+/// en-tête rédigé en prose — la forme RFC 822 `In-Reply-To: Votre message
+/// du 3 janvier`, que des répondeurs automatiques produisent encore —
+/// fabrique autant de faux identifiants que de mots. Chaque mot devient
+/// une ancre, tous les messages portant la même phrase s'y accrochent, et
+/// l'union-find les réunit *correctement* dans un fil qui n'a aucun sens.
+///
+/// Mesuré sur une vraie boîte avant correction : **43 messages étrangers
+/// en une seule conversation**, accrochés à des jetons de 3 à 11
+/// caractères sans arobase que personne ne portait.
+///
+/// Conséquence assumée : un `Message-ID` hors norme (`<1234567890>`) est
+/// ignoré. Le message forme alors son propre fil et les réponses qu'il
+/// reçoit ne s'y rattachent pas. C'est une perte locale et silencieuse,
+/// contre une fusion massive et visible — l'échange est très favorable.
+fn is_message_id(token: &str) -> bool {
+    token.contains('@') && !token.chars().any(char::is_whitespace)
 }
 
 /// Tous les identifiants qui rattachent un message à son fil : le sien
@@ -380,11 +406,46 @@ pub(crate) fn clear_mailbox(conn: &Connection, mailbox_id: i64) -> Result<(), Er
 /// Ces messages n'ont que leur `Message-ID` : ils formeront donc surtout
 /// des fils d'un seul message, qui se regrouperont au fil de l'acquisition
 /// des en-têtes (c'est la propriété de convergence, en tête de module).
+/// Version de la règle de regroupement inscrite dans la base
+/// (`PRAGMA user_version`, libre d'usage et gratuite à lire).
+///
+/// **1** — les identifiants sont filtrés par [`is_message_id`].
+///
+/// Les bases plus anciennes ont été regroupées par une règle qui prenait
+/// les mots d'un en-tête rédigé en prose pour des identifiants : leurs
+/// fils sont FAUX, et aucune correction du code ne les répare tout seul.
+/// Il faut les refaire.
+const THREADING_VERSION: i64 = 1;
+
+/// Refait les fils quand la règle qui les a produits a changé.
+///
+/// Purement local : les en-têtes bruts sont intacts en base, seule leur
+/// **interprétation** était fautive. Rien à redemander au serveur.
+fn rebuild_if_outdated(conn: &Connection) -> Result<(), Error> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version >= THREADING_VERSION {
+        return Ok(());
+    }
+    // Tout effacer et laisser l'adoption, juste dessous, refaire le
+    // travail : un seul chemin de reconstruction, celui qui est déjà
+    // testé, plutôt qu'un correctif parallèle qui divergerait.
+    conn.execute_batch(&format!(
+        "BEGIN;
+         DELETE FROM thread_links;
+         DELETE FROM threads;
+         UPDATE envelopes SET thread_id = NULL;
+         PRAGMA user_version = {THREADING_VERSION};
+         COMMIT;"
+    ))?;
+    Ok(())
+}
+
 /// Un message pas encore rattaché : sa boîte, son UID, puis les trois
 /// en-têtes de regroupement.
 type Orphan = (i64, Uid, Option<String>, Option<String>, Option<String>);
 
 pub(crate) fn migrate_threads(conn: &Connection) -> Result<(), Error> {
+    rebuild_if_outdated(conn)?;
     let orphans: Vec<Orphan> = conn
         .prepare(
             "SELECT mailbox_id, uid, message_id, in_reply_to, refs
@@ -558,12 +619,64 @@ mod tests {
         assert!(plan.absorb.is_empty(), "un fil ne s'absorbe pas lui-même");
     }
 
+    /// LE défaut du terrain, en une assertion.
+    ///
+    /// `In-Reply-To: Votre message du 3 janvier` — la forme RFC 822, que
+    /// des répondeurs automatiques produisent encore. L'ancienne règle en
+    /// tirait cinq identifiants : « Votre », « message », « du », « 3 »,
+    /// « janvier ». Tous les messages portant cette phrase s'accrochaient
+    /// aux mêmes ancres et se retrouvaient dans un seul fil. Mesuré sur
+    /// une vraie boîte : 43 messages étrangers réunis.
+    #[test]
+    fn un_en_tete_redige_en_prose_ne_produit_aucun_identifiant() {
+        assert!(canonical_ids("Votre message du 3 janvier").is_empty());
+        assert!(canonical_ids("Your message of Mon, 01 Jan 2024").is_empty());
+        assert!(linking_ids(None, Some("Votre message du 3 janvier"), None).is_empty());
+    }
+
+    /// RFC 5322 §3.6.4 : l'arobase n'est pas décorative, c'est elle qui
+    /// distingue un identifiant d'un mot.
+    #[test]
+    fn un_jeton_sans_arobase_n_est_pas_un_identifiant() {
+        assert!(canonical_ids("NIL").is_empty());
+        assert!(canonical_ids("0").is_empty());
+        assert!(
+            canonical_ids("<1234567890>").is_empty(),
+            "même entre chevrons : hors norme, et court donc collisionnant"
+        );
+        assert_eq!(canonical_ids("<a@b>"), ids(&["a@b"]));
+    }
+
+    /// Le repli sans chevrons reste utile — beaucoup de logiciels les
+    /// omettent — mais il ne retient plus que ce qui EST un identifiant.
+    #[test]
+    fn le_repli_sans_chevrons_ne_garde_que_les_vrais_identifiants() {
+        assert_eq!(canonical_ids("a@b Votre message c@d"), ids(&["a@b", "c@d"]));
+    }
+
+    /// Un identifiant ne contient pas d'espace : sans cette règle, un
+    /// en-tête en prose entre chevrons repasserait par la fenêtre.
+    #[test]
+    fn un_jeton_contenant_une_espace_est_rejete() {
+        assert!(canonical_ids("<Votre message du 3 janvier@relais>").is_empty());
+    }
+
     #[test]
     fn les_chevrons_manquants_donnent_le_meme_identifiant() {
         assert_eq!(canonical_ids("<a@b>"), ids(&["a@b"]));
         assert_eq!(canonical_ids("  a@b  "), ids(&["a@b"]));
         assert_eq!(canonical_ids("< a@b >"), ids(&["a@b"]));
         assert_eq!(canonical_ids("a@b c@d"), ids(&["a@b", "c@d"]));
+    }
+
+    /// Le `References` géant du test voisin doit rester composé de vrais
+    /// identifiants, sinon la borne ne prouverait plus rien.
+    #[test]
+    fn la_borne_s_applique_apres_le_filtrage() {
+        let raw: String = (0..40).map(|n| format!("<m{n}@b> mot ")).collect();
+        let liens = linking_ids(None, None, Some(&raw));
+        assert_eq!(liens.len(), MAX_REFERENCES);
+        assert!(liens.iter().all(|id| id.contains('@')));
     }
 
     /// `References` se lit replié sur plusieurs lignes ; les blancs qui

@@ -2491,6 +2491,78 @@ mod tests {
         assert_eq!(store.unified_count("INBOX").unwrap(), 0);
     }
 
+    /// Le défaut du terrain, de bout en bout : deux messages étrangers
+    /// dont l'`In-Reply-To` est une PHRASE — pas un identifiant — doivent
+    /// rester deux conversations.
+    ///
+    /// Avant correction, chaque mot de la phrase devenait une ancre
+    /// commune et les réunissait. Sur une vraie boîte, cela donnait un
+    /// fil de 43 messages sans rapport les uns avec les autres.
+    #[test]
+    fn deux_messages_dont_l_en_tete_est_en_prose_ne_fusionnent_pas() {
+        let (mut store, id) = store_with_mailbox();
+        let prose = "Votre message du 3 janvier";
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    Envelope {
+                        in_reply_to: Some(prose.to_string()),
+                        ..envelope(1, "Promotion", 100, true)
+                    },
+                    Envelope {
+                        in_reply_to: Some(prose.to_string()),
+                        ..envelope(2, "Autre promotion", 200, true)
+                    },
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(unified(&store).len(), 2, "aucun lien entre ces deux-là");
+    }
+
+    /// Une base regroupée par l'ancienne règle porte des fils FAUX, et
+    /// corriger le code ne les répare pas tout seul. Le marqueur de
+    /// version les fait refaire à l'ouverture — sans réseau, les en-têtes
+    /// bruts étant intacts en base.
+    #[test]
+    fn une_base_mal_regroupee_est_refaite_a_l_ouverture() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "Promotion", 100, true),
+                    envelope(2, "Autre promotion", 200, true),
+                ],
+            )
+            .unwrap();
+        assert_eq!(unified(&store).len(), 2);
+
+        // On rejoue l'état que produisait la règle permissive : un seul
+        // fil pour deux messages étrangers, et la version d'avant.
+        store
+            .conn()
+            .execute_batch(
+                "DELETE FROM thread_links WHERE thread_id = (SELECT MAX(id) FROM threads);
+                 UPDATE envelopes SET thread_id = (SELECT MIN(id) FROM threads);
+                 DELETE FROM threads WHERE id = (SELECT MAX(id) FROM threads);
+                 UPDATE threads SET size = 2, last_uid = 2, last_epoch = 200;
+                 PRAGMA user_version = 0;",
+            )
+            .unwrap();
+        assert_eq!(unified(&store).len(), 1, "l'état fautif est bien reproduit");
+
+        crate::thread::migrate_threads(store.conn()).unwrap();
+
+        assert_eq!(unified(&store).len(), 2, "les fils sont refaits");
+        let version: i64 = store
+            .conn()
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 1, "et la reconstruction ne se rejoue pas");
+    }
+
     /// UIDVALIDITY invalidée : les fils partent avec le reste, et
     /// l'annuaire ne doit pas empêcher une repopulation propre.
     #[test]

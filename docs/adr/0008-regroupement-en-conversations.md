@@ -58,6 +58,58 @@ cas du terrain : arrivée dans le désordre, ancêtre absent, message qui
 relie deux fils, auto-référence, `References` de plusieurs milliers
 d'entrées, `Message-ID: <>` malformé.
 
+### 1 bis. Un identifiant doit contenir une arobase — révision du 2026-07-24
+
+*Ajouté après la validation terrain de la première version.*
+
+L'utilisateur a signalé une conversation réunissant 17 messages sans
+aucun rapport. Le diagnostic
+([`diagnostic_fils`](../../crates/mail-core/examples/diagnostic_fils.rs))
+a écarté les trois causes attendues — pas de `Message-ID` réutilisé, pas
+d'ancre de campagne — et désigné la vraie :
+
+| fil | messages | ancre la plus citée |
+|---|---|---|
+| #1991 | 43 | citée par **43/43**, sans chevrons, **sans arobase**, 11 caractères |
+| #484 | 17 | citée par **17/17**, sans chevrons, **sans arobase**, 11 caractères |
+
+Ces « identifiants » de 3 à 11 caractères que personne ne portait étaient
+des **mots**. La première version acceptait, en repli, un en-tête sans
+chevrons et le découpait sur les espaces — un compromis pris « pour la
+vraie vie », sans mesurer ce qu'il laissait passer. Il suffit alors d'un
+en-tête rédigé en prose (`In-Reply-To: Votre message du 3 janvier`, forme
+RFC 822 que des répondeurs automatiques produisent encore) pour fabriquer
+autant de fausses ancres que de mots. Tous les messages portant la même
+phrase s'y accrochent, et l'union-find les réunit — correctement, sur des
+données fausses.
+
+**Décision : un jeton n'est un identifiant que s'il contient une arobase
+et aucune espace** (RFC 5322 §3.6.4 : `msg-id = "<" id-left "@" id-right
+">"`). La règle s'applique aussi entre chevrons : `<1234567890>` est
+rejeté.
+
+Conséquence assumée : un message au `Message-ID` hors norme forme son
+propre fil et les réponses qu'il reçoit ne s'y rattachent pas. C'est une
+perte **locale et silencieuse**, contre une fusion **massive et
+visible** — l'échange est franchement favorable.
+
+Les bases déjà regroupées par l'ancienne règle portent des fils faux
+qu'aucune correction du code ne répare seule. Un marqueur de version
+(`PRAGMA user_version`) les fait **refaire à l'ouverture** : purement
+local, les en-têtes bruts étant intacts en base — seule leur
+interprétation était fautive.
+
+**Risque résiduel, nommé.** La fusion transitive n'a toujours pas de
+garde-fou : une seule ancre erronée n'abîme pas un peu le regroupement,
+elle l'effondre de proche en proche. Le filtre ci-dessus supprime la
+cause observée, pas la classe. Un ancêtre légitime cité par des dizaines
+de messages (annonce d'origine d'une liste de diffusion) produirait le
+même effet — et serait, lui, conforme à la RFC. Aucun plafond arbitraire
+n'est posé : il casserait les conversations longues authentiques. La
+parade retenue est la **mesurabilité** — `diagnostic_fils` désigne
+l'ancre en une commande — plutôt qu'une heuristique qui se tromperait
+sans le dire.
+
 ### 2. Refus explicite : jamais de regroupement par sujet
 
 L'algorithme JWZ propose, en repli, de regrouper les messages de même
