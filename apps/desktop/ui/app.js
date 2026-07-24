@@ -822,8 +822,15 @@ async function closeCompose() {
       await invoke('delete_draft', { id: composeDraftId }).catch(() => {});
     }
   } else {
-    await saveDraftNow();
-    setStatus('brouillon conservé');
+    const saved = await saveDraftNow();
+    // Le bilan decide du message. Poser « brouillon conservé » sans
+    // regarder ecrasait l'avertissement de conflit une ligne apres que
+    // saveDraftNow l'ait affiche : la fusion avait bien lieu, mais rien
+    // ne le disait -- le defaut trouve en validation terrain.
+    setStatus(saved && saved.forked
+      ? 'ce brouillon avait changé ailleurs — votre version a été conservée '
+        + 'à part, les deux sont dans la liste'
+      : 'brouillon conservé', Boolean(saved && saved.forked));
   }
   hideCompose();
   await refreshDrafts();
@@ -842,9 +849,13 @@ function scheduleDraftSave() {
 }
 
 /// Le filet : un crash ne coûte que les deux dernières secondes de frappe.
+///
+/// Rend le bilan de la sauvegarde, ou `null` s'il n'y avait rien a faire —
+/// l'appelant a besoin de savoir si un conflit a ete resolu par
+/// duplication, pour ne pas ecraser l'avertissement.
 async function saveDraftNow() {
   clearTimeout(draftSaveTimer);
-  if (el('compose').hidden || composeIsEmpty() || composeAccountId === null) return;
+  if (el('compose').hidden || composeIsEmpty() || composeAccountId === null) return null;
   try {
     const saved = await invoke('save_draft', {
       accountId: composeAccountId,
@@ -861,7 +872,7 @@ async function saveDraftNow() {
       // Le panneau s'est fermé pendant la sauvegarde (envoi parti) :
       // ne pas ressusciter un brouillon déjà réglé.
       await invoke('delete_draft', { id: saved.id }).catch(() => {});
-      return;
+      return null;
     }
     composeDraftId = saved.id;
     composeDraftEpoch = saved.updated_epoch;
@@ -873,9 +884,11 @@ async function saveDraftNow() {
         + 'conservée à part, les deux sont dans la liste', true);
       await refreshDrafts();
     }
+    return saved;
   } catch {
     // La prochaine frappe retentera — le filet n'alarme pas pour rien.
   }
+  return null;
 }
 
 function replyToCurrent() {
