@@ -14,7 +14,12 @@
 //! - le repère « propre » est une photo d'horodatage : une édition
 //!   survenue PENDANT la poussée laisse le brouillon à pousser.
 //!
-//! L'édition des brouillons créés ailleurs (tirage) : Phase 3.
+//! **Tirage** (Phase 3) : un brouillon créé ailleurs — webmail, téléphone
+//! — est rapatrié pour être édité ici. Le sens inverse rouvre une question
+//! que la poussée seule évitait : que faire quand les deux côtés ont
+//! bougé ? La réponse suit la règle d'or déjà en vigueur — **un doublon
+//! est acceptable, du texte perdu jamais** — et se lit dans
+//! [`plan_draft_pull`].
 
 use chrono::Utc;
 use rusqlite::{OptionalExtension, params};
@@ -108,6 +113,18 @@ impl Store {
         Ok(rows)
     }
 
+    /// Tous les brouillons d'UN compte — ce que le tirage compare à la
+    /// liste distante.
+    pub fn drafts_of(&self, account_id: i64) -> Result<Vec<SavedDraft>, Error> {
+        let mut stmt = self
+            .conn()
+            .prepare(&format!("{DRAFT_SELECT} WHERE account_id = ?1 ORDER BY id"))?;
+        let rows = stmt
+            .query_map([account_id], row_to_draft)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Les brouillons d'UN compte dont son dossier Brouillons n'a pas
     /// (ou plus) la dernière version, dans l'ordre de création.
     pub fn drafts_to_push(&self, account_id: i64) -> Result<Vec<SavedDraft>, Error> {
@@ -161,6 +178,42 @@ impl Store {
         )?;
         tx.execute("DELETE FROM drafts WHERE id = ?1", [id])?;
         tx.commit()?;
+        Ok(())
+    }
+
+    /// Enregistre un brouillon rapatrié du serveur.
+    ///
+    /// Il naît **propre** : `pushed_epoch` égale `updated_epoch`, donc le
+    /// cycle suivant ne le repoussera pas. Le repousser tel quel créerait
+    /// une seconde copie distante d'un message qu'on vient de lire — un
+    /// aller-retour qui se doublerait à chaque passage.
+    pub fn import_remote_draft(
+        &self,
+        account_id: i64,
+        remote_uid: Uid,
+        to_raw: &str,
+        subject: &str,
+        body: &str,
+    ) -> Result<i64, Error> {
+        let now = Utc::now().timestamp_millis();
+        self.conn().execute(
+            "INSERT INTO drafts
+             (account_id, to_raw, subject, body, reply_to_uid, updated_epoch,
+              remote_uid, pushed_epoch)
+             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?5)",
+            params![account_id, to_raw, subject, body, now, remote_uid],
+        )?;
+        Ok(self.conn().last_insert_rowid())
+    }
+
+    /// Retire un miroir devenu périmé — sa copie distante n'existe plus.
+    ///
+    /// **Sans tombstone**, contrairement à [`Store::delete_draft`] : il n'y
+    /// a plus rien à supprimer côté serveur, et poser une pierre tombale
+    /// sur un UID libéré ferait purger le message qui le reprendra.
+    pub fn drop_stale_draft(&self, id: i64) -> Result<(), Error> {
+        self.conn()
+            .execute("DELETE FROM drafts WHERE id = ?1", [id])?;
         Ok(())
     }
 
@@ -226,6 +279,80 @@ impl Store {
         )?;
         tx.commit()?;
         Ok(reset)
+    }
+}
+
+/// Ce qu'il faut faire du dossier Brouillons distant, une fois ses UIDs
+/// connus.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DraftPull {
+    /// UIDs distants qu'on ne connaît pas : à rapatrier.
+    pub fetch: Vec<Uid>,
+    /// Brouillons locaux qui ne sont QUE le miroir d'une copie distante
+    /// disparue : à retirer.
+    ///
+    /// Jamais un brouillon édité ici — celui-là porte du texte que le
+    /// serveur n'a pas.
+    pub stale: Vec<i64>,
+}
+
+/// Décide du tirage : quoi rapatrier, quels miroirs périmés retirer.
+///
+/// Pur et sans I/O, comme le regroupement en fils : la décision se teste
+/// contre les scénarios du terrain, l'exécution reste à l'appelant.
+///
+/// Trois règles, dans l'ordre de leur importance :
+///
+/// 1. **On ne rapatrie pas ce qu'on a déjà.** Nos propres copies poussées
+///    (`remote_uid`) et celles en attente de purge (tombstones) sont
+///    ignorées, sinon chaque cycle dupliquerait la boîte.
+/// 2. **On ne retire qu'un miroir.** Un brouillon dont la copie distante
+///    a disparu est retiré *seulement* s'il n'a pas été édité ici depuis
+///    sa dernière poussée. Sinon il porte du texte que le serveur n'a
+///    jamais vu : il reste, et la poussée le remettra en place.
+/// 3. **Une liste distante vide ne retire rien.** C'est exactement la
+///    forme d'un échec partiel — dossier mal sélectionné, réponse
+///    tronquée — et le coût d'une erreur ici, c'est du texte effacé. Si
+///    l'utilisateur a vraiment tout supprimé ailleurs, ses copies
+///    survivent localement : un doublon, pas une perte.
+///
+/// La règle 2 est ce qui fait qu'éditer un brouillon sur son téléphone
+/// **remplace** la copie locale au lieu de la doubler : le serveur
+/// remplace le message (ancien UID expurgé, nouveau créé), donc le même
+/// passage retire le miroir périmé et rapatrie la version fraîche.
+pub fn plan_draft_pull(local: &[SavedDraft], remote: &[Uid], tombstones: &[Uid]) -> DraftPull {
+    let mirrored: Vec<Uid> = local.iter().filter_map(|draft| draft.remote_uid).collect();
+    let fetch = remote
+        .iter()
+        .copied()
+        .filter(|uid| !mirrored.contains(uid) && !tombstones.contains(uid))
+        .collect();
+
+    if remote.is_empty() {
+        return DraftPull {
+            fetch,
+            stale: Vec::new(),
+        };
+    }
+    let stale = local
+        .iter()
+        .filter(|draft| draft.is_clean_mirror() && !remote.contains(&draft.remote_uid.unwrap_or(0)))
+        .map(|draft| draft.id)
+        .collect();
+    DraftPull { fetch, stale }
+}
+
+impl SavedDraft {
+    /// Le brouillon n'est-il que le reflet d'une copie distante ?
+    ///
+    /// Vrai quand une copie a été poussée (ou rapatriée) et que rien n'a
+    /// été tapé ici depuis. C'est la seule condition sous laquelle le
+    /// retirer ne peut effacer aucun texte.
+    fn is_clean_mirror(&self) -> bool {
+        match (self.remote_uid, self.pushed_epoch) {
+            (Some(_), Some(pushed)) => pushed >= self.updated_epoch,
+            _ => false,
+        }
     }
 }
 
@@ -525,5 +652,110 @@ mod tests {
             1,
             "tout est à re-pousser"
         );
+    }
+}
+
+/// Le tirage a ses propres scenarios : ils ne partagent ni decor ni
+/// invariants avec ceux de la poussee, plus haut.
+#[cfg(test)]
+mod tests_tirage {
+    use super::*;
+
+    fn draft(id: i64, remote_uid: Option<Uid>, updated: i64, pushed: Option<i64>) -> SavedDraft {
+        SavedDraft {
+            id,
+            account_id: 1,
+            to_raw: "alice@exemple.fr".to_string(),
+            subject: "Devis".to_string(),
+            body: "Bonjour".to_string(),
+            reply_to_uid: None,
+            updated_epoch: updated,
+            remote_uid,
+            pushed_epoch: pushed,
+        }
+    }
+
+    /// Le brouillon écrit dans le webmail : personne ne le connaît ici.
+    #[test]
+    fn un_brouillon_distant_inconnu_est_rapatrie() {
+        let plan = plan_draft_pull(&[], &[7], &[]);
+        assert_eq!(plan.fetch, vec![7]);
+        assert!(plan.stale.is_empty());
+    }
+
+    /// Notre propre copie poussée ne doit pas revenir : sans cette garde,
+    /// chaque cycle dupliquerait la boîte de brouillons.
+    #[test]
+    fn notre_propre_copie_poussee_n_est_pas_rapatriee() {
+        let plan = plan_draft_pull(&[draft(1, Some(7), 100, Some(100))], &[7], &[]);
+        assert!(plan.fetch.is_empty());
+        assert!(plan.stale.is_empty(), "le miroir est à jour");
+    }
+
+    /// Une copie qu'on a demandé à supprimer mais pas encore purgée est
+    /// encore là : la rapatrier ressusciterait un brouillon jeté.
+    #[test]
+    fn une_copie_en_attente_de_purge_n_est_pas_rapatriee() {
+        let plan = plan_draft_pull(&[], &[7], &[7]);
+        assert!(plan.fetch.is_empty());
+    }
+
+    /// Éditer un brouillon ailleurs : le serveur expurge l'ancien message
+    /// et en crée un neuf. Le même passage doit donc retirer le miroir
+    /// périmé ET rapatrier la version fraîche — remplacer, pas doubler.
+    #[test]
+    fn editer_ailleurs_remplace_le_miroir_au_lieu_de_le_doubler() {
+        let plan = plan_draft_pull(&[draft(1, Some(7), 100, Some(100))], &[8], &[]);
+        assert_eq!(plan.fetch, vec![8]);
+        assert_eq!(plan.stale, vec![1]);
+    }
+
+    /// LA règle du module : un brouillon édité ici porte du texte que le
+    /// serveur n'a jamais vu. Il ne peut pas être « périmé ».
+    #[test]
+    fn un_brouillon_edite_ici_n_est_jamais_retire() {
+        // Poussé à 100, retouché à 150 : la copie distante est en retard.
+        let plan = plan_draft_pull(&[draft(1, Some(7), 150, Some(100))], &[8], &[]);
+        assert!(
+            plan.stale.is_empty(),
+            "le retirer effacerait la retouche locale"
+        );
+    }
+
+    /// Un brouillon jamais poussé n'a pas de miroir : rien à comparer.
+    #[test]
+    fn un_brouillon_jamais_pousse_n_est_jamais_retire() {
+        let plan = plan_draft_pull(&[draft(1, None, 100, None)], &[8], &[]);
+        assert!(plan.stale.is_empty());
+    }
+
+    /// Le garde-fou. Une liste vide a exactement la forme d'un échec
+    /// partiel, et se tromper ici coûte du texte. Si l'utilisateur a
+    /// vraiment tout supprimé ailleurs, ses copies survivent localement :
+    /// un doublon, pas une perte.
+    #[test]
+    fn une_liste_distante_vide_ne_retire_rien() {
+        let locaux = [
+            draft(1, Some(7), 100, Some(100)),
+            draft(2, Some(8), 100, Some(100)),
+        ];
+        let plan = plan_draft_pull(&locaux, &[], &[]);
+        assert!(plan.stale.is_empty(), "un dossier vide ne prouve rien");
+        assert!(plan.fetch.is_empty());
+    }
+
+    /// Plusieurs comptes, plusieurs brouillons : le plan reste stable et
+    /// ne mélange rien. L'appelant filtre déjà par compte.
+    #[test]
+    fn le_plan_traite_plusieurs_brouillons_sans_les_confondre() {
+        let locaux = [
+            draft(1, Some(7), 100, Some(100)), // à jour
+            draft(2, Some(8), 100, Some(100)), // disparu du serveur
+            draft(3, Some(9), 200, Some(100)), // édité ici
+            draft(4, None, 100, None),         // jamais poussé
+        ];
+        let plan = plan_draft_pull(&locaux, &[7, 42], &[]);
+        assert_eq!(plan.fetch, vec![42]);
+        assert_eq!(plan.stale, vec![2]);
     }
 }

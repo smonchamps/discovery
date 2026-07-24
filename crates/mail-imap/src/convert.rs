@@ -173,6 +173,38 @@ pub(crate) fn envelope_from_parts(
     }
 }
 
+/// Lit un brouillon brut : destinataires, sujet, et les deux formes de
+/// corps que MIME peut porter.
+///
+/// Rien n'est validé — un brouillon a le droit de n'avoir ni
+/// destinataire, ni sujet, ni corps. C'est exactement ce qui le distingue
+/// d'un message : il est en cours d'écriture.
+pub(crate) fn draft_from_raw(raw: &[u8]) -> Option<mail_core::RemoteDraft> {
+    let message = mail_parser::MessageParser::new().parse(raw)?;
+    Some(mail_core::RemoteDraft {
+        to_raw: recipients(&message),
+        subject: message.subject().unwrap_or_default().to_string(),
+        text: message.body_text(0).map(|body| body.into_owned()),
+        html: message.body_html(0).map(|body| body.into_owned()),
+    })
+}
+
+/// Les destinataires sous la forme que le composeur attend : des adresses
+/// brutes séparées par des virgules.
+///
+/// On garde l'ADRESSE et non le nom d'affichage : c'est elle qui doit
+/// survivre à l'aller-retour, et c'est elle que la validation d'envoi
+/// examinera.
+fn recipients(message: &mail_parser::Message<'_>) -> String {
+    let Some(to) = message.to() else {
+        return String::new();
+    };
+    to.iter()
+        .filter_map(|addr| addr.address())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Lit les deux en-têtes de regroupement dans un bloc d'en-têtes brut.
 ///
 /// Analyse à la main plutôt que par `mail-parser` : on ne veut ici que des
@@ -916,5 +948,52 @@ Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--B--\r\n";
     fn un_entete_cite_dans_le_corps_est_ignore() {
         let raw = b"Subject: x\r\n\r\nReferences: <faux@b>\r\n";
         assert_eq!(thread_headers(raw).references.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn lit_un_brouillon_texte_avec_ses_destinataires() {
+        let raw = b"To: Alice <alice@exemple.fr>, bob@exemple.fr\r\n\
+                    Subject: Devis\r\n\
+                    Content-Type: text/plain; charset=utf-8\r\n\
+                    \r\n\
+                    Bonjour Alice";
+        let draft = draft_from_raw(raw).unwrap();
+        assert_eq!(draft.to_raw, "alice@exemple.fr, bob@exemple.fr");
+        assert_eq!(draft.subject, "Devis");
+        assert_eq!(draft.text.as_deref().map(str::trim), Some("Bonjour Alice"));
+    }
+
+    /// Un brouillon composé dans un webmail n'a souvent QUE du HTML.
+    /// Le convertir n'est pas le travail de l'adaptateur : il rend les
+    /// deux formes et laisse la couche de rendu trancher.
+    #[test]
+    fn un_brouillon_html_rend_sa_partie_html() {
+        let raw = b"To: alice@exemple.fr\r\n\
+                    Subject: Devis\r\n\
+                    Content-Type: text/html; charset=utf-8\r\n\
+                    \r\n\
+                    <p>Bonjour <b>Alice</b></p>";
+        let draft = draft_from_raw(raw).unwrap();
+        assert!(draft.html.unwrap().contains("<b>Alice</b>"));
+    }
+
+    /// Un brouillon a le droit d'être vide de tout : c'est ce qui le
+    /// distingue d'un message. Rien ne doit être rejeté.
+    #[test]
+    fn un_brouillon_sans_destinataire_ni_sujet_reste_lisible() {
+        let draft = draft_from_raw(b"\r\nun texte seul").unwrap();
+        assert_eq!(draft.to_raw, "");
+        assert_eq!(draft.subject, "");
+        assert_eq!(draft.text.as_deref().map(str::trim), Some("un texte seul"));
+    }
+
+    /// Les en-têtes encodés RFC 2047 sont décodés comme partout ailleurs.
+    #[test]
+    fn le_sujet_encode_est_decode() {
+        let raw = b"To: alice@exemple.fr\r\n\
+                    Subject: =?UTF-8?Q?Devis_pour_l'=C3=A9t=C3=A9?=\r\n\
+                    \r\n\
+                    corps";
+        assert_eq!(draft_from_raw(raw).unwrap().subject, "Devis pour l'été");
     }
 }

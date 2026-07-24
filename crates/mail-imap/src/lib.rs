@@ -14,7 +14,9 @@ mod mutf7;
 
 use imap_proto::NameAttribute;
 use imap_proto::types::UidSetMember;
-use mail_core::{Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, ThreadHeaders, Uid};
+use mail_core::{
+    Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, RemoteDraft, ThreadHeaders, Uid,
+};
 
 /// Chaîne SASL XOAUTH2 (Gmail, Microsoft) : jamais de mot de passe.
 struct XOAuth2 {
@@ -141,9 +143,15 @@ impl ImapServer {
 
     /// Découvre le dossier Brouillons via RFC 6154 — jamais de nom en dur,
     /// comme la corbeille. Mémorisé pour la session.
-    fn drafts_folder(&mut self) -> Result<String, Error> {
+    ///
+    /// `None` quand le serveur n'annonce pas l'attribut : un IMAP
+    /// générique peut n'en exposer aucun. **Ce n'est pas une panne, c'est
+    /// une capacité absente** — et la traiter comme une erreur ferait
+    /// répéter le même message à chaque synchronisation, jusqu'à ce que
+    /// le bilan ne veuille plus rien dire.
+    pub fn drafts_folder_name(&mut self) -> Result<Option<String>, Error> {
         if let Some(name) = &self.drafts {
-            return Ok(name.clone());
+            return Ok(Some(name.clone()));
         }
         let names = self.session.list(None, Some("*")).map_err(server_err)?;
         let drafts = names
@@ -153,12 +161,17 @@ impl ImapServer {
                     .iter()
                     .any(|attribute| matches!(attribute, NameAttribute::Drafts))
             })
-            .map(|name| name.name().to_string())
-            .ok_or_else(|| {
-                Error::Server("dossier brouillons introuvable (RFC 6154)".to_string())
-            })?;
-        self.drafts = Some(drafts.clone());
+            .map(|name| name.name().to_string());
+        self.drafts = drafts.clone();
         Ok(drafts)
+    }
+
+    /// Le dossier Brouillons, ou une erreur — pour les chemins que
+    /// l'utilisateur a explicitement demandés (pousser, purger), où son
+    /// absence doit se dire.
+    fn drafts_folder(&mut self) -> Result<String, Error> {
+        self.drafts_folder_name()?
+            .ok_or_else(|| Error::Server("dossier brouillons introuvable (RFC 6154)".to_string()))
     }
 
     /// Ce qu'« archiver » veut dire sur CE serveur, déduit de ses dossiers
@@ -199,6 +212,34 @@ impl ImapServer {
     pub fn drafts_uidvalidity(&mut self) -> Result<u32, Error> {
         let folder = self.drafts_folder()?;
         Ok(self.ensure_selected(&folder)?.uid_validity)
+    }
+
+    /// Les UIDs présents dans le dossier Brouillons du serveur.
+    ///
+    /// C'est la moitié « tirage » de la synchronisation des brouillons :
+    /// jusqu'ici on ne faisait que pousser, et un brouillon commencé
+    /// ailleurs restait invisible ici.
+    pub fn draft_uids(&mut self) -> Result<Vec<Uid>, Error> {
+        let folder = self.drafts_folder()?;
+        self.ensure_selected(&folder)?;
+        let uids = self.session.uid_search("ALL").map_err(server_err)?;
+        Ok(uids.into_iter().collect())
+    }
+
+    /// Rapatrie un brouillon du serveur. `None` s'il a disparu entre la
+    /// liste et la lecture — course banale, et sans conséquence.
+    ///
+    /// `PEEK` : lire un brouillon ne doit pas le marquer lu.
+    pub fn fetch_draft(&mut self, uid: Uid) -> Result<Option<RemoteDraft>, Error> {
+        let folder = self.drafts_folder()?;
+        self.ensure_selected(&folder)?;
+        let fetches = self
+            .session
+            .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+            .map_err(server_err)?;
+        Ok(fetches
+            .iter()
+            .find_map(|fetch| convert::draft_from_raw(fetch.body()?)))
     }
 
     /// Pousse une copie de brouillon (`\Draft`) ; retourne son UID quand le

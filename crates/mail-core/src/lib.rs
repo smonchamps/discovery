@@ -33,12 +33,12 @@ pub use backfill::{
 };
 pub use body::load_body;
 pub use compose::{Draft, compose, forward_subject, quote_forward, quote_reply, reply_subject};
-pub use drafts::SavedDraft;
+pub use drafts::{DraftPull, SavedDraft, plan_draft_pull};
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use notify::{Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
-pub use remote::{FetchedBody, Folder, MailServer, MailboxSnapshot, ThreadHeaders};
+pub use remote::{FetchedBody, Folder, MailServer, MailboxSnapshot, RemoteDraft, ThreadHeaders};
 pub use store::{Account, AccountConfig, Store, SyncState, UnifiedRow};
 pub use sync::{SyncEngine, SyncMode, SyncReport};
 pub use transport::{MailTransport, SendError};

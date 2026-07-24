@@ -43,6 +43,24 @@ pub struct ThreadHeaders {
     pub references: Option<String>,
 }
 
+/// Un brouillon lu dans le dossier Brouillons du serveur.
+///
+/// Le corps arrive sous les deux formes que MIME peut porter, sans qu'on
+/// choisisse ici : convertir du HTML en texte est un travail de rendu, et
+/// ce type est une frontière réseau. La couche qui sait rendre tranche.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RemoteDraft {
+    /// Champ « À » tel quel : un brouillon a le droit d'être incomplet,
+    /// c'est même sa raison d'être.
+    pub to_raw: String,
+    pub subject: String,
+    /// Partie `text/plain`, quand il y en a une.
+    pub text: Option<String>,
+    /// Partie `text/html` — souvent la seule d'un brouillon composé dans
+    /// un webmail.
+    pub html: Option<String>,
+}
+
 /// État d'une boîte au moment de sa sélection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MailboxSnapshot {

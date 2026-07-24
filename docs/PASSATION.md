@@ -440,7 +440,13 @@ Après la recherche, dans l'ordre du plan et des reports assumés :
    les enveloppes** : choisir une destination ne demande jamais le
    réseau. MOVE (RFC 6851) si annoncé, COPY+EXPUNGE sinon — l'écart est
    nommé dans le code.
-6. **Tirage des brouillons** (éditer ici un brouillon créé ailleurs).
+6. ~~**Tirage des brouillons**~~ ✅ **FAIT**, validation terrain en
+   attente. Le tirage voyage sur la connexion de la SYNCHRO, pas sur le
+   cycle de poussée : celui-ci s'arrête tôt quand il n'y a rien à
+   pousser, sinon chaque frappe ouvrirait une connexion. La décision est
+   pure et testée (`plan_draft_pull`) ; trois règles, dont un garde-fou :
+   **une liste distante vide ne retire jamais rien** — c'est la forme
+   d'un échec partiel, et se tromper là coûte du texte.
 7. **Clôture Phase 3** : `docs/PHASE3.md` (revue de clôture), gate 3 —
    budgets tenus avec **3 comptes / 200 000 messages cumulés**.
 

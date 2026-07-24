@@ -414,7 +414,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                         if let Some(fresh) = outcome.refreshed {
                             refreshed.push(fresh);
                         }
-                        if let Some(problem) = outcome.threading_problem {
+                        for problem in outcome.problems {
                             errors.push(format!("{email} : {problem}"));
                         }
                     }
@@ -456,9 +456,10 @@ struct SyncOutcome {
     refreshed: Option<AccountSession>,
     /// Arrivées à annoncer, déjà filtrées par les règles du noyau.
     arrivals: Vec<mail_core::Envelope>,
-    /// Échec de la passe d'en-têtes, s'il y en a eu un. Non bloquant,
-    /// mais rapporté.
-    threading_problem: Option<String>,
+    /// Incidents non bloquants : la synchronisation a réussi, mais un
+    /// travail de fond qui l'accompagne a échoué. Rapportés, jamais
+    /// avalés — un symptôme sans trace est indiagnosticable.
+    problems: Vec<String>,
 }
 
 fn run_sync(
@@ -485,7 +486,7 @@ fn run_sync(
     // échouer la synchronisation — le courrier est arrivé, c'est le seul
     // résultat qui compte — mais il est rapporté, jamais avalé. Sans
     // trace, une boîte qui refuse de se regrouper serait indiagnosticable.
-    let threading_problem = mail_core::backfill_thread_headers(
+    let mut problems: Vec<String> = mail_core::backfill_thread_headers(
         &mut server,
         &mut store,
         account_id,
@@ -494,7 +495,18 @@ fn run_sync(
         THREAD_HEADER_BUDGET,
     )
     .err()
-    .map(|err| format!("conversations incomplètes : {err}"));
+    .map(|err| format!("conversations incomplètes : {err}"))
+    .into_iter()
+    .collect();
+
+    // Le tirage des brouillons profite lui aussi de la connexion ouverte.
+    // Il ne peut PAS vivre dans le cycle de poussée : celui-ci s'arrête
+    // tôt quand il n'y a rien à pousser — à raison, sinon chaque frappe
+    // ouvrirait une connexion. Un brouillon commencé ailleurs n'arriverait
+    // donc jamais.
+    if let Err(reason) = pull_drafts(&mut server, &store, account_id) {
+        problems.push(format!("brouillons distants : {reason}"));
+    }
 
     server.logout();
 
@@ -505,8 +517,72 @@ fn run_sync(
         report,
         refreshed,
         arrivals: mail_core::arrivals_to_notify(report.mode, arrivals),
-        threading_problem,
+        problems,
     })
+}
+
+/// Rapatrie les brouillons commencés ailleurs, et retire les miroirs
+/// devenus périmés.
+///
+/// La décision appartient au noyau ([`mail_core::plan_draft_pull`], pur et
+/// testé) ; ici on ne fait que l'exécuter.
+fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Result<(), String> {
+    // La garde des repères d'abord, comme dans le cycle de poussée : si
+    // l'UIDVALIDITY a changé, les `remote_uid` enregistrés ne désignent
+    // plus rien. Comparer la liste distante à des repères périmés ferait
+    // passer TOUS les miroirs pour caducs et réimporterait toute la
+    // boîte.
+    // Pas de dossier Brouillons annoncé : rien à tirer, et rien à
+    // signaler. Le serveur n'est pas en panne, il n'a pas la capacité.
+    if server
+        .drafts_folder_name()
+        .map_err(|err| err.to_string())?
+        .is_none()
+    {
+        return Ok(());
+    }
+    let validity = server.drafts_uidvalidity().map_err(|err| err.to_string())?;
+    let reset = store
+        .align_drafts_uidvalidity(account_id, validity)
+        .map_err(|err| err.to_string())?;
+    if reset {
+        // Repères abandonnés : rien ne distingue plus nos propres copies
+        // de celles d'ailleurs. On laisse le cycle de poussée les
+        // rétablir et on tirera au passage suivant. Un doublon reste
+        // possible — c'est la règle d'or déjà en vigueur, et elle
+        // préfère un doublon à une perte.
+        return Ok(());
+    }
+
+    let remote = server.draft_uids().map_err(|err| err.to_string())?;
+    let local = store.drafts_of(account_id).map_err(|err| err.to_string())?;
+    let tombstones = store
+        .draft_tombstones(account_id)
+        .map_err(|err| err.to_string())?;
+    let plan = mail_core::plan_draft_pull(&local, &remote, &tombstones);
+
+    for id in plan.stale {
+        store.drop_stale_draft(id).map_err(|err| err.to_string())?;
+    }
+    for uid in plan.fetch {
+        let Some(draft) = server.fetch_draft(uid).map_err(|err| err.to_string())? else {
+            // Disparu entre la liste et la lecture : sans conséquence.
+            continue;
+        };
+        // Le corps arrive sous les deux formes MIME possibles ; c'est ici,
+        // et pas dans l'adaptateur, qu'on sait rendre du HTML en texte.
+        let body = draft.text.unwrap_or_else(|| {
+            draft
+                .html
+                .as_deref()
+                .map(mail_render::body_text)
+                .unwrap_or_default()
+        });
+        store
+            .import_remote_draft(account_id, uid, &draft.to_raw, &draft.subject, &body)
+            .map_err(|err| err.to_string())?;
+    }
+    Ok(())
 }
 
 /// Affiche la bulle système d'un lot d'arrivées, s'il y a lieu.
