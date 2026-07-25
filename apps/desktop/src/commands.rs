@@ -64,6 +64,11 @@ pub struct SyncSummary {
 pub struct MessageRow {
     pub account_id: i64,
     pub account_email: String,
+    /// La boîte qui contient ce message. **Indispensable** : les UID sont
+    /// attribués par boîte et repartent de 1, donc l'UID seul ne désigne
+    /// plus un message dès qu'un compte en synchronise deux. Toute action
+    /// de l'UI la renvoie.
+    pub mailbox: String,
     pub uid: u32,
     pub subject: String,
     pub sender: String,
@@ -499,19 +504,31 @@ fn run_sync(
     .into_iter()
     .collect();
 
-    // NOTE — la synchronisation d'« Envoyés » se branche ICI, et pas
-    // avant que l'identité d'un message ne porte sa BOÎTE.
+    // « Envoyés » : sans lui, un fil ne porte que la moitié reçue de
+    // l'échange, et le regroupement ne rapporte presque rien — mesuré sur
+    // la boîte réelle : 2 801 conversations pour 2 826 messages.
     //
-    // `ImapServer::sent_folder_name` est prêt et testé. Ce qui manque est
-    // ailleurs : les commandes qui agissent sur un message (`mark_seen`,
-    // `raw_body`, `message_attachments`, archivage, suppression) fixent
-    // toutes `MAILBOX` en dur. Or un fil contient désormais nos réponses,
-    // et le bandeau de conversation les rend cliquables — avec des UID de
-    // « Envoyés » interprétés dans INBOX. Les UID étant par boîte et
-    // repartant de 1, la collision est la norme : mauvais corps affiché,
-    // mauvais message marqué lu.
+    // Ne devient sûr que parce que l'identité d'un message porte
+    // désormais sa BOÎTE (ADR 0009, étape 4b) : sans cela, un UID de ce
+    // dossier serait lu dans INBOX, et les UID repartant de 1 dans chaque
+    // boîte, la collision serait la norme.
     //
-    // L'invariant à corriger d'abord : identité = (compte, BOÎTE, uid).
+    // Best effort, comme les deux passes voisines : le courrier ENTRANT
+    // est le résultat qui compte, et un serveur sans dossier d'envois doit
+    // continuer à fonctionner. L'échec est rapporté, jamais avalé — une
+    // boîte qui refuserait de se regrouper serait sinon indiagnosticable.
+    match server.sent_folder_name() {
+        Ok(Some(sent)) => {
+            if let Err(reason) =
+                SyncEngine::default().sync(&mut server, &mut store, account_id, &sent)
+            {
+                problems.push(format!("dossier envoyés : {reason}"));
+            }
+        }
+        // Capacité absente, pas panne : rien à dire à l'utilisateur.
+        Ok(None) => {}
+        Err(reason) => problems.push(format!("dossier envoyés : {reason}")),
+    }
 
     // Le tirage des brouillons profite lui aussi de la connexion ouverte.
     // Il ne peut PAS vivre dans le cycle de poussée : celui-ci s'arrête
@@ -656,6 +673,7 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         has_attachment: row.has_attachment,
         account_id: row.account_id,
         account_email: row.account_email,
+        mailbox: row.mailbox,
         uid: row.envelope.uid,
         subject: row
             .envelope
@@ -727,10 +745,11 @@ pub async fn message_body(
     app: AppHandle,
     state: State<'_, AppState>,
     account_id: i64,
+    mailbox: String,
     uid: u32,
     show_images: bool,
 ) -> Result<BodyView, String> {
-    let html = raw_body(&app, &state, account_id, uid).await?;
+    let html = raw_body(&app, &state, account_id, &mailbox, uid).await?;
 
     let policy = if show_images {
         mail_render::ImagePolicy::AllowRemote
@@ -748,11 +767,12 @@ fn fetch_body(
     session: &AccountSession,
     db_path: &Path,
     account_id: i64,
+    mailbox: String,
     uid: u32,
 ) -> Result<String, String> {
     let (mut server, _refreshed) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
-    let body = mail_core::load_body(&mut server, &mut store, account_id, MAILBOX, uid)
+    let body = mail_core::load_body(&mut server, &mut store, account_id, &mailbox, uid)
         .map_err(|err| err.to_string())?;
     server.logout();
     body.ok_or_else(|| "message introuvable sur le serveur".to_string())
@@ -764,18 +784,21 @@ async fn raw_body(
     app: &AppHandle,
     state: &State<'_, AppState>,
     account_id: i64,
+    mailbox: &str,
     uid: u32,
 ) -> Result<String, String> {
     let path = db_path(app)?;
     let cached = Store::open(&path)
-        .and_then(|store| store.body(account_id, MAILBOX, uid))
+        .and_then(|store| store.body(account_id, mailbox, uid))
         .map_err(|err| err.to_string())?;
     match cached {
         Some(html) => Ok(html),
         None => {
             let session = auth_for(&path, state, account_id)?;
+            // Copie possedee : la fermeture part sur un autre fil.
+            let boite = mailbox.to_string();
             tauri::async_runtime::spawn_blocking(move || {
-                fetch_body(&session, &path, account_id, uid)
+                fetch_body(&session, &path, account_id, boite, uid)
             })
             .await
             .map_err(|err| err.to_string())?
@@ -799,11 +822,12 @@ pub struct AttachmentRow {
 pub fn message_attachments(
     app: AppHandle,
     account_id: i64,
+    mailbox: String,
     uid: u32,
 ) -> Result<Vec<AttachmentRow>, String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let found = store
-        .attachments(account_id, MAILBOX, uid)
+        .attachments(account_id, &mailbox, uid)
         .map_err(|err| err.to_string())?;
     Ok(found
         .into_iter()
@@ -826,13 +850,14 @@ pub async fn save_attachment(
     app: AppHandle,
     state: State<'_, AppState>,
     account_id: i64,
+    mailbox: String,
     uid: u32,
     index: usize,
 ) -> Result<String, String> {
     let path = db_path(&app)?;
     let store = Store::open(&path).map_err(|err| err.to_string())?;
     let attachment = store
-        .attachments(account_id, MAILBOX, uid)
+        .attachments(account_id, &mailbox, uid)
         .map_err(|err| err.to_string())?
         .into_iter()
         .find(|candidate| candidate.index == index)
@@ -847,7 +872,7 @@ pub async fn save_attachment(
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let (mut server, _refreshed) = connect_imap(&session)?;
         let bytes = server
-            .fetch_attachment(MAILBOX, uid, index)
+            .fetch_attachment(&mailbox, uid, index)
             .map_err(|err| err.to_string())?;
         server.logout();
         bytes.ok_or_else(|| "pièce jointe absente du message".to_string())
@@ -926,8 +951,13 @@ fn unique_path(directory: &Path, name: &str) -> PathBuf {
 /// Archive : disparition locale immédiate + journalisation, le serveur
 /// du compte suivra au prochain sync.
 #[tauri::command]
-pub fn archive_message(app: AppHandle, account_id: i64, uid: u32) -> Result<(), String> {
-    queue_removal(&app, account_id, uid, Action::Archive)
+pub fn archive_message(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<(), String> {
+    queue_removal(&app, account_id, mailbox, uid, Action::Archive)
 }
 
 /// Un dossier proposé à l'utilisateur.
@@ -969,6 +999,7 @@ pub fn list_folders(app: AppHandle, account_id: i64) -> Result<Vec<FolderRow>, S
 pub fn move_message(
     app: AppHandle,
     account_id: i64,
+    mailbox: String,
     uid: u32,
     folder: String,
 ) -> Result<(), String> {
@@ -977,20 +1008,31 @@ pub fn move_message(
     if folder.trim().is_empty() {
         return Err("dossier de destination manquant".to_string());
     }
-    queue_removal(&app, account_id, uid, Action::MoveTo(folder))
+    queue_removal(&app, account_id, mailbox, uid, Action::MoveTo(folder))
 }
 
 /// Suppression : disparition locale immédiate + journalisation, mise à
 /// la corbeille du serveur du compte au prochain sync.
 #[tauri::command]
-pub fn delete_message(app: AppHandle, account_id: i64, uid: u32) -> Result<(), String> {
-    queue_removal(&app, account_id, uid, Action::Delete)
+pub fn delete_message(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<(), String> {
+    queue_removal(&app, account_id, mailbox, uid, Action::Delete)
 }
 
-fn queue_removal(app: &AppHandle, account_id: i64, uid: u32, action: Action) -> Result<(), String> {
+fn queue_removal(
+    app: &AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+    action: Action,
+) -> Result<(), String> {
     let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
     let Some(state) = store
-        .sync_state(account_id, MAILBOX)
+        .sync_state(account_id, &mailbox)
         .map_err(|err| err.to_string())?
     else {
         return Ok(());
@@ -1006,10 +1048,16 @@ fn queue_removal(app: &AppHandle, account_id: i64, uid: u32, action: Action) -> 
 /// Marque lu/non-lu : application locale immédiate (optimisme UI) +
 /// journalisation — la prochaine synchro du compte rejoue vers le serveur.
 #[tauri::command]
-pub fn mark_seen(app: AppHandle, account_id: i64, uid: u32, seen: bool) -> Result<(), String> {
+pub fn mark_seen(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+    seen: bool,
+) -> Result<(), String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let Some(state) = store
-        .sync_state(account_id, MAILBOX)
+        .sync_state(account_id, &mailbox)
         .map_err(|err| err.to_string())?
     else {
         return Ok(());
@@ -1035,12 +1083,13 @@ pub fn mark_seen(app: AppHandle, account_id: i64, uid: u32, seen: bool) -> Resul
 pub fn mark_flagged(
     app: AppHandle,
     account_id: i64,
+    mailbox: String,
     uid: u32,
     flagged: bool,
 ) -> Result<(), String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let Some(state) = store
-        .sync_state(account_id, MAILBOX)
+        .sync_state(account_id, &mailbox)
         .map_err(|err| err.to_string())?
     else {
         return Ok(());
@@ -1068,6 +1117,9 @@ pub fn mark_flagged(
 #[derive(Serialize)]
 pub struct ComposeContext {
     pub account_id: i64,
+    /// La boîte du message auquel on répond. Elle repart avec l'envoi :
+    /// sans elle, l'UID ne suffit plus à retrouver le `Message-ID` à citer.
+    pub mailbox: String,
     pub uid: u32,
     /// Vide pour un transfert : l'utilisateur choisit le destinataire.
     pub to: String,
@@ -1117,14 +1169,15 @@ pub async fn reply_context(
     app: AppHandle,
     state: State<'_, AppState>,
     account_id: i64,
+    mailbox: String,
     uid: u32,
 ) -> Result<ComposeContext, String> {
-    let envelope = envelope_of(&app, account_id, uid)?;
+    let envelope = envelope_of(&app, account_id, &mailbox, uid)?;
     let to = envelope
         .sender_address
         .clone()
         .ok_or_else(|| "adresse de l'expéditeur inconnue — resynchronisez la boîte".to_string())?;
-    let body = match raw_body(&app, &state, account_id, uid).await {
+    let body = match raw_body(&app, &state, account_id, &mailbox, uid).await {
         Ok(html) => mail_core::quote_reply(
             envelope.sender.as_deref(),
             quote_date(&envelope).as_deref(),
@@ -1134,6 +1187,7 @@ pub async fn reply_context(
     };
     Ok(ComposeContext {
         account_id,
+        mailbox,
         uid,
         to,
         subject: mail_core::reply_subject(envelope.subject.as_deref()),
@@ -1150,12 +1204,14 @@ pub async fn forward_context(
     app: AppHandle,
     state: State<'_, AppState>,
     account_id: i64,
+    mailbox: String,
     uid: u32,
 ) -> Result<ComposeContext, String> {
-    let envelope = envelope_of(&app, account_id, uid)?;
-    let html = raw_body(&app, &state, account_id, uid).await?;
+    let envelope = envelope_of(&app, account_id, &mailbox, uid)?;
+    let html = raw_body(&app, &state, account_id, &mailbox, uid).await?;
     Ok(ComposeContext {
         account_id,
+        mailbox,
         uid,
         to: String::new(),
         subject: mail_core::forward_subject(envelope.subject.as_deref()),
@@ -1169,10 +1225,15 @@ pub async fn forward_context(
     })
 }
 
-fn envelope_of(app: &AppHandle, account_id: i64, uid: u32) -> Result<mail_core::Envelope, String> {
+fn envelope_of(
+    app: &AppHandle,
+    account_id: i64,
+    mailbox: &str,
+    uid: u32,
+) -> Result<mail_core::Envelope, String> {
     let store = Store::open(&db_path(app)?).map_err(|err| err.to_string())?;
     store
-        .envelope(account_id, MAILBOX, uid)
+        .envelope(account_id, mailbox, uid)
         .map_err(|err| err.to_string())?
         .ok_or_else(|| "message introuvable".to_string())
 }
@@ -1193,12 +1254,23 @@ pub fn queue_send(
     to: String,
     subject: String,
     body: String,
+    reply_to_mailbox: Option<String>,
     reply_to_uid: Option<u32>,
 ) -> Result<(), String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let from = account_email(&store, account_id)?;
+    // Sans la boîte, on ne résout RIEN — on ne devine pas.
+    //
+    // Un UID seul ne désigne plus un message depuis que le compte en a
+    // deux (ADR 0009) : le n°1 d'INBOX et le n°1 d'« Envoyés » sont deux
+    // messages. Deviner produirait un `In-Reply-To` pointant sur un
+    // inconnu, donc une réponse greffée sur la conversation de quelqu'un
+    // d'autre. L'omettre coupe un fil — « un fil coupé en deux est
+    // réparable et honnête ; deux messages étrangers réunis ne le sont
+    // pas » (ADR 0008 §2).
     let in_reply_to = reply_to_uid
-        .and_then(|uid| store.envelope(account_id, MAILBOX, uid).ok().flatten())
+        .zip(reply_to_mailbox)
+        .and_then(|(uid, mailbox)| store.envelope(account_id, &mailbox, uid).ok().flatten())
         .and_then(|envelope| envelope.message_id);
     let draft = mail_core::compose(&from, &to, &subject, &body, in_reply_to.as_deref())
         .map_err(|err| err.to_string())?;

@@ -19,6 +19,10 @@ let pending = new Set();    // pages en cours de chargement
 let currentMessage = null;
 let currentIndex = null;
 let composeReplyUid = null; // UID du message auquel on répond, sinon null
+// La BOITE de ce message. Sans elle, l UID ne le designe plus depuis
+// qu un compte en synchronise plusieurs : mieux vaut ne pas citer que
+// citer un inconnu (ADR 0008 §2).
+let composeReplyMailbox = null;
 let composeAccountId = null; // compte émetteur de la composition en cours
 let composeDraftId = null;  // id du brouillon en cours d'édition, sinon null
 // Horodatage de la version que le composeur a LUE. Renvoyé a chaque
@@ -475,6 +479,7 @@ async function openMessage(message, index) {
     markThreadRead(message);
     invoke('mark_seen', {
       accountId: message.account_id,
+      mailbox: message.mailbox,
       uid: message.uid,
       seen: true,
     }).catch(() => {});
@@ -564,6 +569,7 @@ async function refreshAttachments(message) {
   try {
     const found = await invoke('message_attachments', {
       accountId: message.account_id,
+      mailbox: message.mailbox,
       uid: message.uid,
     });
     // Le message affiché a pu changer pendant l'aller-retour.
@@ -598,6 +604,7 @@ function buildAttachmentButton(attachment, message) {
     try {
       const path = await invoke('save_attachment', {
         accountId: message.account_id,
+        mailbox: message.mailbox,
         uid: message.uid,
         index: attachment.index,
       });
@@ -659,6 +666,7 @@ async function toggleStar() {
   try {
     await invoke('mark_flagged', {
       accountId: currentMessage.account_id,
+      mailbox: currentMessage.mailbox,
       uid: currentMessage.uid,
       flagged: currentMessage.flagged,
     });
@@ -720,14 +728,17 @@ async function performAction(kind, folder = null) {
   if (!currentMessage) return;
   const index = currentIndex;
   const accountId = currentMessage.account_id;
+  // La BOITE, pas seulement l UID : les UID repartent de 1 dans
+  // chaque boite, donc agir sans elle viserait un autre message.
+  const mailbox = currentMessage.mailbox;
   const uid = currentMessage.uid;
   try {
     if (kind === 'move') {
       // On renvoie le nom RÉSEAU, jamais le nom affiché : le rejeu se
       // fera peut-être des jours plus tard, contre le serveur.
-      await invoke('move_message', { accountId, uid, folder: folder.wire });
+      await invoke('move_message', { accountId, mailbox, uid, folder: folder.wire });
     } else {
-      await invoke(kind === 'archive' ? 'archive_message' : 'delete_message', { accountId, uid });
+      await invoke(kind === 'archive' ? 'archive_message' : 'delete_message', { accountId, mailbox, uid });
     }
   } catch (err) {
     setStatus(`action impossible : ${err}`, true);
@@ -751,6 +762,7 @@ async function loadBody(message, showImages) {
   try {
     const view = await invoke('message_body', {
       accountId: message.account_id,
+      mailbox: message.mailbox,
       uid: message.uid,
       showImages,
     });
@@ -779,8 +791,9 @@ async function startCompose(options) {
   openCompose(options);
 }
 
-function openCompose({ to = '', subject = '', body = '', replyToUid = null, draftId = null, draftEpoch = null, accountId = null, title = 'Nouveau message' } = {}) {
+function openCompose({ to = '', subject = '', body = '', replyToMailbox = null, replyToUid = null, draftId = null, draftEpoch = null, accountId = null, title = 'Nouveau message' } = {}) {
   composeReplyUid = replyToUid;
+  composeReplyMailbox = replyToMailbox;
   composeDraftId = draftId;
   composeDraftEpoch = draftEpoch;
   // Le compte émetteur : celui du message répondu/repris, sinon le premier.
@@ -806,6 +819,7 @@ function openCompose({ to = '', subject = '', body = '', replyToUid = null, draf
 function hideCompose() {
   clearTimeout(draftSaveTimer);
   composeReplyUid = null;
+  composeReplyMailbox = null;
   composeAccountId = null;
   composeDraftId = null;
   composeDraftEpoch = null;
@@ -877,7 +891,8 @@ async function saveDraftNow() {
         to: el('compose-to').value,
         subject: el('compose-subject').value,
         body: el('compose-body').value,
-        replyToUid: composeReplyUid,
+        replyToMailbox: composeReplyMailbox,
+      replyToUid: composeReplyUid,
       },
     });
     if (el('compose').hidden) {
@@ -919,6 +934,7 @@ async function composeFromContext(command, title) {
   try {
     const context = await invoke(command, {
       accountId: currentMessage.account_id,
+      mailbox: currentMessage.mailbox,
       uid: currentMessage.uid,
     });
     setStatus('');
@@ -926,6 +942,7 @@ async function composeFromContext(command, title) {
       to: context.to,
       subject: context.subject,
       body: context.body,
+      replyToMailbox: context.reply ? context.mailbox : null,
       replyToUid: context.reply ? context.uid : null,
       accountId: context.account_id,
       title,
@@ -950,6 +967,7 @@ async function sendCompose() {
       to: el('compose-to').value,
       subject: el('compose-subject').value.trim(),
       body: el('compose-body').value,
+      replyToMailbox: composeReplyMailbox,
       replyToUid: composeReplyUid,
     });
   } catch (err) {

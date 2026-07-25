@@ -149,6 +149,14 @@ pub struct Account {
 pub struct UnifiedRow {
     pub account_id: i64,
     pub account_email: String,
+    /// La boîte qui CONTIENT ce message, sous son nom réseau.
+    ///
+    /// Sans elle, `(account_id, uid)` n'identifie plus rien depuis que les
+    /// fils réunissent plusieurs boîtes ([ADR 0009]) : les UID sont
+    /// attribués par boîte et repartent de 1, donc le message n°1 d'INBOX
+    /// et le n°1 d'« Envoyés » sont deux messages différents du même
+    /// compte. Toute lecture et toute action doivent la porter.
+    pub mailbox: String,
     pub envelope: Envelope,
     /// Le message porte-t-il au moins une piece jointe ?
     ///
@@ -177,7 +185,7 @@ pub struct UnifiedRow {
 /// La derniere colonne est un EXISTS sur `attachments` : la liste doit
 /// pouvoir afficher le trombone sans une requete par ligne. La cle
 /// primaire (mailbox_id, uid, idx) rend ce test indexe.
-pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, EXISTS(SELECT 1 FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to";
+pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, EXISTS(SELECT 1 FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name";
 
 /// Le SELECT de la liste groupée : les colonnes ci-dessus, plus l'agrégat
 /// du fil. Il exige la jointure sur `threads` (alias `t`), que la
@@ -1354,6 +1362,7 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
             flagged: row.get(9)?,
             in_reply_to: row.get(12)?,
         },
+        mailbox: row.get(13)?,
         has_attachment: row.get(10)?,
         thread_id: row.get(11)?,
         // Valeurs d'un message vu SEUL — c'est le cas de la recherche, qui
@@ -1368,8 +1377,8 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
 /// fil ajouté par [`THREAD_AGGREGATE`].
 fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
     Ok(UnifiedRow {
-        thread_size: row.get(13)?,
-        thread_unseen: row.get(14)?,
+        thread_size: row.get(14)?,
+        thread_unseen: row.get(15)?,
         ..row_to_unified(row)?
     })
 }
@@ -2747,6 +2756,44 @@ mod tests {
             "le fil est représenté par son message le plus récent, \
              même quand c'est notre propre réponse"
         );
+    }
+
+    /// Deux messages du MÊME compte peuvent porter le MÊME UID dès qu'ils
+    /// vivent dans deux boîtes — c'est la règle et non l'exception, les
+    /// UID étant attribués par boîte et repartant de 1.
+    ///
+    /// Chaque ligne doit donc dire **où elle habite**. Sans cela, ouvrir
+    /// notre réponse depuis le bandeau de conversation afficherait le
+    /// message reçu à sa place, et le marquerait lu — l'invariant §6.2 de
+    /// la passation, corrigé ici pour deux boîtes.
+    #[test]
+    fn chaque_ligne_dit_dans_quelle_boite_elle_habite() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
+
+        let mut recu = envelope(1, "Devis", 100, true);
+        recu.message_id = Some("<alice-9@exemple.fr>".to_string());
+        store.upsert_envelopes(inbox, &[recu]).unwrap();
+        let mut reponse = envelope(1, "Re: Devis", 200, true);
+        reponse.message_id = Some("<moi-9@exemple.fr>".to_string());
+        reponse.in_reply_to = Some("<alice-9@exemple.fr>".to_string());
+        store.upsert_envelopes(envoyes, &[reponse]).unwrap();
+
+        let fil = unified(&store)[0].thread_id.unwrap();
+        let messages = store.thread_messages(fil).unwrap();
+
+        assert_eq!(messages.len(), 2);
+        assert!(
+            messages.iter().all(|ligne| ligne.envelope.uid == 1),
+            "le décor a bien deux messages de même UID : c'est tout l'objet"
+        );
+        let boites: Vec<&str> = messages.iter().map(|l| l.mailbox.as_str()).collect();
+        assert!(boites.contains(&"INBOX"), "boîtes vues : {boites:?}");
+        assert!(boites.contains(&"Sent"), "boîtes vues : {boites:?}");
     }
 
     /// L'autre face de la même règle : écrire à quelqu'un qui ne répond
