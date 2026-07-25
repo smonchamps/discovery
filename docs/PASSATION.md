@@ -4,10 +4,11 @@
 > ici : tout ce qui ne se déduit pas du code est écrit là.
 >
 > État au **2026-07-25**, branche `main`. Arbre propre,
-> **293 tests Rust · 19/19 E2E · clippy muet**. Aucun code en vol.
+> **294 tests Rust · 19/19 E2E · clippy muet**. Aucun code en vol.
 >
-> Le chantier des brouillons est **clos et validé sur le terrain** (§1) :
-> il ne reste que le gate 3 et la revue de clôture (§8).
+> **Phases 0 à 3 closes.** Le gate 3 est joué et sa revue écrite
+> ([PHASE3.md](PHASE3.md)). Ce qui reste tient dans deux arbitrages
+> produit et deux budgets non tenus, tous documentés au §8.
 
 ---
 
@@ -34,10 +35,21 @@ commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
 
 ## 1. Où on en est, et quoi faire en premier
 
-**Rien n'est cassé, rien n'est à moitié écrit.** Ce qui est inachevé est
-une **boucle de validation terrain** avec l'utilisateur, sur le dernier
-chantier livré : le **tirage des brouillons** (éditer ici un brouillon
-commencé dans un webmail).
+**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.** La
+Phase 3 est close, gate joué et revue écrite ([PHASE3.md](PHASE3.md)).
+
+**Ce qu'il faut faire en premier ne se code pas : ce sont deux arbitrages
+produit**, tous deux détaillés au §8, et tous deux qui appartiennent à
+l'utilisateur.
+
+1. **Synchroniser le dossier « Envoyés » ?** Le coût à l'échelle est
+   désormais connu — c'était la condition qu'il avait posée pour trancher.
+2. **Phase 4 (web) ou Phase 5 (durcissement et bêta) d'abord ?** La bêta
+   est ce qui permettrait de trancher le seul budget vraiment ouvert, la
+   recherche, sur de vraies boîtes plutôt que sur un corpus synthétique.
+
+Ne rien engager avant ces réponses. Le reste de ce §1 raconte le dernier
+chantier clos — il est là pour le contexte, plus pour l'action.
 
 ### 1.1 Ce que la mesure a établi (2026-07-25)
 
@@ -165,19 +177,30 @@ intégrée, pas de plugins, pas de mobile.
 
 ### Budgets — ce sont des gates BLOQUANTS
 
+Mesurés au **gate 3** — 3 comptes, 200 000 messages
+([PHASE3.md](PHASE3.md) §2) :
+
 | Métrique | Cible | Dernière mesure |
 |---|---|---|
-| Démarrage à froid | < 1 s | 350 ms ✅ |
-| Ouverture d'un message | < 50 ms | ✅ |
-| Recherche | < 100 ms | ✅ |
-| Défilement de la liste | 60 fps | ✅ |
-| RAM (working set **privé**) | < 200 Mo | 89,6 Mo ✅ |
-| Taille de la base | < 1 Go | 97 Mo / 2 800 messages ✅ |
+| Démarrage à froid | < 1 s | 360–389 ms ✅ |
+| Ouverture d'un message | < 50 ms | 0,09–0,16 ms ✅ |
+| Page de liste | < 100 ms | 12,4 ms ✅ |
+| RAM (working set **privé**) | < 200 Mo | 92,2 Mo ✅ |
+| Taille de la base | < 1 Go | 778 Mo / 200 000 msg + 16 002 corps ✅ |
 | Perte de données | 0, prouvé par crash-récup | ✅ |
+| **Recherche** | < 100 ms | **118–208 ms ❌** |
+| **Adoption d'une base héritée** | < 1 s | **4,22 s ❌** (une seule fois) |
 
-⚠️ Toutes ces mesures datent d'**avant** le gate 3 (3 comptes / 200 000
-messages) et d'avant le regroupement en conversations. Elles sont à
-refaire — c'est l'objet du §8.
+La recherche est le seul poste non tenu, sur un corpus synthétique dont la
+sélectivité est reconnue extrême. Le chiffre transférable est le **coût
+unitaire : ~2,9 µs par correspondance**, soit un plafond vers **35 000
+correspondances**. Deux leviers mesurés en réserve (tri par date, `prefix=`)
+— arbitrage reporté en bêta, PHASE3.md §4.
+
+⚠️ **Les outils de mesure se vérifient comme le reste.** Deux d'entre eux
+mentaient au gate 3 : `mesure-ram.ps1` sommait toutes les instances de
+l'application, `mesure.mjs` n'isolait pas son profil WebView2. Corrigés,
+mais le réflexe reste à avoir.
 
 Un budget dépassé = **on arrête la ligne** (andon). Pas de « livrer puis
 optimiser » : la performance est une contrainte de conception.
@@ -354,42 +377,39 @@ chemin réseau complet ne se prouve que sur le terrain.
 
 ---
 
-## 8. Ce qui reste — Phase 3
+## 8. Ce qui reste — après la Phase 3
 
-Phases 0, 1 et 2 : **closes** ([PHASE0](PHASE0.md), [PHASE1](PHASE1.md),
-[PHASE2](PHASE2.md)). Phase 3 quasi close.
+Phases 0 à 3 : **closes** ([PHASE0](PHASE0.md), [PHASE1](PHASE1.md),
+[PHASE2](PHASE2.md), [PHASE3](PHASE3.md)).
 
-Livré et **validé terrain** : recherche FTS5 + rattrapage des corps,
-multi-comptes, IMAP générique, Microsoft 365, pièces jointes (lecture),
-notifications Windows, dossiers/déplacer, regroupement en conversations.
+Le gate 3 a été joué : 3 comptes, 200 000 messages. **Six budgets sur huit
+tenus**, et les deux défauts qu'il a trouvés sont corrigés — le tri
+matérialisé de la boîte unifiée (987 ms → 12,4 ms) et le coût de
+l'adoption des fils (11,1 s → 4,2 s). Tous deux étaient invisibles à
+l'échelle du terrain, et aucun test fonctionnel ne pouvait les voir.
 
-### Étape 1 — Clore la validation du tirage des brouillons
-Voir §1. Si un défaut est confirmé : corriger le jour même, avec un test
-qui échoue d'abord.
+### Les deux budgets non tenus, avec leur remède
 
-### Étape 2 — Gate 3 : budgets tenus à l'échelle
-**3 comptes, 200 000 messages cumulés.** Re-mesurer tout le tableau du §3
-et consigner les chiffres.
+| Poste | Mesure | Levier connu |
+|---|---|---|
+| Recherche | 118–208 ms | tri par date (×2, mesuré) ou `prefix=` (−73 ms) — arbitrage produit reporté en bêta |
+| Adoption d'une base héritée | 4,22 s, **une seule fois** | la rendre visible et interruptible, comme le rattrapage des corps (ADR 0007) |
 
-Points de vigilance **nouveaux depuis la dernière mesure** :
+Le démarrage courant, lui, reste à **2,5 ms** : c'est la migration qui
+coûte, pas l'ouverture.
 
-- la liste part désormais de la table `threads` (agrégat matérialisé) et
-  non d'`envelopes` : le coût d'une page ne doit plus dépendre de la
-  taille de la boîte — c'est l'argument de l'ADR 0008 §4, **il faut le
-  vérifier** ;
-- `thread::migrate_threads` adopte tous les messages à l'ouverture d'une
-  base héritée. Instantané sur 2 800 messages, **jamais mesuré sur
-  200 000** — principal risque pour le budget de démarrage ;
-- la passe d'en-têtes de fils ajoute ~3 ko par message, bornée à 2 000 par
-  compte et par synchronisation.
+### Ce qu'il ne faut PAS faire pour l'adoption
+Adopter par tranches à chaque démarrage. La liste part de `threads` : une
+adoption partielle afficherait une boîte à moitié vide — le piège du §9,
+la fonctionnalité fausse dès la première ouverture.
 
-### Étape 3 — Revue de clôture
-Écrire `docs/PHASE3.md` sur le modèle de [PHASE2.md](PHASE2.md). Reports à
-consigner explicitement :
+### Avant d'ouvrir la Phase 4
+Deux arbitrages appartiennent au Chef Ingénieur :
 
-- envoi de pièces jointes (lecture seule en v1) ;
-- filtre de recherche « a une pièce jointe » ; `to:` dans la recherche ;
-- **synchronisation du dossier « Envoyés »** — voir ci-dessous.
+1. la **synchronisation du dossier « Envoyés »** — voir ci-dessous ;
+2. l'**ordre entre Phase 4 (web) et Phase 5 (durcissement, bêta)**, la
+   bêta étant précisément ce qui permettrait de trancher la recherche sur
+   de vraies boîtes.
 
 ### Décision produit en suspens (appartient à l'utilisateur)
 Le regroupement en conversations est correct mais **rapporte peu** sur la
@@ -398,9 +418,18 @@ cause est une décision assumée (ADR 0008 §3) — *on ne regroupe que ce que
 la boîte contient*, et les réponses de l'utilisateur vivent dans
 « Envoyés », que la v1 ne synchronise pas.
 
-L'utilisateur a tranché : **on décide après le gate 3**, pour connaître le
-coût à l'échelle avant d'engager un second dossier. **Ne pas rouvrir
-avant.**
+L'utilisateur avait tranché : **on décide après le gate 3**, pour connaître
+le coût à l'échelle avant d'engager un second dossier. **Le gate est joué,
+le coût est connu** ([PHASE3.md](PHASE3.md) §5) :
+
+- la RAM ne dépend pas du volume (+2,6 Mo pour ×4 de messages) ;
+- le coût d'une page ne dépend plus de la taille de la boîte ;
+- le disque tient avec 2,7× la charge modélisée ;
+- **mais la recherche se paie au nombre de correspondances** : ajouter
+  « Envoyés » agrandit le corpus, donc rapproche le plafond des 35 000
+  correspondances.
+
+La décision est donc **ouverte, et elle attend l'utilisateur**.
 
 ### Dette connue, non corrigée
 `apps/desktop/ui/style.css` : la règle d'élément `header { display: flex }`
