@@ -61,21 +61,25 @@ message auquel elle répond**. Le chantier réel est le passage de la portée
 
 Ordre conseillé — chaque étape se prouve avant la suivante :
 
-1. **Le noyau pur d'abord** : `attach` / `lookup` / `refresh` passent au
-   compte, et l'agrégat gagne `last_mailbox_id` et `inbox_size`
-   (ADR 0009 §5). Les tests de `thread.rs` sont déjà écrits contre les
-   scénarios du terrain — ils doivent rester verts.
-2. **Le schéma et sa migration** : les tables changent de clé, donc SQLite
-   impose une reconstruction. Le chemin existe (`rebuild_if_outdated`) ;
-   il suffit d'y **supprimer** les deux tables et d'incrémenter
-   `THREADING_VERSION`. Prouver par un test qui rembobine une base.
-3. **La requête de liste et son index PARTIEL** (ADR 0009 §4) — sans lui,
-   le tri matérialisé que le gate 3 vient de supprimer revient par une
-   autre porte. Le test `la_boite_unifiee_ne_materialise_pas_son_tri` est
-   le garde-fou, et `banc_page_liste` la mesure.
-4. **La synchronisation d'« Envoyés »** : découverte par attribut `\Sent`
-   puis repli par nom (ADR 0009 §7), et boucle sur deux boîtes.
-5. **Re-mesurer** : recherche (le corpus grandit, cf. §3) et page de liste.
+1. ✅ **Le noyau** : `attach` / `lookup` passent au compte, l'agrégat gagne
+   `last_mailbox_id` et `inbox_size`, `clear_mailbox` devient
+   `rebuild_account`.
+2. ✅ **Le schéma et sa migration** : les tables changent de clé, donc
+   `rebuild_if_outdated` les **supprime** et `THREADING_VERSION` passe à 2.
+3. ✅ **La requête de liste et son index PARTIEL** (ADR 0009 §4). Vérifié à
+   200 000 messages : `SCAN t USING INDEX idx_threads_date_globale`, page
+   à 0,71 ms — le gain du gate 3 est préservé.
+4. ⬜ **La synchronisation d'« Envoyés »** : découverte par attribut
+   `\Sent` puis repli par nom (ADR 0009 §7), et boucle sur deux boîtes.
+   `commands.rs` fixe encore `MAILBOX = "INBOX"`.
+5. ⬜ **Re-mesurer** : recherche (le corpus grandit, cf. §3) et page de
+   liste. Puis **valider sur le terrain** : c'est le seul endroit où l'on
+   verra si le regroupement rapporte enfin.
+
+⚠️ **Tant que l'étape 4 n'est pas faite, aucun fil ne traverse deux boîtes
+en production.** Le noyau le permet, la plomberie n'existe pas — et rien à
+l'écran ne change. Ne pas conclure de l'absence d'effet que le chantier a
+échoué.
 
 Le reste de ce §1 raconte le dernier chantier clos — contexte, pas action.
 
