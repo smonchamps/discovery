@@ -117,6 +117,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n--- ouverture d'un message (budget < 50 ms) ---");
     ouvertures(&store, &path)?;
 
+    comparer_tris(&path)?;
+    Ok(())
+}
+
+/// Pertinence contre date, à correspondances identiques.
+///
+/// `ORDER BY rank` calcule BM25 sur **toutes** les correspondances : c'est
+/// le poste dominant mesuré plus haut, devant l'expansion de préfixe. Le
+/// tri par date ne le supprime pas gratuitement — il faut toujours
+/// énumérer les correspondances, et les trier — mais il évite le calcul
+/// du score. Reste à savoir ce que ça vaut : d'où cette comparaison.
+///
+/// Le noyau bascule DÉJÀ sur la date quand la requête n'a pas de termes
+/// (un BM25 sans terme n'a pas de sens). La question est donc de savoir
+/// s'il faut l'y basculer aussi quand il y en a.
+fn comparer_tris(path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    const BASE: &str = "SELECT e.uid
+         FROM search_fts
+         JOIN search_docs d ON d.docid = search_fts.rowid
+         JOIN envelopes e ON e.mailbox_id = d.mailbox_id AND e.uid = d.uid
+         JOIN mailboxes m ON m.id = e.mailbox_id
+         JOIN accounts a ON a.id = m.account_id
+         WHERE search_fts MATCH ?1
+         ORDER BY ";
+
+    let conn = Connection::open(path)?;
+    println!("\n--- pertinence (BM25) contre date, à correspondances égales ---");
+    for (etiquette, saisie) in REQUETES {
+        let expression = expression_fts(saisie);
+        let mut durees = Vec::new();
+        for ordre in [
+            "bm25(search_fts, 10.0, 5.0, 1.0), e.date_epoch DESC",
+            "e.date_epoch DESC, e.uid DESC",
+        ] {
+            let sql = format!("{BASE}{ordre} LIMIT 50");
+            let mut stmt = conn.prepare(&sql)?;
+            // Un tour à blanc, puis la mesure : même protocole que plus haut.
+            let _ = stmt
+                .query_map([&expression], |row| row.get::<_, u32>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            let depart = Instant::now();
+            let lignes = stmt
+                .query_map([&expression], |row| row.get::<_, u32>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            durees.push((depart.elapsed().as_secs_f64() * 1000.0, lignes.len()));
+        }
+        let (bm25, _) = durees[0];
+        let (date, _) = durees[1];
+        let gain = if date > 0.0 { bm25 / date } else { 0.0 };
+        println!(
+            "{etiquette:<22} BM25 {bm25:>7.2} ms — date {date:>7.2} ms — ×{gain:.1}{}",
+            if date > 100.0 {
+                "  ✗ encore hors budget"
+            } else {
+                ""
+            }
+        );
+    }
     Ok(())
 }
 
