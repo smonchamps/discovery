@@ -23,7 +23,7 @@
 //! qu'aucune information acquise ne soit perdue en route. C'est la
 //! propriété qui autorise à livrer l'acquisition en deux temps.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -265,7 +265,8 @@ pub(crate) fn attach(
     let thread = match decision.keep {
         Some(thread) => thread,
         None => {
-            conn.execute("INSERT INTO threads (mailbox_id) VALUES (?1)", [mailbox_id])?;
+            conn.prepare_cached("INSERT INTO threads (mailbox_id) VALUES (?1)")?
+                .execute([mailbox_id])?;
             conn.last_insert_rowid()
         }
     };
@@ -285,11 +286,11 @@ pub(crate) fn attach(
         conn.execute("DELETE FROM threads WHERE id = ?1", [absorbed])?;
     }
     for id in decision.register {
-        conn.execute(
+        conn.prepare_cached(
             "INSERT OR IGNORE INTO thread_links (mailbox_id, message_id, thread_id)
              VALUES (?1, ?2, ?3)",
-            params![mailbox_id, id, thread],
-        )?;
+        )?
+        .execute(params![mailbox_id, id, thread])?;
     }
     Ok(thread)
 }
@@ -311,7 +312,11 @@ fn lookup(
     values.push(mailbox_id.into());
     values.extend(ids.iter().map(|id| id.clone().into()));
 
-    let mut stmt = conn.prepare(&format!(
+    // `prepare_cached` : le cache est indexé par le texte SQL, et il n'y a
+    // qu'une poignée de formes (une par nombre d'identifiants cités). Sans
+    // lui, chaque message re-analyse et re-planifie sa requête — c'est le
+    // poste dominant de l'adoption d'une base héritée.
+    let mut stmt = conn.prepare_cached(&format!(
         "SELECT message_id, thread_id FROM thread_links
          WHERE mailbox_id = ?1 AND message_id IN ({placeholders})"
     ))?;
@@ -333,7 +338,7 @@ fn lookup(
 /// borné par la taille du fil et passe par l'index.
 pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> {
     let aggregate = conn
-        .query_row(
+        .prepare_cached(
             "SELECT e.uid, e.date_epoch,
                     (SELECT COUNT(*) FROM envelopes WHERE thread_id = ?1),
                     (SELECT COUNT(*) FROM envelopes WHERE thread_id = ?1 AND seen = 0)
@@ -341,25 +346,24 @@ pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> 
              WHERE e.thread_id = ?1
              ORDER BY e.date_epoch DESC, e.uid DESC
              LIMIT 1",
-            [thread],
-            |row| {
-                Ok((
-                    row.get::<_, Uid>(0)?,
-                    row.get::<_, Option<i64>>(1)?,
-                    row.get::<_, i64>(2)?,
-                    row.get::<_, i64>(3)?,
-                ))
-            },
-        )
+        )?
+        .query_row([thread], |row| {
+            Ok((
+                row.get::<_, Uid>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })
         .optional()?;
 
     match aggregate {
         Some((last_uid, last_epoch, size, unseen)) => {
-            conn.execute(
+            conn.prepare_cached(
                 "UPDATE threads SET last_uid = ?2, last_epoch = ?3, size = ?4, unseen = ?5
                  WHERE id = ?1",
-                params![thread, last_uid, last_epoch, size, unseen],
-            )?;
+            )?
+            .execute(params![thread, last_uid, last_epoch, size, unseen])?;
         }
         None => {
             // Le fil s'est vidé : il disparaît avec son annuaire.
@@ -493,7 +497,14 @@ pub(crate) fn migrate_threads(conn: &Connection) -> Result<(), Error> {
 }
 
 fn adopt(conn: &Connection, orphans: Vec<Orphan>) -> Result<(), Error> {
-    let mut touched: Vec<ThreadId> = Vec::new();
+    // Un ENSEMBLE, pas une liste. `Vec::contains` est linéaire : sur une
+    // base héritée où presque chaque message ouvre son propre fil, le
+    // « ai-je déjà vu ce fil ? » devenait quadratique — 160 000 fils font
+    // ~1,3×10¹⁰ comparaisons. Mesuré : 11,1 s d'adoption sur 200 000
+    // messages, contre un budget de démarrage d'une seconde. Invisible
+    // sur les 2 800 messages d'une boîte réelle, écrasant à l'échelle du
+    // gate 3. L'arbre garde en prime un ordre déterministe, sans tri.
+    let mut touched: BTreeSet<ThreadId> = BTreeSet::new();
     for (mailbox_id, uid, message_id, in_reply_to, references) in orphans {
         let thread = attach(
             conn,
@@ -502,13 +513,11 @@ fn adopt(conn: &Connection, orphans: Vec<Orphan>) -> Result<(), Error> {
             in_reply_to.as_deref(),
             references.as_deref(),
         )?;
-        conn.execute(
+        conn.prepare_cached(
             "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
-            params![mailbox_id, uid, thread],
-        )?;
-        if !touched.contains(&thread) {
-            touched.push(thread);
-        }
+        )?
+        .execute(params![mailbox_id, uid, thread])?;
+        touched.insert(thread);
     }
     for thread in touched {
         // Un fil de `touched` a pu être absorbé entre-temps ; `refresh`
