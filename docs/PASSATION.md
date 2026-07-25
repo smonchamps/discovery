@@ -38,18 +38,46 @@ commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.** La
 Phase 3 est close, gate joué et revue écrite ([PHASE3.md](PHASE3.md)).
 
-**Ce qu'il faut faire en premier ne se code pas : ce sont deux arbitrages
-produit**, tous deux détaillés au §8, et tous deux qui appartiennent à
-l'utilisateur.
+Les deux arbitrages qui restaient ont été **tranchés le 2026-07-25** :
 
-1. **Synchroniser le dossier « Envoyés » ?** Le coût à l'échelle est
-   désormais connu — c'était la condition qu'il avait posée pour trancher.
-2. **Phase 4 (web) ou Phase 5 (durcissement et bêta) d'abord ?** La bêta
-   est ce qui permettrait de trancher le seul budget vraiment ouvert, la
-   recherche, sur de vraies boîtes plutôt que sur un corpus synthétique.
+1. **« Envoyés » est synchronisé** — décision prise, spécifiée par
+   [ADR 0009](adr/0009-portee-des-fils-au-compte.md) ;
+2. **Phase 5 (durcissement et bêta) avant Phase 4 (web)** — la bêta est ce
+   qui permettra de trancher la recherche sur de vraies boîtes plutôt que
+   sur un corpus synthétique.
 
-Ne rien engager avant ces réponses. Le reste de ce §1 raconte le dernier
-chantier clos — il est là pour le contexte, plus pour l'action.
+### Le chantier en cours : la portée des fils
+
+**Spécifié, pas encore écrit.** Lire [ADR 0009](adr/0009-portee-des-fils-au-compte.md)
+en entier avant de commencer — il porte les six décisions de conception et
+les alternatives déjà écartées.
+
+Le point dur, qui n'est pas là où on l'attend : synchroniser « Envoyés »
+est de la plomberie (le moteur est déjà paramétré par nom de boîte,
+`commands.rs` fixe simplement `MAILBOX = "INBOX"`). Mais les fils sont
+cloisonnés par boîte, donc **une réponse ne rejoindrait jamais le fil du
+message auquel elle répond**. Le chantier réel est le passage de la portée
+`mailbox_id` → `account_id`.
+
+Ordre conseillé — chaque étape se prouve avant la suivante :
+
+1. **Le noyau pur d'abord** : `attach` / `lookup` / `refresh` passent au
+   compte, et l'agrégat gagne `last_mailbox_id` et `inbox_size`
+   (ADR 0009 §5). Les tests de `thread.rs` sont déjà écrits contre les
+   scénarios du terrain — ils doivent rester verts.
+2. **Le schéma et sa migration** : les tables changent de clé, donc SQLite
+   impose une reconstruction. Le chemin existe (`rebuild_if_outdated`) ;
+   il suffit d'y **supprimer** les deux tables et d'incrémenter
+   `THREADING_VERSION`. Prouver par un test qui rembobine une base.
+3. **La requête de liste et son index PARTIEL** (ADR 0009 §4) — sans lui,
+   le tri matérialisé que le gate 3 vient de supprimer revient par une
+   autre porte. Le test `la_boite_unifiee_ne_materialise_pas_son_tri` est
+   le garde-fou, et `banc_page_liste` la mesure.
+4. **La synchronisation d'« Envoyés »** : découverte par attribut `\Sent`
+   puis repli par nom (ADR 0009 §7), et boucle sur deux boîtes.
+5. **Re-mesurer** : recherche (le corpus grandit, cf. §3) et page de liste.
+
+Le reste de ce §1 raconte le dernier chantier clos — contexte, pas action.
 
 ### 1.1 Ce que la mesure a établi (2026-07-25)
 
@@ -254,6 +282,7 @@ réseau.
 | [0006](adr/0006-microsoft-imap-oauth2.md) | Microsoft via IMAP+OAuth2, pas Graph | Graph reste le plan B, avec ses signaux de bascule |
 | [0007](adr/0007-rattrapage-des-corps.md) | Rattrapage des corps borné (12 mois) | Sans lui, la recherche ne portait que sur les sujets |
 | [0008](adr/0008-regroupement-en-conversations.md) | Conversations = union-find sur en-têtes RFC 5322 | **Jamais de repli par sujet** ; agrégat matérialisé recalculé, jamais incrémenté |
+| [0009](adr/0009-portee-des-fils-au-compte.md) | Portée d'un fil = le **compte**, pas la boîte | Révise 0008 §3 et §4 ; « Envoyés » synchronisé ; index **partiel** sinon le gate 3 est perdu |
 
 Décisions Phase 0 ([PHASE0.md](PHASE0.md) §2) : SQLite local ; CONDSTORE
 (Gmail n'expose pas QRESYNC) ; parsing MIME par `mail-parser` ; OAuth2 PKCE
