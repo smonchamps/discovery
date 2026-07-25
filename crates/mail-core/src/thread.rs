@@ -491,7 +491,39 @@ pub(crate) fn rebuild_account(conn: &Connection, account_id: i64) -> Result<(), 
 /// la version 1 se contentait de les vider.
 pub(crate) const THREADING_VERSION: i64 = 2;
 
-/// Refait les fils quand la règle qui les a produits a changé.
+/// Supprime les tables de fils quand la règle qui les a produites a
+/// changé — **à appeler AVANT d'appliquer [`SCHEMA`]**.
+///
+/// `CREATE TABLE IF NOT EXISTS` ne touche pas à une table qui existe :
+/// sur une base d'avant, `threads` garderait donc ses colonnes. Mais
+/// l'index partiel, lui, n'existe pas encore — SQLite le crée vraiment,
+/// et échoue sur `inbox_size`, colonne absente de l'ancienne table.
+/// **L'ouverture entière était refusée, et l'application ne démarrait
+/// plus.**
+///
+/// Défaut trouvé au terrain : aucun test ne pouvait le voir, tous créant
+/// une base neuve, donc déjà au schéma courant. Le décor qui le reproduit
+/// est `une_base_au_schema_des_fils_precedent_s_ouvre_et_se_migre`.
+///
+/// Le marqueur de version n'est PAS avancé ici : c'est
+/// [`rebuild_if_outdated`] qui le fait, une fois les tables recréées et
+/// les enveloppes détachées. Avancer trop tôt laisserait une base à
+/// moitié migrée si l'ouverture échouait entre les deux.
+pub(crate) fn drop_if_outdated(conn: &Connection) -> Result<(), Error> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if version >= THREADING_VERSION {
+        return Ok(());
+    }
+    conn.execute_batch(
+        "DROP TABLE IF EXISTS thread_links;
+         DROP TABLE IF EXISTS threads;",
+    )?;
+    Ok(())
+}
+
+/// Détache les enveloppes pour que l'adoption, juste dessous, refasse les
+/// fils — un seul chemin de reconstruction, celui qui est déjà testé,
+/// plutôt qu'un correctif parallèle qui divergerait.
 ///
 /// Purement local : les en-têtes bruts sont intacts en base, seule leur
 /// **interprétation** était fautive. Rien à redemander au serveur.
@@ -500,19 +532,11 @@ fn rebuild_if_outdated(conn: &Connection) -> Result<(), Error> {
     if version >= THREADING_VERSION {
         return Ok(());
     }
-    // Tout effacer et laisser l'adoption, juste dessous, refaire le
-    // travail : un seul chemin de reconstruction, celui qui est déjà
-    // testé, plutôt qu'un correctif parallèle qui divergerait.
-    //
-    // DROP, et non DELETE : le schéma des deux tables a changé, et le
-    // `CREATE TABLE IF NOT EXISTS` exécuté à l'ouverture ne touche pas à
-    // une table qui existe déjà. Sans la suppression, la base garderait
-    // ses colonnes d'avant et tout le reste écrirait à côté.
+    // Les tables ont déjà été supprimées par `drop_if_outdated` puis
+    // recréées vides par `SCHEMA` : il ne reste qu'à détacher les
+    // enveloppes, et à consigner la version une fois le tout cohérent.
     conn.execute_batch(&format!(
         "BEGIN;
-         DROP TABLE IF EXISTS thread_links;
-         DROP TABLE IF EXISTS threads;
-         {SCHEMA}
          UPDATE envelopes SET thread_id = NULL;
          PRAGMA user_version = {THREADING_VERSION};
          COMMIT;"

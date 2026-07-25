@@ -207,6 +207,12 @@ impl Store {
         // plutôt que d'échouer en SQLITE_BUSY sur une écriture concurrente.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch(SCHEMA)?;
+        // AVANT le schéma des fils, jamais après : si la règle de
+        // regroupement a changé, les deux tables doivent DISPARAÎTRE pour
+        // que le `CREATE TABLE IF NOT EXISTS` juste dessous les recrée
+        // dans leur forme neuve. Sans cela l'ouverture échoue — voir
+        // `thread::drop_if_outdated`.
+        thread::drop_if_outdated(&conn)?;
         conn.execute_batch(thread::SCHEMA)?;
         migrate(&conn)?;
         Ok(Self(conn))
@@ -2625,6 +2631,77 @@ mod tests {
             .upsert_envelopes(id, &[envelope(1, "Devis", 100, true)])
             .unwrap();
         assert_eq!(unified(&store).len(), 1, "la boîte se repeuple sans butée");
+    }
+
+    /// Défaut trouvé au TERRAIN, pas ici : une base créée par la version
+    /// précédente porte une table `threads` sans `inbox_size`.
+    /// `CREATE TABLE IF NOT EXISTS` ne la touche pas — mais l'index
+    /// partiel, lui, n'existe pas encore, donc SQLite le crée vraiment :
+    /// il échoue sur une colonne absente, et **l'ouverture entière est
+    /// refusée** (« no such column: inbox_size »). L'application ne
+    /// démarrait plus.
+    ///
+    /// Aucun test ne pouvait l'attraper : ils créent tous une base neuve,
+    /// donc déjà au schéma courant. Celui-ci REMBOBINE une vraie base au
+    /// schéma d'avant — le seul décor où le défaut existe.
+    #[test]
+    fn une_base_au_schema_des_fils_precedent_s_ouvre_et_se_migre() {
+        let path =
+            std::env::temp_dir().join(format!("discovery-test-fils-v1-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        {
+            let mut store = Store::open(&path).unwrap();
+            let account = store
+                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .unwrap();
+            let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            let mut premier = envelope(1, "Devis", 100, true);
+            premier.message_id = Some("<a@exemple.fr>".to_string());
+            let mut second = envelope(2, "Re: Devis", 200, true);
+            second.message_id = Some("<b@exemple.fr>".to_string());
+            second.in_reply_to = Some("<a@exemple.fr>".to_string());
+            store.upsert_envelopes(inbox, &[premier, second]).unwrap();
+            assert_eq!(unified(&store).len(), 1, "décor : un fil de deux messages");
+        }
+
+        // Rembobinage : les tables telles que la version 1 les créait.
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "DROP TABLE thread_links;
+                 DROP TABLE threads;
+                 CREATE TABLE threads (
+                     id         INTEGER PRIMARY KEY,
+                     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+                     last_uid   INTEGER NOT NULL DEFAULT 0,
+                     last_epoch INTEGER,
+                     size       INTEGER NOT NULL DEFAULT 0,
+                     unseen     INTEGER NOT NULL DEFAULT 0
+                 );
+                 CREATE INDEX idx_threads_date
+                     ON threads(mailbox_id, last_epoch DESC, last_uid DESC);
+                 CREATE TABLE thread_links (
+                     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+                     message_id TEXT NOT NULL,
+                     thread_id  INTEGER NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+                     PRIMARY KEY (mailbox_id, message_id)
+                 );
+                 CREATE INDEX idx_thread_links_thread ON thread_links(thread_id);
+                 UPDATE envelopes SET thread_id = NULL;
+                 PRAGMA user_version = 1;",
+            )
+            .unwrap();
+        }
+
+        // C'est CETTE ouverture qui refusait de se faire.
+        let store = Store::open(&path).unwrap();
+        let lignes = unified(&store);
+        assert_eq!(lignes.len(), 1, "le fil est refait, et la liste le montre");
+        assert_eq!(lignes[0].thread_size, 2, "avec son compteur");
+
+        drop(store);
+        let _ = std::fs::remove_file(&path);
     }
 
     /// LE point du chantier de l'[ADR 0009] : un message reçu et la
