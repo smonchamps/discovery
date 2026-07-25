@@ -486,48 +486,69 @@ fn run_sync(
         .sync(&mut server, &mut store, account_id, MAILBOX)
         .map_err(|err| err.to_string())?;
 
-    // La passe d'en-têtes profite de la connexion déjà ouverte : c'est ce
-    // qui la rend gratuite en allers-retours. Son échec ne doit PAS faire
-    // échouer la synchronisation — le courrier est arrivé, c'est le seul
-    // résultat qui compte — mais il est rapporté, jamais avalé. Sans
-    // trace, une boîte qui refuse de se regrouper serait indiagnosticable.
-    let mut problems: Vec<String> = mail_core::backfill_thread_headers(
-        &mut server,
-        &mut store,
-        account_id,
-        MAILBOX,
-        backfill_horizon(),
-        THREAD_HEADER_BUDGET,
-    )
-    .err()
-    .map(|err| format!("conversations incomplètes : {err}"))
-    .into_iter()
-    .collect();
+    let mut problems: Vec<String> = Vec::new();
 
     // « Envoyés » : sans lui, un fil ne porte que la moitié reçue de
-    // l'échange, et le regroupement ne rapporte presque rien — mesuré sur
-    // la boîte réelle : 2 801 conversations pour 2 826 messages.
+    // l'échange. Mesuré sur la boîte réelle — 15 conversations de plus
+    // d'un message avant, 234 après.
     //
     // Ne devient sûr que parce que l'identité d'un message porte
     // désormais sa BOÎTE (ADR 0009, étape 4b) : sans cela, un UID de ce
     // dossier serait lu dans INBOX, et les UID repartant de 1 dans chaque
     // boîte, la collision serait la norme.
     //
-    // Best effort, comme les deux passes voisines : le courrier ENTRANT
-    // est le résultat qui compte, et un serveur sans dossier d'envois doit
+    // Best effort, comme les passes voisines : le courrier ENTRANT est le
+    // résultat qui compte, et un serveur sans dossier d'envois doit
     // continuer à fonctionner. L'échec est rapporté, jamais avalé — une
     // boîte qui refuserait de se regrouper serait sinon indiagnosticable.
-    match server.sent_folder_name() {
-        Ok(Some(sent)) => {
-            if let Err(reason) =
-                SyncEngine::default().sync(&mut server, &mut store, account_id, &sent)
+    let sent = match server.sent_folder_name() {
+        Ok(found) => {
+            if let Some(sent) = &found
+                && let Err(reason) =
+                    SyncEngine::default().sync(&mut server, &mut store, account_id, sent)
             {
                 problems.push(format!("dossier envoyés : {reason}"));
             }
+            found
         }
-        // Capacité absente, pas panne : rien à dire à l'utilisateur.
-        Ok(None) => {}
-        Err(reason) => problems.push(format!("dossier envoyés : {reason}")),
+        Err(reason) => {
+            problems.push(format!("dossier envoyés : {reason}"));
+            None
+        }
+    };
+
+    // La passe d'en-têtes profite de la connexion déjà ouverte : c'est ce
+    // qui la rend gratuite en allers-retours. Son échec ne doit PAS faire
+    // échouer la synchronisation — le courrier est arrivé, c'est le seul
+    // résultat qui compte — mais il est rapporté, jamais avalé. Sans
+    // trace, une boîte qui refuse de se regrouper serait indiagnosticable.
+    //
+    // Elle passe sur les DEUX boîtes. `References` porte la racine du fil
+    // là où `In-Reply-To` ne désigne que le parent immédiat : sans elle,
+    // une réponse dont le message d'origine a été archivé hors d'INBOX ne
+    // peut pas se raccrocher. L'ADR 0008 (mesure 2) est explicite —
+    // `References` est obligatoire, pas un raffinement.
+    //
+    // Le budget est PARTAGÉ, pas doublé : la seconde boîte ne consomme que
+    // ce que la première a laissé. Le coût réseau d'une synchronisation
+    // reste donc exactement celui d'avant, et la passe étant reprenable,
+    // le reliquat part au tour suivant.
+    let mut budget = THREAD_HEADER_BUDGET;
+    for boite in std::iter::once(MAILBOX).chain(sent.as_deref()) {
+        if budget == 0 {
+            break;
+        }
+        match mail_core::backfill_thread_headers(
+            &mut server,
+            &mut store,
+            account_id,
+            boite,
+            backfill_horizon(),
+            budget,
+        ) {
+            Ok(report) => budget = budget.saturating_sub(report.fetched),
+            Err(err) => problems.push(format!("conversations incomplètes : {err}")),
+        }
     }
 
     // Le tirage des brouillons profite lui aussi de la connexion ouverte.
