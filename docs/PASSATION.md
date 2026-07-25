@@ -72,33 +72,31 @@ Ordre conseillé — chaque étape se prouve avant la suivante :
 4a. ✅ **Découvrir le dossier des envois** : attribut `\Sent`, puis repli
    par nom complet décodé (ADR 0009 §7). `ImapServer::sent_folder_name`,
    cinq tests. **Inerte** : personne ne l'appelle encore.
-4b. ⬜ **L'identité doit porter la BOÎTE — avant tout câblage.**
-5. ⬜ **Re-mesurer** : recherche (le corpus grandit, cf. §3) et page de
-   liste. Puis **valider sur le terrain** : c'est le seul endroit où l'on
-   verra si le regroupement rapporte enfin.
+4b. ✅ **L'identité porte la BOÎTE** — `(compte, boîte, uid)` de
+   `UnifiedRow` jusqu'à `app.js`, en passant par les dix commandes qui
+   agissent sur un message. **« Envoyés » est synchronisé.**
+5. ⬜ **Re-mesurer et VALIDER SUR LE TERRAIN** : recherche (le corpus
+   grandit, cf. §3) et page de liste. C'est là qu'on verra si le
+   regroupement rapporte enfin.
 
-### ⚠️ Le blocage de l'étape 4b, à lire avant d'y toucher
+### Ce que l'étape 4b a appris
 
-Le câblage de la synchronisation était écrit et vert. Il a été **retiré**,
-parce qu'il introduisait un défaut de correction.
+Le câblage de la synchronisation avait été écrit, puis **retiré** : il
+introduisait un défaut de correction, et il a fallu changer l'invariant
+d'identité avant de le remettre.
 
-Un fil contient désormais nos réponses, et le bandeau de conversation les
-rend cliquables. Or les commandes qui agissent sur un message —
-`mark_seen`, `raw_body`, `message_attachments`, archivage, suppression —
-fixent toutes `MAILBOX = "INBOX"` en dur. Un UID de « Envoyés » y serait
-donc interprété dans INBOX. **Les UID sont par boîte et repartent de 1 :
-la collision est la norme, pas un cas limite.** Mauvais corps affiché,
-mauvais message marqué lu.
+Deux pièges valent d'être retenus.
 
-C'est l'**invariant §6.2 qui change** : l'identité d'un message devient
-`(compte, BOÎTE, uid)`. Elle doit traverser `UnifiedRow`, l'IPC et
-`app.js` avant qu'une deuxième boîte ne soit synchronisée. Le point de
-branchement est marqué dans `commands.rs`, avec sa raison.
-
-⚠️ **Tant que 4b n'est pas faite, aucun fil ne traverse deux boîtes en
-production.** Le noyau le permet, la plomberie est volontairement absente
-— et rien à l'écran ne change. Ne pas conclure de l'absence d'effet que le
-chantier a échoué.
+- **Le compilateur n'aide pas.** `mailbox` est une chaîne comme les
+  autres : un `MAILBOX` en dur oublié quelque part n'aurait rien cassé à
+  la compilation, il aurait simplement visé **un autre message**. Les
+  appelants ont été repris un par un, et un test tient l'invariant
+  (`chaque_ligne_dit_dans_quelle_boite_elle_habite`).
+- **Les E2E ont attrapé ce que Rust ne pouvait pas voir** : `MessageRow`,
+  le DTO envoyé à l'UI, ne portait pas la boîte — `message.mailbox` valait
+  `undefined` et chaque action partait sans elle. Compilation verte,
+  fenêtre cassée. C'est exactement ce pour quoi l'ADR 0005 impose de jouer
+  la suite avant chaque poussée.
 
 Le reste de ce §1 raconte le dernier chantier clos — contexte, pas action.
 
@@ -321,14 +319,15 @@ Faciles à casser **en silence**. À vérifier à chaque revue.
    perdu (l'intention est journalisée AVANT tout réseau) ; jamais d'envoi
    fantôme (un envoi interrompu part en **quarantaine** et n'est jamais
    renvoyé automatiquement). *« Le doublon est pire que le retard. »*
-2. **Identité message = `(account_id, uid)`** partout, jusque dans la
-   sélection de l'UI. Un UID seul n'identifie rien.
+2. **Identité message = `(account_id, boîte, uid)`** partout, jusque dans
+   la sélection de l'UI. Un UID seul n'identifie rien, et **le couple
+   compte + UID non plus** : les UID sont attribués par boîte et repartent
+   de 1, donc le message n°1 d'INBOX et le n°1 d'« Envoyés » sont deux
+   messages différents du même compte.
 
-   ⚠️ **Vrai tant qu'UNE SEULE boîte est synchronisée par compte** — ce
-   qui est le cas aujourd'hui. Dès que « Envoyés » le sera (étape 4b, §1),
-   l'identité devra devenir `(account_id, BOÎTE, uid)` : les UID sont par
-   boîte et repartent de 1, donc deux messages d'un même compte peuvent
-   parfaitement porter le numéro 1.
+   Le compilateur ne protège pas cet invariant — une boîte est une chaîne
+   comme une autre. C'est un test qui le tient
+   (`chaque_ligne_dit_dans_quelle_boite_elle_habite`).
 3. **Les index et agrégats vivent DANS la base**, entretenus dans la MÊME
    transaction que le message : index FTS5, table `threads`. Pas de second
    magasin, pas de réconciliation après crash.
