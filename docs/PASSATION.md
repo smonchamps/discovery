@@ -3,12 +3,12 @@
 > **Ce document est l'instruction de projet.** Il n'y a pas de `CLAUDE.md`
 > ici : tout ce qui ne se déduit pas du code est écrit là.
 >
-> État au **2026-07-25**, branche `main`. Arbre propre,
-> **294 tests Rust · 19/19 E2E · clippy muet**. Aucun code en vol.
+> État au **2026-07-25**, branche `main`, commit `7d6a60a`. Arbre propre,
+> **305 tests Rust · 19/19 E2E · clippy muet**. Aucun code en vol.
 >
-> **Phases 0 à 3 closes.** Le gate 3 est joué et sa revue écrite
-> ([PHASE3.md](PHASE3.md)). Ce qui reste tient dans deux arbitrages
-> produit et deux budgets non tenus, tous documentés au §8.
+> **Phases 0 à 3 closes**, gate 3 joué, chantier de l'ADR 0009 terminé et
+> validé sur le terrain. La suite est la **Phase 5** (durcissement et
+> bêta), choisie devant la Phase 4 (web).
 
 ---
 
@@ -35,129 +35,60 @@ commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
 
 ## 1. Où on en est, et quoi faire en premier
 
-**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.** La
-Phase 3 est close, gate joué et revue écrite ([PHASE3.md](PHASE3.md)).
+**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
-Les deux arbitrages qui restaient ont été **tranchés le 2026-07-25** :
+### 1.1 Ne rien engager avant que le terrain ait fini de parler
 
-1. **« Envoyés » est synchronisé** — décision prise, spécifiée par
-   [ADR 0009](adr/0009-portee-des-fils-au-compte.md) ;
-2. **Phase 5 (durcissement et bêta) avant Phase 4 (web)** — la bêta est ce
-   qui permettra de trancher la recherche sur de vraies boîtes plutôt que
-   sur un corpus synthétique.
+Le dernier chantier livré — la portée des fils au compte et la
+synchronisation d'« Envoyés » ([ADR 0009](adr/0009-portee-des-fils-au-compte.md))
+— **converge encore**. La passe d'en-têtes est bornée par cycle de
+synchronisation ; il restait ~1 650 messages dans l'horizon de 12 mois au
+moment d'écrire ces lignes.
 
-### Le chantier en cours : la portée des fils
+Sur la boîte réelle, les conversations de plus d'un message sont passées
+de **15 à 248**, et le chiffre monte encore à chaque synchronisation.
 
-**Spécifié, pas encore écrit.** Lire [ADR 0009](adr/0009-portee-des-fils-au-compte.md)
-en entier avant de commencer — il porte les six décisions de conception et
-les alternatives déjà écartées.
+**Demander d'abord à l'utilisateur de relancer le diagnostic** avant toute
+conclusion sur le regroupement :
 
-Le point dur, qui n'est pas là où on l'attend : synchroniser « Envoyés »
-est de la plomberie (le moteur est déjà paramétré par nom de boîte,
-`commands.rs` fixe simplement `MAILBOX = "INBOX"`). Mais les fils sont
-cloisonnés par boîte, donc **une réponse ne rejoindrait jamais le fil du
-message auquel elle répond**. Le chantier réel est le passage de la portée
-`mailbox_id` → `account_id`.
+```powershell
+cargo run -p mail-core --example diagnostic_fils --release -- "$env:APPDATA\dev.discovery.app\discovery.db"
+```
 
-Ordre conseillé — chaque étape se prouve avant la suivante :
+Les deux nombres qui parlent : `lus, avec References` (257 au dernier
+relevé, doit monter) et la distribution des tailles de conversations
+(242 fils de 2 à 5, 6 fils de 6 à 20).
 
-1. ✅ **Le noyau** : `attach` / `lookup` passent au compte, l'agrégat gagne
-   `last_mailbox_id` et `inbox_size`, `clear_mailbox` devient
-   `rebuild_account`.
-2. ✅ **Le schéma et sa migration** : les tables changent de clé, donc
-   `rebuild_if_outdated` les **supprime** et `THREADING_VERSION` passe à 2.
-3. ✅ **La requête de liste et son index PARTIEL** (ADR 0009 §4). Vérifié à
-   200 000 messages : `SCAN t USING INDEX idx_threads_date_globale`, page
-   à 0,71 ms — le gain du gate 3 est préservé.
-4a. ✅ **Découvrir le dossier des envois** : attribut `\Sent`, puis repli
-   par nom complet décodé (ADR 0009 §7). `ImapServer::sent_folder_name`,
-   cinq tests. **Inerte** : personne ne l'appelle encore.
-4b. ✅ **L'identité porte la BOÎTE** — `(compte, boîte, uid)` de
-   `UnifiedRow` jusqu'à `app.js`, en passant par les dix commandes qui
-   agissent sur un message. **« Envoyés » est synchronisé.**
-5. ✅ **Re-mesuré et validé sur le terrain** ([PHASE3.md](PHASE3.md)
-   §2 bis). Aucune régression. L'index partiel est enfin éprouvé sur un
-   décor à deux boîtes par compte : **80 000 fils invisibles coûtent
-   zéro**. Et sur la boîte réelle, les conversations de plus d'un message
-   passent de **15 à 248**.
+### 1.2 Les deux budgets non tenus, avec leur remède
 
-**Le chantier de l'ADR 0009 est clos.** Ce qui reste est au §8.
+Aucun n'est un défaut ouvert : les deux sont mesurés, expliqués, et
+disposent d'un levier connu. Ils sont détaillés au §8 et dans
+[PHASE3.md](PHASE3.md) §2 et §2 bis.
 
-### Ce que l'étape 4b a appris
+| Poste | Mesure | Levier |
+|---|---|---|
+| Adoption d'une base héritée | 3,7 s à 200 000 messages, **une seule fois** | la rendre visible et interruptible (précédent : ADR 0007) |
+| Recherche | 118–208 ms à l'échelle du gate 3 | tri par date (×2, mesuré) ou `prefix=` |
 
-Le câblage de la synchronisation avait été écrit, puis **retiré** : il
-introduisait un défaut de correction, et il a fallu changer l'invariant
-d'identité avant de le remettre.
+**La recherche est confortable en usage réel** : le coût unitaire est de
+~2,9 µs par correspondance, donc sur une boîte de 7 500 messages aucune
+requête ne peut dépasser ~35 ms. Le plafond des ~35 000 correspondances
+n'est atteignable qu'à l'échelle synthétique du gate 3.
 
-Deux pièges valent d'être retenus.
+### 1.3 Les arbitrages ouverts — ils appartiennent à l'utilisateur
 
-- **Le compilateur n'aide pas.** `mailbox` est une chaîne comme les
-  autres : un `MAILBOX` en dur oublié quelque part n'aurait rien cassé à
-  la compilation, il aurait simplement visé **un autre message**. Les
-  appelants ont été repris un par un, et un test tient l'invariant
-  (`chaque_ligne_dit_dans_quelle_boite_elle_habite`).
-- **Les E2E ont attrapé ce que Rust ne pouvait pas voir** : `MessageRow`,
-  le DTO envoyé à l'UI, ne portait pas la boîte — `message.mailbox` valait
-  `undefined` et chaque action partait sans elle. Compilation verte,
-  fenêtre cassée. C'est exactement ce pour quoi l'ADR 0005 impose de jouer
-  la suite avant chaque poussée.
+- **Synchroniser l'archive ?** Les ancres « FANTÔME » des plus gros fils
+  montrent que des messages d'origine restent hors de la base, archivés
+  hors d'INBOX. Seule l'archive les ramènerait, au prix du disque et du
+  plafond de recherche. **Ne pas engager avant que la passe d'en-têtes
+  ait fini** (§1.1) : le chiffre bougera encore.
+- **Quand ouvrir la Phase 5**, et avec quel périmètre de durcissement.
 
-Le reste de ce §1 raconte le dernier chantier clos — contexte, pas action.
+### 1.4 Ensuite — la Phase 5
 
-### 1.1 Ce que la mesure a établi (2026-07-25)
-
-Le diagnostic a tranché : **le tirage fonctionne**. Sur la base réelle, un
-brouillon « miroir (remplaçable) » portait un `uid distant` récent (478),
-rapatrié du webmail.
-
-Il a aussi désigné la vraie cause du symptôme, et ce n'était pas un défaut
-de synchronisation : les deux versions étaient **indiscernables à
-l'écran**. Sujet 14 car. et destinataire 22 car. des deux côtés, seul le
-corps différait — 28 contre 48 — et le bandeau ne l'affichait pas.
-L'hypothèse « la consigne de test était fausse » était la bonne.
-
-*Note incidente, non conclue :* 477 et 478 **coexistaient** côté serveur,
-zéro tombstone. Le module suppose pourtant qu'éditer un brouillon ailleurs
-**remplace** le message (ancien UID expurgé, nouveau créé). Soit Gmail ne
-remplace pas toujours, soit un brouillon neuf avait été commencé côté web.
-Les données ne départagent pas — à garder en tête.
-
-### 1.2 Ce qui a été livré en réponse
-
-1. **L'extrait du corps dans le bandeau** — le signal qui manquait. Prouvé
-   par un test E2E qui crée deux brouillons de même sujet et de même
-   destinataire et exige qu'ils se distinguent. Sans lui, toute consigne de
-   validation portant sur les brouillons est invérifiable.
-2. **Un trou latent, trouvé en enquêtant.** Sur le chemin du
-   *remplacement* — celui que le module documente comme normal — le tirage
-   **supprime** la ligne que le composeur croit modifier. La détection de
-   conflit ne comparait que des horodatages : il n'en restait qu'un, elle
-   se taisait. Voir l'enseignement au §9.
-3. **La poussée n'efface plus l'avertissement.** `pushDrafts` revenait du
-   réseau une seconde plus tard et posait son bilan par-dessus. Le
-   brouillon conservé à part étant neuf, donc toujours à pousser, la
-   collision était **certaine**, pas fortuite.
-
-### 1.3 Validé sur le terrain (2026-07-25)
-
-Les trois points sont vérifiés sur les vrais comptes. L'extrait se
-constate directement : les deux brouillons gmail, jusque-là identiques à
-l'écran, portent désormais des textes distincts.
-
-Le chemin du remplacement ne s'est pas produit lors du run mesuré et il
-est difficile à forcer via Gmail. **Le parcours déterministe qui l'exerce
-sans réseau — à réutiliser :**
-
-> ouvrir un brouillon (« Reprendre »), **laisser le composeur ouvert**,
-> cliquer « Supprimer » sur cette même ligne dans le bandeau, puis fermer
-> le composeur.
-
-La ligne rouge « ce brouillon avait changé ailleurs… » apparaît **et
-reste** — c'est le point 3 qui la fait rester.
-
-### 1.4 Ensuite — le gate 3, puis la clôture
-
-Voir §8. C'est tout ce qui reste avant de fermer la Phase 3.
+Durcissement et bêta ([PLAN.md](PLAN.md) §4). C'est la bêta qui permettra
+de trancher la recherche sur de vraies boîtes plutôt que sur un corpus
+synthétique — c'est exactement pourquoi elle passe devant la Phase 4.
 
 ---
 
@@ -188,10 +119,9 @@ avis**. Règle de départage : l'alternative doit battre l'hypothèse
   dans les crates, `anyhow` dans les apps.
 
 ### 2.5 Genchi genbutsu — aller voir sur le terrain
-**C'est là que les défauts se trouvent.** Voir §9 : sept chantiers, sept
-défauts trouvés par la validation terrain, **aucun par la suite de
-tests**. Un incrément non validé sur un vrai compte n'est pas livré. Les
-retours se corrigent **le jour même**.
+**C'est là que les défauts se trouvent.** Voir §9. Un incrément non validé
+sur un vrai compte n'est pas livré. Les retours se corrigent **le jour
+même**.
 
 ### 2.6 Refus de périmètre explicites
 Quand une fonctionnalité serait un fantôme (résultat invisible, brique
@@ -208,6 +138,10 @@ comportement par défaut : chaque ajout se paie en vitesse et en fiabilité.
 n'est pas cosmétique : c'est la langue du client cible et du Chef
 Ingénieur. Format `type: description` (`feat`, `fix`, `refactor`, `docs`,
 `test`, `chore`, `perf`, `ci`). **Jamais de `Co-Authored-By`.**
+
+⚠️ **Les messages de commit s'écrivent SANS ACCENTS** — c'est la
+convention observable dans tout l'historique. Le corps du message, lui,
+porte les chiffres et le raisonnement : ils valent mieux là que nulle part.
 
 ---
 
@@ -230,33 +164,28 @@ intégrée, pas de plugins, pas de mobile.
 
 ### Budgets — ce sont des gates BLOQUANTS
 
-Mesurés au **gate 3** — 3 comptes, 200 000 messages
-([PHASE3.md](PHASE3.md) §2) :
+Mesurés au **gate 3** (3 comptes, 200 000 messages) puis re-mesurés après
+l'ADR 0009 — [PHASE3.md](PHASE3.md) §2 et §2 bis :
 
 | Métrique | Cible | Dernière mesure |
 |---|---|---|
 | Démarrage à froid | < 1 s | 360–389 ms ✅ |
-| Ouverture d'un message | < 50 ms | 0,09–0,16 ms ✅ |
-| Page de liste | < 100 ms | 12,4 ms ✅ |
-| RAM (working set **privé**) | < 200 Mo | 92,2 Mo ✅ |
+| Ouverture d'un message | < 50 ms | 0,09–0,15 ms ✅ |
+| Page de liste | < 100 ms | 0,71 ms ✅ |
+| RAM (working set **privé**) | < 200 Mo | 92,2 Mo · 7 processus ✅ |
 | Taille de la base | < 1 Go | 778 Mo / 200 000 msg + 16 002 corps ✅ |
 | Perte de données | 0, prouvé par crash-récup | ✅ |
 | **Recherche** | < 100 ms | **118–208 ms ❌** |
-| **Adoption d'une base héritée** | < 1 s | **4,22 s ❌** (une seule fois) |
-
-La recherche est le seul poste non tenu, sur un corpus synthétique dont la
-sélectivité est reconnue extrême. Le chiffre transférable est le **coût
-unitaire : ~2,9 µs par correspondance**, soit un plafond vers **35 000
-correspondances**. Deux leviers mesurés en réserve (tri par date, `prefix=`)
-— arbitrage reporté en bêta, PHASE3.md §4.
-
-⚠️ **Les outils de mesure se vérifient comme le reste.** Deux d'entre eux
-mentaient au gate 3 : `mesure-ram.ps1` sommait toutes les instances de
-l'application, `mesure.mjs` n'isolait pas son profil WebView2. Corrigés,
-mais le réflexe reste à avoir.
+| **Adoption d'une base héritée** | < 1 s | **3,7 s ❌** (une seule fois) |
 
 Un budget dépassé = **on arrête la ligne** (andon). Pas de « livrer puis
 optimiser » : la performance est une contrainte de conception.
+
+⚠️ **Les outils de mesure se vérifient comme le reste.** Trois d'entre eux
+mentaient au gate 3 : `mesure-ram.ps1` sommait toutes les instances de
+l'application, `mesure.mjs` n'isolait pas son profil WebView2, et le décor
+de mesure n'exerçait pas l'index partiel qu'il était censé valider.
+Corrigés — mais le réflexe reste à avoir.
 
 ---
 
@@ -289,9 +218,9 @@ une base en mémoire.
 
 **Un motif récurrent, à imiter.** La décision est **pure et testable**,
 l'exécution (I/O) est ailleurs : `thread::plan` pour les conversations,
-`plan_draft_pull` pour les brouillons, `notify::arrivals_to_notify` pour
-les bulles. C'est ce qui permet de tester les scénarios du terrain sans
-réseau.
+`plan_draft_pull` pour les brouillons, `convert::sent_folder` pour la
+découverte du dossier des envois, `notify::arrivals_to_notify` pour les
+bulles. C'est ce qui permet de tester les scénarios du terrain sans réseau.
 
 ---
 
@@ -306,8 +235,8 @@ réseau.
 | [0005](adr/0005-gate-e2e-hors-ci-hebergee.md) | E2E hors CI hébergée | Un runner GitHub ne peut pas ouvrir WebView2 — d'où le hook `pre-push` |
 | [0006](adr/0006-microsoft-imap-oauth2.md) | Microsoft via IMAP+OAuth2, pas Graph | Graph reste le plan B, avec ses signaux de bascule |
 | [0007](adr/0007-rattrapage-des-corps.md) | Rattrapage des corps borné (12 mois) | Sans lui, la recherche ne portait que sur les sujets |
-| [0008](adr/0008-regroupement-en-conversations.md) | Conversations = union-find sur en-têtes RFC 5322 | **Jamais de repli par sujet** ; agrégat matérialisé recalculé, jamais incrémenté |
-| [0009](adr/0009-portee-des-fils-au-compte.md) | Portée d'un fil = le **compte**, pas la boîte | Révise 0008 §3 et §4 ; « Envoyés » synchronisé ; index **partiel** sinon le gate 3 est perdu |
+| [0008](adr/0008-regroupement-en-conversations.md) | Conversations = union-find sur en-têtes RFC 5322 | **Jamais de repli par sujet** ; agrégat recalculé, jamais incrémenté ; un identifiant exige une arobase |
+| [0009](adr/0009-portee-des-fils-au-compte.md) | Portée d'un fil = le **compte** | Révise 0008 §3 et §4 ; « Envoyés » synchronisé ; **index partiel** sinon le gate 3 est perdu |
 
 Décisions Phase 0 ([PHASE0.md](PHASE0.md) §2) : SQLite local ; CONDSTORE
 (Gmail n'expose pas QRESYNC) ; parsing MIME par `mail-parser` ; OAuth2 PKCE
@@ -324,7 +253,7 @@ Faciles à casser **en silence**. À vérifier à chaque revue.
    fantôme (un envoi interrompu part en **quarantaine** et n'est jamais
    renvoyé automatiquement). *« Le doublon est pire que le retard. »*
 2. **Identité message = `(account_id, boîte, uid)`** partout, jusque dans
-   la sélection de l'UI. Un UID seul n'identifie rien, et **le couple
+   la sélection de l'UI. Un UID seul n'identifie rien, **et le couple
    compte + UID non plus** : les UID sont attribués par boîte et repartent
    de 1, donc le message n°1 d'INBOX et le n°1 d'« Envoyés » sont deux
    messages différents du même compte.
@@ -340,11 +269,18 @@ Faciles à casser **en silence**. À vérifier à chaque revue.
    par `textContent`, **jamais** `innerHTML`.
 5. **Credentials jamais en clair** : Credential Manager Windows via
    `keyring`. Aucun secret dans le code ni les logs.
-6. **UIDVALIDITY** : si elle change, on repart de zéro pour cette boîte.
-   Règle brouillons : *« un doublon est acceptable, supprimer le mauvais
-   UID jamais »*.
-7. **Une fonctionnalité neuve doit ADOPTER les données anciennes** — voir
-   §9 : le piège s'est présenté trois fois.
+6. **UIDVALIDITY** : si elle change, on repart de zéro pour cette boîte —
+   et comme un fil peut désormais réunir deux boîtes, c'est **tout le
+   compte** qui refait ses fils (`thread::rebuild_account`). Règle
+   brouillons : *« un doublon est acceptable, supprimer le mauvais UID
+   jamais »*.
+7. **Une fonctionnalité neuve doit ADOPTER les données anciennes** — le
+   piège s'est présenté **quatre fois** (§9), la dernière sur le SCHÉMA et
+   non sur les données.
+8. **Les diagnostics ne divulguent rien** : ni sujet, ni expéditeur, ni
+   contenu, et les identifiants techniques sont **masqués** — on n'en
+   montre que la forme. Un diagnostic qui fuit est un diagnostic qu'on
+   n'ose plus coller dans une conversation.
 
 ---
 
@@ -354,6 +290,7 @@ Windows 11. Deux shells : **PowerShell 5.1** (principal) et **Bash** (Git
 Bash). Syntaxes différentes.
 
 ### 7.1 Pièges qui coûtent cher
+
 - **PowerShell 5.1 n'a pas `&&`.** `cd e2e && npm test` échoue → deux
   lignes, ou passer par Bash.
 - **Ne JAMAIS utiliser `Get-Content`/`Set-Content` sur les sources** :
@@ -364,18 +301,20 @@ Bash). Syntaxes différentes.
   est empaquetée MSIX : le shell qu'elle lance lit un `%APPDATA%`
   **redirigé**, et `%APPDATA%\dev.discovery.app\discovery.db` y résout vers
   une copie privée périmée
-  (`%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\`). Mesuré le
-  2026-07-25 : cette copie datait du 12/07 et n'avait même pas de table
-  `drafts`. La vue est *fusionnée*, pas gelée — les fichiers voisins
-  (`discovery-banc.db`) apparaissent normalement, seul `discovery.db` est
-  masqué, ce qui rend le piège discret.
+  (`%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\`). La vue est
+  *fusionnée*, pas gelée — les fichiers voisins apparaissent normalement,
+  seul `discovery.db` est masqué, ce qui rend le piège discret.
 
   **Conséquence :** les diagnostics du §9 doivent être lancés **par
   l'utilisateur**, qui colle la sortie. Corollaire de méthode : annoncer
   d'abord ce qu'on s'attend à y lire, pour que l'aller-retour soit une
   mesure et non une collecte.
+- **Un commit ne peut pas être chaîné avec `git --no-pager …`** : le hook
+  `block-no-verify` reconnaît le préfixe `--no-` et bloque. Séparer les
+  commandes.
 
 ### 7.2 Les notifications exigent l'application INSTALLÉE
+
 `tauri-winrt-notification` exige une **identité applicative
 (AppUserModelID)**, qui n'existe que si un **raccourci du menu Démarrer**
 la porte. Donc :
@@ -394,105 +333,108 @@ produit un faux négatif pendant une validation.
 ### 7.3 Commandes
 
 ```bash
-cargo test -p mail-core                       # noyau
-cargo test --workspace                        # tout
-cargo build -p discovery-desktop --release    # binaire
-cargo run -p discovery-desktop --release      # lancer (sans notifications)
+cargo test --workspace --all-targets           # tout, EXEMPLES COMPRIS
+cargo test --workspace --doc                   # les doc-tests, exclus ci-dessus
+cargo build -p discovery-desktop --release     # binaire
+cargo run -p discovery-desktop --release       # lancer (sans notifications)
 
 cargo fmt
 cargo clippy --all-targets -- -D warnings
 
 cd e2e
-npm test                                      # PowerShell : deux lignes
+npm test                                       # PowerShell : deux lignes
 
-# Jeu d'essai (corps + pièces jointes + conversations)
-cargo run -p mail-core --example seed_inbox -- <db> <count> <email>
+# Jeu d'essai — <db> <nombre> <email> [corps] [ko/corps] [boîte]
+cargo run -p mail-core --example seed_inbox --release -- <db> 33000 un@exemple.fr 0 0 INBOX
 
 # Installateur (nécessaire pour les notifications)
 cd apps/desktop
 cargo tauri build
 ```
 
-Mesures : `node e2e/mesure.mjs` (démarrage + page de liste),
-`e2e/mesure-ram.ps1` (working set privé).
+Mesures : `node e2e/mesure.mjs` (démarrage, page, RAM — paramétrable par
+`MESURE_DB`, `MESURE_COMPTES`, `MESURE_REUTILISER`),
+`e2e/mesure-ram.ps1 -AppPid <id> -Profil <dossier>`.
+
+⚠️ **La base de mesure se place HORS du dépôt** : celui-ci vit dans
+OneDrive, dont la synchronisation perturberait la mesure en cours.
 
 ### 7.4 Le gate pré-push
+
 `.githooks/pre-push` (via `core.hooksPath`) rejoue, dans l'ordre : `fmt` →
-`clippy -D warnings` → `cargo test --workspace` → `npm test` dans `e2e/`.
+`clippy -D warnings` → `cargo test --workspace --all-targets` →
+`cargo test --workspace --doc` → `npm test` dans `e2e/`.
+
 Il existe parce qu'un runner GitHub **ne peut pas** ouvrir WebView2
 (ADR 0005) : les E2E ne tournent que depuis cette machine.
+
+**`--all-targets` n'est pas décoratif** : sans lui, cargo ignore les tests
+des EXEMPLES — or les diagnostics du terrain vivent là et portent leurs
+propres tests. Deux d'entre eux ont été écrits, verts, et n'auraient jamais
+été exécutés.
 
 Il a déjà rattrapé des livraisons annoncées vertes qui ne l'étaient pas.
 `--no-verify` existe ; s'en servir est une décision, pas un raccourci.
 
 ### 7.5 Déterminisme des E2E
+
 Étanches par construction : base SQLite jetable (`DISCOVERY_DB_PATH`),
-comptes factices aux jetons invalides (`DISCOVERY_E2E_ACCOUNT`), et
-`GOOGLE_CLIENT_ID`/`SECRET` **retirés** de l'environnement du process.
-WebView2 est piloté via `--remote-debugging-port=9222` + `connectOverCDP`.
+comptes factices aux jetons invalides (`DISCOVERY_E2E_ACCOUNT`),
+`GOOGLE_CLIENT_ID`/`SECRET` **retirés** de l'environnement, et un **profil
+WebView2 dédié** — sans lui, une fenêtre déjà ouverte par l'utilisateur
+fait ignorer `--remote-debugging-port` et le port CDP ne s'ouvre jamais.
 
 **Conséquence à garder en tête :** les E2E ne parlent à aucun serveur. Tout
-ce qui touche au réseau réel — OAuth, tirage des brouillons, passes de
-fond — n'est couvert que par des tests unitaires sur la partie pure. Le
-chemin réseau complet ne se prouve que sur le terrain.
+ce qui touche au réseau réel — OAuth, tirage des brouillons, dossier des
+envois, passes de fond — n'est couvert que par des tests unitaires sur la
+partie pure. Le chemin réseau complet ne se prouve que sur le terrain.
 
 ---
 
-## 8. Ce qui reste — après la Phase 3
+## 8. Ce qui reste
 
 Phases 0 à 3 : **closes** ([PHASE0](PHASE0.md), [PHASE1](PHASE1.md),
-[PHASE2](PHASE2.md), [PHASE3](PHASE3.md)).
+[PHASE2](PHASE2.md), [PHASE3](PHASE3.md)). Le chantier de l'ADR 0009 est
+clos et validé sur le terrain.
 
-Le gate 3 a été joué : 3 comptes, 200 000 messages. **Six budgets sur huit
-tenus**, et les deux défauts qu'il a trouvés sont corrigés — le tri
-matérialisé de la boîte unifiée (987 ms → 12,4 ms) et le coût de
-l'adoption des fils (11,1 s → 4,2 s). Tous deux étaient invisibles à
-l'échelle du terrain, et aucun test fonctionnel ne pouvait les voir.
+### Les deux budgets non tenus
 
-### Les deux budgets non tenus, avec leur remède
+**Adoption d'une base héritée — 3,7 s à 200 000 messages.** Ne se paie
+qu'une fois ; le démarrage courant reste à **2,8 ms**. Deux correctifs
+mesurés l'ont déjà ramenée de 11,1 s (un `Vec::contains` quadratique, puis
+l'absence de `prepare_cached` sur ~1 million de requêtes). Le reste est le
+coût intrinsèque d'un union-find message par message.
 
-| Poste | Mesure | Levier connu |
-|---|---|---|
-| Recherche | 118–208 ms | tri par date (×2, mesuré) ou `prefix=` (−73 ms) — arbitrage produit reporté en bêta |
-| Adoption d'une base héritée | 4,22 s, **une seule fois** | la rendre visible et interruptible, comme le rattrapage des corps (ADR 0007) |
+*Remède, avec précédent dans le projet :* la rendre **visible et
+interruptible**, comme le rattrapage des corps (ADR 0007). Une migration
+qui s'annonce vaut mieux qu'une fenêtre figée.
 
-Le démarrage courant, lui, reste à **2,5 ms** : c'est la migration qui
-coûte, pas l'ouverture.
+*Ce qu'il ne faut PAS faire :* adopter par tranches à chaque démarrage. La
+liste part de `threads`, donc une adoption partielle afficherait une boîte
+à moitié vide — le piège du §9.
 
-### Ce qu'il ne faut PAS faire pour l'adoption
-Adopter par tranches à chaque démarrage. La liste part de `threads` : une
-adoption partielle afficherait une boîte à moitié vide — le piège du §9,
-la fonctionnalité fausse dès la première ouverture.
+**Recherche — 118 à 208 ms sur corpus synthétique.** Le poste dominant est
+le classement BM25 sur **toutes** les correspondances, devant l'expansion
+de préfixe. Deux leviers chiffrés : le **tri par date** (×2, quatre
+requêtes sur six repassent sous le budget) et l'option **`prefix=`** de
+FTS5 (−73 ms d'expansion). Le premier est un arbitrage produit — récence
+contre pertinence — que le Chef Ingénieur a choisi de **trancher en bêta**,
+sur de vraies boîtes.
 
-### Avant d'ouvrir la Phase 4
-Deux arbitrages appartiennent au Chef Ingénieur :
+### Reports assumés
 
-1. la **synchronisation du dossier « Envoyés »** — voir ci-dessous ;
-2. l'**ordre entre Phase 4 (web) et Phase 5 (durcissement, bêta)**, la
-   bêta étant précisément ce qui permettrait de trancher la recherche sur
-   de vraies boîtes.
-
-### Décision produit en suspens (appartient à l'utilisateur)
-Le regroupement en conversations est correct mais **rapporte peu** sur la
-boîte réelle : 40 messages regroupés en 15 conversations sur 2 813. La
-cause est une décision assumée (ADR 0008 §3) — *on ne regroupe que ce que
-la boîte contient*, et les réponses de l'utilisateur vivent dans
-« Envoyés », que la v1 ne synchronise pas.
-
-L'utilisateur avait tranché : **on décide après le gate 3**, pour connaître
-le coût à l'échelle avant d'engager un second dossier. **Le gate est joué,
-le coût est connu** ([PHASE3.md](PHASE3.md) §5) :
-
-- la RAM ne dépend pas du volume (+2,6 Mo pour ×4 de messages) ;
-- le coût d'une page ne dépend plus de la taille de la boîte ;
-- le disque tient avec 2,7× la charge modélisée ;
-- **mais la recherche se paie au nombre de correspondances** : ajouter
-  « Envoyés » agrandit le corpus, donc rapproche le plafond des 35 000
-  correspondances.
-
-La décision est donc **ouverte, et elle attend l'utilisateur**.
+- **Défilement profond** : `OFFSET` parcourt puis jette *n* lignes, d'où
+  ~230 ms à 150 000 conversations. Seule une pagination **par curseur**
+  l'effacerait, au prix de l'API du store et de la liste virtualisée.
+- **Envoi de pièces jointes** (lecture seule en v1).
+- **Filtre « a une pièce jointe »**, **`to:` dans la recherche**.
+- **Synchronisation de l'archive** — voir §1.3.
+- **CONDSTORE réel, IDLE/push** — reports de Phase 1 inchangés.
+- **Dossier CASA Google** — côté produit-owner, chemin critique du
+  lancement public.
 
 ### Dette connue, non corrigée
+
 `apps/desktop/ui/style.css` : la règle d'élément `header { display: flex }`
 (destinée à la barre du haut) s'applique **aussi** à `#detail-header`, qui
 est un `<header>`. Tout enfant pleine largeur qu'on y ajoute devient un
@@ -501,97 +443,127 @@ conversation a dû être sorti de `#detail-header` pour cette raison.
 `#attachments` et `#detail-note` y sont toujours et ne fonctionnent que
 par chance.
 
+### La Phase 5
+
+Durcissement et bêta ([PLAN.md](PLAN.md) §4) : installeur et mise à jour
+signée, télémétrie de crash opt-in, bêta fermée 20-50 utilisateurs, kaizen
+hebdomadaire sur les frictions **observées**. Gate 5 : deux semaines sans
+défaut critique.
+
 ---
 
-## 9. Enseignements de la Phase 3 — à lire avant de reprendre
+## 9. Enseignements — à lire avant de reprendre
 
 Ils ont coûté cher. Les ignorer les fera repayer.
 
 ### Les défauts se trouvent sur le terrain, pas dans les tests
-**Sept chantiers, sept défauts trouvés par la validation terrain, aucun
-par la suite de tests.** Et jamais des erreurs de logique : toujours des
-**hypothèses fausses sur l'environnement ou sur l'usage** — migration de
-données oubliée, contrainte de plateforme, principe du produit non
-appliqué, deux écrivains sur une même ressource. Une suite de tests ne
-peut pas les attraper.
+
+Jamais des erreurs de logique : toujours des **hypothèses fausses sur
+l'environnement ou sur l'usage**. Une suite de tests ne peut pas les
+attraper, parce qu'elle partage l'hypothèse.
 
 ### Une fonctionnalité neuve doit ADOPTER les données anciennes
-Le piège s'est présenté **trois fois** : pièces jointes (métadonnées
-écrites par le seul chemin neuf), conversations (`thread_id` NULL → liste
-vide), en-têtes de fil. À chaque fois la fonctionnalité est **fausse dès
-la première ouverture, et pour toujours**. Écrire la migration **en même
-temps** que la fonctionnalité, et la prouver par un test qui rembobine la
-base à son état antérieur.
 
-### Mesurer avant de corriger
-Sur le faux regroupement (43 messages étrangers dans un fil), mes trois
-hypothèses étaient fausses ; le diagnostic a désigné la cause en une
-commande. Trois outils existent, même modèle — lecture seule, **aucun
-sujet, aucun expéditeur, aucun contenu**, seulement des formes et des
-compteurs :
+Le piège s'est présenté **quatre fois** : pièces jointes, conversations,
+en-têtes de fil, puis — la dernière — le **schéma** lui-même.
+`CREATE TABLE IF NOT EXISTS` ne touche pas une table existante, mais
+l'index partiel, lui, était bien créé : il échouait sur une colonne
+absente et **l'application ne démarrait plus**. Aucun test ne pouvait le
+voir : ils créent tous une base neuve.
+
+**Écrire la migration en même temps que la fonctionnalité, et la prouver
+par un test qui rembobine une vraie base de fichier à son état antérieur.**
+
+### Mesurer avant de corriger — y compris ses propres hypothèses
+
+Sur le faux regroupement (43 messages étrangers), trois hypothèses étaient
+fausses ; le diagnostic a désigné la cause en une commande. Sur le coût de
+l'adoption, le `Vec::contains` quadratique a été annoncé comme cause
+dominante **avant** d'être mesuré : il ne valait qu'un quart du coût, le
+reste étant l'absence de cache de requêtes.
+
+Six outils existent, même modèle — lecture seule, **aucun sujet, aucun
+expéditeur, aucun contenu** :
 
 | Outil | Répond à |
 |---|---|
-| `diagnostic_index.rs` | les messages sont-ils dans l'index de recherche ? |
-| `diagnostic_fils.rs` | quel identifiant réunit les messages d'un fil ? |
-| `diagnostic_brouillons.rs` | le tirage des brouillons fait-il son travail ? |
+| `diagnostic_index` | les messages sont-ils dans l'index de recherche ? |
+| `diagnostic_fils` | quel identifiant réunit les messages d'un fil ? |
+| `diagnostic_brouillons` | le tirage des brouillons fait-il son travail ? |
+| `banc_page_liste` | le coût d'une page dépend-il de la taille de la boîte ? |
+| `banc_migration_fils` | que coûte l'adoption d'une base héritée ? |
+| `banc_recherche` | recherche et ouverture tiennent-elles leurs budgets ? |
 
 En écrire un nouveau coûte 40 lignes et fait gagner un aller-retour.
 
-### ⚠️ Vérifier qu'un signal demandé est OBSERVABLE
-**Cinq consignes de validation envoyées à l'utilisateur étaient fausses** :
-elles lui demandaient de constater un signal que l'interface ne produit
-pas — message de démarrage écrasé par le compteur de liste, changement
-invisible dans un bandeau qui n'affiche pas le champ modifié. Cela lui
-coûte du temps et pollue le diagnostic.
-
-**Avant d'envoyer un parcours de validation : vérifier dans le code que
-chaque signal demandé est réellement affiché, et qu'il n'est pas écrasé
-une ligne plus loin.**
-
-### Un statut posé sans regarder en efface un autre
-Deux fois : le bandeau de confirmation d'action écrasé par le message
-suivant, et l'avertissement de conflit de brouillon écrasé par
-« brouillon conservé ». Quand une fonction pose un message d'état,
-l'appelant doit **décider** du sien à partir de son bilan, jamais en poser
-un aveuglément.
-
-### Ne jamais avaler une erreur
-`let _ = …show()` sur les notifications a protégé la synchro et détruit la
-preuve : le symptôme était « rien ne se passe », indiagnosticable.
-Absorber un échec est une chose, en effacer la trace en est une autre. Les
-échecs non bloquants remontent dans le bilan de synchro.
-
-### Ajouter un écrivain exige une coordination explicite
-Le tirage des brouillons a été branché sur une ressource que le composeur
-écrivait déjà. Résultat : la copie tenue en mémoire écrasait la version
-venue d'ailleurs. Corrigé par détection de conflit — l'éditeur renvoie
-l'horodatage qu'il croit modifier, et son texte est **conservé à part**
-plutôt qu'écrasé.
-
 ### Un test vert peut encoder un modèle FAUX de l'autre écrivain
 
-Cette détection était éprouvée en simulant l'autre écrivain par une
-**réécriture en place**. Or le vrai autre écrivain — le tirage — ne
-réécrit pas : il **retire** le miroir périmé et importe la version fraîche
-sous un nouvel identifiant (`plan_draft_pull`). La ligne que le composeur
-croyait modifier ayant disparu, la détection ne comparait plus qu'un seul
-horodatage, et se taisait. Test vert, terrain muet.
+La détection de conflit des brouillons était éprouvée en simulant le
+tirage par une *réécriture en place*. Le vrai tirage **remplace** : il
+retire la ligne et en importe une neuve. La ligne visée ayant disparu, la
+détection ne comparait plus qu'un horodatage et se taisait.
 
-Deux règles en découlent :
+**Simuler l'autre écrivain en appelant SON VRAI CHEMIN**, jamais par une
+approximation qui lui ressemble.
 
-1. simuler l'autre écrivain en **appelant son vrai chemin** — ici
-   `plan_draft_pull`, puis `drop_stale_draft`/`import_remote_draft` — et
-   jamais par une approximation qui lui ressemble ;
-2. se méfier des défauts que le hasard masque. SQLite attribue
-   `max(rowid) + 1` : quand le brouillon édité était le dernier, l'import
-   reprenait l'identifiant qu'on venait de libérer, la ligne réapparaissait
-   sous le composeur et la détection retombait sur ses pieds **par
-   accident**. Un défaut qui ne se manifeste qu'une fois sur deux est un
-   défaut qu'on croit corrigé.
+### Une promesse d'index ne vaut que pour la requête qu'on avait en tête
 
-Corollaire du §2.5, vérifié une fois de plus : c'est le terrain qui a
-signalé « le message rouge ne s'affiche pas », et aucun des 292 tests.
+L'ADR 0008 §4 raisonnait sur une boîte ; le produit interroge la boîte
+unifiée. SQLite matérialisait le tri de 160 000 conversations à chaque
+page — 987 ms, invisible à l'échelle du terrain.
+
+**Un test de PLAN D'EXÉCUTION attrape cette classe de régression** : une
+durée dépend de la machine, un plan non.
+
+### Un décor de mesure peut ne jamais exercer ce qu'on croit valider
+
+L'index partiel `WHERE inbox_size > 0` a vécu plusieurs jours sans qu'un
+seul fil ne soit jamais écarté : le décor du gate 3 n'avait qu'une boîte
+par compte. **Vérifier que le décor produit la condition que le code
+prétend traiter**, sinon la mesure ne prouve rien.
+
+### Un test qui ne tourne pas n'est pas un test
+
+`cargo test --workspace` ignore les tests des exemples. Deux tests écrits
+et verts n'auraient jamais été exécutés par le gate. Voir §7.4.
+
+### Le compilateur ne protège pas une identité faite de chaînes
+
+`account_id` et `mailbox_id` sont tous deux des `i64` ; une boîte est une
+`String` comme une autre. Après un changement de signature, le code
+**compilait** en visant le mauvais message. Reprendre les appelants un par
+un, et tenir l'invariant par un test.
+
+### Un signal demandé doit être OBSERVABLE
+
+Plusieurs consignes de validation demandaient de constater un signal que
+l'interface ne produit pas — deux brouillons rigoureusement identiques à
+l'écran parce que le bandeau n'affichait pas le corps. **Vérifier dans le
+code que chaque signal demandé est réellement affiché, et qu'il n'est pas
+écrasé une ligne plus loin.**
+
+### Un statut posé sans regarder en efface un autre
+
+Trois fois. La dernière : l'avertissement de conflit recouvert par le
+bilan de la poussée, revenu du réseau une seconde plus tard — et la
+collision était **certaine**, le brouillon conservé à part étant neuf donc
+toujours à pousser. Quand une fonction pose un message d'état, l'appelant
+doit **décider** du sien à partir de son bilan.
+
+### Ne jamais avaler une erreur
+
+`let _ = …show()` sur les notifications a protégé la synchro et détruit la
+preuve : le symptôme était « rien ne se passe », indiagnosticable. Les
+échecs non bloquants remontent dans le bilan de synchro.
+
+### Un outil de mesure se vérifie comme le reste
+
+`mesure-ram.ps1` sommait toutes les instances de l'application — 202 Mo
+pour deux applications additionnées, annonçant un budget dépassé qui tient
+largement. `mesure.mjs` n'isolait pas son profil WebView2. Et un
+diagnostic divulguait en clair les identifiants qu'il promettait de
+masquer, parce qu'il découpait un en-tête `References` entier sur son
+premier `@`.
 
 ---
 
@@ -600,16 +572,18 @@ signalé « le message rouge ne s'affiche pas », et aucun des 292 tests.
 | Fichier | Rôle |
 |---|---|
 | [`docs/PLAN.md`](PLAN.md) | Concept paper — source de vérité produit |
-| [`docs/adr/`](adr/) | Les 8 décisions gelées |
-| [`docs/PHASE0.md`](PHASE0.md) → [`PHASE2.md`](PHASE2.md) | Revues de clôture (décisions, budgets, enseignements) |
+| [`docs/adr/`](adr/) | Les 9 décisions gelées |
+| [`docs/PHASE0.md`](PHASE0.md) → [`PHASE3.md`](PHASE3.md) | Revues de clôture (décisions, budgets, enseignements) |
 | [`crates/mail-core/src/store.rs`](../crates/mail-core/src/store.rs) | Stockage SQLite, schéma, migrations, boîte unifiée |
 | [`crates/mail-core/src/sync.rs`](../crates/mail-core/src/sync.rs) | Moteur de synchro (contre `FakeServer`) |
-| [`crates/mail-core/src/thread.rs`](../crates/mail-core/src/thread.rs) | Conversations : union-find pur + persistance |
+| [`crates/mail-core/src/thread.rs`](../crates/mail-core/src/thread.rs) | Conversations : union-find pur + persistance, portée compte |
 | [`crates/mail-core/src/drafts.rs`](../crates/mail-core/src/drafts.rs) | Brouillons : poussée, tirage, conflit d'édition |
 | [`crates/mail-core/src/outbox.rs`](../crates/mail-core/src/outbox.rs) | Boîte d'envoi + règles d'or |
 | [`crates/mail-core/src/search.rs`](../crates/mail-core/src/search.rs) | Index FTS5 contentless, transactionnel |
+| [`crates/mail-core/src/backfill.rs`](../crates/mail-core/src/backfill.rs) | Rattrapage des corps ET passe d'en-têtes de fils |
 | [`crates/mail-core/src/test_support.rs`](../crates/mail-core/src/test_support.rs) | `FakeServer` — rejoue les bizarreries du terrain |
-| [`crates/mail-core/examples/`](../crates/mail-core/examples/) | Diagnostics terrain + `seed_inbox` |
+| [`crates/mail-core/examples/`](../crates/mail-core/examples/) | 3 diagnostics + 3 bancs + `seed_inbox` |
+| [`crates/mail-imap/src/convert.rs`](../crates/mail-imap/src/convert.rs) | Traduction IMAP → domaine ; découverte archive et envois |
 | [`crates/mail-auth/src/provider.rs`](../crates/mail-auth/src/provider.rs) | Fournisseurs OAuth décrits **en données** |
 | [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Commandes Tauri (IPC), boucles par compte |
 | [`apps/desktop/ui/app.js`](../apps/desktop/ui/app.js) | UI : liste virtualisée, composeur, raccourcis |
