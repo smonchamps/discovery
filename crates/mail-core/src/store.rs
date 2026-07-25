@@ -4,7 +4,7 @@
 //! (PHASE0.md §2.1) et les tests utilisent une base en mémoire — l'abstraction
 //! du réseau ([`crate::MailServer`]) est la seule frontière nécessaire.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
 
 use chrono::DateTime;
@@ -159,12 +159,13 @@ pub struct UnifiedRow {
     /// Le fil auquel ce message appartient. `None` seulement pendant la
     /// fenêtre où une base héritée n'a pas encore été adoptée.
     pub thread_id: Option<i64>,
-    /// Nombre de messages du fil PRÉSENTS DANS LA BOÎTE. 1 = message isolé.
+    /// Nombre de messages du fil, **reçus et envoyés confondus**.
+    /// 1 = message isolé.
     ///
-    /// « Dans la boîte » est une restriction assumée : on ne regroupe que
-    /// ce qu'on a. Les messages qu'on a soi-même envoyés vivent dans
-    /// « Envoyés » et ne sont pas comptés — le fil montre donc la moitié
-    /// reçue de l'échange, ce qui est aussi ce que la liste affiche.
+    /// Depuis l'ADR 0009, un fil appartient au COMPTE et non à une boîte :
+    /// nos propres réponses en font partie. Le compteur doit donc les
+    /// inclure, sans quoi il contredirait à l'écran le bandeau de
+    /// conversation, qui montre l'échange entier.
     pub thread_size: u32,
     /// Non-lus du fil. Un fil se montre non lu tant qu'il en reste un,
     /// même si son dernier message est lu.
@@ -366,7 +367,6 @@ impl Store {
     /// intention sur un UID invalidé est irréalisable par construction).
     pub fn reset_mailbox(&self, mailbox_id: i64, uid_validity: u32) -> Result<(), Error> {
         search::deindex_mailbox(&self.0, mailbox_id)?;
-        thread::clear_mailbox(&self.0, mailbox_id)?;
         self.0.execute(
             "DELETE FROM pending_actions WHERE mailbox_id = ?1",
             [mailbox_id],
@@ -381,6 +381,19 @@ impl Store {
              WHERE id = ?1",
             params![mailbox_id, uid_validity],
         )?;
+        // APRÈS la suppression des enveloppes, jamais avant : un fil se
+        // recalcule à partir de ce qui reste. Le refaire d'abord le
+        // ferait pointer sur des messages qu'on s'apprête à effacer.
+        //
+        // Et sur le COMPTE, pas la boîte : depuis l'ADR 0009 un fil peut
+        // réunir INBOX et « Envoyés », donc réinitialiser l'une oblige à
+        // reconsidérer les deux.
+        let account_id: i64 = self.0.query_row(
+            "SELECT account_id FROM mailboxes WHERE id = ?1",
+            [mailbox_id],
+            |row| row.get(0),
+        )?;
+        thread::rebuild_account(&self.0, account_id)?;
         Ok(())
     }
 
@@ -403,7 +416,20 @@ impl Store {
         envelopes: &[Envelope],
     ) -> Result<(), Error> {
         let tx = self.0.transaction()?;
-        let mut touched: Vec<i64> = Vec::new();
+        // Résolu UNE fois : la boîte ne change pas dans un lot, et le fil
+        // se raisonne désormais au compte (ADR 0009). Le faire par message
+        // ajouterait une requête par enveloppe sur le chemin le plus chaud
+        // de la synchronisation.
+        let account_id: i64 = tx.query_row(
+            "SELECT account_id FROM mailboxes WHERE id = ?1",
+            [mailbox_id],
+            |row| row.get(0),
+        )?;
+        // Un ENSEMBLE, pas une liste : même défaut quadratique que celui
+        // mesuré dans l'adoption (`Vec::contains` est linéaire). Borné ici
+        // par la taille du lot, donc moins spectaculaire — mais c'est le
+        // même chemin chaud, et la même correction.
+        let mut touched: BTreeSet<i64> = BTreeSet::new();
         {
             // `INSERT OR REPLACE` remettrait à NULL toute colonne absente
             // de la liste — et `refs` comme `thread_id` sont écrits par
@@ -454,7 +480,7 @@ impl Store {
                     .flatten();
                 let thread = thread::attach(
                     &tx,
-                    mailbox_id,
+                    account_id,
                     envelope.message_id.as_deref(),
                     envelope.in_reply_to.as_deref(),
                     references.as_deref(),
@@ -463,9 +489,7 @@ impl Store {
                     "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
                     params![mailbox_id, envelope.uid, thread],
                 )?;
-                if !touched.contains(&thread) {
-                    touched.push(thread);
-                }
+                touched.insert(thread);
 
                 let html: Option<String> = body_stmt
                     .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
@@ -539,9 +563,18 @@ impl Store {
             params![mailbox_id, uid, references, in_reply_to],
         )?;
         let parent = in_reply_to.map(str::to_string).or(known_parent);
+        // Le COMPTE, pas la boîte (ADR 0009). Les deux sont des `i64` :
+        // le compilateur ne peut pas distinguer l'un de l'autre, et se
+        // tromper ici ne casserait rien — cela rattacherait simplement les
+        // messages au mauvais espace de fils, en silence.
+        let account_id: i64 = tx.query_row(
+            "SELECT account_id FROM mailboxes WHERE id = ?1",
+            [mailbox_id],
+            |row| row.get(0),
+        )?;
         let thread = thread::attach(
             &tx,
-            mailbox_id,
+            account_id,
             message_id.as_deref(),
             parent.as_deref(),
             Some(references),
@@ -574,7 +607,7 @@ impl Store {
             .filter(|uid| !present.contains(uid))
             .collect();
         let tx = self.0.transaction()?;
-        let mut touched: Vec<i64> = Vec::new();
+        let mut touched: BTreeSet<i64> = BTreeSet::new();
         {
             let mut envelopes =
                 tx.prepare("DELETE FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
@@ -584,10 +617,8 @@ impl Store {
             for uid in &stale {
                 // Relever le fil AVANT de supprimer l'enveloppe : après,
                 // le lien est perdu et l'agrégat resterait faux.
-                if let Some(thread) = thread::thread_of(&tx, mailbox_id, *uid)?
-                    .filter(|thread| !touched.contains(thread))
-                {
-                    touched.push(thread);
+                if let Some(thread) = thread::thread_of(&tx, mailbox_id, *uid)? {
+                    touched.insert(thread);
                 }
                 search::deindex_message(&tx, mailbox_id, *uid)?;
                 envelopes.execute(params![mailbox_id, uid])?;
@@ -1018,12 +1049,7 @@ impl Store {
     /// La boîte unifiée : la même boîte (INBOX) de TOUS les comptes,
     /// fusionnée par date — le cœur produit du multi-comptes. Chaque
     /// ligne porte son compte : un UID seul n'identifie plus un message.
-    pub fn unified_recent(
-        &self,
-        mailbox: &str,
-        offset: usize,
-        limit: usize,
-    ) -> Result<Vec<UnifiedRow>, Error> {
+    pub fn unified_recent(&self, offset: usize, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
         // Une ligne par CONVERSATION, représentée par son dernier message.
         //
         // Le départ se fait depuis `threads`, pas depuis `envelopes` : un
@@ -1035,10 +1061,7 @@ impl Store {
         // il se maintient dans la transaction d'écriture.
         let mut stmt = self.0.prepare(&unified_page_sql())?;
         let rows = stmt
-            .query_map(
-                params![mailbox, limit as i64, offset as i64],
-                row_to_threaded,
-            )?
+            .query_map(params![limit as i64, offset as i64], row_to_threaded)?
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
@@ -1047,11 +1070,10 @@ impl Store {
     /// la liste affiche. Compter les messages ferait défiler dans le vide.
     //
     // (`unified_page_sql`, plus bas, porte la requête de la page.)
-    pub fn unified_count(&self, mailbox: &str) -> Result<u64, Error> {
+    pub fn unified_count(&self) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
-            "SELECT COUNT(*) FROM threads t JOIN mailboxes m ON m.id = t.mailbox_id
-             WHERE m.name = ?1",
-            [mailbox],
+            "SELECT COUNT(*) FROM threads WHERE inbox_size > 0",
+            [],
             |row| row.get(0),
         )?;
         Ok(count as u64)
@@ -1143,12 +1165,12 @@ fn unified_page_sql() -> String {
     format!(
         "{SELECT_UNIFIED}{THREAD_AGGREGATE}
          FROM threads t
-         JOIN envelopes e ON e.mailbox_id = t.mailbox_id AND e.uid = t.last_uid
-         JOIN mailboxes m ON m.id = t.mailbox_id
-         JOIN accounts a ON a.id = m.account_id
-         WHERE m.name = ?1
+         JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
+         JOIN mailboxes m ON m.id = e.mailbox_id
+         JOIN accounts a ON a.id = t.account_id
+         WHERE t.inbox_size > 0
          ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id
-         LIMIT ?2 OFFSET ?3"
+         LIMIT ?1 OFFSET ?2"
     )
 }
 
@@ -2039,7 +2061,7 @@ mod tests {
             )
             .unwrap();
 
-        let rows = store.unified_recent("INBOX", 0, 10).unwrap();
+        let rows = store.unified_recent(0, 10).unwrap();
         let order: Vec<(&str, &str)> = rows
             .iter()
             .map(|row| {
@@ -2059,7 +2081,7 @@ mod tests {
             ],
             "fusion par date, chaque ligne porte son compte"
         );
-        assert_eq!(store.unified_count("INBOX").unwrap(), 4);
+        assert_eq!(store.unified_count().unwrap(), 4);
         // Même UID dans deux comptes : deux messages distincts.
         assert!(store.envelope(first, "INBOX", 1).unwrap().is_some());
         assert!(store.envelope(second, "INBOX", 1).unwrap().is_some());
@@ -2270,7 +2292,7 @@ mod tests {
     }
 
     fn unified(store: &Store) -> Vec<UnifiedRow> {
-        store.unified_recent("INBOX", 0, 50).unwrap()
+        store.unified_recent(0, 50).unwrap()
     }
 
     fn uids(rows: &[UnifiedRow]) -> Vec<Uid> {
@@ -2299,7 +2321,7 @@ mod tests {
             "la ligne montre le DERNIER message"
         );
         assert_eq!(
-            store.unified_count("INBOX").unwrap(),
+            store.unified_count().unwrap(),
             1,
             "le défilement compte des conversations, sinon il défile dans le vide"
         );
@@ -2451,7 +2473,7 @@ mod tests {
         crate::thread::migrate_threads(store.conn()).unwrap();
 
         assert_eq!(uids(&unified(&store)), vec![2, 1]);
-        assert_eq!(store.unified_count("INBOX").unwrap(), 2);
+        assert_eq!(store.unified_count().unwrap(), 2);
     }
 
     /// Le désordre d'arrivée ne doit rien changer : ici la réponse précède
@@ -2499,7 +2521,7 @@ mod tests {
 
         store.remove_local(id, 1).unwrap();
         assert!(unified(&store).is_empty());
-        assert_eq!(store.unified_count("INBOX").unwrap(), 0);
+        assert_eq!(store.unified_count().unwrap(), 0);
     }
 
     /// Le défaut du terrain, de bout en bout : deux messages étrangers
@@ -2571,7 +2593,15 @@ mod tests {
             .conn()
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 1, "et la reconstruction ne se rejoue pas");
+        // Contre la CONSTANTE, jamais contre un littéral : chaque
+        // changement de règle de regroupement l'incrémente, et un « 1 »
+        // en dur ferait échouer ce test pour une raison qui n'est pas la
+        // sienne.
+        assert_eq!(
+            version,
+            crate::thread::THREADING_VERSION,
+            "et la reconstruction ne se rejoue pas"
+        );
     }
 
     /// UIDVALIDITY invalidée : les fils partent avec le reste, et
@@ -2595,6 +2625,75 @@ mod tests {
             .upsert_envelopes(id, &[envelope(1, "Devis", 100, true)])
             .unwrap();
         assert_eq!(unified(&store).len(), 1, "la boîte se repeuple sans butée");
+    }
+
+    /// LE point du chantier de l'[ADR 0009] : un message reçu et la
+    /// réponse qu'on lui a faite appartiennent au même échange, donc au
+    /// même fil — bien qu'ils vivent dans **deux boîtes différentes**.
+    ///
+    /// Avant, les fils étaient cloisonnés par boîte : cette réponse aurait
+    /// formé son propre fil dans son propre espace d'identifiants, et
+    /// synchroniser « Envoyés » aurait coûté sans rien rapporter.
+    ///
+    /// Le décor donne le même UID (1) aux deux messages, à dessein :
+    /// l'identité d'un message est `(compte, boîte, UID)`, et un
+    /// regroupement qui confondrait deux UID égaux se verrait ici.
+    #[test]
+    fn une_reponse_dans_envoyes_rejoint_le_fil_du_message_recu() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
+
+        // Alice écrit.
+        let mut recu = envelope(1, "Devis", 100, true);
+        recu.message_id = Some("<alice-1@exemple.fr>".to_string());
+        store.upsert_envelopes(inbox, &[recu]).unwrap();
+
+        // Je réponds : le message part dans « Envoyés » et cite le premier.
+        let mut reponse = envelope(1, "Re: Devis", 200, true);
+        reponse.message_id = Some("<moi-1@exemple.fr>".to_string());
+        reponse.in_reply_to = Some("<alice-1@exemple.fr>".to_string());
+        store.upsert_envelopes(envoyes, &[reponse]).unwrap();
+
+        let lignes = unified(&store);
+        assert_eq!(lignes.len(), 1, "un seul fil, pas deux");
+        assert_eq!(
+            lignes[0].thread_size, 2,
+            "le compteur couvre tout l'échange, envoyés compris"
+        );
+        assert_eq!(
+            lignes[0].envelope.subject.as_deref(),
+            Some("Re: Devis"),
+            "le fil est représenté par son message le plus récent, \
+             même quand c'est notre propre réponse"
+        );
+    }
+
+    /// L'autre face de la même règle : écrire à quelqu'un qui ne répond
+    /// jamais ne crée PAS de conversation dans la boîte de réception.
+    /// C'est ce que le compteur `inbox_size` protège, et c'est aussi ce
+    /// qui rend l'index partiel possible (ADR 0009 §2 et §4).
+    #[test]
+    fn un_fil_purement_sortant_n_a_pas_de_ligne() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        store.create_mailbox(account, "INBOX", 1).unwrap();
+        let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
+
+        let mut sortant = envelope(1, "Ma proposition", 100, true);
+        sortant.message_id = Some("<moi-2@exemple.fr>".to_string());
+        store.upsert_envelopes(envoyes, &[sortant]).unwrap();
+
+        assert!(
+            unified(&store).is_empty(),
+            "rien n'a été reçu : la boîte de réception reste vide"
+        );
+        assert_eq!(store.unified_count().unwrap(), 0);
     }
 
     /// La promesse de l'[ADR 0008] §4 — « le coût d'une page ne dépend
@@ -2629,9 +2728,7 @@ mod tests {
             .prepare(&format!("EXPLAIN QUERY PLAN {}", unified_page_sql()))
             .unwrap();
         let plan: Vec<String> = stmt
-            .query_map(params!["INBOX", 200i64, 0i64], |row| {
-                row.get::<_, String>(3)
-            })
+            .query_map(params![200i64, 0i64], |row| row.get::<_, String>(3))
             .unwrap()
             .collect::<Result<_, _>>()
             .unwrap();

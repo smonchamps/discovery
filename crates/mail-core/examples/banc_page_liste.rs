@@ -40,18 +40,18 @@ use rusqlite::Connection;
 /// qui est tout ce que le plan doit nous dire.
 const PAGE_UNIFIEE: &str = "SELECT t.id
      FROM threads t
-     JOIN envelopes e ON e.mailbox_id = t.mailbox_id AND e.uid = t.last_uid
-     JOIN mailboxes m ON m.id = t.mailbox_id
-     JOIN accounts a ON a.id = m.account_id
-     WHERE m.name = ?1
+     JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
+     JOIN mailboxes m ON m.id = e.mailbox_id
+     JOIN accounts a ON a.id = t.account_id
+     WHERE t.inbox_size > 0
      ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id
      LIMIT 200 OFFSET 0";
 
-/// La même, mais bornée à UNE boîte : l'index redevient utilisable.
-const PAGE_UNE_BOITE: &str = "SELECT t.id
+/// La même, mais bornée à UN compte : l'index préfixé redevient utilisable.
+const PAGE_UN_COMPTE: &str = "SELECT t.id
      FROM threads t
-     JOIN envelopes e ON e.mailbox_id = t.mailbox_id AND e.uid = t.last_uid
-     WHERE t.mailbox_id = ?1
+     JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
+     WHERE t.account_id = ?1
      ORDER BY t.last_epoch DESC, t.last_uid DESC
      LIMIT 200 OFFSET 0";
 
@@ -75,14 +75,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{fils} conversations réparties sur {boites} boîte(s)");
 
     println!("\n--- plan de la boîte unifiée ---");
-    plan(&conn, PAGE_UNIFIEE, rusqlite::params!["INBOX"])?;
+    plan(&conn, PAGE_UNIFIEE, rusqlite::params![])?;
 
-    let une: Option<i64> = conn
-        .query_row("SELECT id FROM mailboxes LIMIT 1", [], |row| row.get(0))
+    let un: Option<i64> = conn
+        .query_row("SELECT id FROM accounts LIMIT 1", [], |row| row.get(0))
         .ok();
-    if let Some(mailbox_id) = une {
-        println!("\n--- plan d'UNE boîte (témoin) ---");
-        plan(&conn, PAGE_UNE_BOITE, rusqlite::params![mailbox_id])?;
+    if let Some(account_id) = un {
+        println!("\n--- plan d'UN compte (témoin) ---");
+        plan(&conn, PAGE_UN_COMPTE, rusqlite::params![account_id])?;
     }
     drop(conn);
 
@@ -97,9 +97,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         // Deux tours : le premier chauffe le cache de pages SQLite, le
         // second mesure le régime établi — c'est celui du défilement.
-        let _ = store.unified_recent("INBOX", offset, 200)?;
+        let _ = store.unified_recent(offset, 200)?;
         let depart = Instant::now();
-        let lignes = store.unified_recent("INBOX", offset, 200)?;
+        let lignes = store.unified_recent(offset, 200)?;
         println!(
             "offset {offset:>7} : {:>8.2} ms ({} lignes)",
             depart.elapsed().as_secs_f64() * 1000.0,

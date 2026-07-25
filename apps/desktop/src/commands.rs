@@ -435,7 +435,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
         errors.push(problem);
     }
     let total = Store::open(&db_path(&app)?)
-        .and_then(|store| store.unified_count(MAILBOX))
+        .and_then(|store| store.unified_count())
         .map_err(|err| err.to_string())?;
 
     Ok(SyncSummary {
@@ -670,11 +670,9 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
 pub fn list_messages(app: AppHandle, offset: usize, limit: usize) -> Result<MessagePage, String> {
     let timer = Instant::now();
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let total = store
-        .unified_count(MAILBOX)
-        .map_err(|err| err.to_string())?;
+    let total = store.unified_count().map_err(|err| err.to_string())?;
     let rows = store
-        .unified_recent(MAILBOX, offset, limit.min(LIST_LIMIT_MAX))
+        .unified_recent(offset, limit.min(LIST_LIMIT_MAX))
         .map_err(|err| err.to_string())?
         .into_iter()
         .map(to_message_row)

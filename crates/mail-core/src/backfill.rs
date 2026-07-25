@@ -330,7 +330,7 @@ mod tests {
     }
 
     fn conversations(store: &Store) -> usize {
-        store.unified_recent("INBOX", 0, 50).unwrap().len()
+        store.unified_recent(0, 50).unwrap().len()
     }
 
     /// La raison d'être de la passe, en une assertion : deux lignes avant,

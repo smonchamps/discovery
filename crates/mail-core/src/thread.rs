@@ -218,17 +218,33 @@ pub(crate) fn plan(ids: &[String], known: &HashMap<String, ThreadId>) -> ThreadP
 /// `thread_links` est l'**annuaire** : il retient aussi les identifiants
 /// d'ancêtres que la boîte ne contient pas. C'est cette mémoire-là qui
 /// permet à deux moitiés de fil de se reconnaître plus tard.
+/// La boîte dont les messages sont « reçus ».
+///
+/// Un nom en dur, et c'est délibéré : `inbox_size` sert au filtre de la
+/// liste, qui ne montre qu'une boîte — celle du courrier entrant. Le jour
+/// où la liste en montrerait plusieurs, ce compteur perdrait son sens
+/// avant de perdre sa valeur, et il faudrait le repenser plutôt que le
+/// paramétrer.
+pub(crate) const RECEIVED_MAILBOX: &str = "INBOX";
+
 pub(crate) const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS threads (
     id         INTEGER PRIMARY KEY,
-    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    -- Le dernier message peut vivre dans INBOX comme dans « Envoyés » :
+    -- son UID seul n'identifie rien (invariant « identité = compte+UID »).
+    last_mailbox_id INTEGER,
     last_uid   INTEGER NOT NULL DEFAULT 0,
     last_epoch INTEGER,
     size       INTEGER NOT NULL DEFAULT 0,
-    unseen     INTEGER NOT NULL DEFAULT 0
+    unseen     INTEGER NOT NULL DEFAULT 0,
+    -- Combien de messages REÇUS. Un fil purement sortant — j'écris,
+    -- personne ne répond — vaut 0 et n'a pas de ligne dans la liste
+    -- (ADR 0009 §2).
+    inbox_size INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_threads_date
-    ON threads(mailbox_id, last_epoch DESC, last_uid DESC);
+    ON threads(account_id, last_epoch DESC, last_uid DESC);
 -- Le même tri, SANS préfixe de boîte : c'est celui dont la boîte unifiée
 -- a besoin. Elle couvre la même boîte de TOUS les comptes, donc ne fixe
 -- aucun `mailbox_id` — et un index qui commence par cette colonne ne peut
@@ -236,13 +252,19 @@ CREATE INDEX IF NOT EXISTS idx_threads_date
 -- toutes les conversations, à CHAQUE page de défilement : 987 ms mesurées
 -- sur 160 000 conversations au gate 3, contre 0,66 ms avec cet index.
 -- L'index préfixé reste utile aux requêtes bornées à une boîte.
+-- PARTIEL : le filtre « au moins un message reçu » entre DANS l'index au
+-- lieu d'être évalué après lui. Sans la clause WHERE, SQLite parcourrait
+-- puis jetterait tous les fils purement sortants, et le tri matérialisé
+-- que le gate 3 vient de supprimer reviendrait par une autre porte
+-- (ADR 0009 §4).
 CREATE INDEX IF NOT EXISTS idx_threads_date_globale
-    ON threads(last_epoch DESC, last_uid DESC, mailbox_id);
+    ON threads(last_epoch DESC, last_uid DESC, account_id)
+    WHERE inbox_size > 0;
 CREATE TABLE IF NOT EXISTS thread_links (
-    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     message_id TEXT NOT NULL,
     thread_id  INTEGER NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-    PRIMARY KEY (mailbox_id, message_id)
+    PRIMARY KEY (account_id, message_id)
 );
 CREATE INDEX IF NOT EXISTS idx_thread_links_thread ON thread_links(thread_id);
 ";
@@ -254,19 +276,19 @@ CREATE INDEX IF NOT EXISTS idx_thread_links_thread ON thread_links(thread_id);
 /// [`refresh`] sur le fil retourné.
 pub(crate) fn attach(
     conn: &Connection,
-    mailbox_id: i64,
+    account_id: i64,
     message_id: Option<&str>,
     in_reply_to: Option<&str>,
     references: Option<&str>,
 ) -> Result<ThreadId, Error> {
     let ids = linking_ids(message_id, in_reply_to, references);
-    let decision = plan(&ids, &lookup(conn, mailbox_id, &ids)?);
+    let decision = plan(&ids, &lookup(conn, account_id, &ids)?);
 
     let thread = match decision.keep {
         Some(thread) => thread,
         None => {
-            conn.prepare_cached("INSERT INTO threads (mailbox_id) VALUES (?1)")?
-                .execute([mailbox_id])?;
+            conn.prepare_cached("INSERT INTO threads (account_id) VALUES (?1)")?
+                .execute([account_id])?;
             conn.last_insert_rowid()
         }
     };
@@ -287,10 +309,10 @@ pub(crate) fn attach(
     }
     for id in decision.register {
         conn.prepare_cached(
-            "INSERT OR IGNORE INTO thread_links (mailbox_id, message_id, thread_id)
+            "INSERT OR IGNORE INTO thread_links (account_id, message_id, thread_id)
              VALUES (?1, ?2, ?3)",
         )?
-        .execute(params![mailbox_id, id, thread])?;
+        .execute(params![account_id, id, thread])?;
     }
     Ok(thread)
 }
@@ -298,7 +320,7 @@ pub(crate) fn attach(
 /// Les fils déjà connus pour ces identifiants — une seule requête.
 fn lookup(
     conn: &Connection,
-    mailbox_id: i64,
+    account_id: i64,
     ids: &[String],
 ) -> Result<HashMap<String, ThreadId>, Error> {
     if ids.is_empty() {
@@ -309,7 +331,7 @@ fn lookup(
         .collect::<Vec<_>>()
         .join(", ");
     let mut values: Vec<rusqlite::types::Value> = Vec::with_capacity(ids.len() + 1);
-    values.push(mailbox_id.into());
+    values.push(account_id.into());
     values.extend(ids.iter().map(|id| id.clone().into()));
 
     // `prepare_cached` : le cache est indexé par le texte SQL, et il n'y a
@@ -318,7 +340,7 @@ fn lookup(
     // poste dominant de l'adoption d'une base héritée.
     let mut stmt = conn.prepare_cached(&format!(
         "SELECT message_id, thread_id FROM thread_links
-         WHERE mailbox_id = ?1 AND message_id IN ({placeholders})"
+         WHERE account_id = ?1 AND message_id IN ({placeholders})"
     ))?;
     let known = stmt
         .query_map(rusqlite::params_from_iter(values), |row| {
@@ -339,31 +361,45 @@ fn lookup(
 pub(crate) fn refresh(conn: &Connection, thread: ThreadId) -> Result<(), Error> {
     let aggregate = conn
         .prepare_cached(
-            "SELECT e.uid, e.date_epoch,
+            "SELECT e.mailbox_id, e.uid, e.date_epoch,
                     (SELECT COUNT(*) FROM envelopes WHERE thread_id = ?1),
-                    (SELECT COUNT(*) FROM envelopes WHERE thread_id = ?1 AND seen = 0)
+                    (SELECT COUNT(*) FROM envelopes WHERE thread_id = ?1 AND seen = 0),
+                    (SELECT COUNT(*) FROM envelopes x
+                       JOIN mailboxes m ON m.id = x.mailbox_id
+                      WHERE x.thread_id = ?1 AND m.name = ?2)
              FROM envelopes e
              WHERE e.thread_id = ?1
              ORDER BY e.date_epoch DESC, e.uid DESC
              LIMIT 1",
         )?
-        .query_row([thread], |row| {
+        .query_row(params![thread, RECEIVED_MAILBOX], |row| {
             Ok((
-                row.get::<_, Uid>(0)?,
-                row.get::<_, Option<i64>>(1)?,
-                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(0)?,
+                row.get::<_, Uid>(1)?,
+                row.get::<_, Option<i64>>(2)?,
                 row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)?,
             ))
         })
         .optional()?;
 
     match aggregate {
-        Some((last_uid, last_epoch, size, unseen)) => {
+        Some((last_mailbox, last_uid, last_epoch, size, unseen, inbox_size)) => {
             conn.prepare_cached(
-                "UPDATE threads SET last_uid = ?2, last_epoch = ?3, size = ?4, unseen = ?5
+                "UPDATE threads SET last_mailbox_id = ?2, last_uid = ?3, last_epoch = ?4,
+                                    size = ?5, unseen = ?6, inbox_size = ?7
                  WHERE id = ?1",
             )?
-            .execute(params![thread, last_uid, last_epoch, size, unseen])?;
+            .execute(params![
+                thread,
+                last_mailbox,
+                last_uid,
+                last_epoch,
+                size,
+                unseen,
+                inbox_size
+            ])?;
         }
         None => {
             // Le fil s'est vidé : il disparaît avec son annuaire.
@@ -397,15 +433,33 @@ pub(crate) fn thread_of(
     Ok(thread)
 }
 
-/// Efface les fils d'une boîte (UIDVALIDITY invalidée : plus rien ne
-/// veut dire quoi que ce soit).
-pub(crate) fn clear_mailbox(conn: &Connection, mailbox_id: i64) -> Result<(), Error> {
+/// Refait les fils d'UN compte — appelé quand une de ses boîtes est
+/// réinitialisée (UIDVALIDITY changée : plus rien n'y veut dire quoi que
+/// ce soit).
+///
+/// **Pourquoi tout le compte, et pas la seule boîte.** Depuis
+/// l'[ADR 0009] un fil réunit les messages de plusieurs boîtes. N'effacer
+/// que ceux de la boîte réinitialisée laisserait les autres pointer sur
+/// des messages disparus — et l'annuaire ne dit pas quelle boîte a inscrit
+/// quel identifiant, par construction : c'est le compte qui le porte. Le
+/// recalcul est borné par la taille du compte, et l'évènement est rare.
+pub(crate) fn rebuild_account(conn: &Connection, account_id: i64) -> Result<(), Error> {
     conn.execute(
-        "DELETE FROM thread_links WHERE mailbox_id = ?1",
-        [mailbox_id],
+        "DELETE FROM thread_links WHERE account_id = ?1",
+        [account_id],
     )?;
-    conn.execute("DELETE FROM threads WHERE mailbox_id = ?1", [mailbox_id])?;
-    Ok(())
+    conn.execute("DELETE FROM threads WHERE account_id = ?1", [account_id])?;
+    conn.execute(
+        "UPDATE envelopes SET thread_id = NULL
+         WHERE mailbox_id IN (SELECT id FROM mailboxes WHERE account_id = ?1)",
+        [account_id],
+    )?;
+    // Ré-adopter TOUT DE SUITE, et non à la prochaine ouverture : la liste
+    // part de `threads`, donc un message à `thread_id` NULL n'a aucune
+    // ligne. Différer ferait disparaître la boîte de l'écran entre-temps —
+    // le piège de la fonctionnalité qui n'adopte pas ses données.
+    let orphans = orphans(conn, Some(account_id))?;
+    adopt(conn, orphans)
 }
 
 /// Rattache les messages déjà en base — ceux d'avant les fils.
@@ -428,7 +482,14 @@ pub(crate) fn clear_mailbox(conn: &Connection, mailbox_id: i64) -> Result<(), Er
 /// les mots d'un en-tête rédigé en prose pour des identifiants : leurs
 /// fils sont FAUX, et aucune correction du code ne les répare tout seul.
 /// Il faut les refaire.
-const THREADING_VERSION: i64 = 1;
+///
+/// **2** — la portée d'un fil est le COMPTE et non la boîte
+/// ([ADR 0009](../../../docs/adr/0009-portee-des-fils-au-compte.md)).
+///
+/// Les deux tables changent de clé, et SQLite ne sait pas modifier une
+/// clé primaire en place : elles sont **supprimées puis recréées**, là où
+/// la version 1 se contentait de les vider.
+pub(crate) const THREADING_VERSION: i64 = 2;
 
 /// Refait les fils quand la règle qui les a produits a changé.
 ///
@@ -442,10 +503,16 @@ fn rebuild_if_outdated(conn: &Connection) -> Result<(), Error> {
     // Tout effacer et laisser l'adoption, juste dessous, refaire le
     // travail : un seul chemin de reconstruction, celui qui est déjà
     // testé, plutôt qu'un correctif parallèle qui divergerait.
+    //
+    // DROP, et non DELETE : le schéma des deux tables a changé, et le
+    // `CREATE TABLE IF NOT EXISTS` exécuté à l'ouverture ne touche pas à
+    // une table qui existe déjà. Sans la suppression, la base garderait
+    // ses colonnes d'avant et tout le reste écrirait à côté.
     conn.execute_batch(&format!(
         "BEGIN;
-         DELETE FROM thread_links;
-         DELETE FROM threads;
+         DROP TABLE IF EXISTS thread_links;
+         DROP TABLE IF EXISTS threads;
+         {SCHEMA}
          UPDATE envelopes SET thread_id = NULL;
          PRAGMA user_version = {THREADING_VERSION};
          COMMIT;"
@@ -453,28 +520,55 @@ fn rebuild_if_outdated(conn: &Connection) -> Result<(), Error> {
     Ok(())
 }
 
-/// Un message pas encore rattaché : sa boîte, son UID, puis les trois
-/// en-têtes de regroupement.
-type Orphan = (i64, Uid, Option<String>, Option<String>, Option<String>);
+/// Un message pas encore rattaché : son compte, sa boîte, son UID, puis
+/// les trois en-têtes de regroupement.
+///
+/// Le compte vient de la requête plutôt que d'une résolution par message :
+/// sur 200 000 orphelins, une jointure faite une fois vaut mieux que
+/// 200 000 aller-retours.
+type Orphan = (
+    i64,
+    i64,
+    Uid,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+/// Les messages sans fil — de tout le stockage, ou d'un seul compte.
+fn orphans(conn: &Connection, account: Option<i64>) -> Result<Vec<Orphan>, Error> {
+    const BASE: &str = "SELECT m.account_id, e.mailbox_id, e.uid,
+                e.message_id, e.in_reply_to, e.refs
+         FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
+         WHERE e.thread_id IS NULL";
+    let lire = |row: &rusqlite::Row<'_>| {
+        Ok((
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+            row.get(5)?,
+        ))
+    };
+    let rows = match account {
+        Some(account_id) => conn
+            .prepare(&format!(
+                "{BASE} AND m.account_id = ?1 ORDER BY e.mailbox_id, e.uid"
+            ))?
+            .query_map([account_id], lire)?
+            .collect::<Result<Vec<_>, _>>()?,
+        None => conn
+            .prepare(&format!("{BASE} ORDER BY e.mailbox_id, e.uid"))?
+            .query_map([], lire)?
+            .collect::<Result<Vec<_>, _>>()?,
+    };
+    Ok(rows)
+}
 
 pub(crate) fn migrate_threads(conn: &Connection) -> Result<(), Error> {
     rebuild_if_outdated(conn)?;
-    let orphans: Vec<Orphan> = conn
-        .prepare(
-            "SELECT mailbox_id, uid, message_id, in_reply_to, refs
-             FROM envelopes WHERE thread_id IS NULL
-             ORDER BY mailbox_id, uid",
-        )?
-        .query_map([], |row| {
-            Ok((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-            ))
-        })?
-        .collect::<Result<_, _>>()?;
+    let orphans = orphans(conn, None)?;
     if orphans.is_empty() {
         return Ok(());
     }
@@ -505,10 +599,10 @@ fn adopt(conn: &Connection, orphans: Vec<Orphan>) -> Result<(), Error> {
     // sur les 2 800 messages d'une boîte réelle, écrasant à l'échelle du
     // gate 3. L'arbre garde en prime un ordre déterministe, sans tri.
     let mut touched: BTreeSet<ThreadId> = BTreeSet::new();
-    for (mailbox_id, uid, message_id, in_reply_to, references) in orphans {
+    for (account_id, mailbox_id, uid, message_id, in_reply_to, references) in orphans {
         let thread = attach(
             conn,
-            mailbox_id,
+            account_id,
             message_id.as_deref(),
             in_reply_to.as_deref(),
             references.as_deref(),
