@@ -39,24 +39,87 @@ fn forme(raw: &str, montrer_chevrons: bool) -> String {
     if trimmed.is_empty() {
         return "(vide)".to_string();
     }
+    // Combien d'identifiants cette valeur porte-t-elle ? Un en-tête
+    // `References` en contient toute une chaîne, et `In-Reply-To` peut en
+    // contenir plusieurs.
+    let nombre = trimmed
+        .matches('<')
+        .count()
+        .max(trimmed.split_whitespace().count());
+    if nombre > 1 {
+        // NE PAS la décrire comme un identifiant unique.
+        //
+        // Découper sur le PREMIER « @ » ferait passer tout le reste de la
+        // chaîne pour un domaine — et l'afficherait EN CLAIR, alors que ce
+        // module promet de n'en divulguer aucun. Constaté sur la base
+        // réelle : cinq Message-ID lisibles dans une sortie de diagnostic.
+        return format!(
+            "chaîne de {nombre} identifiants, le premier : {}",
+            forme_simple(premier_identifiant(trimmed), montrer_chevrons)
+        );
+    }
+    forme_simple(trimmed, montrer_chevrons)
+}
+
+/// Le premier identifiant d'une chaîne, ses chevrons compris s'il en a.
+fn premier_identifiant(raw: &str) -> &str {
+    match raw.split_once('>') {
+        // `+ 1` : on garde le chevron fermant, sans quoi la forme dirait
+        // « SANS CHEVRONS » d'un identifiant parfaitement normal.
+        Some((tete, _)) if raw.starts_with('<') => &raw[..tete.len() + 1],
+        _ => raw.split_whitespace().next().unwrap_or(raw),
+    }
+}
+
+/// La forme d'UN identifiant, et d'un seul. Pas de récursion : l'appelant
+/// a déjà isolé un jeton unique.
+fn forme_simple(trimmed: &str, montrer_chevrons: bool) -> String {
     let bracketed = trimmed.starts_with('<') && trimmed.ends_with('>');
     let inner = trimmed.trim_start_matches('<').trim_end_matches('>');
-    let count = inner.split('<').count();
     let (local, domain) = match inner.split_once('@') {
         Some((local, domain)) => (local.chars().count(), domain.to_string()),
         None => (inner.chars().count(), "(sans @)".to_string()),
-    };
-    let plural = if count > 1 {
-        format!(" [{count} identifiants]")
-    } else {
-        String::new()
     };
     let brackets = match (montrer_chevrons, bracketed) {
         (false, _) => String::new(),
         (true, true) => "<…> ".to_string(),
         (true, false) => "SANS CHEVRONS ".to_string(),
     };
-    format!("{brackets}partie locale {local} car., domaine « {domain} »{plural}")
+    format!("{brackets}partie locale {local} car., domaine « {domain} »")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Le défaut trouvé sur la base réelle : un en-tête `References`
+    /// entier décrit comme un identifiant unique affichait tout ce qui
+    /// suit le premier « @ » — donc quatre Message-ID en clair.
+    #[test]
+    fn une_chaine_de_references_ne_divulgue_aucun_identifiant() {
+        let reference = "<a1b2@Spark> <c3d4@AM8P190.OUTLOOK.COM> <e5f6@mail.gmail.com>";
+        let sortie = forme(reference, true);
+
+        assert!(sortie.contains("chaîne de 3 identifiants"));
+        assert!(
+            !sortie.contains("AM8P190.OUTLOOK.COM"),
+            "un identifiant de la chaîne a fuité : {sortie}"
+        );
+        assert!(
+            !sortie.contains("mail.gmail.com"),
+            "un identifiant de la chaîne a fuité : {sortie}"
+        );
+        // Le premier reste décrit, masqué : c'est lui qui désigne le défaut.
+        assert!(sortie.contains("domaine « Spark »"), "{sortie}");
+    }
+
+    /// Un identifiant seul se décrit comme avant — le correctif ne doit
+    /// pas dégrader le cas courant.
+    #[test]
+    fn un_identifiant_seul_garde_sa_forme() {
+        let sortie = forme("<abcdef@exemple.fr>", true);
+        assert_eq!(sortie, "<…> partie locale 6 car., domaine « exemple.fr »");
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

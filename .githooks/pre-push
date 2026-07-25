@@ -22,7 +22,15 @@ echo "[2/4] clippy (warnings = erreurs)"
 cargo clippy --workspace --all-targets -- -D warnings
 
 echo "[3/4] tests Rust"
-cargo test --workspace
+# `--all-targets` n'est PAS décoratif : sans lui, cargo ignore les tests
+# des EXEMPLES. Or les diagnostics du terrain vivent là (crates/mail-core/
+# examples/), et ils portent leurs propres tests — dont celui qui empêche
+# un diagnostic de divulguer des identifiants en clair. Constaté : deux
+# tests écrits, verts, et jamais exécutés par ce gate.
+#
+# `--all-targets` exclut en revanche les doc-tests, d'où la seconde ligne.
+cargo test --workspace --all-targets
+cargo test --workspace --doc
 
 echo "[4/4] E2E — la vraie fenêtre pilotée via CDP"
 cd e2e
