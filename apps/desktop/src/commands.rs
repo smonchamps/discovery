@@ -499,6 +499,20 @@ fn run_sync(
     .into_iter()
     .collect();
 
+    // NOTE — la synchronisation d'« Envoyés » se branche ICI, et pas
+    // avant que l'identité d'un message ne porte sa BOÎTE.
+    //
+    // `ImapServer::sent_folder_name` est prêt et testé. Ce qui manque est
+    // ailleurs : les commandes qui agissent sur un message (`mark_seen`,
+    // `raw_body`, `message_attachments`, archivage, suppression) fixent
+    // toutes `MAILBOX` en dur. Or un fil contient désormais nos réponses,
+    // et le bandeau de conversation les rend cliquables — avec des UID de
+    // « Envoyés » interprétés dans INBOX. Les UID étant par boîte et
+    // repartant de 1, la collision est la norme : mauvais corps affiché,
+    // mauvais message marqué lu.
+    //
+    // L'invariant à corriger d'abord : identité = (compte, BOÎTE, uid).
+
     // Le tirage des brouillons profite lui aussi de la connexion ouverte.
     // Il ne peut PAS vivre dans le cycle de poussée : celui-ci s'arrête
     // tôt quand il n'y a rien à pousser — à raison, sinon chaque frappe

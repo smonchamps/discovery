@@ -41,6 +41,11 @@ pub struct ImapServer {
     trash: Option<String>,
     drafts: Option<String>,
     archive: Option<convert::ArchiveStrategy>,
+    /// Le dossier des envois, mémorisé pour la session. Deux niveaux
+    /// d'option, et ils disent deux choses différentes : `None` = pas
+    /// encore cherché, `Some(None)` = cherché, ce serveur n'en a pas.
+    /// Les confondre ferait relister à chaque synchronisation.
+    sent: Option<Option<String>>,
     /// Le serveur annonce-t-il MOVE (RFC 6851) ? Mémorisé : la capacité
     /// ne change pas en cours de session.
     supports_move: Option<bool>,
@@ -70,6 +75,7 @@ impl ImapServer {
             trash: None,
             drafts: None,
             archive: None,
+            sent: None,
             supports_move: None,
         })
     }
@@ -93,6 +99,7 @@ impl ImapServer {
             trash: None,
             drafts: None,
             archive: None,
+            sent: None,
             supports_move: None,
         })
     }
@@ -205,6 +212,37 @@ impl ImapServer {
         let strategy = convert::archive_strategy(folders);
         self.archive = Some(strategy.clone());
         Ok(strategy)
+    }
+
+    /// Le dossier où CE serveur range nos messages partis, s'il en a un.
+    ///
+    /// `None` n'est pas une panne, c'est une capacité absente — même
+    /// discipline que [`Self::drafts_folder_name`]. Sans lui, les
+    /// conversations ne regroupent que les messages reçus, exactement
+    /// comme avant l'[ADR 0009] ; la synchronisation continue.
+    pub fn sent_folder_name(&mut self) -> Result<Option<String>, Error> {
+        if let Some(known) = &self.sent {
+            return Ok(known.clone());
+        }
+        let names = self.session.list(None, Some("*")).map_err(server_err)?;
+        let folders: Vec<(&str, convert::SpecialUse)> = names
+            .iter()
+            .map(|name| {
+                let role = if name
+                    .attributes()
+                    .iter()
+                    .any(|attribute| matches!(attribute, NameAttribute::Sent))
+                {
+                    convert::SpecialUse::Sent
+                } else {
+                    convert::SpecialUse::Other
+                };
+                (name.name(), role)
+            })
+            .collect();
+        let found = convert::sent_folder(folders);
+        self.sent = Some(found.clone());
+        Ok(found)
     }
 
     /// UIDVALIDITY du dossier Brouillons — la garde des repères distants :

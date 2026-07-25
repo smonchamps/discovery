@@ -14,6 +14,8 @@ use mail_core::{Envelope, Uid};
 pub(crate) enum SpecialUse {
     Archive,
     All,
+    /// `\Sent` — là où le serveur range NOS messages partis.
+    Sent,
     Other,
 }
 
@@ -59,6 +61,10 @@ pub(crate) fn archive_strategy<'a>(
         match role {
             SpecialUse::Archive => return ArchiveStrategy::MoveTo(name.to_string()),
             SpecialUse::All => has_all = true,
+            // Le dossier des envois n'est jamais une destination
+            // d'archivage — et il ne doit pas non plus tomber dans le
+            // repli par nom ci-dessous.
+            SpecialUse::Sent => {}
             SpecialUse::Other => {
                 // Le nom COMPLET doit correspondre : « Archive/Achats »
                 // est un classement, pas la destination d'archivage.
@@ -82,6 +88,56 @@ pub(crate) fn archive_strategy<'a>(
         Some(folder) => ArchiveStrategy::MoveTo(folder),
         None => ArchiveStrategy::Unsupported,
     }
+}
+
+/// Noms de repli pour le dossier des envois, quand le serveur n'annonce
+/// pas `\Sent`.
+///
+/// Même exception délibérée que pour l'archivage, et pour la même raison :
+/// un serveur réel n'annonce pas toujours ce qu'il possède. La liste reste
+/// courte — un dossier non trouvé dégrade proprement (les fils ne
+/// regroupent que les reçus), un MAUVAIS dossier synchroniserait du
+/// courrier étranger dans les conversations.
+const SENT_FALLBACK_NAMES: [&str; 5] = [
+    "sent",
+    "sent items",
+    "envoyé",
+    "envoyés",
+    "éléments envoyés",
+];
+
+/// Où le serveur range NOS messages partis, s'il le dit ou si son nom le
+/// trahit.
+///
+/// Ordre de priorité, du plus sûr au moins sûr — celui de
+/// [`archive_strategy`] :
+/// 1. `\Sent` annoncé : l'intention du serveur, sans ambiguïté ;
+/// 2. un dossier dont le nom complet est connu (repli) ;
+/// 3. sinon `None`, et le compte fonctionne comme avant : les fils ne
+///    regroupent que les messages reçus. Une dégradation locale et
+///    silencieuse, jamais une erreur ([ADR 0009] §7).
+pub(crate) fn sent_folder<'a>(
+    folders: impl IntoIterator<Item = (&'a str, SpecialUse)>,
+) -> Option<String> {
+    let mut named: Option<String> = None;
+    for (name, role) in folders {
+        match role {
+            SpecialUse::Sent => return Some(name.to_string()),
+            SpecialUse::Archive | SpecialUse::All => {}
+            SpecialUse::Other => {
+                // Le nom COMPLET, et décodé : un serveur français annonce
+                // « Envoy&AOk-s ». Ce qu'on mémorise reste le nom réseau,
+                // c'est lui qu'on renverra au serveur.
+                if named.is_none()
+                    && SENT_FALLBACK_NAMES
+                        .contains(&crate::mutf7::decode(name).to_lowercase().as_str())
+                {
+                    named = Some(name.to_string());
+                }
+            }
+        }
+    }
+    named
 }
 
 /// Compacte une liste d'UIDs en ensemble IMAP : `[1,2,3,5]` → `"1:3,5"`.
@@ -785,6 +841,66 @@ Content-Transfer-Encoding: base64\r\n\r\niVBORw0KGgo=\r\n--B--\r\n";
     /// Gmail n'expose pas `\Archive` mais expose `\All` : expurger d'INBOX
     /// ne fait qu'y retirer le libellé, le message survit dans « Tous les
     /// messages ». C'est la sémantique d'origine du produit.
+    /// L'attribut annoncé fait foi, quel que soit le nom du dossier —
+    /// Gmail nomme le sien « [Gmail]/Messages envoyés ».
+    #[test]
+    fn le_dossier_des_envois_se_lit_dans_l_attribut_annonce() {
+        let dossier = sent_folder([
+            ("INBOX", SpecialUse::Other),
+            ("[Gmail]/Messages envoy&AOk-s", SpecialUse::Sent),
+            ("[Gmail]/Corbeille", SpecialUse::Other),
+        ]);
+        assert_eq!(dossier.as_deref(), Some("[Gmail]/Messages envoy&AOk-s"));
+    }
+
+    /// Repli par nom, sur le nom DÉCODÉ : un serveur francophone annonce
+    /// « Envoy&AOk-s » en UTF-7 modifié. On mémorise malgré tout le nom
+    /// réseau, puisque c'est lui qu'on renverra au serveur.
+    #[test]
+    fn un_dossier_d_envois_accentue_est_reconnu_sous_sa_forme_encodee() {
+        let dossier = sent_folder([
+            ("INBOX", SpecialUse::Other),
+            ("Envoy&AOk-s", SpecialUse::Other),
+        ]);
+        assert_eq!(dossier.as_deref(), Some("Envoy&AOk-s"));
+    }
+
+    /// Le nom COMPLET doit correspondre : « Sent/2024 » est un
+    /// classement, pas le dossier des envois. Se tromper ici ferait
+    /// entrer du courrier étranger dans les conversations.
+    #[test]
+    fn un_sous_dossier_ne_passe_pas_pour_le_dossier_des_envois() {
+        assert_eq!(
+            sent_folder([
+                ("INBOX", SpecialUse::Other),
+                ("Sent/2024", SpecialUse::Other)
+            ]),
+            None
+        );
+    }
+
+    /// Aucun attribut, aucun nom connu : on ne devine pas. Le compte
+    /// fonctionne comme avant — les fils ne regroupent que les reçus.
+    #[test]
+    fn sans_attribut_ni_nom_connu_aucun_dossier_n_est_invente() {
+        assert_eq!(
+            sent_folder([("INBOX", SpecialUse::Other), ("Bazar", SpecialUse::Other)]),
+            None
+        );
+    }
+
+    /// L'attribut l'emporte sur le nom, même si le nom vient d'abord :
+    /// un dossier « Sent » personnel ne doit pas voler la place de celui
+    /// que le serveur désigne.
+    #[test]
+    fn l_attribut_l_emporte_sur_un_homonyme_rencontre_avant() {
+        let dossier = sent_folder([
+            ("Sent", SpecialUse::Other),
+            ("Elements envoyes", SpecialUse::Sent),
+        ]);
+        assert_eq!(dossier.as_deref(), Some("Elements envoyes"));
+    }
+
     #[test]
     fn gmail_archives_by_expunging_because_all_mail_catches_the_message() {
         let folders = [
