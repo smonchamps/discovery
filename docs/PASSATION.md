@@ -69,17 +69,36 @@ Ordre conseillé — chaque étape se prouve avant la suivante :
 3. ✅ **La requête de liste et son index PARTIEL** (ADR 0009 §4). Vérifié à
    200 000 messages : `SCAN t USING INDEX idx_threads_date_globale`, page
    à 0,71 ms — le gain du gate 3 est préservé.
-4. ⬜ **La synchronisation d'« Envoyés »** : découverte par attribut
-   `\Sent` puis repli par nom (ADR 0009 §7), et boucle sur deux boîtes.
-   `commands.rs` fixe encore `MAILBOX = "INBOX"`.
+4a. ✅ **Découvrir le dossier des envois** : attribut `\Sent`, puis repli
+   par nom complet décodé (ADR 0009 §7). `ImapServer::sent_folder_name`,
+   cinq tests. **Inerte** : personne ne l'appelle encore.
+4b. ⬜ **L'identité doit porter la BOÎTE — avant tout câblage.**
 5. ⬜ **Re-mesurer** : recherche (le corpus grandit, cf. §3) et page de
    liste. Puis **valider sur le terrain** : c'est le seul endroit où l'on
    verra si le regroupement rapporte enfin.
 
-⚠️ **Tant que l'étape 4 n'est pas faite, aucun fil ne traverse deux boîtes
-en production.** Le noyau le permet, la plomberie n'existe pas — et rien à
-l'écran ne change. Ne pas conclure de l'absence d'effet que le chantier a
-échoué.
+### ⚠️ Le blocage de l'étape 4b, à lire avant d'y toucher
+
+Le câblage de la synchronisation était écrit et vert. Il a été **retiré**,
+parce qu'il introduisait un défaut de correction.
+
+Un fil contient désormais nos réponses, et le bandeau de conversation les
+rend cliquables. Or les commandes qui agissent sur un message —
+`mark_seen`, `raw_body`, `message_attachments`, archivage, suppression —
+fixent toutes `MAILBOX = "INBOX"` en dur. Un UID de « Envoyés » y serait
+donc interprété dans INBOX. **Les UID sont par boîte et repartent de 1 :
+la collision est la norme, pas un cas limite.** Mauvais corps affiché,
+mauvais message marqué lu.
+
+C'est l'**invariant §6.2 qui change** : l'identité d'un message devient
+`(compte, BOÎTE, uid)`. Elle doit traverser `UnifiedRow`, l'IPC et
+`app.js` avant qu'une deuxième boîte ne soit synchronisée. Le point de
+branchement est marqué dans `commands.rs`, avec sa raison.
+
+⚠️ **Tant que 4b n'est pas faite, aucun fil ne traverse deux boîtes en
+production.** Le noyau le permet, la plomberie est volontairement absente
+— et rien à l'écran ne change. Ne pas conclure de l'absence d'effet que le
+chantier a échoué.
 
 Le reste de ce §1 raconte le dernier chantier clos — contexte, pas action.
 
@@ -304,6 +323,12 @@ Faciles à casser **en silence**. À vérifier à chaque revue.
    renvoyé automatiquement). *« Le doublon est pire que le retard. »*
 2. **Identité message = `(account_id, uid)`** partout, jusque dans la
    sélection de l'UI. Un UID seul n'identifie rien.
+
+   ⚠️ **Vrai tant qu'UNE SEULE boîte est synchronisée par compte** — ce
+   qui est le cas aujourd'hui. Dès que « Envoyés » le sera (étape 4b, §1),
+   l'identité devra devenir `(account_id, BOÎTE, uid)` : les UID sont par
+   boîte et repartent de 1, donc deux messages d'un même compte peuvent
+   parfaitement porter le numéro 1.
 3. **Les index et agrégats vivent DANS la base**, entretenus dans la MÊME
    transaction que le message : index FTS5, table `threads`. Pas de second
    magasin, pas de réconciliation après crash.
