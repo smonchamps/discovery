@@ -4,12 +4,21 @@
 //! pour que lire et citer se testent entièrement hors ligne.
 //!
 //! ```powershell
-//! cargo run -p mail-core --example seed_inbox --release -- <chemin.db> [nombre] [email]
+//! cargo run -p mail-core --example seed_inbox --release -- <chemin.db> [nombre] [email] [corps] [ko_par_corps]
 //! ```
 //!
 //! `email` (défaut : seed@exemple.fr) désigne le compte qui possède la
 //! boîte — appeler l'outil deux fois avec deux emails peuple une base
 //! multi-comptes (décor de l'E2E boîte unifiée).
+//!
+//! `corps` (défaut : 500) et `ko_par_corps` (défaut : 0, c'est-à-dire le
+//! corps de démonstration minuscule) servent au **gate 3** : le budget
+//! disque (< 1 Go) et la recherche ne se mesurent pas sur des corps de
+//! soixante octets. L'[ADR 0007] a mesuré **~34 Ko par corps stocké** sur
+//! une boîte réelle ; c'est la valeur à passer ici.
+//!
+//! Les défauts reproduisent exactement le décor d'avant : les E2E et les
+//! mesures de Phase 1 restent comparables.
 //!
 //! Attention : la boîte INBOX de la base visée est remplacée. L'UIDVALIDITY
 //! synthétique (424242) garantit qu'une future synchro réelle repartira
@@ -41,6 +50,77 @@ const TOPICS: [&str; 6] = [
 const SEED_UID_VALIDITY: u32 = 424_242;
 const BATCH: usize = 1_000;
 
+/// De quoi remplir un corps sans qu'il ressemble à du bruit.
+const MOTS: [&str; 32] = [
+    "bonjour",
+    "facture",
+    "réunion",
+    "projet",
+    "livraison",
+    "devis",
+    "client",
+    "équipe",
+    "rapport",
+    "budget",
+    "contrat",
+    "échéance",
+    "validation",
+    "commande",
+    "réponse",
+    "document",
+    "semaine",
+    "service",
+    "message",
+    "dossier",
+    "produit",
+    "atelier",
+    "compte",
+    "détail",
+    "demande",
+    "facturation",
+    "planning",
+    "relance",
+    "remise",
+    "accord",
+    "suivi",
+    "note",
+];
+
+/// Un corps synthétique d'environ `ko` kilooctets.
+///
+/// **Une longue traîne, pas un plateau.** Un corps de 34 Ko fait ~5 000
+/// mots : tirés dans un vocabulaire de trente mots, chacun se retrouverait
+/// dans la totalité des messages, et la recherche ne mesurerait plus que
+/// le cas dégénéré que l'[ADR 0007] §4 signale déjà (« 90 % du corpus
+/// matche »). Un jeton rare sur cinq, pris dans un espace de 20 000,
+/// redonne au corpus la forme d'un vrai courrier : beaucoup de termes que
+/// peu de messages portent.
+///
+/// Déterministe : le même `uid` produit le même corps, donc deux mesures
+/// se comparent.
+fn corps_synthetique(uid: u32, ko: usize) -> String {
+    let cible = ko * 1024;
+    let mut sortie = String::with_capacity(cible + 64);
+    sortie.push_str("<p>");
+    let mut graine = u64::from(uid)
+        .wrapping_mul(2_862_933_555_777_941_757)
+        .wrapping_add(3_037_000_493);
+    while sortie.len() < cible {
+        graine = graine
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        let tirage = (graine >> 33) as usize;
+        if tirage.is_multiple_of(5) {
+            sortie.push_str(&format!("ref{} ", tirage % 20_000));
+        } else {
+            sortie.push_str(MOTS[tirage % MOTS.len()]);
+            sortie.push(' ');
+        }
+    }
+    sortie.push_str("</p>");
+    sortie
+}
+
 fn main() -> Result<(), mail_core::Error> {
     let args: Vec<String> = std::env::args().collect();
     let path = args
@@ -53,6 +133,14 @@ fn main() -> Result<(), mail_core::Error> {
         .unwrap_or(50_000);
 
     let email = args.get(3).map(String::as_str).unwrap_or("seed@exemple.fr");
+    let corps: u32 = args
+        .get(4)
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(500);
+    let ko_par_corps: usize = args
+        .get(5)
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(0);
 
     let timer = Instant::now();
     let mut store = Store::open(std::path::Path::new(path))?;
@@ -99,7 +187,7 @@ fn main() -> Result<(), mail_core::Error> {
 
     // Un corps pour les plus récents seulement : suffisant pour les E2E,
     // sans alourdir l'outil de mesure quand on seed 50 000 messages.
-    let body_from = count.saturating_sub(500) + 1;
+    let body_from = count.saturating_sub(corps) + 1;
     for uid in body_from..=count {
         // Un message sur dix porte une pièce jointe : de quoi exercer la
         // liste ET son absence, sans avoir à distinguer deux décors.
@@ -113,12 +201,12 @@ fn main() -> Result<(), mail_core::Error> {
         } else {
             Vec::new()
         };
-        store.save_body(
-            mailbox_id,
-            uid,
-            &format!("<p>Corps du message n°{uid} : contenu de démonstration.</p>"),
-            &attachments,
-        )?;
+        let html = if ko_par_corps == 0 {
+            format!("<p>Corps du message n°{uid} : contenu de démonstration.</p>")
+        } else {
+            corps_synthetique(uid, ko_par_corps)
+        };
+        store.save_body(mailbox_id, uid, &html, &attachments)?;
     }
     // Dossiers de destination : le déplacement se joue entièrement en
     // local (cache + journal), donc l'E2E peut l'exercer hors ligne.
