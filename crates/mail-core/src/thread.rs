@@ -229,6 +229,15 @@ CREATE TABLE IF NOT EXISTS threads (
 );
 CREATE INDEX IF NOT EXISTS idx_threads_date
     ON threads(mailbox_id, last_epoch DESC, last_uid DESC);
+-- Le même tri, SANS préfixe de boîte : c'est celui dont la boîte unifiée
+-- a besoin. Elle couvre la même boîte de TOUS les comptes, donc ne fixe
+-- aucun `mailbox_id` — et un index qui commence par cette colonne ne peut
+-- alors plus porter l'ordre. SQLite retombait sur un tri matérialisé de
+-- toutes les conversations, à CHAQUE page de défilement : 987 ms mesurées
+-- sur 160 000 conversations au gate 3, contre 0,66 ms avec cet index.
+-- L'index préfixé reste utile aux requêtes bornées à une boîte.
+CREATE INDEX IF NOT EXISTS idx_threads_date_globale
+    ON threads(last_epoch DESC, last_uid DESC, mailbox_id);
 CREATE TABLE IF NOT EXISTS thread_links (
     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
     message_id TEXT NOT NULL,

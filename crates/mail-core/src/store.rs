@@ -1033,16 +1033,7 @@ impl Store {
         // tri et la pagination — le coût d'une page ne dépend plus de la
         // taille de la boîte. C'est l'agrégat matérialisé qui paie ça, et
         // il se maintient dans la transaction d'écriture.
-        let mut stmt = self.0.prepare(&format!(
-            "{SELECT_UNIFIED}{THREAD_AGGREGATE}
-             FROM threads t
-             JOIN envelopes e ON e.mailbox_id = t.mailbox_id AND e.uid = t.last_uid
-             JOIN mailboxes m ON m.id = t.mailbox_id
-             JOIN accounts a ON a.id = m.account_id
-             WHERE m.name = ?1
-             ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id
-             LIMIT ?2 OFFSET ?3"
-        ))?;
+        let mut stmt = self.0.prepare(&unified_page_sql())?;
         let rows = stmt
             .query_map(
                 params![mailbox, limit as i64, offset as i64],
@@ -1054,6 +1045,8 @@ impl Store {
 
     /// Total de la boîte unifiée — en CONVERSATIONS, puisque c'est ce que
     /// la liste affiche. Compter les messages ferait défiler dans le vide.
+    //
+    // (`unified_page_sql`, plus bas, porte la requête de la page.)
     pub fn unified_count(&self, mailbox: &str) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
             "SELECT COUNT(*) FROM threads t JOIN mailboxes m ON m.id = t.mailbox_id
@@ -1139,6 +1132,24 @@ pub struct AccountConfig {
     pub smtp_host: Option<String>,
     pub smtp_port: Option<u16>,
     pub username: Option<String>,
+}
+
+/// La requête d'une page de la boîte unifiée.
+///
+/// Isolée pour qu'un test puisse interroger **son** plan d'exécution, et
+/// non une copie qui divergerait le jour où l'une des deux change. Le
+/// coût de cette requête est le chemin le plus chaud du produit.
+fn unified_page_sql() -> String {
+    format!(
+        "{SELECT_UNIFIED}{THREAD_AGGREGATE}
+         FROM threads t
+         JOIN envelopes e ON e.mailbox_id = t.mailbox_id AND e.uid = t.last_uid
+         JOIN mailboxes m ON m.id = t.mailbox_id
+         JOIN accounts a ON a.id = m.account_id
+         WHERE m.name = ?1
+         ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id
+         LIMIT ?2 OFFSET ?3"
+    )
 }
 
 fn migrate(conn: &Connection) -> Result<(), Error> {
@@ -2584,5 +2595,57 @@ mod tests {
             .upsert_envelopes(id, &[envelope(1, "Devis", 100, true)])
             .unwrap();
         assert_eq!(unified(&store).len(), 1, "la boîte se repeuple sans butée");
+    }
+
+    /// La promesse de l'[ADR 0008] §4 — « le coût d'une page ne dépend
+    /// plus de la taille de la boîte » — repose ENTIÈREMENT sur un index
+    /// qui porte le tri. Si SQLite matérialise l'ordre dans un B-arbre
+    /// temporaire, elle est rompue : silencieusement, et seulement à
+    /// l'échelle, là où plus aucun test fonctionnel ne regarde.
+    ///
+    /// C'est arrivé. Le gate 3 a mesuré **987 ms** pour une page à
+    /// 160 000 conversations, contre 0,66 ms une fois l'index posé.
+    /// L'index d'origine était préfixé par `mailbox_id` : il servait une
+    /// boîte, mais pas la **boîte unifiée**, qui les couvre toutes et qui
+    /// est la vue par défaut du produit. Deux comptes suffisent à le
+    /// reproduire — d'où ce décor.
+    ///
+    /// On interroge le plan plutôt qu'un chronomètre : une durée dépend
+    /// de la machine, un plan d'exécution non.
+    #[test]
+    fn la_boite_unifiee_ne_materialise_pas_son_tri() {
+        let mut store = Store::open_in_memory().unwrap();
+        for (email, uids) in [("un@exemple.fr", 1..60u32), ("deux@exemple.fr", 60..120)] {
+            let account = store.adopt_or_create_account(email, "gmail").unwrap();
+            let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            let envelopes: Vec<Envelope> = uids
+                .map(|uid| envelope(uid, "Sujet", 1_600_000_000 + i64::from(uid), true))
+                .collect();
+            store.upsert_envelopes(mailbox, &envelopes).unwrap();
+        }
+
+        let mut stmt = store
+            .0
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", unified_page_sql()))
+            .unwrap();
+        let plan: Vec<String> = stmt
+            .query_map(params!["INBOX", 200i64, 0i64], |row| {
+                row.get::<_, String>(3)
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+
+        // « FOR LAST TERM OF ORDER BY » est acceptable : ce tri-là ne
+        // départage que les ex æquo de date ET d'UID. C'est le tri
+        // COMPLET qui coûte, et lui seul est interdit ici.
+        assert!(
+            !plan
+                .iter()
+                .any(|etape| etape.contains("TEMP B-TREE FOR ORDER BY")),
+            "la page de la boîte unifiée matérialise son tri — le coût \
+             redevient proportionnel à la taille de la boîte.\nPlan :\n{}",
+            plan.join("\n")
+        );
     }
 }
