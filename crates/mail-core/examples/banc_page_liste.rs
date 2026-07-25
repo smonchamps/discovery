@@ -72,7 +72,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conn = Connection::open(&path)?;
     let fils: i64 = conn.query_row("SELECT COUNT(*) FROM threads", [], |row| row.get(0))?;
     let boites: i64 = conn.query_row("SELECT COUNT(*) FROM mailboxes", [], |row| row.get(0))?;
+    // La liste ne pagine QUE les fils ayant un message reçu. Prendre le
+    // total ferait mesurer des pages qui n'existent pas — le banc rendait
+    // « 0 lignes » en annonçant une durée, ce qui ne mesure rien.
+    //
+    // L'écart entre les deux est lui-même le chiffre intéressant : c'est
+    // ce que l'index partiel écarte (ADR 0009 §4).
+    let visibles: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM threads WHERE inbox_size > 0",
+        [],
+        |row| row.get(0),
+    )?;
     println!("{fils} conversations réparties sur {boites} boîte(s)");
+    println!("dont {visibles} avec au moins un message reçu — seules celles-là sont paginées");
 
     println!("\n--- plan de la boîte unifiée ---");
     plan(&conn, PAGE_UNIFIEE, rusqlite::params![])?;
@@ -92,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = Store::open(std::path::Path::new(&path))?;
     println!("\n--- coût réel d'une page (Store::unified_recent, 200 lignes) ---");
     for offset in [0usize, 20_000, 80_000, 150_000] {
-        if offset as i64 >= fils {
+        if offset as i64 >= visibles {
             continue;
         }
         // Deux tours : le premier chauffe le cache de pages SQLite, le

@@ -75,9 +75,13 @@ Ordre conseillé — chaque étape se prouve avant la suivante :
 4b. ✅ **L'identité porte la BOÎTE** — `(compte, boîte, uid)` de
    `UnifiedRow` jusqu'à `app.js`, en passant par les dix commandes qui
    agissent sur un message. **« Envoyés » est synchronisé.**
-5. ⬜ **Re-mesurer et VALIDER SUR LE TERRAIN** : recherche (le corpus
-   grandit, cf. §3) et page de liste. C'est là qu'on verra si le
-   regroupement rapporte enfin.
+5. ✅ **Re-mesuré et validé sur le terrain** ([PHASE3.md](PHASE3.md)
+   §2 bis). Aucune régression. L'index partiel est enfin éprouvé sur un
+   décor à deux boîtes par compte : **80 000 fils invisibles coûtent
+   zéro**. Et sur la boîte réelle, les conversations de plus d'un message
+   passent de **15 à 248**.
+
+**Le chantier de l'ADR 0009 est clos.** Ce qui reste est au §8.
 
 ### Ce que l'étape 4b a appris
 

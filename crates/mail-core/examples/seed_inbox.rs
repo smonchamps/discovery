@@ -141,16 +141,20 @@ fn main() -> Result<(), mail_core::Error> {
         .get(5)
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
+    // La boite a peupler. « Envoyes » sert a fabriquer le decor que
+    // l ADR 0009 §4 vise sans qu on ait jamais pu l eprouver : des fils
+    // PUREMENT SORTANTS, que l index partiel doit exclure.
+    let boite = args.get(6).map(String::as_str).unwrap_or("INBOX");
 
     let timer = Instant::now();
     let mut store = Store::open(std::path::Path::new(path))?;
     let account = store.adopt_or_create_account(email, "gmail")?;
-    let mailbox_id = match store.sync_state(account, "INBOX")? {
+    let mailbox_id = match store.sync_state(account, boite)? {
         Some(state) => {
             store.reset_mailbox(state.mailbox_id, SEED_UID_VALIDITY)?;
             state.mailbox_id
         }
-        None => store.create_mailbox(account, "INBOX", SEED_UID_VALIDITY)?,
+        None => store.create_mailbox(account, boite, SEED_UID_VALIDITY)?,
     };
 
     let mut batch = Vec::with_capacity(BATCH);
@@ -164,12 +168,12 @@ fn main() -> Result<(), mail_core::Error> {
                 "expediteur{}@exemple.fr",
                 (index * 7) % SENDERS.len()
             )),
-            message_id: Some(format!("<seed-{uid}@exemple.fr>")),
+            message_id: Some(format!("<seed-{boite}-{uid}@exemple.fr>")),
             // Un message sur cinq répond au précédent : sans vraie
             // conversation dans le jeu d'essai, un regroupement cassé
             // passerait tous les tests.
             in_reply_to: (uid % 5 == 0 && uid > 1)
-                .then(|| format!("<seed-{}@exemple.fr>", uid - 1)),
+                .then(|| format!("<seed-{boite}-{}@exemple.fr>", uid - 1)),
             date: Utc
                 .timestamp_opt(1_600_000_000 + i64::from(uid) * 60, 0)
                 .single(),

@@ -130,6 +130,73 @@ Deux réserves d'honnêteté :
    diverse. L'ADR 0004 avait fait la même réserve sur son propre banc ;
 2. le mécanisme, lui, est réel et indépendant du corpus.
 
+## 2 bis. Re-mesure après l'ADR 0009 (2026-07-25, même jour)
+
+Le chantier de la [portée des fils au compte](adr/0009-portee-des-fils-au-compte.md)
+— « Envoyés » synchronisé, identité portant la boîte, index **partiel** —
+a été livré après cette revue. Les budgets ont donc été re-mesurés.
+
+| Métrique | Gate 3 | **Après ADR 0009** | |
+|---|---|---|---|
+| Page de liste (offset 0) | 0,71 ms | **0,71 ms** | ✅ |
+| Adoption d'une base héritée | 4,22 s / 200 000 | **3,72 s** / 199 200 | ❌ inchangé |
+| Ouverture d'un message | 0,09–0,16 ms | **0,09–0,15 ms** | ✅ |
+| Recherche, coût unitaire | 2,43–4,43 µs/corr. | **2,47–4,58 µs/corr.** | ❌ inchangé |
+
+**Aucune régression.** Les deux postes déjà hors budget le restent, dans
+les mêmes proportions et pour les mêmes raisons.
+
+### L'index partiel, éprouvé dans la condition qui le justifie
+
+Le décor du gate 3 n'avait qu'une boîte par compte : **tous** les fils
+portaient un message reçu, donc la clause `WHERE inbox_size > 0` de
+`idx_threads_date_globale` n'écartait jamais rien. Elle n'avait, en
+pratique, jamais servi.
+
+Un décor à deux boîtes par compte a été fabriqué pour l'éprouver —
+159 360 fils dont **seulement 79 200 avec un message reçu**, l'autre
+moitié étant purement sortante :
+
+| offset | INBOX seul (160 000 fils, tous visibles) | + « Envoyés » (79 200 visibles sur 159 360) |
+|---|---|---|
+| 0 | 0,71 ms | **0,71 ms** |
+| 20 000 | 32,8 ms | 29,9 ms |
+
+**Les ~80 000 fils invisibles coûtent exactement zéro.** La promesse de
+l'ADR 0009 §4 est vérifiée, et non plus seulement raisonnée.
+
+### Ce que la recherche donne sur une VRAIE boîte
+
+Le coût unitaire est le seul chiffre transférable, et il se reporte :
+
+- boîte réelle après « Envoyés » : **7 539 messages** ;
+- même une requête matchant **tout** le corpus coûterait
+  7 539 × 4,6 µs ≈ **35 ms**.
+
+**Aucune requête ne peut donc dépasser le budget sur cette boîte.** Le
+plafond des ~35 000 correspondances n'est atteignable qu'à l'échelle du
+gate 3 — le poste reste hors budget en synthétique, et confortable en
+usage réel. C'est exactement ce que la réserve d'honnêteté du §2 annonçait.
+
+### Ce que le regroupement rapporte, mesuré sur le terrain
+
+| | avant « Envoyés » | après | après la passe d'en-têtes |
+|---|---|---|---|
+| conversations de 2 messages ou plus | **15** | 234 | **248** |
+| dont 6 à 20 messages | 0 | 4 | **6** |
+
+De 15 à 248. Le plus gros fil réunit **14 messages** grâce aux
+`References` rapatriées — c'est précisément le mécanisme que l'ADR 0008
+(mesure 2) déclarait obligatoire.
+
+La progression n'est pas finie : la passe est bornée par cycle, et
+1 656 messages restent dans l'horizon de 12 mois.
+
+**Limite nommée, non résolue :** les ancres « FANTÔME » des plus gros fils
+montrent que des messages d'origine restent hors de la base — archivés
+hors d'INBOX. Seule la synchronisation de l'archive les ramènerait, au
+prix du disque et du plafond de recherche. Non tranché.
+
 ## 3. Enseignements consignés
 
 1. **Un test vert peut encoder un modèle faux de l'autre écrivain.** La
