@@ -4,18 +4,20 @@
 > ici : tout ce qui ne se déduit pas du code est écrit là.
 >
 > État au **2026-07-26** (soir), branche `main`.
-> **328 tests Rust · 20/20 E2E · clippy muet**.
+> **~340 tests Rust · 21/21 E2E · clippy muet**.
 >
-> **Phases 0 à 3 closes**, gate 3 joué. **Deux chantiers de la Phase 5
+> **Phases 0 à 3 closes**, gate 3 joué. **Trois chantiers de la Phase 5
 > sont TERMINÉS et validés au terrain** : la migration visible et
-> interruptible (**ADR 0012**, rembobinage prouvé à l'échelle du gate 3)
-> et l'**installeur NSIS + mise à jour signée** (**ADR 0013**, boucle
-> 0.1.1 → 0.1.2 appliquée sur l'app installée). La suite, dans l'ordre
-> arbitré : **télémétrie de crash opt-in**, puis bêta fermée.
+> interruptible (**ADR 0012**), l'**installeur NSIS + mise à jour signée**
+> (**ADR 0013**, boucle 0.1.1 → 0.1.2 appliquée sur l'app installée) et
+> la **télémétrie de crash locale et opt-in** (**ADR 0014**, rédaction
+> prouvée sur la vraie machine). Reste, avant le gate 5 : la **bêta
+> fermée 20-50 utilisateurs**.
 >
-> ⚠️ **Un chantier attend le commit** : l'updater (ADR 0013) est
-> implémenté, validé, mais **non commité** — accord du Chef Ingénieur en
-> attente. Si l'arbre est sale à la reprise, c'est lui.
+> ⚠️ **Un chantier attend le commit** : la télémétrie (ADR 0014) est
+> implémentée, testée, validée au terrain, mais **non commitée** — accord
+> du Chef Ingénieur en attente. Si l'arbre est sale à la reprise, c'est
+> elle.
 
 ---
 
@@ -109,9 +111,9 @@ la bêta.
 
 Durcissement et bêta ([PLAN.md](PLAN.md) §4). Ordre arbitré : migration
 visible et interruptible **✓ faite (ADR 0012)** → installeur + mise à
-jour signée **✓ faite (ADR 0013)** → **télémétrie de crash opt-in
-(prochain chantier)** → bêta fermée 20-50 utilisateurs. Gate 5 : deux
-semaines sans défaut critique.
+jour signée **✓ faite (ADR 0013)** → télémétrie de crash opt-in **✓
+faite (ADR 0014)** → **bêta fermée 20-50 utilisateurs (prochain)**.
+Gate 5 : deux semaines sans défaut critique.
 
 ---
 
@@ -269,6 +271,7 @@ scénarios du terrain sans réseau.
 | [0011](adr/0011-journal-wal.md) | Journal SQLite en **WAL** | Une lecture ne bloque plus une synchro longue ; persistant, bases héritées converties |
 | [0012](adr/0012-migration-visible-interruptible.md) | Migration **visible et interruptible** | L'adoption est UNE transaction rembobinable — annuler laisse `user_version` inchangé, jamais d'adoption partielle ; sonde `pending_adoption` en lecture seule, qui annonce la **portée** |
 | [0013](adr/0013-installeur-nsis-maj-signee.md) | Installeur **NSIS** + mise à jour signée | **Pas MSIX** (virtualiserait `%APPDATA%`, orphelinerait la base) ; updater signé minisign, piloté depuis Rust ; signature Windows reportée ; tag GitHub = **version nue**, `latest.json` sans BOM (`scripts/faire-release.ps1`) |
+| [0014](adr/0014-telemetrie-de-crash-locale.md) | Télémétrie de crash **locale, opt-in** | Fichier local seul (aucun réseau/tiers) ; panics seuls ; **message du panic supprimé** (seul vecteur de PII) ; hook qui ne touche jamais la base ; un crash thread principal fait un **double panic** (compteur `SEQ` + filtre `cannot unwind`) |
 
 Décisions Phase 0 ([PHASE0.md](PHASE0.md) §2) : SQLite local ; CONDSTORE ;
 parsing MIME par `mail-parser` ; OAuth2 PKCE loopback + coffre OS ; rendu
@@ -436,9 +439,21 @@ de code Windows reportée à la bêta. Publication d'une version :
 `scripts/faire-release.ps1 <version>` prépare le `latest.json`, la
 Release GitHub reste manuelle (tag = version nue).
 
-### Le chantier suivant : télémétrie de crash opt-in
+### Le chantier fait : télémétrie de crash locale et opt-in (ADR 0014)
 
-Ordre déjà arbitré (§1.4). Rien n'est engagé.
+Terminé et **validé au terrain** le 2026-07-26. Fichier local seul
+(aucun réseau, aucun tiers), panics backend seuls, opt-in off par
+défaut ; le **message du panic est supprimé** (seul vecteur de donnée
+personnelle), prouvé à deux niveaux (mémoire et fichier écrit). Le hook
+ne touche jamais la base (consentement en fichier + `AtomicBool`).
+Trouvaille terrain corrigée : un crash sur le thread principal produit un
+**double panic** à la frontière FFI de WebView2 — compteur `SEQ` (noms
+uniques) + filtre du secondaire `cannot unwind`.
+
+### Le chantier suivant : bêta fermée 20-50 utilisateurs
+
+Dernière étape avant le gate 5 ([PLAN.md](PLAN.md) §4). Kaizen
+hebdomadaire sur les frictions **observées**. Rien n'est engagé.
 
 ### La longue traîne en cours
 
@@ -655,6 +670,18 @@ l'app de l'utilisateur est du terrain lui aussi ; il se diagnostique en
 regardant les vrais assets publiés (API GitHub), pas en supposant.** Les
 deux sont désormais tenus par `scripts/faire-release.ps1`.
 
+### Un panic sur le thread principal fait DEUX panics
+
+La capture de crash (ADR 0014) s'est prouvée juste en test, mais le
+terrain a montré un comportement qu'aucun test unitaire ne voyait : un
+panic sur le thread principal tente de se dérouler, traverse la frontière
+FFI de WebView2 (nounwind), et déclenche un SECOND panic `cannot unwind`
+qui aborte. Le hook s'exécute pour les deux, dans la même seconde — le
+second écrasait le premier (le seul utile). Corrigé par un compteur dans
+le nom de fichier et un filtre du panic secondaire. **Le comportement de
+l'environnement au moment d'un crash ne se voit qu'en crashant pour de
+vrai.**
+
 ---
 
 ## 10. Carte des fichiers
@@ -679,6 +706,8 @@ deux sont désormais tenus par `scripts/faire-release.ps1`.
 | [`apps/desktop/ui/app.js`](../apps/desktop/ui/app.js) | UI : liste virtualisée, composeur, bandeaux (avancement, rattrapage) |
 | [`e2e/README.md`](../e2e/README.md) | Harnais E2E déterministe (CDP) |
 | [`scripts/faire-release.ps1`](../scripts/faire-release.ps1) | Prépare le `latest.json` signé d'une version (ADR 0013) — sans BOM, URL au tag nu |
+| [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | Rédaction PURE d'un rapport de crash — écarte le message (PII) (ADR 0014) |
+| [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, consentement en fichier, écriture locale du rapport (ADR 0014) |
 
 ---
 
