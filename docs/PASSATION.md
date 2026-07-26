@@ -392,6 +392,16 @@ minutes ; ne pas le faire « pour être sûr »).
 des EXEMPLES — les diagnostics du terrain vivent là et portent leurs tests.
 `--no-verify` existe ; s'en servir est une décision, pas un raccourci.
 
+**Le gate ne reflète la CI que sur la MÊME toolchain.** La version de Rust
+est **épinglée** dans [`rust-toolchain.toml`](../rust-toolchain.toml)
+(source unique : local + hook + CI). Le job CI, lui, ne lit pas ce
+fichier : sa ref d'action est épinglée à la main dans
+[`ci.yml`](../.github/workflows/ci.yml) — **monter de version se fait aux
+DEUX endroits**, puis on rejoue clippy (un lint neuf peut apparaître).
+Enseignement payé : la CI suivait « le dernier stable » et le hook
+tournait sur une toolchain locale en retard (1.94 vs 1.97) ; un lint
+clippy neuf a cassé la CI sans que le gate local le voie.
+
 ### 7.5 Déterminisme des E2E
 
 Étanches par construction : base jetable (`DISCOVERY_DB_PATH`), comptes
