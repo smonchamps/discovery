@@ -120,11 +120,22 @@ impl MailServer for FakeServer {
         Ok(MailboxSnapshot {
             uid_validity: self.uid_validity,
             highest_modseq: self.condstore.then_some(self.modseq),
+            // Le VRAI nombre de messages du décor, pas une constante : un
+            // faux serveur qui annoncerait autre chose que ce qu'il sert
+            // ferait passer des tests d'avancement sur un modèle faux.
+            exists: self.messages.len() as u32,
         })
     }
 
     fn list_uids(&mut self, _mailbox: &str) -> Result<Vec<Uid>, Error> {
         Ok(self.messages.keys().copied().collect())
+    }
+
+    fn message_count(&mut self, _mailbox: &str) -> Result<u32, Error> {
+        // Le VRAI décompte du décor, même règle que `exists` dans
+        // `select` : annoncer autre chose que ce qu'on sert ferait passer
+        // des tests de garde disque sur un modèle faux.
+        Ok(self.messages.len() as u32)
     }
 
     fn fetch_envelopes(&mut self, _mailbox: &str, uids: &[Uid]) -> Result<Vec<Envelope>, Error> {

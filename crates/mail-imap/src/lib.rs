@@ -122,6 +122,7 @@ impl ImapServer {
                 .uid_validity
                 .ok_or_else(|| Error::Server(format!("UIDVALIDITY absent pour {mailbox}")))?,
             highest_modseq: None,
+            exists: selected.exists,
         };
         self.selected = Some((mailbox.to_string(), snapshot));
         Ok(snapshot)
@@ -478,6 +479,18 @@ impl MailServer for ImapServer {
                     .any(|attribute| matches!(attribute, NameAttribute::NoSelect)),
             })
             .collect())
+    }
+
+    fn message_count(&mut self, mailbox: &str) -> Result<u32, Error> {
+        // STATUS et non SELECT : la commande est faite pour interroger une
+        // boîte NON sélectionnée (RFC 3501 §6.3.10) — la sélection
+        // courante du moteur n'est pas perturbée, et certains serveurs
+        // font payer un SELECT bien plus cher qu'un STATUS.
+        let status = self
+            .session
+            .status(mailbox, "(MESSAGES)")
+            .map_err(server_err)?;
+        Ok(status.exists)
     }
 
     /// MOVE si le serveur l'annonce, COPY + EXPUNGE sinon.

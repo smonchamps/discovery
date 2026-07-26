@@ -67,6 +67,7 @@ fn main() {
             commands::list_drafts,
             commands::delete_draft,
             commands::sync_drafts,
+            commands::sync_progress,
             commands::backfill_status,
             commands::backfill_bodies,
         ])

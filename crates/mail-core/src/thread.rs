@@ -561,10 +561,14 @@ type Orphan = (
 
 /// Les messages sans fil — de tout le stockage, ou d'un seul compte.
 fn orphans(conn: &Connection, account: Option<i64>) -> Result<Vec<Orphan>, Error> {
+    // `m.threaded` : hors portée, `thread_id` reste NULL **pour toujours**
+    // (ADR 0010 §3). Sans ce filtre, l'adoption les reprendrait à chaque
+    // ouverture sans jamais les solder — sur le chemin déjà mesuré à 3,7 s
+    // pour 200 000 messages, et que la synchronisation intégrale allonge.
     const BASE: &str = "SELECT m.account_id, e.mailbox_id, e.uid,
                 e.message_id, e.in_reply_to, e.refs
          FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
-         WHERE e.thread_id IS NULL";
+         WHERE e.thread_id IS NULL AND m.threaded = 1";
     let lire = |row: &rusqlite::Row<'_>| {
         Ok((
             row.get(0)?,

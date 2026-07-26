@@ -86,6 +86,12 @@ impl SyncEngine {
             }
         };
 
+        // Ce que le serveur annonce, relevé à CHAQUE passage : c'est le
+        // dénominateur de l'avancement (ADR 0010 §5). Relevé ici et non à
+        // la création de la boîte, sinon il figerait la valeur du premier
+        // jour et l'avancement dériverait à mesure que le courrier arrive.
+        store.record_remote_total(state.mailbox_id, snapshot.exists)?;
+
         // Les intentions locales d'abord : la synchro qui suit reflète
         // ainsi leur effet (le rejeu bump le modseq côté serveur).
         let replayed = replay_actions(server, store, mailbox, state.mailbox_id)?;
@@ -213,6 +219,259 @@ fn replay_actions(
         }
     }
     Ok(replayed)
+}
+
+/// Dans quel ORDRE synchroniser les boîtes d'un compte — décision pure,
+/// sans I/O, testable contre les bizarreries des serveurs réels.
+///
+/// Depuis l'[ADR 0010] on synchronise **tout**, sans exception : archive,
+/// corbeille et spam compris. L'ordre n'est donc plus un détail, c'est ce
+/// qui décide de ce que l'utilisateur voit en premier.
+///
+/// 1. **INBOX d'abord, toujours.** C'est la seule boîte que la liste
+///    affiche : la faire passer après un dossier d'archive de 80 000
+///    messages laisserait un écran vide pendant toute la première
+///    synchronisation.
+/// 2. **« Envoyés » ensuite**, parce que c'est lui qui complète les fils
+///    ([ADR 0009]) — le reste n'est jamais regroupé.
+/// 3. Le reste dans l'ordre du serveur.
+///
+/// Les dossiers non sélectionnables sont écartés : ce sont des conteneurs
+/// sans courrier (`\Noselect`), et les SELECT échoueraient un par un.
+///
+/// [ADR 0009]: ../../../docs/adr/0009-portee-des-fils-au-compte.md
+/// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
+pub fn sync_order(folders: &[crate::remote::Folder], sent: Option<&str>) -> Vec<String> {
+    let mut order: Vec<String> = Vec::with_capacity(folders.len() + 1);
+    // INBOX même si le serveur ne la liste pas : elle existe toujours, et
+    // une boîte de réception absente de la liste est une bizarrerie connue
+    // des serveurs qui la traitent à part.
+    order.push(crate::thread::RECEIVED_MAILBOX.to_string());
+    if let Some(sent) = sent.filter(|sent| *sent != crate::thread::RECEIVED_MAILBOX) {
+        order.push(sent.to_string());
+    }
+    for folder in folders {
+        if folder.selectable && !order.iter().any(|deja| deja == &folder.wire) {
+            order.push(folder.wire.clone());
+        }
+    }
+    order
+}
+
+/// Coût disque estimé d'UN message, tout compris — enveloppe, index,
+/// corps, pièces jointes.
+///
+/// Deux mesures du projet, pas un chiffre inventé ([ADR 0010] §4) :
+/// ~49 ko par corps (137 Mo pour 2 801 messages, rattrapage complet de la
+/// boîte réelle) + ~1,2 ko d'enveloppe et d'index (déduit de
+/// `gate3-corps.db` : 778,9 Mo pour 200 000 enveloppes + 16 002 corps).
+///
+/// **Délibérément haute** : annoncer trop et tenir vaut mieux que
+/// commencer et échouer à mi-chemin.
+///
+/// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
+pub const SYNC_BYTES_PER_MESSAGE: u64 = 50 * 1024;
+
+/// L'espace qui MANQUERAIT pour rapatrier `pending` messages — décision
+/// pure, la garde de l'[ADR 0010] §4.
+///
+/// `None` : ça tient, on y va. `Some(octets)` : on REFUSE avant de
+/// commencer, et le chiffre sert au message — « il manque 1,2 Go » se
+/// comprend, « espace insuffisant » tout court laisse l'utilisateur
+/// deviner s'il doit libérer 100 Mo ou 100 Go.
+///
+/// Pas de marge cachée en plus : l'estimation par message est déjà haute,
+/// et deux marges empilées finissent par refuser des synchronisations qui
+/// tiendraient.
+///
+/// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
+pub fn disk_shortfall(pending: u64, available_bytes: u64) -> Option<u64> {
+    let needed = pending.saturating_mul(SYNC_BYTES_PER_MESSAGE);
+    if needed <= available_bytes {
+        None
+    } else {
+        Some(needed - available_bytes)
+    }
+}
+
+#[cfg(test)]
+mod disk_shortfall_tests {
+    use super::{SYNC_BYTES_PER_MESSAGE, disk_shortfall};
+
+    /// Rien à rapatrier = rien à refuser, même sur un disque plein. Le
+    /// cas COURANT : toutes les synchronisations incrémentales d'une boîte
+    /// à jour passent par ici, et une garde qui les bloquerait sur un
+    /// disque bien rempli interdirait de relever son courrier.
+    #[test]
+    fn rien_a_rapatrier_passe_meme_disque_plein() {
+        assert_eq!(disk_shortfall(0, 0), None);
+        assert_eq!(disk_shortfall(0, u64::MAX), None);
+    }
+
+    #[test]
+    fn ca_tient_tout_juste() {
+        assert_eq!(disk_shortfall(100, 100 * SYNC_BYTES_PER_MESSAGE), None);
+    }
+
+    /// Le manque est CHIFFRÉ : c'est lui qui rend le refus actionnable.
+    #[test]
+    fn le_manque_est_chiffre() {
+        assert_eq!(
+            disk_shortfall(100, 99 * SYNC_BYTES_PER_MESSAGE),
+            Some(SYNC_BYTES_PER_MESSAGE)
+        );
+    }
+
+    /// 200 000 messages × 50 ko = ~9,8 Go : le produit déborderait un
+    /// u32, et une boîte encore plus grande ne doit pas faire paniquer la
+    /// garde par un débordement — en debug, une multiplication nue sur
+    /// u64 panique au lieu de boucler.
+    #[test]
+    fn une_boite_immense_ne_deborde_pas() {
+        assert_eq!(disk_shortfall(u64::MAX, 0), Some(u64::MAX));
+    }
+}
+
+/// L'avancement de la synchronisation, en pourcentage — décision pure.
+///
+/// `None` signifie **« je ne sais pas »**, et c'est un résultat à part
+/// entière : tant qu'aucune boîte n'a été sélectionnée, on n'a pas de
+/// dénominateur. Afficher « 0 % » dirait « je n'ai rien fait », et
+/// « 100 % » dirait « j'ai fini » — deux mensonges. L'appelant n'affiche
+/// alors rien.
+///
+/// Le résultat est plafonné à 100 : le local peut légitimement dépasser
+/// l'annonce du serveur — des messages supprimés côté serveur entre deux
+/// passages vivent encore en base jusqu'au différentiel suivant. Un
+/// « 103 % » ferait douter de tout le reste de l'écran.
+///
+/// Et il ne rend jamais 100 tant qu'il reste quelque chose : l'arrondi
+/// naturel afficherait « 100 % » à 19 999 messages sur 20 000, et
+/// l'utilisateur verrait une barre pleine qui ne se termine pas.
+pub fn sync_percent(local: u64, remote: u64) -> Option<u8> {
+    if remote == 0 {
+        return None;
+    }
+    if local >= remote {
+        return Some(100);
+    }
+    let percent = (local * 100 / remote) as u8;
+    Some(percent.min(99))
+}
+
+#[cfg(test)]
+mod sync_percent_tests {
+    use super::sync_percent;
+
+    /// Sans dénominateur, on ne raconte rien — surtout pas « 0 % », qui
+    /// serait indiscernable d'une synchronisation qui n'avance pas.
+    #[test]
+    fn sans_denominateur_on_ne_dit_rien() {
+        assert_eq!(sync_percent(0, 0), None);
+        assert_eq!(sync_percent(42, 0), None);
+    }
+
+    #[test]
+    fn le_cas_courant() {
+        assert_eq!(sync_percent(0, 200), Some(0));
+        assert_eq!(sync_percent(50, 200), Some(25));
+        assert_eq!(sync_percent(200, 200), Some(100));
+    }
+
+    /// Le local dépasse l'annonce du serveur dès qu'un message y est
+    /// supprimé entre deux passages : il vit encore en base jusqu'au
+    /// différentiel suivant. « 103 % » ferait douter du reste de l'écran.
+    #[test]
+    fn le_local_qui_depasse_est_plafonne() {
+        assert_eq!(sync_percent(210, 200), Some(100));
+    }
+
+    /// LE défaut d'affichage classique : une barre pleine qui continue de
+    /// tourner. 19 999 sur 20 000 arrondit à 100 % — et l'utilisateur
+    /// conclut que l'application est bloquée.
+    #[test]
+    fn presque_fini_n_est_pas_fini() {
+        assert_eq!(sync_percent(19_999, 20_000), Some(99));
+    }
+}
+
+#[cfg(test)]
+mod sync_order_tests {
+    use super::sync_order;
+    use crate::remote::Folder;
+
+    fn folder(wire: &str, selectable: bool) -> Folder {
+        Folder {
+            wire: wire.to_string(),
+            display: wire.to_string(),
+            selectable,
+        }
+    }
+
+    /// Le cas qui compte : la liste ne montre qu'INBOX. Si un serveur
+    /// annonce ses dossiers dans l'ordre alphabétique, « Archive » passe
+    /// avant — et l'utilisateur regarde un écran vide pendant que 80 000
+    /// messages d'archive descendent.
+    #[test]
+    fn inbox_passe_toujours_en_premier() {
+        let dossiers = [
+            folder("Archive", true),
+            folder("INBOX", true),
+            folder("Spam", true),
+        ];
+        assert_eq!(sync_order(&dossiers, None)[0], "INBOX");
+    }
+
+    /// « Envoyés » complète les fils (ADR 0009) : il passe avant les
+    /// dossiers qui, eux, ne seront jamais regroupés.
+    #[test]
+    fn les_envoyes_passent_avant_le_reste() {
+        let dossiers = [
+            folder("Archive", true),
+            folder("INBOX", true),
+            folder("Sent", true),
+        ];
+        let ordre = sync_order(&dossiers, Some("Sent"));
+        assert_eq!(ordre, vec!["INBOX", "Sent", "Archive"]);
+    }
+
+    /// Une boîte synchronisée deux fois n'est pas une erreur bénigne :
+    /// c'est un aller-retour réseau complet payé pour rien, sur le chemin
+    /// le plus long du produit.
+    #[test]
+    fn aucune_boite_n_est_synchronisee_deux_fois() {
+        let dossiers = [
+            folder("INBOX", true),
+            folder("Sent", true),
+            folder("Sent", true),
+        ];
+        let ordre = sync_order(&dossiers, Some("Sent"));
+        assert_eq!(ordre.len(), 2, "ordre obtenu : {ordre:?}");
+    }
+
+    /// `\Noselect` : un conteneur qui ne porte pas de courrier. Le
+    /// sélectionner échoue — autant ne pas le tenter.
+    #[test]
+    fn les_conteneurs_sans_courrier_sont_ecartes() {
+        let dossiers = [folder("INBOX", true), folder("[Gmail]", false)];
+        assert_eq!(sync_order(&dossiers, None), vec!["INBOX"]);
+    }
+
+    /// Gmail expose « [Gmail]/Messages envoyés » ET INBOX. Certains
+    /// serveurs génériques, eux, ne listent RIEN — la boîte de réception
+    /// doit rester synchronisée quand même.
+    #[test]
+    fn un_serveur_qui_ne_liste_rien_synchronise_quand_meme_la_reception() {
+        assert_eq!(sync_order(&[], None), vec!["INBOX"]);
+    }
+
+    /// Un serveur qui désigne INBOX comme dossier d'envois (vu sur des
+    /// configurations exotiques) ne doit pas la faire synchroniser deux
+    /// fois.
+    #[test]
+    fn un_dossier_d_envois_confondu_avec_la_reception_ne_double_pas() {
+        assert_eq!(sync_order(&[], Some("INBOX")), vec!["INBOX"]);
+    }
 }
 
 #[cfg(test)]

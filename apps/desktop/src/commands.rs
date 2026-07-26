@@ -24,9 +24,6 @@ use crate::AppState;
 const MAILBOX: &str = "INBOX";
 const LIST_LIMIT_MAX: usize = 500;
 const SEARCH_LIMIT: usize = 50;
-/// Horizon de récence du rattrapage des corps (ADR 0007) : 12 mois. C'est
-/// lui qui borne le coût disque — le budget du plan (< 1 Go) en dépend.
-const BACKFILL_HORIZON_DAYS: i64 = 365;
 /// Corps rapatriés par appel, tous comptes confondus. Borner le lot rend
 /// l'interruption gratuite : l'UI cesse simplement de rappeler.
 const BACKFILL_BUDGET: usize = 200;
@@ -454,6 +451,20 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     })
 }
 
+/// « 1,2 Go » ou « 850 Mo » — l'utilisateur doit savoir COMBIEN libérer,
+/// pas convertir des octets de tête. Préfixes décimaux (ceux de
+/// l'Explorateur serait Gio, mais Go est ce que le grand public lit sur
+/// une boîte de disque), virgule française.
+fn format_bytes(bytes: u64) -> String {
+    if bytes >= 1_000_000_000 {
+        format!("{:.1} Go", bytes as f64 / 1e9).replace('.', ",")
+    } else {
+        // Arrondi au Mo SUPÉRIEUR : annoncer « 0 Mo » à libérer serait
+        // absurde, et sous-annoncer ferait échouer la re-tentative.
+        format!("{} Mo", bytes.div_ceil(1_000_000).max(1))
+    }
+}
+
 /// Ce qu'une synchronisation de compte rapporte, au-delà des décomptes.
 struct SyncOutcome {
     report: mail_core::SyncReport,
@@ -502,20 +513,100 @@ fn run_sync(
     // continuer à fonctionner. L'échec est rapporté, jamais avalé — une
     // boîte qui refuserait de se regrouper serait sinon indiagnosticable.
     let sent = match server.sent_folder_name() {
-        Ok(found) => {
-            if let Some(sent) = &found
-                && let Err(reason) =
-                    SyncEngine::default().sync(&mut server, &mut store, account_id, sent)
-            {
-                problems.push(format!("dossier envoyés : {reason}"));
-            }
-            found
-        }
+        Ok(found) => found,
         Err(reason) => {
             problems.push(format!("dossier envoyés : {reason}"));
             None
         }
     };
+
+    // La PORTÉE du regroupement, déclarée avant de verser quoi que ce soit
+    // d'autre dans le compte (ADR 0010 §3). Sans elle, les messages des
+    // dossiers qu'on s'apprête à synchroniser rejoindraient les fils tout
+    // seuls : un spam ferait remonter une conversation en tête de liste.
+    //
+    // Re-déclarée à CHAQUE synchronisation, et pas seulement à la création
+    // du compte : un serveur peut renommer son dossier d'envois.
+    //
+    // AVANT la boucle, et c'est tout l'objet : le store en garde mémoire
+    // sur le compte, donc les boîtes que la boucle va CRÉER naissent déjà
+    // du bon côté de la portée. La déclarer après les ferait naître sans
+    // fil, et leurs messages attendraient le prochain démarrage.
+    if let Err(reason) = store.set_thread_scope(account_id, sent.as_deref()) {
+        problems.push(format!("portée des conversations : {reason}"));
+    }
+
+    // TOUS les autres dossiers — archive, corbeille, spam, dossiers de
+    // l'utilisateur (ADR 0010 §1). INBOX vient d'être faite ; `sync_order`
+    // la remet en tête et l'évite en double.
+    //
+    // Best effort dossier par dossier, et c'est délibéré : un serveur
+    // refuse volontiers UN dossier (quota, corruption, droits) et sert tous
+    // les autres. Faire échouer la synchronisation entière pour lui
+    // priverait l'utilisateur de son courrier à cause d'un dossier qu'il ne
+    // regarde jamais.
+    let folders = match server.folders() {
+        Ok(folders) => folders,
+        Err(reason) => {
+            problems.push(format!("liste des dossiers : {reason}"));
+            Vec::new()
+        }
+    };
+    let order = mail_core::sync_order(&folders, sent.as_deref());
+
+    // La garde d'espace disque (ADR 0010 §4) : estimer AVANT de
+    // s'engager, refuser en le chiffrant s'il manque. STATUS interroge
+    // chaque dossier sans le sélectionner — quelques allers-retours
+    // légers, contre des heures de téléchargement qui échoueraient à
+    // mi-chemin sur un disque plein.
+    //
+    // INBOX est comptée des deux côtés (annonce ET base locale) : la
+    // retirer d'un seul ferait sous-estimer le restant.
+    let mut announced: u64 = 0;
+    for boite in &order {
+        match server.message_count(boite) {
+            Ok(count) => announced += u64::from(count),
+            // Un dossier qui refuse le comptage rend l'estimation basse.
+            // On continue quand même : la garde est une protection, pas
+            // un droit de veto — et l'échec est consigné.
+            Err(reason) => problems.push(format!("comptage « {boite} » : {reason}")),
+        }
+    }
+    let local = store
+        .account_message_count(account_id)
+        .map_err(|err| err.to_string())?;
+    let pending = announced.saturating_sub(local);
+    // L'espace se mesure sur le VOLUME de la base : c'est lui qui
+    // encaissera les écritures, pas le disque système.
+    let shortfall = match fs4::available_space(db_path.parent().unwrap_or(db_path)) {
+        Ok(available) => mail_core::disk_shortfall(pending, available),
+        Err(reason) => {
+            // Mesure impossible ≠ espace insuffisant. Bloquer le courrier
+            // parce qu'un appel système a échoué serait pire que le
+            // risque couvert ; l'échec est dit, et SQLite signalera de
+            // toute façon un disque plein, écriture par écriture.
+            problems.push(format!("espace disque non mesurable : {reason}"));
+            None
+        }
+    };
+    if let Some(missing) = shortfall {
+        problems.push(format!(
+            "espace disque insuffisant : ~{} nécessaires pour {} message(s) \
+             restants, il manque {} — récupération des dossiers suspendue \
+             jusqu'à ce que de la place soit libérée",
+            format_bytes(pending.saturating_mul(mail_core::SYNC_BYTES_PER_MESSAGE)),
+            pending,
+            format_bytes(missing),
+        ));
+    } else {
+        for boite in order.into_iter().skip(1) {
+            if let Err(reason) =
+                SyncEngine::default().sync(&mut server, &mut store, account_id, &boite)
+            {
+                problems.push(format!("dossier « {boite} » : {reason}"));
+            }
+        }
+    }
 
     // La passe d'en-têtes profite de la connexion déjà ouverte : c'est ce
     // qui la rend gratuite en allers-retours. Son échec ne doit PAS faire
@@ -533,6 +624,17 @@ fn run_sync(
     // ce que la première a laissé. Le coût réseau d'une synchronisation
     // reste donc exactement celui d'avant, et la passe étant reprenable,
     // le reliquat part au tour suivant.
+    //
+    // SANS horizon depuis l'ADR 0010 : le diagnostic terrain a montré la
+    // passe convergée à 1 656 messages lus sur 1 656 éligibles — et 5 883
+    // messages hors des 12 mois qui ne seraient JAMAIS lus. La borne
+    // venait du budget disque des corps ; un bloc d'en-têtes pèse ~3 ko et
+    // ne se range pas sur le disque comme un corps.
+    //
+    // La passe reste sur INBOX + Envoyés, elle : `References` est le
+    // carburant du regroupement, et le regroupement s'arrête à cette
+    // portée (ADR 0010 §3). Lire les en-têtes du Spam paierait des
+    // allers-retours pour des messages qui ne se rattachent à rien.
     let mut budget = THREAD_HEADER_BUDGET;
     for boite in std::iter::once(MAILBOX).chain(sent.as_deref()) {
         if budget == 0 {
@@ -543,7 +645,7 @@ fn run_sync(
             &mut store,
             account_id,
             boite,
-            backfill_horizon(),
+            mail_core::NO_HORIZON,
             budget,
         ) {
             Ok(report) => budget = budget.saturating_sub(report.fetched),
@@ -1832,30 +1934,53 @@ fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 // ---------------------------------------------------------------------
-// Rattrapage des corps (ADR 0007).
+// Rattrapage des corps (ADR 0007, horizon levé par l'ADR 0010).
 // ---------------------------------------------------------------------
 
-/// Début de l'horizon de récence, en epoch. `std` suffit : pas de
-/// dépendance à `chrono` pour une soustraction de secondes.
-fn backfill_horizon() -> i64 {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|since| since.as_secs() as i64)
-        .unwrap_or_default();
-    now - BACKFILL_HORIZON_DAYS * 86_400
-}
-
-/// Combien de messages attendent encore leur corps, tous comptes connus
-/// confondus. Purement local : aucune connexion réseau.
+/// Combien de messages attendent encore leur corps, tous comptes et
+/// TOUTES boîtes confondus (ADR 0010 §1). Purement local : aucune
+/// connexion réseau.
 fn pending_total(store: &Store) -> Result<u64, String> {
-    let since = backfill_horizon();
     let mut total = 0;
     for account in store.accounts().map_err(|err| err.to_string())? {
-        total += store
-            .bodies_pending_count(account.id, MAILBOX, since)
-            .map_err(|err| err.to_string())?;
+        for boite in store
+            .mailbox_names(account.id)
+            .map_err(|err| err.to_string())?
+        {
+            total += store
+                .bodies_pending_count(account.id, &boite, mail_core::NO_HORIZON)
+                .map_err(|err| err.to_string())?;
+        }
     }
     Ok(total)
+}
+
+#[derive(Serialize)]
+pub struct SyncProgress {
+    /// Messages en base, toutes boîtes déjà visitées confondues.
+    pub local: u64,
+    /// Messages annoncés par les serveurs pour ces mêmes boîtes.
+    pub remote: u64,
+    /// `None` tant qu'aucune boîte n'a été sélectionnée : l'interface
+    /// n'affiche alors rien, plutôt qu'un « 0 % » qui ferait croire à une
+    /// synchronisation en panne.
+    pub percent: Option<u8>,
+}
+
+/// Avancement de la synchronisation intégrale (ADR 0010 §5).
+///
+/// Purement local — aucune connexion réseau : l'interface peut l'appeler
+/// en boucle pendant qu'une synchronisation tourne, sans lui coûter un
+/// seul aller-retour.
+#[tauri::command]
+pub fn sync_progress(app: AppHandle) -> Result<SyncProgress, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
+    Ok(SyncProgress {
+        local,
+        remote,
+        percent: mail_core::sync_percent(local, remote),
+    })
 }
 
 #[derive(Serialize)]
@@ -1915,7 +2040,6 @@ fn run_backfill_all(
         .lock()
         .map_err(|_| "rattrapage précédent interrompu".to_string())?;
 
-    let since = backfill_horizon();
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
     let mut summary = BackfillSummary {
         fetched: 0,
@@ -1932,10 +2056,21 @@ fn run_backfill_all(
             break;
         }
         let email = session.email().to_string();
-        // Ne pas ouvrir une connexion pour un compte qui n'a rien à faire.
-        let pending = store
-            .bodies_pending_count(account_id, MAILBOX, since)
+        // TOUTES les boîtes du compte (ADR 0010 §1), dans l'ordre du
+        // store : réception d'abord, envois ensuite, le reste après. Le
+        // budget est partagé entre elles comme entre les comptes — un
+        // dossier d'archive de 80 000 messages ne confisque pas le lot,
+        // il consomme ce que les boîtes prioritaires ont laissé.
+        let boites = store
+            .mailbox_names(account_id)
             .map_err(|err| err.to_string())?;
+        // Ne pas ouvrir une connexion pour un compte qui n'a rien à faire.
+        let mut pending = 0;
+        for boite in &boites {
+            pending += store
+                .bodies_pending_count(account_id, boite, mail_core::NO_HORIZON)
+                .map_err(|err| err.to_string())?;
+        }
         if pending == 0 {
             continue;
         }
@@ -1945,19 +2080,26 @@ fn run_backfill_all(
                 if let Some(fresh) = refreshed {
                     refreshed_list.push(fresh);
                 }
-                match mail_core::backfill_bodies(
-                    &mut server,
-                    &mut store,
-                    account_id,
-                    MAILBOX,
-                    since,
-                    budget,
-                ) {
-                    Ok(report) => {
-                        summary.fetched += report.fetched;
-                        budget = budget.saturating_sub(report.fetched);
+                for boite in &boites {
+                    if budget == 0 {
+                        break;
                     }
-                    Err(err) => summary.errors.push(format!("{email} : {err}")),
+                    match mail_core::backfill_bodies(
+                        &mut server,
+                        &mut store,
+                        account_id,
+                        boite,
+                        mail_core::NO_HORIZON,
+                        budget,
+                    ) {
+                        Ok(report) => {
+                            summary.fetched += report.fetched;
+                            budget = budget.saturating_sub(report.fetched);
+                        }
+                        // L'échec d'UNE boîte ne prive pas les suivantes :
+                        // même règle que la synchronisation des dossiers.
+                        Err(err) => summary.errors.push(format!("{email}, « {boite} » : {err}")),
+                    }
                 }
                 server.logout();
             }

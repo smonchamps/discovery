@@ -330,8 +330,69 @@ el('backfill-stop').addEventListener('click', () => {
   setStatus('rattrapage interrompu — il reprendra où il s\'est arrêté');
 });
 
+// --- Avancement de la synchronisation intégrale (ADR 0010 §5) --------
+//
+// Depuis qu'on rapatrie TOUTES les boîtes, la première synchronisation
+// d'un compte peut durer très longtemps. Un travail long qui ne dit pas
+// où il en est est indistinguable d'un travail bloqué — et l'utilisateur
+// tue l'application.
+//
+// Le sondage est purement LOCAL (`sync_progress` ne touche pas au
+// réseau) : il ne coûte donc rien à la synchronisation qu'il observe. Il
+// la regarde avancer, il ne la ralentit pas.
+let syncPollTimer = null;
+
+async function showSyncProgress() {
+  try {
+    const progress = await invoke('sync_progress');
+    const bar = el('sync-progress-bar');
+    // `percent` nul = aucune boîte encore sélectionnée. On se TAIT :
+    // « 0 % » ferait croire à une synchro en panne (voir `sync_percent`).
+    if (progress.percent === null || progress.percent === undefined) {
+      bar.hidden = true;
+      return;
+    }
+    // Fini, et plus personne ne sonde : le bandeau s'efface. Le laisser
+    // plein en permanence en ferait un meuble qu'on ne regarde plus — et
+    // c'est justement quand il réapparaît qu'il doit se voir.
+    if (progress.percent === 100 && syncPollTimer === null) {
+      bar.hidden = true;
+      return;
+    }
+    bar.hidden = false;
+    el('sync-progress-gauge').value = progress.percent;
+    el('sync-progress-summary').textContent =
+      `Récupération des messages — ${progress.percent} % `
+      + `(${progress.local} sur ${progress.remote})`;
+  } catch {
+    // On NE CACHE PAS. La base n'est pas en WAL : pendant qu'une
+    // transaction d'écriture tient le verrou, cette lecture attend, et
+    // peut expirer sur le `busy_timeout`. C'est-à-dire précisément quand
+    // la synchronisation travaille le plus fort — le moment où le
+    // bandeau sert. Le faire disparaître puis revenir donnerait un
+    // clignotement que l'utilisateur lirait comme une panne.
+    //
+    // On garde donc la dernière valeur connue : périmée de 800 ms au
+    // pire, ce qui est sans conséquence, et honnête.
+  }
+}
+
+function startSyncProgress() {
+  stopSyncProgress();
+  showSyncProgress();
+  syncPollTimer = setInterval(showSyncProgress, 800);
+}
+
+function stopSyncProgress() {
+  if (syncPollTimer !== null) {
+    clearInterval(syncPollTimer);
+    syncPollTimer = null;
+  }
+}
+
 async function refresh() {
   setStatus('synchronisation…');
+  startSyncProgress();
   try {
     const report = await invoke('sync_inbox');
     const actions = report.replayed > 0 ? `, ${report.replayed} action(s) envoyée(s)` : '';
@@ -342,6 +403,11 @@ async function refresh() {
   } catch (err) {
     setStatus(`erreur de synchronisation : ${err}`, true);
   }
+  // Dans les DEUX chemins, succès comme échec : un sondage laissé en
+  // vie sur une synchro morte afficherait un avancement figé pour
+  // toujours, ce qui est pire que pas d'avancement du tout.
+  stopSyncProgress();
+  await showSyncProgress();
   await reloadList();
   // La synchro TIRE les brouillons commencés ailleurs : sans ce
   // rafraîchissement, ils resteraient invisibles jusqu'au prochain

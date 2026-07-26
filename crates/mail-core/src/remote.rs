@@ -68,6 +68,14 @@ pub struct MailboxSnapshot {
     pub uid_validity: u32,
     /// `Some` si le serveur supporte CONDSTORE (décision gelée : PHASE0.md §2.2).
     pub highest_modseq: Option<u64>,
+    /// Combien de messages le serveur annonce dans cette boîte (EXISTS).
+    ///
+    /// Gratuit : la réponse SELECT le porte toujours, on le jetait. C'est
+    /// le **dénominateur** de l'avancement de la synchronisation intégrale
+    /// ([ADR 0010](../../../docs/adr/0010-synchronisation-integrale.md) §5)
+    /// — sans lui, « 12 000 messages récupérés » ne dit pas si on en est au
+    /// dixième ou à la fin.
+    pub exists: u32,
 }
 
 /// Un dossier du serveur, sous ses DEUX noms.
@@ -169,6 +177,16 @@ pub trait MailServer {
 
     /// Les dossiers du compte, tels que l'utilisateur peut les choisir.
     fn folders(&mut self) -> Result<Vec<Folder>, Error>;
+
+    /// Combien de messages ce dossier contient — SANS le sélectionner.
+    ///
+    /// C'est ce qui permet à la garde d'espace disque
+    /// ([ADR 0010](../../../docs/adr/0010-synchronisation-integrale.md) §4)
+    /// d'estimer le volume AVANT de s'engager : refuser après avoir
+    /// commencé, c'est s'arrêter au milieu — ce que la garde existe pour
+    /// empêcher. En IMAP c'est la commande STATUS, prévue exactement pour
+    /// interroger une boîte non sélectionnée.
+    fn message_count(&mut self, mailbox: &str) -> Result<u32, Error>;
 
     /// Déplace le message vers `target`, désigné par son nom RÉSEAU.
     ///

@@ -32,6 +32,21 @@ use crate::store::Store;
 /// petit lot et que l'avancement reste vivant à l'écran.
 pub const BACKFILL_BATCH: usize = 50;
 
+/// « Pas d'horizon » : la valeur de `since_epoch` qui ne borne rien.
+///
+/// L'horizon de 12 mois de l'[ADR 0007] existait pour tenir le budget
+/// disque (< 1 Go). L'[ADR 0010] lève ce budget : la production passe
+/// désormais cette constante, et la borne ne survit qu'en paramètre —
+/// les tests s'en servent pour rejouer des scénarios bornés, et un futur
+/// réglage utilisateur la retrouverait telle quelle.
+///
+/// `i64::MIN` et non `0` : une date antérieure à 1970 — horloge fausse,
+/// en-tête corrompu — produit un epoch négatif, et « tout » doit le
+/// couvrir aussi.
+///
+/// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
+pub const NO_HORIZON: i64 = i64::MIN;
+
 /// Ce qu'un passage a fait, et ce qu'il reste à faire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackfillReport {

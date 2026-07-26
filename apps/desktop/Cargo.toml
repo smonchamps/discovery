@@ -17,6 +17,10 @@ tauri = { version = "2", features = [] }
 # Notifications systeme : appelees depuis RUST, pas depuis le JS — les
 # capabilities de la fenetre restent au minimum (moindre privilege).
 tauri-plugin-notification = "2"
+# Espace disque disponible (garde de l'ADR 0010 §4). Dans l'app et non
+# dans mail-core : interroger le systeme de fichiers est de l'I/O de
+# plateforme, la DECISION (disk_shortfall) reste pure dans le coeur.
+fs4 = "0.13"
 
 [lints]
 workspace = true

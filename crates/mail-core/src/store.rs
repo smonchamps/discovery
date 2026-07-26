@@ -23,7 +23,17 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS accounts (
     id       INTEGER PRIMARY KEY,
     email    TEXT NOT NULL UNIQUE,
-    provider TEXT NOT NULL DEFAULT 'gmail'
+    provider TEXT NOT NULL DEFAULT 'gmail',
+    -- Le dossier des envois, sous son nom RESEAU, quand le serveur en
+    -- expose un. Il complete la portee du regroupement (ADR 0009), et son
+    -- nom varie d'un serveur a l'autre — il ne peut donc pas etre en dur.
+    --
+    -- Porte par le COMPTE et non deduit a la volee : la boite « Envoyes »
+    -- est CREEE par la boucle de synchronisation, donc elle n'existe pas
+    -- encore quand on declare la portee. Sans cette memoire, elle naitrait
+    -- hors portee et ses messages resteraient sans fil jusqu'au prochain
+    -- demarrage — le piege de l'adoption differee.
+    sent_mailbox TEXT
 );
 CREATE TABLE IF NOT EXISTS mailboxes (
     id             INTEGER PRIMARY KEY,
@@ -32,6 +42,27 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     uid_validity   INTEGER NOT NULL,
     last_uid       INTEGER NOT NULL DEFAULT 0,
     highest_modseq INTEGER,
+    -- Cette boite participe-t-elle au REGROUPEMENT en fils ?
+    --
+    -- Depuis l'ADR 0010 on synchronise TOUTES les boites, mais la portee
+    -- d'un fil reste INBOX + Envoyes (ADR 0009). Sans ce drapeau, un spam
+    -- ou un message archive rejoindrait le fil tout seul — `thread::attach`
+    -- travaille par COMPTE — et ferait remonter la conversation en tete de
+    -- liste. Defaut de correction, pas d'ergonomie.
+    --
+    -- DEFAUT A 1 : c'est la reponse de la MIGRATION, pas celle du produit.
+    -- Une base d'avant l'ADR 0010 ne contient qu'INBOX et « Envoyes »,
+    -- toutes deux dans la portee ; les mettre a 0 viderait la liste au
+    -- premier lancement. `create_mailbox` ecrit toujours la valeur
+    -- explicitement, donc ce defaut ne decide jamais pour une boite neuve.
+    threaded       INTEGER NOT NULL DEFAULT 1,
+    -- Combien de messages le SERVEUR annonce dans cette boite (EXISTS),
+    -- au dernier passage. Denominateur de l'avancement (ADR 0010 §5).
+    --
+    -- 0 = jamais selectionnee. Ce n'est PAS « boite vide » : les deux se
+    -- distinguent parce que l'avancement doit se taire quand il ne sait
+    -- pas, au lieu d'afficher « 0 % » ou « 100 % ».
+    remote_total   INTEGER NOT NULL DEFAULT 0,
     UNIQUE (account_id, name)
 );
 CREATE TABLE IF NOT EXISTS envelopes (
@@ -246,17 +277,126 @@ impl Store {
         Ok(state)
     }
 
+    /// Enregistre une boite. Elle n'entre dans la portee du regroupement
+    /// que si c'est la boite de reception : le dossier « Envoyes » y entre
+    /// aussi, mais son NOM varie d'un serveur a l'autre (ADR 0009 §7), donc
+    /// seul l'appelant qui l'a decouvert peut le declarer —
+    /// [`Store::set_thread_scope`].
+    ///
+    /// Toutes les autres — Archive, Corbeille, Spam, dossiers utilisateur —
+    /// sont stockees et indexees, jamais regroupees (ADR 0010 §3).
     pub fn create_mailbox(
         &self,
         account_id: i64,
         mailbox: &str,
         uid_validity: u32,
     ) -> Result<i64, Error> {
+        // `COALESCE` : sans lui, un compte sans dossier d'envois connu
+        // rendrait `?2 = NULL` — donc NULL — et `faux OR NULL` vaut NULL en
+        // SQL. La colonne étant NOT NULL, l'insertion échouerait pour tout
+        // dossier ordinaire d'un compte qui n'a pas encore découvert ses
+        // envois. C'est-à-dire au tout premier passage.
         self.0.execute(
-            "INSERT INTO mailboxes (account_id, name, uid_validity) VALUES (?1, ?2, ?3)",
-            params![account_id, mailbox, uid_validity],
+            "INSERT INTO mailboxes (account_id, name, uid_validity, threaded)
+             VALUES (?1, ?2, ?3,
+                     ?2 = ?4 OR COALESCE(
+                         ?2 = (SELECT sent_mailbox FROM accounts WHERE id = ?1), 0))",
+            params![account_id, mailbox, uid_validity, thread::RECEIVED_MAILBOX],
         )?;
         Ok(self.0.last_insert_rowid())
+    }
+
+    /// Les boites d'un compte, dans l'ordre ou le rattrapage doit les
+    /// servir : la reception d'abord (c'est elle que la liste montre et
+    /// que la recherche du quotidien interroge), les envois ensuite (ils
+    /// completent les fils), le reste par nom — deterministe, donc
+    /// reprenable d'une session a l'autre.
+    ///
+    /// Miroir HORS LIGNE de `sync_order` : meme priorite, mais la source
+    /// est la base et non le serveur — le rattrapage ne doit pas payer un
+    /// LIST pour savoir quoi pomper.
+    pub fn mailbox_names(&self, account_id: i64) -> Result<Vec<String>, Error> {
+        let mut stmt = self.0.prepare(
+            "SELECT name FROM mailboxes WHERE account_id = ?1
+             ORDER BY (name = ?2) DESC,
+                      (name = (SELECT sent_mailbox FROM accounts WHERE id = ?1)) DESC,
+                      name",
+        )?;
+        let names = stmt
+            .query_map(params![account_id, thread::RECEIVED_MAILBOX], |row| {
+                row.get(0)
+            })?
+            .collect::<Result<_, _>>()?;
+        Ok(names)
+    }
+
+    /// Combien de messages ce COMPTE possede en base, toutes boites
+    /// confondues. C'est le « deja fait » que la garde d'espace disque
+    /// soustrait de l'annonce des serveurs (ADR 0010 §4) : sans lui, une
+    /// boite deja rapatriee aux trois quarts serait refusee comme si tout
+    /// restait a telecharger.
+    pub fn account_message_count(&self, account_id: i64) -> Result<u64, Error> {
+        let count: i64 = self.0.query_row(
+            "SELECT COUNT(*) FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1",
+            [account_id],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
+    /// Releve ce que le serveur annonce dans cette boite (EXISTS).
+    pub fn record_remote_total(&self, mailbox_id: i64, exists: u32) -> Result<(), Error> {
+        self.0.execute(
+            "UPDATE mailboxes SET remote_total = ?2 WHERE id = ?1",
+            params![mailbox_id, exists],
+        )?;
+        Ok(())
+    }
+
+    /// Avancement de la synchronisation, toutes boites et tous comptes
+    /// confondus : (messages en base, messages annonces par les serveurs).
+    ///
+    /// Ne compte QUE les boites deja selectionnees au moins une fois
+    /// (`remote_total > 0`). Sinon un compte dont la moitie des dossiers
+    /// n'a pas encore ete visitee afficherait un avancement qui RECULE a
+    /// mesure qu'on les decouvre — le denominateur grandissant plus vite
+    /// que le numerateur. Un avancement qui recule est pire que pas
+    /// d'avancement du tout.
+    pub fn sync_progress(&self) -> Result<(u64, u64), Error> {
+        let (local, remote): (i64, i64) = self.0.query_row(
+            "SELECT COALESCE(SUM(
+                        (SELECT COUNT(*) FROM envelopes e WHERE e.mailbox_id = m.id)), 0),
+                    COALESCE(SUM(m.remote_total), 0)
+             FROM mailboxes m WHERE m.remote_total > 0",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        Ok((local as u64, remote as u64))
+    }
+
+    /// Declare la portee du regroupement d'un compte : la boite de
+    /// reception, plus le dossier des envois quand le serveur en expose un.
+    ///
+    /// Appele APRES la decouverte des dossiers, a chaque synchronisation :
+    /// un serveur peut renommer son dossier d'envois, et un compte peut
+    /// n'en avoir aucun — auquel cas les fils ne regroupent que les recus,
+    /// exactement comme avant l'ADR 0009. Idempotent.
+    pub fn set_thread_scope(&self, account_id: i64, sent: Option<&str>) -> Result<(), Error> {
+        // Mémorisé sur le compte d'ABORD : c'est cette mémoire que
+        // `create_mailbox` consultera pour les boîtes que la boucle de
+        // synchronisation n'a pas encore créées.
+        self.0.execute(
+            "UPDATE accounts SET sent_mailbox = ?2 WHERE id = ?1",
+            params![account_id, sent],
+        )?;
+        self.0.execute(
+            "UPDATE mailboxes SET threaded = (name = ?2 OR (?3 IS NOT NULL AND name = ?3))
+             WHERE account_id = ?1",
+            params![account_id, thread::RECEIVED_MAILBOX, sent],
+        )?;
+        Ok(())
     }
 
     /// Enregistre un compte, ou revendique le compte « en attente
@@ -434,10 +574,13 @@ impl Store {
         // se raisonne désormais au compte (ADR 0009). Le faire par message
         // ajouterait une requête par enveloppe sur le chemin le plus chaud
         // de la synchronisation.
-        let account_id: i64 = tx.query_row(
-            "SELECT account_id FROM mailboxes WHERE id = ?1",
+        // Même raison pour la portée : elle est propre à la boîte, pas au
+        // message. Hors portée, on stocke et on indexe sans regrouper —
+        // `thread_id` reste NULL (ADR 0010 §3).
+        let (account_id, threaded): (i64, bool) = tx.query_row(
+            "SELECT account_id, threaded FROM mailboxes WHERE id = ?1",
             [mailbox_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         // Un ENSEMBLE, pas une liste : même défaut quadratique que celui
         // mesuré dans l'adoption (`Vec::contains` est linéaire). Borné ici
@@ -492,18 +635,20 @@ impl Store {
                     .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
                     .optional()?
                     .flatten();
-                let thread = thread::attach(
-                    &tx,
-                    account_id,
-                    envelope.message_id.as_deref(),
-                    envelope.in_reply_to.as_deref(),
-                    references.as_deref(),
-                )?;
-                tx.execute(
-                    "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
-                    params![mailbox_id, envelope.uid, thread],
-                )?;
-                touched.insert(thread);
+                if threaded {
+                    let thread = thread::attach(
+                        &tx,
+                        account_id,
+                        envelope.message_id.as_deref(),
+                        envelope.in_reply_to.as_deref(),
+                        references.as_deref(),
+                    )?;
+                    tx.execute(
+                        "UPDATE envelopes SET thread_id = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
+                        params![mailbox_id, envelope.uid, thread],
+                    )?;
+                    touched.insert(thread);
+                }
 
                 let html: Option<String> = body_stmt
                     .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
@@ -581,11 +726,18 @@ impl Store {
         // le compilateur ne peut pas distinguer l'un de l'autre, et se
         // tromper ici ne casserait rien — cela rattacherait simplement les
         // messages au mauvais espace de fils, en silence.
-        let account_id: i64 = tx.query_row(
-            "SELECT account_id FROM mailboxes WHERE id = ?1",
+        let (account_id, threaded): (i64, bool) = tx.query_row(
+            "SELECT account_id, threaded FROM mailboxes WHERE id = ?1",
             [mailbox_id],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
+        // Hors portée, les en-têtes sont conservés — ils servent la
+        // recherche, et ils resserviront si la boîte entre un jour dans la
+        // portée — mais ils ne rattachent rien (ADR 0010 §3).
+        if !threaded {
+            tx.commit()?;
+            return Ok(false);
+        }
         let thread = thread::attach(
             &tx,
             account_id,
@@ -925,10 +1077,14 @@ impl Store {
     /// décroissant rend la reprise après coupure naturelle — on redemande
     /// simplement la liste, les corps déjà écrits n'y sont plus.
     ///
-    /// Un message sans date est ignoré : il n'est pas situable dans
-    /// l'horizon, et l'inclure ouvrirait la porte à du courrier
-    /// arbitrairement ancien — ce que l'horizon existe précisément pour
-    /// empêcher. En pratique l'INTERNALDATE d'IMAP est toujours présent.
+    /// Un message sans date est TOUJOURS éligible — révisé par
+    /// l'ADR 0010. L'ancienne règle l'excluait comme « non situable dans
+    /// l'horizon » ; depuis que la production ne borne plus rien
+    /// ([`crate::NO_HORIZON`]), l'exclure serait un trou silencieux : un
+    /// message dont la date ne se lit pas n'aurait jamais de corps, donc
+    /// jamais de recherche, sans que rien ne le signale. Il passe en
+    /// dernier (les NULL ferment un tri DESC) : le doute ne coûte que son
+    /// rang.
     pub fn bodies_to_backfill(
         &self,
         account_id: i64,
@@ -941,7 +1097,7 @@ impl Store {
              FROM envelopes e
              JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
-               AND e.date_epoch IS NOT NULL AND e.date_epoch >= ?3
+               AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
                AND NOT EXISTS (
                    SELECT 1 FROM bodies b
                     WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
@@ -976,7 +1132,7 @@ impl Store {
              FROM envelopes e
              JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
-               AND e.date_epoch IS NOT NULL AND e.date_epoch >= ?3
+               AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
                AND e.refs IS NULL
              ORDER BY e.date_epoch DESC, e.uid DESC
              LIMIT ?4",
@@ -1002,7 +1158,7 @@ impl Store {
              FROM envelopes e
              JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
-               AND e.date_epoch IS NOT NULL AND e.date_epoch >= ?3
+               AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
                AND e.refs IS NULL",
             params![account_id, mailbox, since_epoch],
             |row| row.get(0),
@@ -1023,7 +1179,7 @@ impl Store {
              FROM envelopes e
              JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
-               AND e.date_epoch IS NOT NULL AND e.date_epoch >= ?3
+               AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)
                AND NOT EXISTS (
                    SELECT 1 FROM bodies b
                     WHERE b.mailbox_id = e.mailbox_id AND b.uid = e.uid
@@ -1194,6 +1350,21 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
         conn,
         "drafts",
         &[("account_id", "INTEGER NOT NULL DEFAULT 1")],
+    )?;
+    // ADR 0010 : la portee du regroupement devient explicite. Les boites
+    // deja en base sont INBOX et « Envoyes » — toutes deux dedans, d'ou
+    // le defaut a 1. Une base heritee garde donc exactement les fils
+    // qu'elle avait : la migration ne change rien a ce qui est affiche.
+    add_missing_columns(
+        conn,
+        "mailboxes",
+        &[("threaded", "INTEGER NOT NULL DEFAULT 1")],
+    )?;
+    add_missing_columns(conn, "accounts", &[("sent_mailbox", "TEXT")])?;
+    add_missing_columns(
+        conn,
+        "mailboxes",
+        &[("remote_total", "INTEGER NOT NULL DEFAULT 0")],
     )?;
     add_missing_columns(
         conn,
@@ -1450,6 +1621,70 @@ mod tests {
             .upsert_envelopes(id, std::slice::from_ref(&bare))
             .unwrap();
         assert_eq!(recent(&store, 0, 10), vec![bare]);
+    }
+
+    /// L'ordre du rattrapage est un choix de PRODUIT, pas un accident de
+    /// tri SQL : INBOX d'abord, les envois ensuite, le reste par nom. Un
+    /// serveur qui liste « Archive » avant INBOX ne doit pas faire
+    /// rattraper 80 000 corps d'archive avant le courrier que la liste
+    /// affiche.
+    #[test]
+    fn les_boites_se_rattrapent_reception_d_abord() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        store.create_mailbox(account, "Archive", 1).unwrap();
+        store.create_mailbox(account, "Corbeille", 1).unwrap();
+        store.create_mailbox(account, "INBOX", 1).unwrap();
+        store
+            .create_mailbox(account, "Messages envoyés", 1)
+            .unwrap();
+        store
+            .set_thread_scope(account, Some("Messages envoyés"))
+            .unwrap();
+
+        assert_eq!(
+            store.mailbox_names(account).unwrap(),
+            vec!["INBOX", "Messages envoyés", "Archive", "Corbeille"]
+        );
+    }
+
+    /// ADR 0010 : un message SANS date reste éligible au rattrapage, même
+    /// sous un horizon borné. L'ancienne règle l'excluait (« non situable
+    /// dans l'horizon ») — un trou silencieux : jamais de corps, donc
+    /// jamais de recherche, et rien à l'écran pour le signaler. Le doute
+    /// ne coûte plus que son rang : les NULL ferment le tri.
+    #[test]
+    fn un_message_sans_date_reste_a_rattraper() {
+        let (mut store, id) = store_with_mailbox();
+        let sans_date = Envelope {
+            uid: 9,
+            subject: None,
+            sender: None,
+            sender_address: None,
+            message_id: None,
+            in_reply_to: None,
+            date: None,
+            seen: false,
+            flagged: false,
+        };
+        store
+            .upsert_envelopes(id, std::slice::from_ref(&sans_date))
+            .unwrap();
+
+        let account = test_account(&store);
+        let uids = store
+            .bodies_to_backfill(account, "INBOX", 1_000_000, 10)
+            .unwrap();
+        assert_eq!(uids, vec![9], "l'horizon borné n'exclut plus les sans-date");
+        assert_eq!(
+            store
+                .bodies_pending_count(account, "INBOX", 1_000_000)
+                .unwrap(),
+            1,
+            "le compteur d'avancement le voit aussi — sinon la barre mentirait"
+        );
     }
 
     #[test]
@@ -2732,6 +2967,10 @@ mod tests {
             .unwrap();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
         let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
+        // Le décor doit DÉCLARER la portée qu'il exerce : depuis l'ADR 0010
+        // une boîte ne regroupe que si on l'a dite dedans, et le nom du
+        // dossier des envois varie d'un serveur à l'autre.
+        store.set_thread_scope(account, Some("Sent")).unwrap();
 
         // Alice écrit.
         let mut recu = envelope(1, "Devis", 100, true);
@@ -2774,6 +3013,10 @@ mod tests {
             .unwrap();
         let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
         let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
+        // Le décor doit DÉCLARER la portée qu'il exerce : depuis l'ADR 0010
+        // une boîte ne regroupe que si on l'a dite dedans, et le nom du
+        // dossier des envois varie d'un serveur à l'autre.
+        store.set_thread_scope(account, Some("Sent")).unwrap();
 
         let mut recu = envelope(1, "Devis", 100, true);
         recu.message_id = Some("<alice-9@exemple.fr>".to_string());
@@ -2808,6 +3051,10 @@ mod tests {
             .unwrap();
         store.create_mailbox(account, "INBOX", 1).unwrap();
         let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
+        // Le décor doit DÉCLARER la portée qu'il exerce : depuis l'ADR 0010
+        // une boîte ne regroupe que si on l'a dite dedans, et le nom du
+        // dossier des envois varie d'un serveur à l'autre.
+        store.set_thread_scope(account, Some("Sent")).unwrap();
 
         let mut sortant = envelope(1, "Ma proposition", 100, true);
         sortant.message_id = Some("<moi-2@exemple.fr>".to_string());
@@ -2818,6 +3065,110 @@ mod tests {
             "rien n'a été reçu : la boîte de réception reste vide"
         );
         assert_eq!(store.unified_count().unwrap(), 0);
+    }
+
+    /// [ADR 0010] §3 — on STOCKE tout, on ne REGROUPE que dans la portée.
+    ///
+    /// Depuis l'[ADR 0009] un fil appartient au COMPTE. Dès que la
+    /// synchronisation intégrale verse Archive, Corbeille et Spam dans ce
+    /// même compte, leurs messages rejoindraient les fils **tout seuls** —
+    /// et trois agrégats se corrompraient sans qu'aucun test ne le voie :
+    ///
+    /// - `size` : « 12 messages » sur un fil qui en montre 3 ;
+    /// - `unseen` : un fil éternellement non lu à cause d'un spam ;
+    /// - `last_epoch` : **la conversation remonte en tête de liste parce
+    ///   qu'un spam s'y est accroché**.
+    ///
+    /// Le troisième est un défaut de CORRECTION : la liste mentirait sur
+    /// l'ordre des échanges, sans recours pour l'utilisateur. Même motif de
+    /// refus que le regroupement par sujet (ADR 0008 §2).
+    ///
+    /// Le compilateur ne protège rien ici — une boîte est une chaîne comme
+    /// une autre (passation §6.2). C'est ce test qui tient l'invariant.
+    #[test]
+    fn un_message_hors_portee_ne_rejoint_pas_le_fil() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        let spam = store.create_mailbox(account, "Spam", 1).unwrap();
+
+        let mut recu = envelope(1, "Devis", 100, true);
+        recu.message_id = Some("<alice-10@exemple.fr>".to_string());
+        store.upsert_envelopes(inbox, &[recu]).unwrap();
+
+        // Le spam cite le message reçu — c'est exactement ce qui le ferait
+        // rejoindre le fil. Il est PLUS RÉCENT et NON LU : s'il entrait,
+        // les trois agrégats bougeraient d'un coup.
+        let mut indesirable = envelope(1, "GAGNEZ 1000 EUROS", 300, false);
+        indesirable.message_id = Some("<spam-1@ailleurs.example>".to_string());
+        indesirable.in_reply_to = Some("<alice-10@exemple.fr>".to_string());
+        store.upsert_envelopes(spam, &[indesirable]).unwrap();
+
+        let lignes = unified(&store);
+        assert_eq!(lignes.len(), 1, "un seul fil");
+        assert_eq!(
+            lignes[0].thread_size, 1,
+            "le spam ne compte pas dans l'échange"
+        );
+        assert_eq!(
+            lignes[0].envelope.subject.as_deref(),
+            Some("Devis"),
+            "le fil reste représenté par le message reçu, pas par le spam \
+             qui s'y est accroché"
+        );
+        assert_eq!(
+            lignes[0].thread_unseen, 0,
+            "un spam jamais ouvert ne rend pas la conversation non lue"
+        );
+
+        // L'autre moitié de l'ADR 0010 : hors portée ne veut pas dire
+        // absent. Le message est stocké — donc cherchable.
+        assert!(
+            store.envelope(account, "Spam", 1).unwrap().is_some(),
+            "le spam est bien en base : on stocke tout, on ne regroupe pas tout"
+        );
+    }
+
+    /// La portée déclarée AVANT que la boîte n'existe doit valoir quand
+    /// même — c'est le cas normal, pas le cas limite.
+    ///
+    /// La boucle de synchronisation de l'[ADR 0010] **crée** le dossier des
+    /// envois : au moment où l'on déclare la portée, il n'y a aucune ligne
+    /// à mettre à jour. Si la portée ne vivait que sur `mailboxes`, cette
+    /// déclaration serait perdue, la boîte naîtrait hors portée, et ses
+    /// messages resteraient sans fil jusqu'au prochain démarrage — la liste
+    /// afficherait un échange amputé de nos réponses, sans rien signaler.
+    ///
+    /// D'où la mémoire portée par le COMPTE, que ce test garde.
+    #[test]
+    fn une_portee_declaree_avant_la_creation_de_la_boite_vaut_quand_meme() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("moi@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+
+        // On déclare « Envoyés » AVANT de l'avoir créé — l'ordre réel.
+        store.set_thread_scope(account, Some("Sent")).unwrap();
+        let envoyes = store.create_mailbox(account, "Sent", 1).unwrap();
+
+        let mut recu = envelope(1, "Devis", 100, true);
+        recu.message_id = Some("<alice-11@exemple.fr>".to_string());
+        store.upsert_envelopes(inbox, &[recu]).unwrap();
+        let mut reponse = envelope(1, "Re: Devis", 200, true);
+        reponse.message_id = Some("<moi-11@exemple.fr>".to_string());
+        reponse.in_reply_to = Some("<alice-11@exemple.fr>".to_string());
+        store.upsert_envelopes(envoyes, &[reponse]).unwrap();
+
+        let lignes = unified(&store);
+        assert_eq!(lignes.len(), 1, "un seul fil");
+        assert_eq!(
+            lignes[0].thread_size, 2,
+            "la réponse a rejoint le fil dès son écriture, sans attendre \
+             un redémarrage"
+        );
     }
 
     /// La promesse de l'[ADR 0008] §4 — « le coût d'une page ne dépend
