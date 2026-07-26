@@ -245,6 +245,22 @@ impl Store {
         // Plusieurs commandes ouvrent chacune leur connexion : patienter
         // plutôt que d'échouer en SQLITE_BUSY sur une écriture concurrente.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        // WAL (ADR 0011) : une lecture ne bloque plus jamais une écriture,
+        // ni l'inverse. Le mode rollback tenait tant que les écritures
+        // duraient quelques secondes ; la synchronisation intégrale
+        // (ADR 0010) les étire en minutes, et le PREMIER essai terrain a
+        // produit « database is locked » — le sondage d'avancement et la
+        // liste, en lisant, faisaient expirer le busy_timeout de la passe
+        // d'en-têtes.
+        //
+        // `query_row` et non `pragma_update` : ce PRAGMA répond une ligne
+        // (le mode effectif). Une base en mémoire répond « memory » — ce
+        // n'est pas un échec, les tests y vivent très bien sans WAL. Le
+        // mode est PERSISTANT : écrit une fois dans l'en-tête du fichier,
+        // relu à chaque ouverture, bases héritées comprises.
+        conn.query_row("PRAGMA journal_mode = wal", [], |row| {
+            row.get::<_, String>(0)
+        })?;
         conn.execute_batch(SCHEMA)?;
         // AVANT le schéma des fils, jamais après : si la règle de
         // regroupement a changé, les deux tables doivent DISPARAÎTRE pour
@@ -2114,6 +2130,39 @@ mod tests {
             store.envelope(test_account(&store), "INBOX", 99).unwrap(),
             None
         );
+    }
+
+    /// ADR 0011 : sur une base FICHIER, l'ouverture passe en WAL — et le
+    /// mode persiste, une base héritée en rollback est convertie. C'est ce
+    /// qui empêche « database is locked » quand la jauge d'avancement lit
+    /// pendant qu'une synchronisation intégrale écrit — le premier défaut
+    /// que le terrain ait rendu sur l'ADR 0010.
+    ///
+    /// Sur base fichier et non en mémoire, comme le terrain : une base en
+    /// mémoire répond « memory » à ce PRAGMA, et le test validerait un
+    /// modèle faux.
+    #[test]
+    fn une_base_fichier_s_ouvre_en_wal() {
+        let path =
+            std::env::temp_dir().join(format!("discovery-test-wal-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        // Une base héritée, née AVANT le WAL : mode rollback (delete).
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch("CREATE TABLE heritage (id INTEGER)")
+                .unwrap();
+        }
+
+        {
+            let _store = Store::open(&path).unwrap();
+            let conn = Connection::open(&path).unwrap();
+            let mode: String = conn
+                .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(mode.to_lowercase(), "wal", "la base héritée est convertie");
+        }
+        let _ = std::fs::remove_file(&path);
     }
 
     /// Une base Phase 1 (sans les colonnes de réponse) doit s'ouvrir et

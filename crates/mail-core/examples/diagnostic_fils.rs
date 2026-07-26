@@ -145,28 +145,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // NULL = jamais lu ; '' = lu, le message n'a pas de References ;
     // non vide = lu, et il en a. Les trois se distinguent, sinon on ne
     // sait pas si le silence vient du serveur ou de nous.
-    println!("--- passe d'en-têtes ---");
+    //
+    // VENTILÉ PAR PORTÉE depuis l'ADR 0010. La passe ne lit que les
+    // boîtes du regroupement (INBOX + Envoyés) ; sur une base intégrale,
+    // un « jamais lus » global mélangerait l'attente réelle et les
+    // centaines de milliers de messages hors portée qu'elle ignore
+    // DÉLIBÉRÉMENT. Constaté au premier essai terrain : 250 864 « jamais
+    // lus » dont l'écrasante majorité ne serait jamais lue, à raison —
+    // un chiffre qui ne désigne rien fait relancer le diagnostic pour
+    // rien.
+    println!("--- passe d'en-têtes (portée du regroupement) ---");
     for (etat, sql) in [
-        ("jamais lus", "refs IS NULL"),
-        ("lus, sans References", "refs = ''"),
-        ("lus, avec References", "refs IS NOT NULL AND refs != ''"),
+        ("jamais lus", "e.refs IS NULL"),
+        ("lus, sans References", "e.refs = ''"),
+        (
+            "lus, avec References",
+            "e.refs IS NOT NULL AND e.refs != ''",
+        ),
     ] {
-        let count = one(&format!("SELECT COUNT(*) FROM envelopes WHERE {sql}"))?;
+        let count = one(&format!(
+            "SELECT COUNT(*) FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.threaded = 1 AND {sql}"
+        ))?;
         println!("{etat:<24}: {count}");
     }
-    let in_reply = one("SELECT COUNT(*) FROM envelopes WHERE in_reply_to IS NOT NULL")?;
+    let in_reply = one("SELECT COUNT(*) FROM envelopes e
+         JOIN mailboxes m ON m.id = e.mailbox_id
+         WHERE m.threaded = 1 AND e.in_reply_to IS NOT NULL")?;
     println!("{:<24}: {in_reply}", "avec In-Reply-To");
-
-    // L'horizon borne la passe : sans ce chiffre, « rien n'a bougé » est
-    // indiscernable de « rien n'était éligible ».
-    let horizon = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs() as i64
-        - 365 * 86_400;
-    let recent = one(&format!(
-        "SELECT COUNT(*) FROM envelopes WHERE date_epoch >= {horizon}"
-    ))?;
-    println!("{:<24}: {recent}\n", "dans l'horizon (12 mois)");
+    // Le hors-portée en UNE ligne, pour que le total se recoupe avec
+    // « messages » en tête de sortie — sans elle, la ventilation
+    // semblerait perdre des messages.
+    let hors_portee = one("SELECT COUNT(*) FROM envelopes e
+         JOIN mailboxes m ON m.id = e.mailbox_id
+         WHERE m.threaded = 0")?;
+    println!("{:<24}: {hors_portee}\n", "hors portée (ignorés)");
 
     // 2. Distribution des tailles — un fil géant se voit d'un coup d'œil.
     println!("--- tailles des conversations ---");
