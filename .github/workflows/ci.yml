@@ -13,7 +13,8 @@ jobs:
     name: fmt + clippy + tests (Windows, cible du produit)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      # v5 tourne sur Node 24 ; v4 (Node 20) est deprecie par GitHub.
+      - uses: actions/checkout@v5
       # Version EPINGLEE (miroir de rust-toolchain.toml, que cette action
       # ne lit pas). La CI ne suit plus « le dernier stable » : un lint
       # clippy neuf d'une future version de Rust ne peut plus casser le
@@ -37,13 +38,18 @@ jobs:
   audit:
     name: cargo audit (CVE des dépendances)
     runs-on: ubuntu-latest
-    # L'action publie son rapport comme check run : sans checks:write le job
-    # échoue avec « Resource not accessible by integration ».
-    permissions:
-      contents: read
-      checks: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # v5 tourne sur Node 24 ; v4 (Node 20) est deprecie par GitHub.
+      - uses: actions/checkout@v5
+      # `cargo audit` en direct, et non l'action rustsec/audit-check :
+      # celle-ci n'existe qu'en Node 20 (aucune version Node 24 publiee),
+      # donc GitHub la forcerait sur Node 24 avec un warning de
+      # depreciation. dtolnay (action composite) et rust-cache (Node 24)
+      # n'ont pas ce probleme. Meme garde qu'avant : `cargo audit` sort
+      # non-zero sur une vulnerabilite et fait echouer le job.
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Installer cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Audit (CVE des dépendances)
+        run: cargo audit
