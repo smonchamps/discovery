@@ -3,14 +3,14 @@
 > **Ce document est l'instruction de projet.** Il n'y a pas de `CLAUDE.md`
 > ici : tout ce qui ne se déduit pas du code est écrit là.
 >
-> État au **2026-07-26**, branche `main`, commit `f0cace0`. Arbre propre,
-> **324 tests Rust · 19/19 E2E · clippy muet**. Aucun code en vol.
+> État au **2026-07-26** (soir), branche `main`. Arbre propre,
+> **328 tests Rust · 19/19 E2E · clippy muet**. Aucun code en vol.
 >
-> **Phases 0 à 3 closes**, gate 3 joué. Les chantiers des ADR 0009
-> (portée des fils au compte), **0010 (synchronisation intégrale)** et
-> **0011 (WAL)** sont terminés et **validés sur le terrain**. La suite est
-> la **Phase 5** (durcissement et bêta), dont le premier chantier est
-> arbitré : la migration visible et interruptible.
+> **Phases 0 à 3 closes**, gate 3 joué. Le **premier chantier de la
+> Phase 5 est TERMINÉ et validé au terrain** : la migration visible et
+> interruptible (**ADR 0012**), rembobinage prouvé à l'échelle du gate 3.
+> La suite, dans l'ordre déjà arbitré : **installeur + mise à jour
+> signée**, puis télémétrie de crash opt-in, puis bêta fermée.
 
 ---
 
@@ -28,8 +28,8 @@ Ordre de lecture, une fois :
 1. **ce document** — méthode, état, pièges ;
 2. [`docs/PLAN.md`](PLAN.md) — le concept paper, source de vérité produit ;
 3. les ADRs dans [`docs/adr/`](adr/) — **décisions gelées**, à ne pas
-   rouvrir sans mesure contraire. Les deux dernières (0010, 0011) portent
-   l'état le plus récent du produit.
+   rouvrir sans mesure contraire. Les trois dernières (0010, 0011, 0012)
+   portent l'état le plus récent du produit.
 
 Ne lis pas le code avant. Il est volumineux et abondamment commenté ; les
 commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
@@ -72,11 +72,11 @@ en est le bandeau de rattrapage et ce que pèse
 `%APPDATA%\dev.discovery.app\discovery.db` (avec ses compagnons `-wal` et
 `-shm`). Rappel du §7.1 : tu ne peux pas lire sa base toi-même.
 
-### 1.2 Les deux budgets non tenus, avec leur remède
+### 1.2 Les budgets non tenus, avec leur remède
 
 | Poste | Mesure (2026-07-26) | Levier |
 |---|---|---|
-| Adoption d'une base héritée | 3,69 s à 200 000 messages, une seule fois | **chantier arbitré de la Phase 5** : la rendre visible et interruptible (précédent : ADR 0007). L'ADR 0010 en fait un **prérequis** — la base réelle approche l'échelle du gate 3 |
+| Adoption d'une base héritée | 3,66 s à 200 000 messages, une seule fois | **réglé en forme par l'ADR 0012** : visible, annulable, rembobinable — la durée est assumée, la passe est unique |
 | Recherche | 113–210 ms à l'échelle du gate 3 | tri par date (**×1,8–2,9, re-validé**) ou `prefix=` — le Chef Ingénieur tranche **en bêta**, sur de vraies boîtes |
 
 À l'échelle réelle la recherche reste confortable (~2,9 µs par
@@ -89,8 +89,9 @@ la bêta.
 **Tranchés** (ne pas rouvrir sans mesure) :
 - ~~Synchroniser l'archive ?~~ → **Tout est synchronisé** (ADR 0010),
   spam et corbeille compris, sans quota. La question est soldée.
-- ~~Périmètre de la Phase 5 ?~~ → **La migration visible et
-  interruptible d'abord**, seule. Installeur, télémétrie et bêta suivent.
+- ~~Périmètre de la Phase 5 ?~~ → La migration visible et interruptible
+  d'abord — **faite** (ADR 0012). Suivent, dans l'ordre : installeur,
+  télémétrie, bêta.
 
 **Ouverts** (au Chef Ingénieur) :
 - **Tri par date de la recherche** — en bêta.
@@ -102,14 +103,9 @@ la bêta.
 ### 1.4 Ensuite — la Phase 5
 
 Durcissement et bêta ([PLAN.md](PLAN.md) §4). Ordre arbitré : migration
-visible et interruptible → installeur + mise à jour signée → télémétrie
-de crash opt-in → bêta fermée 20-50 utilisateurs. Gate 5 : deux semaines
-sans défaut critique.
-
-Pour la migration : le §8 décrit l'asymétrie avec l'ADR 0007 — l'adoption
-n'est **pas fractionnable** (la liste part de `threads`), donc
-« interruptible » = **tout défaire et laisser `user_version` inchangé**,
-jamais une adoption partielle persistée. Le test sera un rembobinage.
+visible et interruptible **✓ faite (ADR 0012)** → **installeur + mise à
+jour signée (prochain chantier)** → télémétrie de crash opt-in → bêta
+fermée 20-50 utilisateurs. Gate 5 : deux semaines sans défaut critique.
 
 ---
 
@@ -200,7 +196,7 @@ Re-mesurés le 2026-07-26 après l'ADR 0010, sur les bases du gate 3
 | Taille de la base | **levé** (ADR 0010 §2) | garde d'espace disque à ~50 ko/message |
 | Perte de données | 0, prouvé par crash-récup | ✅ |
 | **Recherche** | < 100 ms | **113–210 ms ❌** (levier ×1,8–2,9 validé, tranché en bêta) |
-| **Adoption d'une base héritée** | < 1 s | **3,69 s ❌** (une seule fois — chantier Phase 5) |
+| **Adoption d'une base héritée** | < 1 s | **3,66 s — assumé** (ADR 0012 : une seule fois, visible, annulable, rembobinable) |
 
 Un budget dépassé = **on arrête la ligne** (andon). Le gate « base
 < 1 Go » n'est pas un oubli : il est **levé explicitement** par
@@ -265,6 +261,7 @@ scénarios du terrain sans réseau.
 | [0009](adr/0009-portee-des-fils-au-compte.md) | Portée d'un fil = le **compte** | « Envoyés » synchronisé ; **index partiel** sinon le gate 3 est perdu |
 | [0010](adr/0010-synchronisation-integrale.md) | **Synchronisation intégrale** — tout, sans horizon ni quota | Gate < 1 Go **levé** ; **stocker ≠ regrouper** (portée = INBOX + Envoyés) ; garde d'espace disque ; avancement en % |
 | [0011](adr/0011-journal-wal.md) | Journal SQLite en **WAL** | Une lecture ne bloque plus une synchro longue ; persistant, bases héritées converties |
+| [0012](adr/0012-migration-visible-interruptible.md) | Migration **visible et interruptible** | L'adoption est UNE transaction rembobinable — annuler laisse `user_version` inchangé, jamais d'adoption partielle ; sonde `pending_adoption` en lecture seule, qui annonce la **portée** |
 
 Décisions Phase 0 ([PHASE0.md](PHASE0.md) §2) : SQLite local ; CONDSTORE ;
 parsing MIME par `mail-parser` ; OAuth2 PKCE loopback + coffre OS ; rendu
@@ -401,23 +398,20 @@ terrain.
 
 ## 8. Ce qui reste
 
-### Le chantier arbitré : migration visible et interruptible
+### Le chantier fait : migration visible et interruptible (ADR 0012)
 
-L'adoption d'une base héritée coûte **3,69 s à 200 000 messages** — et la
-boîte réelle est à 256 312. Déjà ramenée de 11,1 s par deux correctifs
-mesurés ; le reste est le coût intrinsèque de l'union-find.
+Terminé et **validé au terrain** le 2026-07-26, sur copies. L'adoption
+est une unité transactionnelle unique (du DROP conditionnel des tables
+de fils jusqu'à `user_version`) : annuler rembobine tout, la passe se
+rejoue entière au prochain lancement. Écran modal au démarrage — chaque
+commande ouvre sa propre connexion, sans porte la première venue
+paierait la passe en silence. Preuves : test de rembobinage sur une
+vraie base de fichier, banc (3,66 s, pas de régression), annulation
+exercée en pleine passe à l'échelle du gate 3.
 
-**L'asymétrie avec l'ADR 0007, qui fera l'ADR :** le rattrapage des corps
-est fractionnable (la liste ne dépend pas des corps) ; l'adoption ne
-l'est PAS — la liste part de `threads`, une adoption partielle
-afficherait une boîte à moitié vide (piège §9). Donc :
+### Le chantier suivant : installeur + mise à jour signée
 
-- *visible* : une progression pendant la passe unique, modèle `…Status`
-  de l'ADR 0007 alimenté en cours de route ;
-- *interruptible* : annuler **défait tout** et laisse `PRAGMA
-  user_version` inchangé — la passe se rejoue entière au prochain
-  lancement. Preuve : un test de rembobinage (annuler au milieu, rouvrir,
-  liste complète).
+MSIX/NSIS, ordre déjà arbitré (§1.4). Rien n'est engagé.
 
 ### La longue traîne en cours
 
@@ -443,9 +437,15 @@ bandeau. La recherche gagne en profondeur à mesure.
 
 `apps/desktop/ui/style.css` : la règle d'élément `header { display: flex }`
 s'applique aussi à `#detail-header`. Tout enfant pleine largeur ajouté là
-devient un item flex écrasé à 0 px. `#attachments` et `#detail-note` n'y
-fonctionnent que par chance. (Le bandeau d'avancement de l'ADR 0010 a été
-placé **hors** de tout `<header>` pour cette raison.)
+devient un item flex écrasé à 0 px. (Le bandeau d'avancement de
+l'ADR 0010 et l'écran de migration de l'ADR 0012 ont été placés **hors**
+de tout `<header>` pour cette raison.)
+
+Cousin de cette dette, désormais **tenu par une règle** : toute règle
+d'ID qui pose un `display` écrase le `[hidden]` du navigateur et exige
+son garde-fou `#id[hidden] { display: none }`. Huit occurrences à ce
+jour ; la dernière (`#detail`) laissait l'iframe sandboxée capter le
+premier clic et tuer les raccourcis clavier (§9). Un E2E tient le cas.
 
 ### La Phase 5
 
@@ -593,6 +593,28 @@ plutôt que « espace insuffisant ».
 son profil ; un diagnostic divulguait des identifiants en découpant un
 en-tête entier sur son premier `@`. Corrigés — le réflexe reste.
 
+### Un élément « caché » peut rester rendu — et voler le focus
+
+`#detail { display: flex }` écrasait le `[hidden]` du navigateur
+(spécificité d'un ID contre la feuille par défaut) : le panneau de
+lecture était rendu en permanence, son iframe sandboxée couvrait la
+moitié de la fenêtre, et le premier clic y perdait le clavier — les
+raccourcis morts tant qu'on ne cliquait pas ailleurs. **Invisible aux
+E2E**, qui injectent leurs touches par CDP sans passer par le focus de
+la fenêtre Windows ; trouvé par le Chef Ingénieur pendant la validation
+terrain d'un AUTRE chantier (ADR 0012). Deux leçons : toute règle d'ID
+posant un `display` exige son garde-fou `#id[hidden]` (la classe entière
+a été passée au crible) ; et les premiers gestes d'une session — cliquer
+n'importe où, `/` d'emblée — sont un parcours terrain à part entière.
+
+### Valider un écran rapide exige le décor qui le ralentit
+
+Sur la boîte réelle, l'écran de migration vit moins d'une seconde : la
+portée à adopter (~7 500 messages) est 30× plus petite que le décor du
+gate 3. L'annulation en pleine passe ne s'exerce que sur `gate3.db`
+rembobinée (`user_version = 0`), où la barre monte ~4 s. **Choisir le
+décor pour la propriété qu'on valide, pas pour son réalisme.**
+
 ---
 
 ## 10. Carte des fichiers
@@ -600,7 +622,7 @@ en-tête entier sur son premier `@`. Corrigés — le réflexe reste.
 | Fichier | Rôle |
 |---|---|
 | [`docs/PLAN.md`](PLAN.md) | Concept paper — source de vérité produit |
-| [`docs/adr/`](adr/) | Les 11 décisions gelées |
+| [`docs/adr/`](adr/) | Les 12 décisions gelées |
 | [`docs/PHASE0.md`](PHASE0.md) → [`PHASE3.md`](PHASE3.md) | Revues de clôture |
 | [`crates/mail-core/src/store.rs`](../crates/mail-core/src/store.rs) | Stockage SQLite (WAL), schéma, migrations, boîte unifiée, portée du regroupement |
 | [`crates/mail-core/src/sync.rs`](../crates/mail-core/src/sync.rs) | Moteur de synchro + `sync_order`, `sync_percent`, `disk_shortfall` |
