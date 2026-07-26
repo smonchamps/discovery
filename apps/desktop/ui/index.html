@@ -83,6 +83,14 @@
   <span id="drafts-summary"></span>
   <div id="drafts-list"></div>
 </div>
+<!-- Hors de tout <header> a dessein (meme raison que les autres
+     bandeaux : `header { display: flex }` ecraserait un enfant pleine
+     largeur a 0 px). Mise a jour signee, ADR 0013. -->
+<div id="update-bar" hidden>
+  <span id="update-summary"></span>
+  <button id="update-install">Installer et redémarrer</button>
+  <button id="update-later">Plus tard</button>
+</div>
 <div id="sync-progress-bar" hidden>
   <span id="sync-progress-summary"></span>
   <progress id="sync-progress-gauge" max="100" value="0"></progress>

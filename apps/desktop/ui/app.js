@@ -253,6 +253,46 @@ el('migration-cancel').addEventListener('click', () => {
   invoke('migration_cancel').catch(() => {});
 });
 
+// --- Mise à jour signée (ADR 0013) -----------------------------------
+//
+// Vérification UNE fois au démarrage, en silence : un contrôle que
+// l'utilisateur doit réclamer n'aurait pas lieu (leçon de l'ADR 0007).
+// Hors ligne, l'endpoint est injoignable — ce n'est pas un défaut, le
+// bandeau reste simplement absent. L'installation télécharge, vérifie la
+// signature minisign, remplace le binaire et redémarre.
+
+async function checkForUpdate() {
+  let update;
+  try {
+    update = await invoke('update_check');
+  } catch {
+    // Hors ligne, ou endpoint injoignable : pas de bandeau, pas de bruit.
+    return;
+  }
+  if (!update) return;
+  el('update-summary').textContent = `Une mise à jour est disponible (version ${update.version}).`;
+  el('update-bar').hidden = false;
+}
+
+el('update-install').addEventListener('click', async () => {
+  el('update-install').disabled = true;
+  el('update-summary').textContent = 'Téléchargement et installation…';
+  try {
+    // L'application redémarre sur la version neuve : cet appel ne rend
+    // pas la main en cas de succès.
+    await invoke('update_install');
+  } catch (err) {
+    el('update-install').disabled = false;
+    el('update-summary').textContent = `Mise à jour impossible : ${err}`;
+  }
+});
+
+el('update-later').addEventListener('click', () => {
+  // « Plus tard » : le bandeau se referme, le contrôle reviendra au
+  // prochain démarrage.
+  el('update-bar').hidden = true;
+});
+
 async function init() {
   invoke('startup_report').then((report) => {
     el('perf').textContent = report;
@@ -264,6 +304,9 @@ async function init() {
   // La migration d'abord : rien d'autre ne touche la base tant qu'une
   // base héritée n'est pas adoptée.
   await ensureMigrated();
+  // Le contrôle de mise à jour ne bloque pas le démarrage : la boîte
+  // s'affiche, le bandeau viendra si besoin.
+  checkForUpdate();
   refreshDrafts(); // les brouillons sont locaux : visibles même sans compte
   let problems = [];
   try {

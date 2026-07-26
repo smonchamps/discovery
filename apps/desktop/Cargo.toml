@@ -13,10 +13,17 @@ mail-imap.workspace = true
 mail-render.workspace = true
 mail-smtp.workspace = true
 serde.workspace = true
+# Exige par la macro `generate_context!` des que la config porte le
+# plugin updater (ADR 0013) : elle deserialise les endpoints et la cle.
+serde_json.workspace = true
 tauri = { version = "2", features = [] }
 # Notifications systeme : appelees depuis RUST, pas depuis le JS — les
 # capabilities de la fenetre restent au minimum (moindre privilege).
 tauri-plugin-notification = "2"
+# Mise a jour automatique signee (ADR 0013). Pilotee depuis RUST, meme
+# raison que les notifications : la webview n'appelle jamais l'API
+# updater, seulement nos commandes — capabilities au strict minimum.
+tauri-plugin-updater = "2"
 # Espace disque disponible (garde de l'ADR 0010 §4). Dans l'app et non
 # dans mail-core : interroger le systeme de fichiers est de l'I/O de
 # plateforme, la DECISION (disk_shortfall) reste pure dans le coeur.

@@ -54,6 +54,14 @@ test('rattrapage : aucun bandeau quand tous les corps sont là', async () => {
   await expect(page.locator('#backfill-bar')).toBeHidden();
 });
 
+/// Les E2E ne parlent à aucun serveur (§7.5) : le contrôle de mise à
+/// jour (ADR 0013) est neutralisé par la garde `DISCOVERY_DB_PATH`, que
+/// le harnais pose. Sans elle, une Release publiée ferait surgir le
+/// bandeau en plein test — ce test tient la garde.
+test('mise à jour : aucun bandeau en E2E (contrôle réseau neutralisé)', async () => {
+  await expect(page.locator('#update-bar')).toBeHidden();
+});
+
 test('recherche : archiver un résultat le retire des résultats (régression #4)', async () => {
   await page.keyboard.press('/');
   await page.locator('#search').fill('facture');

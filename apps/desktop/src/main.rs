@@ -51,6 +51,7 @@ fn main() {
     };
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             commands::startup_report,
@@ -89,6 +90,8 @@ fn main() {
             commands::migration_run,
             commands::migration_progress,
             commands::migration_cancel,
+            commands::update_check,
+            commands::update_install,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

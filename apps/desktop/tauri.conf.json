@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "discovery",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "identifier": "dev.discovery.app",
   "build": {
     "frontendDist": "ui"
@@ -26,10 +26,19 @@
     "publisher": "discovery",
     "shortDescription": "Client mail rapide, simple et fiable",
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "windows": {
       "nsis": {
         "installMode": "currentUser"
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/smonchamps/discovery/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYzQjVBNjdDOUM0NzVCNUMKUldSY1cwZWNmS2ExODFzQ3hBTmNEanlSL1F6YndlWmtHdjZrSkg1eGtJQlFVbGQyTG9FQWpmYnUK"
     }
   }
 }

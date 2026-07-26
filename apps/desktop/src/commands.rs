@@ -2204,6 +2204,77 @@ fn run_backfill_all(
     Ok((summary, refreshed_list))
 }
 
+// ---------------------------------------------------------------------
+// Mise a jour automatique signee (ADR 0013).
+//
+// Pilotee depuis Rust, comme les notifications : la webview n'appelle
+// jamais l'API updater, seulement ces deux commandes — les capabilities
+// restent `core:default`. La signature minisign est verifiee par le
+// plugin AVANT toute installation ; sans elle, `download_and_install`
+// echoue plutot que d'appliquer un paquet falsifie.
+// ---------------------------------------------------------------------
+
+use tauri_plugin_updater::UpdaterExt;
+
+#[derive(Serialize)]
+pub struct UpdateInfo {
+    pub version: String,
+    /// Notes de version, si la Release en porte.
+    pub notes: Option<String>,
+    /// Date de publication ISO 8601, telle qu'annoncee par le manifeste.
+    pub date: Option<String>,
+}
+
+/// Y a-t-il une mise a jour ? `None` = a jour, ou hors ligne.
+///
+/// Appelee UNE fois au demarrage, en silence : un controle que
+/// l'utilisateur doit reclamer n'aurait pas lieu (lecon de l'ADR 0007).
+/// Hors ligne, l'endpoint est injoignable — ce n'est pas un defaut, donc
+/// l'erreur remonte a l'UI qui reste muette plutot que de harceler ;
+/// elle n'est jamais AVALEE (§9), seulement jugee sans gravite par
+/// l'appelant.
+#[tauri::command]
+pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
+    // Les E2E ne parlent a AUCUN serveur (passation §7.5). Sans cette
+    // garde, des qu'une Release existe, l'endpoint `latest.json`
+    // repondrait et le bandeau apparaitrait en plein test — un flake.
+    // `DISCOVERY_DB_PATH` n'est pose que par le harnais : c'est le meme
+    // signal d'isolation que la base jetable.
+    if std::env::var("DISCOVERY_DB_PATH").is_ok() {
+        return Ok(None);
+    }
+    let updater = app.updater().map_err(|err| err.to_string())?;
+    match updater.check().await.map_err(|err| err.to_string())? {
+        Some(update) => Ok(Some(UpdateInfo {
+            version: update.version.clone(),
+            notes: update.body.clone(),
+            date: update.date.map(|d| d.to_string()),
+        })),
+        None => Ok(None),
+    }
+}
+
+/// Telecharge, verifie la signature, installe, puis redemarre.
+///
+/// `download_and_install` remplace le binaire en place ; `restart` rend
+/// la main a la version neuve. La base ne bouge pas de `%APPDATA%`
+/// (NSIS, pas MSIX — ADR 0013) : une mise a jour ne peut pas orpheliner
+/// les messages.
+#[tauri::command]
+pub async fn update_install(app: AppHandle) -> Result<(), String> {
+    let updater = app.updater().map_err(|err| err.to_string())?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "aucune mise a jour a installer".to_string())?;
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|err| err.to_string())?;
+    app.restart();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

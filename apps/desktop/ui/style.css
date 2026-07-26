@@ -132,6 +132,31 @@ button:hover {
    Bleu et non ocre : le rattrapage des corps signale un manque, celui-ci
    signale un travail en cours. Deux bandeaux de même couleur se
    liraient comme un seul. */
+#update-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  font-size: 12.5px;
+  color: #1f4a2e;
+  background: #eaf6ee;
+  border-bottom: 1px solid #c3e3ce;
+}
+
+#update-bar[hidden] {
+  display: none;
+}
+
+#update-summary {
+  flex: 1;
+}
+
+#update-install {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 #sync-progress-bar {
   display: flex;
   align-items: center;
