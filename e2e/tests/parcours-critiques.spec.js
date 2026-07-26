@@ -26,6 +26,14 @@ test("lire : la liste s'affiche, le plus récent d'abord, et le corps s'ouvre", 
   await expect(page.locator('.row').first()).toContainText('n°200');
   await expect(page.locator('#perf')).toContainText('160 conversations');
 
+  // Tant que rien n'est sélectionné, le panneau de lecture est ABSENT —
+  // pas seulement vide. Défaut vu au terrain : `#detail { display: flex }`
+  // écrasait `[hidden]` (spécificité d'ID contre la feuille du
+  // navigateur), l'iframe sandboxée couvrait tout le panneau droit et
+  // CAPTAIT le premier clic — le focus clavier partait dans l'iframe et
+  // les raccourcis mouraient tant qu'on ne cliquait pas ailleurs.
+  await expect(page.locator('#detail')).toBeHidden();
+
   await page.locator('.row').first().click();
 
   await expect(page.locator('#detail-subject')).toContainText('n°200');

@@ -351,6 +351,16 @@ main.split {
   overflow: hidden;
 }
 
+/* Garde-fou `[hidden]` — même piège que `#add-menu` et les dialogues,
+   mais avec une conséquence pire que visuelle : rendu en permanence,
+   #detail étale son iframe sandboxée sur tout le panneau droit, et le
+   PREMIER clic y part — le focus clavier entre dans l'iframe et les
+   raccourcis (/, c, j/k…) meurent tant qu'on ne clique pas ailleurs.
+   Trouvé au terrain, à la validation de l'ADR 0012. */
+#detail[hidden] {
+  display: none;
+}
+
 #detail-header {
   padding: 14px 18px 10px;
   border-bottom: 1px solid var(--border);
@@ -385,6 +395,12 @@ main.split {
   display: inline-block;
 }
 
+/* Garde-fou `[hidden]` — jusqu'ici la note masquée ne disparaissait que
+   « par chance » (écrasée à 0 px par `header { display: flex }`). */
+#detail-note[hidden] {
+  display: none;
+}
+
 #detail-frame {
   border: 0;
   flex: 1;
@@ -413,6 +429,12 @@ main.split {
   gap: 8px;
   font-size: 13px;
   color: var(--muted);
+}
+
+/* Garde-fou `[hidden]` : sans lui, la rangée « De » (#compose-from-row)
+   resterait affichée, vide, quand il n'y a qu'un seul compte. */
+#compose label[hidden] {
+  display: none;
 }
 
 #compose input {
