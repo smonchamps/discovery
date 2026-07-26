@@ -14,7 +14,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Version EPINGLEE (miroir de rust-toolchain.toml, que cette action
+      # ne lit pas). La CI ne suit plus « le dernier stable » : un lint
+      # clippy neuf d'une future version de Rust ne peut plus casser le
+      # build sans qu'on l'ait decide. Monter de version = changer ici ET
+      # dans rust-toolchain.toml.
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2

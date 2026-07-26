@@ -1,0 +1,16 @@
+# Version de Rust EPINGLEE — source unique de verite (local, hook
+# pre-push ET CI). Rustup lit ce fichier et bascule automatiquement sur
+# cette version pour toute commande cargo lancee dans le depot,
+# l'installant au besoin.
+#
+# POURQUOI epingler : la CI suivait « le dernier stable » et le hook
+# pre-push tournait sur la toolchain locale. Quand celle-ci a pris du
+# retard (1.94 alors que la CI etait en 1.97), un lint clippy neuf a
+# casse la CI sans que le gate local le voie. Epingler aligne les trois.
+#
+# POUR MONTER DE VERSION : changer `channel` ICI et la ref de l'action
+# dans `.github/workflows/ci.yml` (elle ne lit pas ce fichier), puis
+# rejouer clippy avant de committer — un nouveau lint peut apparaitre.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
