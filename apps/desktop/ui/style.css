@@ -147,6 +147,35 @@ button:hover {
   display: none;
 }
 
+#telemetry-optin-bar,
+#crash-report-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px;
+  font-size: 12.5px;
+  color: #3a3d42;
+  background: #f1f2f4;
+  border-bottom: 1px solid #d8dade;
+}
+
+/* Le rapport en attente signale un incident : teinte plus chaude. */
+#crash-report-bar {
+  color: #6b4a1a;
+  background: #fbf3e6;
+  border-bottom-color: #ecdcbf;
+}
+
+#telemetry-optin-bar[hidden],
+#crash-report-bar[hidden] {
+  display: none;
+}
+
+#telemetry-optin-text,
+#crash-report-text {
+  flex: 1;
+}
+
 #update-summary {
   flex: 1;
 }

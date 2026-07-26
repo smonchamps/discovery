@@ -11,6 +11,7 @@ mod attachment;
 mod backfill;
 mod body;
 mod compose;
+mod crash;
 mod drafts;
 mod envelope;
 mod error;
@@ -34,6 +35,7 @@ pub use backfill::{
 };
 pub use body::load_body;
 pub use compose::{Draft, compose, forward_subject, quote_forward, quote_reply, reply_subject};
+pub use crash::{CrashReport, RawPanic, redact};
 pub use drafts::{DraftContent, DraftPull, DraftSaved, SavedDraft, plan_draft_pull};
 pub use envelope::{Envelope, Uid};
 pub use error::Error;

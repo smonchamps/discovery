@@ -7,6 +7,8 @@ edition.workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Horodatage ISO 8601 des rapports de plantage (telemetrie, ADR 0014).
+chrono.workspace = true
 mail-auth.workspace = true
 mail-core.workspace = true
 mail-imap.workspace = true

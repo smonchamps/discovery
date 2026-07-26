@@ -6,6 +6,7 @@
 //! dans mail-core / mail-imap / mail-smtp / mail-auth.
 
 mod commands;
+mod telemetry;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64};
@@ -53,6 +54,13 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(state)
+        // Installe le hook de panic et charge le consentement AVANT tout
+        // le reste : un plantage precoce doit pouvoir etre capture (si
+        // l'utilisateur a consenti). Ne touche jamais la base (ADR 0014).
+        .setup(|app| {
+            telemetry::init(app);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::startup_report,
             commands::connect_accounts,
@@ -92,6 +100,11 @@ fn main() {
             commands::migration_cancel,
             commands::update_check,
             commands::update_install,
+            telemetry::telemetry_consent_get,
+            telemetry::telemetry_consent_set,
+            telemetry::telemetry_pending,
+            telemetry::telemetry_open_folder,
+            telemetry::telemetry_selftest_panic,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

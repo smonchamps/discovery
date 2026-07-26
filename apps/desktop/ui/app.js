@@ -293,6 +293,49 @@ el('update-later').addEventListener('click', () => {
   el('update-bar').hidden = true;
 });
 
+// --- Télémétrie de crash (ADR 0014) ----------------------------------
+//
+// Opt-in explicite, off par défaut. On demande UNE fois (état « unset »),
+// puis on n'y revient plus. Les rapports restent locaux : le bandeau
+// d'incident propose seulement d'ouvrir le dossier, l'utilisateur envoie
+// lui-même. Aucun réseau.
+
+async function checkTelemetry() {
+  try {
+    const consent = await invoke('telemetry_consent_get');
+    if (consent === 'unset') {
+      el('telemetry-optin-bar').hidden = false;
+    }
+    const pending = await invoke('telemetry_pending');
+    if (pending > 0) {
+      el('crash-report-text').textContent =
+        `Discovery a rencontré un problème lors d'une session précédente (${pending} rapport(s) en attente). Rien n'est envoyé sans vous.`;
+      el('crash-report-bar').hidden = false;
+    }
+  } catch {
+    // Pas de télémétrie disponible : pas de bandeau, pas de bruit.
+  }
+}
+
+async function setTelemetryConsent(enabled) {
+  el('telemetry-optin-bar').hidden = true;
+  try {
+    await invoke('telemetry_consent_set', { enabled });
+  } catch (err) {
+    setStatus(`préférence de télémétrie non enregistrée : ${err}`, true);
+  }
+}
+
+el('telemetry-enable').addEventListener('click', () => setTelemetryConsent(true));
+el('telemetry-decline').addEventListener('click', () => setTelemetryConsent(false));
+el('crash-report-open').addEventListener('click', async () => {
+  try {
+    await invoke('telemetry_open_folder');
+  } catch (err) {
+    setStatus(`ouverture du dossier impossible : ${err}`, true);
+  }
+});
+
 async function init() {
   invoke('startup_report').then((report) => {
     el('perf').textContent = report;
@@ -307,6 +350,8 @@ async function init() {
   // Le contrôle de mise à jour ne bloque pas le démarrage : la boîte
   // s'affiche, le bandeau viendra si besoin.
   checkForUpdate();
+  // Consentement télémétrie (une fois) et rapports de plantage en attente.
+  checkTelemetry();
   refreshDrafts(); // les brouillons sont locaux : visibles même sans compte
   let problems = [];
   try {

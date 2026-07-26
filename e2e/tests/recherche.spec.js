@@ -62,6 +62,14 @@ test('mise à jour : aucun bandeau en E2E (contrôle réseau neutralisé)', asyn
   await expect(page.locator('#update-bar')).toBeHidden();
 });
 
+/// Télémétrie (ADR 0014) : en E2E le consentement est « disabled » et
+/// zéro rapport en attente (garde `DISCOVERY_DB_PATH`). Ni la demande
+/// opt-in ni le bandeau d'incident ne doivent surgir en test.
+test('télémétrie : aucun bandeau opt-in ni incident en E2E', async () => {
+  await expect(page.locator('#telemetry-optin-bar')).toBeHidden();
+  await expect(page.locator('#crash-report-bar')).toBeHidden();
+});
+
 test('recherche : archiver un résultat le retire des résultats (régression #4)', async () => {
   await page.keyboard.press('/');
   await page.locator('#search').fill('facture');

@@ -100,6 +100,17 @@
   <button id="backfill-start">Reprendre</button>
   <button id="backfill-stop" hidden>Arrêter</button>
 </div>
+<!-- Telemetrie de crash (ADR 0014), hors <header> comme les autres
+     bandeaux. Opt-in explicite, off par defaut. -->
+<div id="telemetry-optin-bar" hidden>
+  <span id="telemetry-optin-text">Aider à améliorer Discovery ? En cas de plantage, un rapport technique serait enregistré <strong>sur votre machine</strong> — jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.</span>
+  <button id="telemetry-enable">Activer</button>
+  <button id="telemetry-decline">Non merci</button>
+</div>
+<div id="crash-report-bar" hidden>
+  <span id="crash-report-text"></span>
+  <button id="crash-report-open">Ouvrir le dossier des rapports</button>
+</div>
 <main class="split">
   <section id="pane-list">
     <div id="scroll-space"><div id="rows"></div></div>

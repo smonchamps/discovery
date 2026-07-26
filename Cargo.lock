@@ -821,6 +821,7 @@ dependencies = [
 name = "discovery-desktop"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "fs4",
  "mail-auth",
  "mail-core",
