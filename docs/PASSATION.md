@@ -3,14 +3,19 @@
 > **Ce document est l'instruction de projet.** Il n'y a pas de `CLAUDE.md`
 > ici : tout ce qui ne se déduit pas du code est écrit là.
 >
-> État au **2026-07-26** (soir), branche `main`. Arbre propre,
-> **328 tests Rust · 19/19 E2E · clippy muet**. Aucun code en vol.
+> État au **2026-07-26** (soir), branche `main`.
+> **328 tests Rust · 20/20 E2E · clippy muet**.
 >
-> **Phases 0 à 3 closes**, gate 3 joué. Le **premier chantier de la
-> Phase 5 est TERMINÉ et validé au terrain** : la migration visible et
-> interruptible (**ADR 0012**), rembobinage prouvé à l'échelle du gate 3.
-> La suite, dans l'ordre déjà arbitré : **installeur + mise à jour
-> signée**, puis télémétrie de crash opt-in, puis bêta fermée.
+> **Phases 0 à 3 closes**, gate 3 joué. **Deux chantiers de la Phase 5
+> sont TERMINÉS et validés au terrain** : la migration visible et
+> interruptible (**ADR 0012**, rembobinage prouvé à l'échelle du gate 3)
+> et l'**installeur NSIS + mise à jour signée** (**ADR 0013**, boucle
+> 0.1.1 → 0.1.2 appliquée sur l'app installée). La suite, dans l'ordre
+> arbitré : **télémétrie de crash opt-in**, puis bêta fermée.
+>
+> ⚠️ **Un chantier attend le commit** : l'updater (ADR 0013) est
+> implémenté, validé, mais **non commité** — accord du Chef Ingénieur en
+> attente. Si l'arbre est sale à la reprise, c'est lui.
 
 ---
 
@@ -103,9 +108,10 @@ la bêta.
 ### 1.4 Ensuite — la Phase 5
 
 Durcissement et bêta ([PLAN.md](PLAN.md) §4). Ordre arbitré : migration
-visible et interruptible **✓ faite (ADR 0012)** → **installeur + mise à
-jour signée (prochain chantier)** → télémétrie de crash opt-in → bêta
-fermée 20-50 utilisateurs. Gate 5 : deux semaines sans défaut critique.
+visible et interruptible **✓ faite (ADR 0012)** → installeur + mise à
+jour signée **✓ faite (ADR 0013)** → **télémétrie de crash opt-in
+(prochain chantier)** → bêta fermée 20-50 utilisateurs. Gate 5 : deux
+semaines sans défaut critique.
 
 ---
 
@@ -262,6 +268,7 @@ scénarios du terrain sans réseau.
 | [0010](adr/0010-synchronisation-integrale.md) | **Synchronisation intégrale** — tout, sans horizon ni quota | Gate < 1 Go **levé** ; **stocker ≠ regrouper** (portée = INBOX + Envoyés) ; garde d'espace disque ; avancement en % |
 | [0011](adr/0011-journal-wal.md) | Journal SQLite en **WAL** | Une lecture ne bloque plus une synchro longue ; persistant, bases héritées converties |
 | [0012](adr/0012-migration-visible-interruptible.md) | Migration **visible et interruptible** | L'adoption est UNE transaction rembobinable — annuler laisse `user_version` inchangé, jamais d'adoption partielle ; sonde `pending_adoption` en lecture seule, qui annonce la **portée** |
+| [0013](adr/0013-installeur-nsis-maj-signee.md) | Installeur **NSIS** + mise à jour signée | **Pas MSIX** (virtualiserait `%APPDATA%`, orphelinerait la base) ; updater signé minisign, piloté depuis Rust ; signature Windows reportée ; tag GitHub = **version nue**, `latest.json` sans BOM (`scripts/faire-release.ps1`) |
 
 Décisions Phase 0 ([PHASE0.md](PHASE0.md) §2) : SQLite local ; CONDSTORE ;
 parsing MIME par `mail-parser` ; OAuth2 PKCE loopback + coffre OS ; rendu
@@ -409,9 +416,19 @@ paierait la passe en silence. Preuves : test de rembobinage sur une
 vraie base de fichier, banc (3,66 s, pas de régression), annulation
 exercée en pleine passe à l'échelle du gate 3.
 
-### Le chantier suivant : installeur + mise à jour signée
+### Le chantier fait : installeur NSIS + mise à jour signée (ADR 0013)
 
-MSIX/NSIS, ordre déjà arbitré (§1.4). Rien n'est engagé.
+Terminé et **validé au terrain** le 2026-07-26 : la boucle 0.1.1 → 0.1.2
+s'applique sur l'app installée, base intacte. NSIS (**pas MSIX** — il
+virtualiserait `%APPDATA%` et orphelinerait la base) ; updater Tauri
+signé minisign, piloté depuis Rust (capabilities au minimum) ; signature
+de code Windows reportée à la bêta. Publication d'une version :
+`scripts/faire-release.ps1 <version>` prépare le `latest.json`, la
+Release GitHub reste manuelle (tag = version nue).
+
+### Le chantier suivant : télémétrie de crash opt-in
+
+Ordre déjà arbitré (§1.4). Rien n'est engagé.
 
 ### La longue traîne en cours
 
@@ -615,6 +632,19 @@ gate 3. L'annulation en pleine passe ne s'exerce que sur `gate3.db`
 rembobinée (`user_version = 0`), où la barre monte ~4 s. **Choisir le
 décor pour la propriété qu'on valide, pas pour son réalisme.**
 
+### La chaîne de publication a ses propres hypothèses fausses
+
+La validation de l'updater (ADR 0013) a payé deux pièges, aucun dans le
+code Rust — tous dans l'**outillage de publication**. Un `latest.json`
+écrit à la main s'est corrompu (collage PowerShell multi-ligne, puis
+risque de BOM que `serde_json` refuse). Et l'URL du paquet pointait
+`releases/download/v0.1.2/…` alors que le tag GitHub est la **version
+nue** (`0.1.2`) : le bandeau apparaissait — la détection marchait — mais
+l'installation renvoyait 404. **Le chemin entre `cargo tauri build` et
+l'app de l'utilisateur est du terrain lui aussi ; il se diagnostique en
+regardant les vrais assets publiés (API GitHub), pas en supposant.** Les
+deux sont désormais tenus par `scripts/faire-release.ps1`.
+
 ---
 
 ## 10. Carte des fichiers
@@ -638,6 +668,7 @@ décor pour la propriété qu'on valide, pas pour son réalisme.**
 | [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Commandes Tauri (IPC), boucle toutes-boîtes, garde disque, avancement |
 | [`apps/desktop/ui/app.js`](../apps/desktop/ui/app.js) | UI : liste virtualisée, composeur, bandeaux (avancement, rattrapage) |
 | [`e2e/README.md`](../e2e/README.md) | Harnais E2E déterministe (CDP) |
+| [`scripts/faire-release.ps1`](../scripts/faire-release.ps1) | Prépare le `latest.json` signé d'une version (ADR 0013) — sans BOM, URL au tag nu |
 
 ---
 
