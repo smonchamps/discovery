@@ -312,7 +312,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )?;
             portee.push((cites, possede > 0, jeton.clone()));
         }
-        portee.sort_by(|a, b| b.0.cmp(&a.0));
+        portee.sort_by_key(|entree| std::cmp::Reverse(entree.0));
 
         println!("\nfil #{thread} — {} jetons d'annuaire", jetons.len());
         for (cites, possede, jeton) in portee.iter().take(5) {
