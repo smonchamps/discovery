@@ -5,6 +5,7 @@
 //! du réseau ([`crate::MailServer`]) est la seule frontière nécessaire.
 
 use std::collections::{BTreeSet, HashSet};
+use std::ops::ControlFlow;
 use std::path::Path;
 
 use chrono::DateTime;
@@ -157,6 +158,20 @@ CREATE TABLE IF NOT EXISTS outbox (
 );
 ";
 
+/// Avancement de l'adoption d'une base héritée, pour l'affichage.
+///
+/// `total` est un MAJORANT déclaré d'emblée (il ne bouge jamais en cours
+/// de passe : une barre qui recule est pire qu'une barre imprécise), et
+/// `fait == total` n'est annoncé qu'une fois la passe COMMISE — jamais
+/// avant, c'est l'exigence « un signal doit être observable » (§9 de la
+/// passation). L'affichage passe par [`crate::sync_percent`], qui porte
+/// déjà les cas dégénérés.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AdoptionProgress {
+    pub done: u64,
+    pub total: u64,
+}
+
 /// État de synchro persisté d'une boîte.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncState {
@@ -237,11 +252,91 @@ impl Store {
         Self::init(Connection::open(path)?)
     }
 
+    /// Ouvre en rendant l'adoption d'une base héritée VISIBLE et
+    /// INTERRUPTIBLE (Phase 5, chantier arbitré — passation §8).
+    ///
+    /// `on_progress` est appelé pendant la passe d'adoption avec
+    /// l'avancement `(fait, total)`. Répondre [`ControlFlow::Break`]
+    /// annule : **tout est défait** (`ROLLBACK`), `PRAGMA user_version`
+    /// reste inchangé, et l'ouverture rend [`Error::Interrupted`] — la
+    /// passe entière se rejouera au prochain lancement. Jamais d'adoption
+    /// partielle persistée : la liste part de `threads`, une base à
+    /// moitié adoptée serait une boîte à moitié vide.
+    ///
+    /// Sur une base à jour, `on_progress` n'est JAMAIS appelé : rien à
+    /// adopter, rien à raconter — pas de faux bandeau à chaque lancement.
+    pub fn open_with_progress(
+        path: &Path,
+        mut on_progress: impl FnMut(AdoptionProgress) -> ControlFlow<()>,
+    ) -> Result<Self, Error> {
+        Self::init_with(Connection::open(path)?, &mut on_progress)
+    }
+
     pub fn open_in_memory() -> Result<Self, Error> {
         Self::init(Connection::open_in_memory()?)
     }
 
+    /// Une adoption de base héritée attend-elle ici ? Sonde en **lecture
+    /// seule** : rien n'est déclenché, rien n'est créé — c'est ce qui
+    /// permet au desktop d'afficher l'écran de migration AVANT la
+    /// première vraie ouverture, celle qui paiera la passe.
+    ///
+    /// Rend le nombre de messages concernés (`None` = rien à faire).
+    /// C'est un ordre de grandeur pour l'écran d'attente, pas le
+    /// dénominateur de l'avancement : celui-ci arrive par
+    /// [`Store::open_with_progress`], seule à connaître la portée exacte.
+    pub fn pending_adoption(path: &Path) -> Result<Option<u64>, Error> {
+        if !path.exists() {
+            // Première installation : rien d'hérité, et ouvrir créerait
+            // le fichier — une sonde ne laisse pas de trace.
+            return Ok(None);
+        }
+        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        if version >= thread::THREADING_VERSION {
+            return Ok(None);
+        }
+        // Une base d'avant les fils peut ne pas avoir la table : le COUNT
+        // direct échouerait, et la sonde doit répondre, pas expliquer.
+        let has_envelopes: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'envelopes'",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_envelopes == 0 {
+            return Ok(None);
+        }
+        // Quand la base connaît la portée du regroupement (ADR 0010),
+        // n'annoncer QUE ce que la passe adoptera : sur une boîte
+        // intégrale, la portée (INBOX + Envoyés) est très en dessous du
+        // total, et « 256 312 messages » pour une passe qui en rattache
+        // 7 500 serait un chiffre qui ne désigne pas ce qu'il dit.
+        let messages: i64 = if table_columns(&conn, "mailboxes")?.contains("threaded") {
+            conn.query_row(
+                "SELECT COUNT(*) FROM envelopes e
+                 JOIN mailboxes m ON m.id = e.mailbox_id
+                 WHERE m.threaded = 1",
+                [],
+                |row| row.get(0),
+            )?
+        } else {
+            conn.query_row("SELECT COUNT(*) FROM envelopes", [], |row| row.get(0))?
+        };
+        if messages == 0 {
+            Ok(None)
+        } else {
+            Ok(Some(messages as u64))
+        }
+    }
+
     fn init(conn: Connection) -> Result<Self, Error> {
+        Self::init_with(conn, &mut |_| ControlFlow::Continue(()))
+    }
+
+    fn init_with(
+        conn: Connection,
+        on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
+    ) -> Result<Self, Error> {
         // Plusieurs commandes ouvrent chacune leur connexion : patienter
         // plutôt que d'échouer en SQLITE_BUSY sur une écriture concurrente.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
@@ -262,14 +357,48 @@ impl Store {
             row.get::<_, String>(0)
         })?;
         conn.execute_batch(SCHEMA)?;
-        // AVANT le schéma des fils, jamais après : si la règle de
-        // regroupement a changé, les deux tables doivent DISPARAÎTRE pour
-        // que le `CREATE TABLE IF NOT EXISTS` juste dessous les recrée
-        // dans leur forme neuve. Sans cela l'ouverture échoue — voir
-        // `thread::drop_if_outdated`.
-        thread::drop_if_outdated(&conn)?;
-        conn.execute_batch(thread::SCHEMA)?;
+        // Les migrations légères d'abord : colonnes, recherche, index.
+        // Idempotentes et atomiques une à une — et l'adoption des fils,
+        // juste dessous, a besoin des colonnes qu'elles ajoutent
+        // (`thread_id`, `in_reply_to`, `refs`).
         migrate(&conn)?;
+        // ——— L'unité des fils, d'un seul tenant (passation §8). ———
+        // Du DROP conditionnel jusqu'à `user_version`, tout vit dans UNE
+        // transaction : annuler pendant l'adoption rembobine TOUT — une
+        // adoption partielle persistée serait une boîte à moitié vide,
+        // la liste partant de `threads`. Le BEGIN est DEFERRED : sur une
+        // base à jour rien n'écrit, la transaction reste lectrice et ne
+        // rencontre jamais l'écrivain d'une synchro longue (ADR 0011).
+        conn.execute_batch("BEGIN")?;
+        let unit = (|| {
+            // AVANT le schéma des fils, jamais après : si la règle de
+            // regroupement a changé, les deux tables doivent DISPARAÎTRE
+            // pour que le `CREATE TABLE IF NOT EXISTS` juste dessous les
+            // recrée dans leur forme neuve. Sans cela l'ouverture échoue —
+            // voir `thread::drop_if_outdated`.
+            thread::drop_if_outdated(&conn)?;
+            conn.execute_batch(thread::SCHEMA)?;
+            thread::migrate_threads_with(&conn, on_progress)
+        })();
+        let announced = match unit {
+            Ok(announced) => {
+                conn.execute_batch("COMMIT")?;
+                announced
+            }
+            Err(err) => {
+                // L'échec du retour arrière n'apprendrait rien de plus que
+                // l'erreur d'origine, qui est celle qu'il faut remonter —
+                // l'annulation volontaire comprise.
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(err);
+            }
+        };
+        if let Some(total) = announced {
+            // « Fini » ne se dit qu'une fois la passe COMMISE — jamais
+            // avant (un signal doit être observable, passation §9). Trop
+            // tard pour annuler : la réponse est ignorée.
+            let _ = on_progress(AdoptionProgress { done: total, total });
+        }
         Ok(Self(conn))
     }
 
@@ -1429,9 +1558,11 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
         "CREATE INDEX IF NOT EXISTS idx_envelopes_thread
              ON envelopes(thread_id, date_epoch DESC);",
     )?;
-    // En dernier : la colonne et l'index doivent exister avant d'adopter
-    // les messages hérités.
-    thread::migrate_threads(conn)
+    // L'adoption des fils ne vit PAS ici : elle appartient à l'unité
+    // transactionnelle de `init_with`, pour être rembobinable (§8). Elle
+    // vient après ce module — la colonne et l'index doivent exister avant
+    // d'adopter les messages hérités.
+    Ok(())
 }
 
 /// Bascule Phase 2 → 3 : les contraintes de trois tables changent
@@ -2926,6 +3057,38 @@ mod tests {
         assert_eq!(unified(&store).len(), 1, "la boîte se repeuple sans butée");
     }
 
+    /// Rejoue sur `path` les tables telles que la version 1 des fils les
+    /// créait — le seul décor où la passe d'adoption a du travail réel.
+    /// Partagé par le test d'ouverture ci-dessous et par ceux du
+    /// rembobinage (chantier Phase 5).
+    fn rembobine_au_schema_v1(path: &Path) {
+        let conn = Connection::open(path).unwrap();
+        conn.execute_batch(
+            "DROP TABLE thread_links;
+             DROP TABLE threads;
+             CREATE TABLE threads (
+                 id         INTEGER PRIMARY KEY,
+                 mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+                 last_uid   INTEGER NOT NULL DEFAULT 0,
+                 last_epoch INTEGER,
+                 size       INTEGER NOT NULL DEFAULT 0,
+                 unseen     INTEGER NOT NULL DEFAULT 0
+             );
+             CREATE INDEX idx_threads_date
+                 ON threads(mailbox_id, last_epoch DESC, last_uid DESC);
+             CREATE TABLE thread_links (
+                 mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+                 message_id TEXT NOT NULL,
+                 thread_id  INTEGER NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
+                 PRIMARY KEY (mailbox_id, message_id)
+             );
+             CREATE INDEX idx_thread_links_thread ON thread_links(thread_id);
+             UPDATE envelopes SET thread_id = NULL;
+             PRAGMA user_version = 1;",
+        )
+        .unwrap();
+    }
+
     /// Défaut trouvé au TERRAIN, pas ici : une base créée par la version
     /// précédente porte une table `threads` sans `inbox_size`.
     /// `CREATE TABLE IF NOT EXISTS` ne la touche pas — mais l'index
@@ -2959,33 +3122,7 @@ mod tests {
         }
 
         // Rembobinage : les tables telles que la version 1 les créait.
-        {
-            let conn = Connection::open(&path).unwrap();
-            conn.execute_batch(
-                "DROP TABLE thread_links;
-                 DROP TABLE threads;
-                 CREATE TABLE threads (
-                     id         INTEGER PRIMARY KEY,
-                     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
-                     last_uid   INTEGER NOT NULL DEFAULT 0,
-                     last_epoch INTEGER,
-                     size       INTEGER NOT NULL DEFAULT 0,
-                     unseen     INTEGER NOT NULL DEFAULT 0
-                 );
-                 CREATE INDEX idx_threads_date
-                     ON threads(mailbox_id, last_epoch DESC, last_uid DESC);
-                 CREATE TABLE thread_links (
-                     mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
-                     message_id TEXT NOT NULL,
-                     thread_id  INTEGER NOT NULL REFERENCES threads(id) ON DELETE CASCADE,
-                     PRIMARY KEY (mailbox_id, message_id)
-                 );
-                 CREATE INDEX idx_thread_links_thread ON thread_links(thread_id);
-                 UPDATE envelopes SET thread_id = NULL;
-                 PRAGMA user_version = 1;",
-            )
-            .unwrap();
-        }
+        rembobine_au_schema_v1(&path);
 
         // C'est CETTE ouverture qui refusait de se faire.
         let store = Store::open(&path).unwrap();
@@ -2993,6 +3130,268 @@ mod tests {
         assert_eq!(lignes.len(), 1, "le fil est refait, et la liste le montre");
         assert_eq!(lignes[0].thread_size, 2, "avec son compteur");
 
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// LE test du chantier Phase 5 (passation §8) : l'adoption n'est PAS
+    /// fractionnable — la liste part de `threads`, une adoption partielle
+    /// persistée serait une boîte à moitié vide. « Interruptible » veut
+    /// donc dire : annuler AU MILIEU de la passe défait TOUT et laisse
+    /// `user_version` inchangé, pour que la passe entière se rejoue au
+    /// prochain lancement — où la liste est complète.
+    #[test]
+    fn annuler_l_adoption_defait_tout_et_laisse_user_version_inchangee() {
+        let path = std::env::temp_dir().join(format!(
+            "discovery-test-rembobinage-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        // Assez de messages pour que l'annulation tombe en PLEINE passe :
+        // l'avancement se rapporte par paliers, il faut en franchir un.
+        const MESSAGES: u32 = 1_200;
+        {
+            let mut store = Store::open(&path).unwrap();
+            let account = store
+                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .unwrap();
+            let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            let decor: Vec<Envelope> = (1..=MESSAGES)
+                .map(|uid| envelope(uid, "Sujet", 100 + i64::from(uid), true))
+                .collect();
+            store.upsert_envelopes(inbox, &decor).unwrap();
+        }
+        rembobine_au_schema_v1(&path);
+
+        // Annuler dès que 1 000 messages sont passés — au milieu, pas au
+        // seuil de la porte : le rembobinage doit défaire du travail réel.
+        let mut plus_haut_fait = 0;
+        let result = Store::open_with_progress(&path, |p| {
+            plus_haut_fait = plus_haut_fait.max(p.done);
+            if p.done >= 1_000 {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+        assert!(
+            matches!(result, Err(Error::Interrupted)),
+            "annuler doit rendre Error::Interrupted, pas un Store"
+        );
+        assert!(
+            plus_haut_fait >= 1_000,
+            "le décor doit exercer une annulation EN COURS de passe \
+             (relevé le plus haut : {plus_haut_fait})"
+        );
+
+        // Tout est défait : la base est revenue à l'état d'AVANT
+        // l'ouverture annulée.
+        {
+            let conn = Connection::open(&path).unwrap();
+            let version: i64 = conn
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(version, 1, "user_version inchangé : la passe se rejouera");
+            let forme_neuve: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM pragma_table_info('threads')
+                     WHERE name = 'inbox_size'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(
+                forme_neuve, 0,
+                "la table v1 est intacte : le DROP aussi est rembobiné"
+            );
+            let enveloppes: i64 = conn
+                .query_row("SELECT COUNT(*) FROM envelopes", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(enveloppes, i64::from(MESSAGES), "aucun message perdu");
+        }
+
+        // Le prochain lancement rejoue la passe ENTIÈRE : liste complète.
+        {
+            let store = Store::open(&path).unwrap();
+            let sans_fil: i64 = store
+                .conn()
+                .query_row(
+                    "SELECT COUNT(*) FROM envelopes WHERE thread_id IS NULL",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(sans_fil, 0, "tous les messages hérités sont adoptés");
+            let version: i64 = store
+                .conn()
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(version, crate::thread::THREADING_VERSION);
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// L'avancement est OBSERVABLE (enseignement §9) : le total s'annonce
+    /// d'emblée et ne bouge plus, l'avancement ne recule jamais, et
+    /// « fini » ne se dit qu'à la fin — jamais avant.
+    #[test]
+    fn l_adoption_annonce_son_avancement_du_depart_a_la_fin() {
+        let path = std::env::temp_dir().join(format!(
+            "discovery-test-avancement-adoption-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        {
+            let mut store = Store::open(&path).unwrap();
+            let account = store
+                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .unwrap();
+            let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            store
+                .upsert_envelopes(
+                    inbox,
+                    &[
+                        envelope(1, "Devis", 100, true),
+                        reply(2, "Re: Devis", 200, true, 1),
+                    ],
+                )
+                .unwrap();
+        }
+        rembobine_au_schema_v1(&path);
+
+        let mut releves: Vec<AdoptionProgress> = Vec::new();
+        let store = Store::open_with_progress(&path, |p| {
+            releves.push(p);
+            ControlFlow::Continue(())
+        })
+        .unwrap();
+
+        assert!(!releves.is_empty(), "une adoption muette n'est pas visible");
+        assert_eq!(releves[0].done, 0, "le départ se dit tout de suite");
+        assert!(releves[0].total > 0, "le total est annoncé d'emblée");
+        for paire in releves.windows(2) {
+            assert!(paire[1].done >= paire[0].done, "l'avancement ne recule pas");
+            assert_eq!(
+                paire[1].total, paire[0].total,
+                "le total ne bouge pas en route — une barre qui recule \
+                 est pire qu'une barre imprécise"
+            );
+        }
+        let dernier = releves.last().unwrap();
+        assert_eq!(
+            dernier.done, dernier.total,
+            "le dernier relevé dit « fini »"
+        );
+        assert!(
+            releves[..releves.len() - 1]
+                .iter()
+                .all(|p| p.done < p.total),
+            "et il est le SEUL : jamais « 100 % » avant la fin"
+        );
+
+        let lignes = unified(&store);
+        assert_eq!(lignes.len(), 1, "le fil est refait");
+        assert_eq!(lignes[0].thread_size, 2, "avec son compteur");
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// La sonde répond sans rien déclencher : le desktop l'appelle AVANT
+    /// la première vraie ouverture pour décider d'afficher l'écran de
+    /// migration — si elle migrait elle-même, l'écran arriverait après
+    /// la bataille.
+    #[test]
+    fn la_sonde_dit_quand_une_adoption_attend_sans_la_declencher() {
+        let path = std::env::temp_dir().join(format!(
+            "discovery-test-sonde-adoption-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+
+        // Fichier absent : première installation, rien d'hérité — et la
+        // sonde ne doit PAS créer le fichier.
+        assert_eq!(Store::pending_adoption(&path).unwrap(), None);
+        assert!(!path.exists(), "une sonde ne laisse pas de trace");
+
+        {
+            let mut store = Store::open(&path).unwrap();
+            let account = store
+                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .unwrap();
+            let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            store
+                .upsert_envelopes(
+                    inbox,
+                    &[
+                        envelope(1, "Devis", 100, true),
+                        reply(2, "Re: Devis", 200, true, 1),
+                    ],
+                )
+                .unwrap();
+            // Un message HORS portée (ADR 0010 §3) : la passe ne
+            // l'adoptera jamais, la sonde ne doit pas l'annoncer.
+            let spam = store.create_mailbox(account, "Spam", 1).unwrap();
+            store
+                .upsert_envelopes(spam, &[envelope(1, "Gagné !", 300, true)])
+                .unwrap();
+        }
+        // Base à jour : rien à annoncer.
+        assert_eq!(Store::pending_adoption(&path).unwrap(), None);
+
+        rembobine_au_schema_v1(&path);
+        assert_eq!(
+            Store::pending_adoption(&path).unwrap(),
+            Some(2),
+            "une base héritée annonce ses messages à adopter — la PORTÉE, \
+             pas la base entière : un chiffre doit désigner ce qu'il dit"
+        );
+        // Et RIEN n'a été déclenché : la version n'a pas bougé.
+        {
+            let conn = Connection::open(&path).unwrap();
+            let version: i64 = conn
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(version, 1, "la sonde n'a pas migré à notre place");
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Sur une base à jour il n'y a RIEN à adopter — et donc rien à dire.
+    /// Un bandeau de migration à chaque lancement serait un faux signal,
+    /// et chaque commande du desktop ouvre sa propre connexion.
+    #[test]
+    fn une_base_a_jour_s_ouvre_sans_annoncer_de_migration() {
+        let path = std::env::temp_dir().join(format!(
+            "discovery-test-adoption-muette-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        {
+            let mut store = Store::open(&path).unwrap();
+            let account = store
+                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .unwrap();
+            let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            store
+                .upsert_envelopes(
+                    inbox,
+                    &[
+                        envelope(1, "Devis", 100, true),
+                        reply(2, "Re: Devis", 200, true, 1),
+                    ],
+                )
+                .unwrap();
+        }
+
+        let mut appels = 0;
+        let store = Store::open_with_progress(&path, |_| {
+            appels += 1;
+            ControlFlow::Continue(())
+        })
+        .unwrap();
+        assert_eq!(appels, 0, "rien à adopter, rien à raconter");
+        assert_eq!(unified(&store).len(), 1, "et la liste est là");
         drop(store);
         let _ = std::fs::remove_file(&path);
     }

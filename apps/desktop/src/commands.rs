@@ -7,7 +7,9 @@
 //! SMTP) passe par `spawn_blocking` pour ne jamais geler la fenêtre.
 
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::{Mutex, MutexGuard};
 use std::time::Instant;
 
@@ -1996,6 +1998,97 @@ pub fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
     Ok(BackfillStatus {
         remaining: pending_total(&store)?,
     })
+}
+
+// ---------------------------------------------------------------------
+// Migration visible et interruptible (Phase 5, ADR 0012).
+//
+// Chaque commande ouvre sa propre connexion : sans cet écran, c'est la
+// PREMIÈRE commande venue qui paierait l'adoption d'une base héritée —
+// en silence, dans un gel d'interface. L'UI appelle donc
+// `migration_check` AVANT toute commande qui touche la base ; s'il y a
+// du travail, elle affiche l'écran, lance `migration_run`, sonde
+// `migration_progress`, et `migration_cancel` rembobine tout (§8 de la
+// passation : jamais d'adoption partielle persistée).
+// ---------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct MigrationCheck {
+    /// Messages à adopter — `null` si l'ouverture sera silencieuse.
+    pub pending: Option<u64>,
+}
+
+/// Sonde en lecture seule : rien n'est déclenché, rien n'est créé.
+#[tauri::command]
+pub fn migration_check(app: AppHandle) -> Result<MigrationCheck, String> {
+    Ok(MigrationCheck {
+        pending: Store::pending_adoption(&db_path(&app)?).map_err(|err| err.to_string())?,
+    })
+}
+
+#[derive(Serialize)]
+pub struct MigrationProgress {
+    pub done: u64,
+    pub total: u64,
+    /// `None` tant que la passe n'a rien annoncé : l'écran n'affiche
+    /// alors rien plutôt qu'un « 0 % » qui ferait croire à une panne.
+    pub percent: Option<u8>,
+}
+
+/// Avancement de la passe en cours. Purement local et sans verrou :
+/// la passe écrit des atomiques, le sondage ne la fait jamais attendre.
+#[tauri::command]
+pub fn migration_progress(state: State<'_, AppState>) -> MigrationProgress {
+    let done = state.migration.done.load(Ordering::Relaxed);
+    let total = state.migration.total.load(Ordering::Relaxed);
+    MigrationProgress {
+        done,
+        total,
+        percent: mail_core::sync_percent(done, total),
+    }
+}
+
+/// Demande l'annulation : la passe la constate à son prochain palier et
+/// rembobine tout — `migration_run` rendra alors `false`.
+#[tauri::command]
+pub fn migration_cancel(state: State<'_, AppState>) {
+    state.migration.cancel.store(true, Ordering::Relaxed);
+}
+
+/// Joue la passe d'adoption, visible et interruptible.
+///
+/// Rend `true` si la base est migrée (ou n'avait rien à faire), `false`
+/// si l'utilisateur a annulé — tout est alors défait, `user_version`
+/// inchangé, et la passe entière se rejouera au prochain lancement.
+#[tauri::command]
+pub async fn migration_run(app: AppHandle, state: State<'_, AppState>) -> Result<bool, String> {
+    let path = db_path(&app)?;
+    let shared = state.migration.clone();
+    shared.cancel.store(false, Ordering::Relaxed);
+    shared.done.store(0, Ordering::Relaxed);
+    shared.total.store(0, Ordering::Relaxed);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let result = Store::open_with_progress(&path, |progress| {
+            shared.done.store(progress.done, Ordering::Relaxed);
+            shared.total.store(progress.total, Ordering::Relaxed);
+            if shared.cancel.load(Ordering::Relaxed) {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+        match result {
+            // Le Store se referme aussitôt : les commandes suivantes
+            // ouvriront le leur, comme d'habitude — mais sans passe à
+            // payer, elle est faite.
+            Ok(_store) => Ok(true),
+            Err(mail_core::Error::Interrupted) => Ok(false),
+            Err(err) => Err(err.to_string()),
+        }
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 #[derive(Serialize)]

@@ -503,7 +503,8 @@ main.split {
 
 #imap-dialog,
 #ms-dialog,
-#move-dialog {
+#move-dialog,
+#migration-dialog {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.35);
@@ -518,13 +519,26 @@ main.split {
    permanence, interceptant tous les clics. */
 #imap-dialog[hidden],
 #ms-dialog[hidden],
-#move-dialog[hidden] {
+#move-dialog[hidden],
+#migration-dialog[hidden] {
   display: none;
+}
+
+#migration-card progress {
+  width: 100%;
+  height: 10px;
+}
+
+#migration-percent {
+  min-height: 1.2em;
+  font-size: 12.5px;
+  color: #555;
 }
 
 #move-form,
 #ms-form,
-#imap-form {
+#imap-form,
+#migration-card {
   background: #fff;
   border-radius: 10px;
   padding: 22px;
@@ -537,7 +551,8 @@ main.split {
 
 #move-form h2,
 #ms-form h2,
-#imap-form h2 {
+#imap-form h2,
+#migration-card h2 {
   margin: 0 0 6px;
   font-size: 17px;
 }
@@ -561,7 +576,8 @@ main.split {
 }
 
 #ms-actions,
-#imap-actions {
+#imap-actions,
+#migration-actions {
   display: flex;
   gap: 8px;
   margin-top: 6px;

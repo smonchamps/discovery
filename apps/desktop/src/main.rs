@@ -8,8 +8,20 @@
 mod commands;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+/// L'avancement de la migration d'une base héritée, partagé entre la
+/// passe (qui écrit) et l'UI (qui sonde en boucle et peut annuler).
+/// Des atomiques, pas un Mutex : la passe écrit tous les 1 000 messages,
+/// le sondage ne doit jamais la faire attendre.
+#[derive(Default)]
+pub(crate) struct MigrationShared {
+    pub done: AtomicU64,
+    pub total: AtomicU64,
+    pub cancel: AtomicBool,
+}
 
 pub(crate) struct AppState {
     pub started_at: Instant,
@@ -24,6 +36,8 @@ pub(crate) struct AppState {
     /// Sérialise le rattrapage des corps : deux pompes concurrentes
     /// se disputeraient la bande passante et les mêmes messages.
     pub bodies_backfill: Arc<Mutex<()>>,
+    /// Avancement et annulation de la migration visible (Phase 5).
+    pub migration: Arc<MigrationShared>,
 }
 
 fn main() {
@@ -33,6 +47,7 @@ fn main() {
         outbox_flush: Arc::new(Mutex::new(())),
         drafts_push: Arc::new(Mutex::new(())),
         bodies_backfill: Arc::new(Mutex::new(())),
+        migration: Arc::new(MigrationShared::default()),
     };
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -70,6 +85,10 @@ fn main() {
             commands::sync_progress,
             commands::backfill_status,
             commands::backfill_bodies,
+            commands::migration_check,
+            commands::migration_run,
+            commands::migration_progress,
+            commands::migration_cancel,
         ])
         .run(tauri::generate_context!());
     if let Err(err) = result {

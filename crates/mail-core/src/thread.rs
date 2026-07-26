@@ -24,11 +24,13 @@
 //! propriété qui autorise à livrer l'acquisition en deux temps.
 
 use std::collections::{BTreeSet, HashMap};
+use std::ops::ControlFlow;
 
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::envelope::Uid;
 use crate::error::Error;
+use crate::store::AdoptionProgress;
 
 /// Identifiant interne d'un fil.
 ///
@@ -506,9 +508,11 @@ pub(crate) const THREADING_VERSION: i64 = 2;
 /// est `une_base_au_schema_des_fils_precedent_s_ouvre_et_se_migre`.
 ///
 /// Le marqueur de version n'est PAS avancé ici : c'est
-/// [`rebuild_if_outdated`] qui le fait, une fois les tables recréées et
-/// les enveloppes détachées. Avancer trop tôt laisserait une base à
-/// moitié migrée si l'ouverture échouait entre les deux.
+/// [`migrate_threads_with`] qui le fait, une fois les tables recréées,
+/// les enveloppes détachées ET l'adoption terminée — le tout dans la
+/// même transaction, possédée par `Store::init`. Avancer plus tôt
+/// rendrait l'annulation partielle : le rembobinage (passation §8) exige
+/// que `ROLLBACK` laisse `user_version` inchangé.
 pub(crate) fn drop_if_outdated(conn: &Connection) -> Result<(), Error> {
     let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if version >= THREADING_VERSION {
@@ -521,27 +525,18 @@ pub(crate) fn drop_if_outdated(conn: &Connection) -> Result<(), Error> {
     Ok(())
 }
 
-/// Détache les enveloppes pour que l'adoption, juste dessous, refasse les
-/// fils — un seul chemin de reconstruction, celui qui est déjà testé,
-/// plutôt qu'un correctif parallèle qui divergerait.
-///
-/// Purement local : les en-têtes bruts sont intacts en base, seule leur
-/// **interprétation** était fautive. Rien à redemander au serveur.
-fn rebuild_if_outdated(conn: &Connection) -> Result<(), Error> {
-    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    if version >= THREADING_VERSION {
-        return Ok(());
+/// Transmet un relevé d'avancement, et traduit la réponse : `Break`
+/// devient [`Error::Interrupted`], que la transaction de l'appelant
+/// convertit en `ROLLBACK` — le rembobinage du §8.
+fn report(
+    on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
+    done: u64,
+    total: u64,
+) -> Result<(), Error> {
+    match on_progress(AdoptionProgress { done, total }) {
+        ControlFlow::Continue(()) => Ok(()),
+        ControlFlow::Break(()) => Err(Error::Interrupted),
     }
-    // Les tables ont déjà été supprimées par `drop_if_outdated` puis
-    // recréées vides par `SCHEMA` : il ne reste qu'à détacher les
-    // enveloppes, et à consigner la version une fois le tout cohérent.
-    conn.execute_batch(&format!(
-        "BEGIN;
-         UPDATE envelopes SET thread_id = NULL;
-         PRAGMA user_version = {THREADING_VERSION};
-         COMMIT;"
-    ))?;
-    Ok(())
 }
 
 /// Un message pas encore rattaché : son compte, sa boîte, son UID, puis
@@ -594,31 +589,94 @@ fn orphans(conn: &Connection, account: Option<i64>) -> Result<Vec<Orphan>, Error
     Ok(rows)
 }
 
-pub(crate) fn migrate_threads(conn: &Connection) -> Result<(), Error> {
-    rebuild_if_outdated(conn)?;
-    let orphans = orphans(conn, None)?;
-    if orphans.is_empty() {
-        return Ok(());
+/// L'unité d'adoption des messages hérités, SANS transaction : c'est
+/// l'appelant qui la possède — `Store::init` l'étend du DROP conditionnel
+/// jusqu'à `user_version`, pour que l'annulation rembobine tout (§8).
+///
+/// Rend le total annoncé à `on_progress` quand une passe a eu lieu :
+/// l'appelant redira `(total, total)` une fois la transaction COMMISE —
+/// « fini » ne se dit jamais avant d'être vrai.
+pub(crate) fn migrate_threads_with(
+    conn: &Connection,
+    on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
+) -> Result<Option<u64>, Error> {
+    let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let outdated = version < THREADING_VERSION;
+    if outdated {
+        // Les tables ont déjà été supprimées par `drop_if_outdated` puis
+        // recréées vides par `SCHEMA` : il reste à détacher les enveloppes
+        // pour que l'adoption, juste dessous, refasse les fils — un seul
+        // chemin de reconstruction, celui qui est déjà testé. Purement
+        // local : les en-têtes bruts sont intacts en base, seule leur
+        // interprétation était fautive. Rien à redemander au serveur.
+        conn.execute_batch("UPDATE envelopes SET thread_id = NULL")?;
     }
+    let orphans = orphans(conn, None)?;
+    let mut announced = None;
+    if !orphans.is_empty() {
+        // Le total est un MAJORANT déclaré d'emblée : rattacher chaque
+        // orphelin, puis consolider AU PLUS autant de fils. Il ne bouge
+        // plus en route — une barre qui recule est pire qu'une barre
+        // imprécise.
+        let total = orphans.len() as u64 * 2;
+        announced = Some(total);
+        report(on_progress, 0, total)?;
+        adopt_with_progress(conn, orphans, total, on_progress)?;
+    }
+    if outdated {
+        // La version se consigne DANS la même transaction que l'adoption :
+        // annuler laisse `user_version` inchangé, et la passe entière se
+        // rejoue au prochain lancement. Jamais d'adoption partielle
+        // persistée — la liste part de `threads`, une base à moitié
+        // adoptée serait une boîte à moitié vide.
+        conn.execute_batch(&format!("PRAGMA user_version = {THREADING_VERSION}"))?;
+    }
+    Ok(announced)
+}
 
-    // Une transaction, pas une par message : sur une boîte déjà remplie,
-    // un fsync par enveloppe transformerait l'ouverture de l'application
-    // en minutes d'attente — le budget « démarrage < 1 s » interdit ce
-    // chemin.
+/// Le même chemin, muet et transactionnel — pour les appels directs des
+/// tests, qui n'ont ni interface à nourrir ni transaction ouverte. La
+/// production passe par `Store::init`, qui possède la transaction.
+///
+/// Une transaction, pas une par message : sur une boîte déjà remplie, un
+/// fsync par enveloppe transformerait l'ouverture de l'application en
+/// minutes d'attente — le budget « démarrage < 1 s » interdit ce chemin.
+#[cfg(test)]
+pub(crate) fn migrate_threads(conn: &Connection) -> Result<(), Error> {
     conn.execute_batch("BEGIN")?;
-    match adopt(conn, orphans) {
-        Ok(()) => conn.execute_batch("COMMIT")?,
+    match migrate_threads_with(conn, &mut |_| ControlFlow::Continue(())) {
+        Ok(_) => {
+            conn.execute_batch("COMMIT")?;
+            Ok(())
+        }
         Err(err) => {
             // L'échec du retour arrière n'apprendrait rien de plus que
             // l'erreur d'origine, qui est celle qu'il faut remonter.
             let _ = conn.execute_batch("ROLLBACK");
-            return Err(err);
+            Err(err)
         }
     }
-    Ok(())
 }
 
+/// Palier de rapport : ~1 000 messages font ~18 ms au rythme mesuré par
+/// `banc_migration_fils` — le coût du rappel est invisible, et la
+/// latence d'annulation reste sous la perception.
+const PALIER_RAPPORT: u64 = 1_000;
+
 fn adopt(conn: &Connection, orphans: Vec<Orphan>) -> Result<(), Error> {
+    // Chemin muet (UIDVALIDITY invalidée, reconstruction ciblée) : mêmes
+    // gestes, sans spectateur ni annulation — l'évènement est rare et
+    // borné par la taille du compte.
+    let total = orphans.len() as u64 * 2;
+    adopt_with_progress(conn, orphans, total, &mut |_| ControlFlow::Continue(()))
+}
+
+fn adopt_with_progress(
+    conn: &Connection,
+    orphans: Vec<Orphan>,
+    total: u64,
+    on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
+) -> Result<(), Error> {
     // Un ENSEMBLE, pas une liste. `Vec::contains` est linéaire : sur une
     // base héritée où presque chaque message ouvre son propre fil, le
     // « ai-je déjà vu ce fil ? » devenait quadratique — 160 000 fils font
@@ -627,6 +685,7 @@ fn adopt(conn: &Connection, orphans: Vec<Orphan>) -> Result<(), Error> {
     // sur les 2 800 messages d'une boîte réelle, écrasant à l'échelle du
     // gate 3. L'arbre garde en prime un ordre déterministe, sans tri.
     let mut touched: BTreeSet<ThreadId> = BTreeSet::new();
+    let mut done: u64 = 0;
     for (account_id, mailbox_id, uid, message_id, in_reply_to, references) in orphans {
         let thread = attach(
             conn,
@@ -640,11 +699,19 @@ fn adopt(conn: &Connection, orphans: Vec<Orphan>) -> Result<(), Error> {
         )?
         .execute(params![mailbox_id, uid, thread])?;
         touched.insert(thread);
+        done += 1;
+        if done.is_multiple_of(PALIER_RAPPORT) {
+            report(on_progress, done, total)?;
+        }
     }
     for thread in touched {
         // Un fil de `touched` a pu être absorbé entre-temps ; `refresh`
         // le constate et ne fait rien.
         refresh(conn, thread)?;
+        done += 1;
+        if done.is_multiple_of(PALIER_RAPPORT) {
+            report(on_progress, done, total)?;
+        }
     }
     Ok(())
 }

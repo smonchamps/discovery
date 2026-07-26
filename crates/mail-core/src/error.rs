@@ -15,4 +15,10 @@ pub enum Error {
     /// Donnée locale inattendue (base modifiée hors de l'application).
     #[error("donnée locale invalide : {0}")]
     Corrupt(String),
+
+    /// L'utilisateur a annulé la migration d'une base héritée pendant la
+    /// passe d'adoption. Tout a été défait (`ROLLBACK`), `user_version`
+    /// est inchangé : la passe entière se rejouera au prochain lancement.
+    #[error("migration interrompue")]
+    Interrupted,
 }

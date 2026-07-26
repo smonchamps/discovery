@@ -20,6 +20,21 @@
   <button id="refresh" hidden>Synchroniser</button>
   <input id="search" type="search" placeholder="Rechercher…" hidden>
 </header>
+<!-- L'écran de migration bloque tout : chaque commande ouvre sa propre
+     connexion, et sans lui la première commande venue paierait l'adoption
+     d'une base héritée en silence, dans un gel d'interface. -->
+<div id="migration-dialog" hidden>
+  <div id="migration-card">
+    <h2>Mise à jour de vos conversations</h2>
+    <p class="dialog-note" id="migration-note"></p>
+    <progress id="migration-gauge" max="100" value="0"></progress>
+    <p id="migration-percent"></p>
+    <div id="migration-actions">
+      <button type="button" id="migration-cancel">Annuler</button>
+      <button type="button" id="migration-retry" hidden>Reprendre</button>
+    </div>
+  </div>
+</div>
 <div id="imap-dialog" hidden>
   <form id="imap-form">
     <h2>Ajouter un compte IMAP/SMTP</h2>

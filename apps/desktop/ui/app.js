@@ -168,6 +168,91 @@ function appendRowMarks(row, message) {
   if (marks.childElementCount > 0) row.appendChild(marks);
 }
 
+// --- Migration visible et interruptible (Phase 5) --------------------
+//
+// Chaque commande ouvre sa propre connexion : sans cet écran, la
+// PREMIÈRE commande venue paierait l'adoption d'une base héritée en
+// silence, dans un gel d'interface. On sonde donc AVANT de toucher la
+// base ; s'il y a du travail, l'écran bloque tout le reste. « Annuler »
+// défait tout — la passe entière se rejouera au prochain lancement, ou
+// tout de suite par « Reprendre ».
+
+/// Ne rend la main qu'une fois la base migrée : tant que l'utilisateur
+/// annule, l'écran reste — montrer la boîte exigerait la passe.
+async function ensureMigrated() {
+  let check;
+  try {
+    check = await invoke('migration_check');
+  } catch {
+    // Sonde impossible : l'ouverture normale le dira mieux qu'un écran
+    // sans objet — on ne bloque pas le démarrage.
+    return;
+  }
+  if (check.pending === null || check.pending === undefined) return;
+  el('migration-dialog').hidden = false;
+  el('migration-note').textContent =
+    `Environ ${check.pending} messages vont être réorganisés en conversations. ` +
+    'Cette mise à jour ne se fait qu’une fois et n’efface rien.';
+  while (!(await runMigration())) {
+    await new Promise((resolve) => {
+      el('migration-retry').addEventListener('click', resolve, { once: true });
+    });
+  }
+  el('migration-dialog').hidden = true;
+}
+
+function migrationTick(progress) {
+  const gauge = el('migration-gauge');
+  if (progress.percent === null || progress.percent === undefined) {
+    // Pas encore de dénominateur : une barre indéterminée, jamais un
+    // « 0 % » qui ferait croire à une panne.
+    gauge.removeAttribute('value');
+    el('migration-percent').textContent = 'Préparation…';
+    return;
+  }
+  gauge.value = progress.percent;
+  el('migration-percent').textContent = `${progress.percent} %`;
+}
+
+/// Une passe : vrai si la base est migrée, faux si annulée ou en échec —
+/// l'écran propose alors « Reprendre ».
+async function runMigration() {
+  el('migration-cancel').hidden = false;
+  el('migration-cancel').disabled = false;
+  el('migration-retry').hidden = true;
+  el('migration-percent').textContent = '';
+  el('migration-gauge').removeAttribute('value');
+  const poll = setInterval(async () => {
+    try {
+      migrationTick(await invoke('migration_progress'));
+    } catch {
+      // Le prochain relevé suffira.
+    }
+  }, 300);
+  let outcome;
+  try {
+    const migrated = await invoke('migration_run');
+    outcome = migrated
+      ? true
+      : 'Mise à jour annulée — tout est revenu comme avant. Elle reprendra au prochain lancement, ou tout de suite :';
+  } catch (err) {
+    outcome = `La mise à jour a échoué (${err}). Rien n’est perdu : elle peut être relancée.`;
+  } finally {
+    clearInterval(poll);
+  }
+  if (outcome === true) return true;
+  el('migration-percent').textContent = outcome;
+  el('migration-cancel').hidden = true;
+  el('migration-retry').hidden = false;
+  return false;
+}
+
+el('migration-cancel').addEventListener('click', () => {
+  // Un seul clic suffit : la passe annule à son prochain palier.
+  el('migration-cancel').disabled = true;
+  invoke('migration_cancel').catch(() => {});
+});
+
 async function init() {
   invoke('startup_report').then((report) => {
     el('perf').textContent = report;
@@ -176,6 +261,9 @@ async function init() {
     el('perf').dataset.startup = report;
   });
   el('pane-list').addEventListener('scroll', onScroll);
+  // La migration d'abord : rien d'autre ne touche la base tant qu'une
+  // base héritée n'est pas adoptée.
+  await ensureMigrated();
   refreshDrafts(); // les brouillons sont locaux : visibles même sans compte
   let problems = [];
   try {

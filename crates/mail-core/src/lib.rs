@@ -40,7 +40,7 @@ pub use error::Error;
 pub use notify::{Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{FetchedBody, Folder, MailServer, MailboxSnapshot, RemoteDraft, ThreadHeaders};
-pub use store::{Account, AccountConfig, Store, SyncState, UnifiedRow};
+pub use store::{Account, AccountConfig, AdoptionProgress, Store, SyncState, UnifiedRow};
 pub use sync::{
     SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall, sync_order,
     sync_percent,
