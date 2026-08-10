@@ -71,12 +71,18 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
 - **S5 — Port de transport.** Définir l'interface UI↔cœur ; livrer l'impl
   **en-processus** (Tauri IPC). L'impl **distante** (HTTP/WS) est esquissée,
   pas due ici.
-- **S6 — Hooks de test.** Inventorier les ~30 sélecteurs dont dépend le gate
-  E2E (`#detail-subject`, `.row`, `#compose-body`…) et poser des
-  **`data-testid` stables sur v1 d'abord**, pour que refonte et tests bougent
-  en lockstep.
+- **S6 — Hooks de test. ✓ FAIT** (2026-08-10). Le markup **généré** par
+  `app.js` (lignes, résultats, fil, pièces jointes, puces, boutons de
+  listes) porte des **`data-testid`** stables, et le gate E2E les
+  sélectionne ainsi (e2e 21/21 à chaque incrément). **GO arbitré :** les IDs
+  sémantiques de haut niveau (`#compose`, `#detail-subject`, dialogues,
+  bandeaux) et les classes d'état (`flagged`, `current`) restent des
+  sélecteurs directs — un **contrat « v2 préserve »**, pas un défaut ; les
+  migrer serait du churn sans gain. Contrat complet et opposable dans
+  [`e2e/README.md`](../e2e/README.md).
 
 **GO/NO-GO :** chaque point a sa décision ou son chiffre. Budgets non touchés.
+**S6 est clos** ; S1–S5 restent à jouer avant R1.
 
 ## R1 — Socle de jetons sur v1 (le socle invisible, prouvé à bas coût)
 

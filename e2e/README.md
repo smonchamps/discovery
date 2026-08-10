@@ -53,3 +53,39 @@ En cas d'urgence : `git push --no-verify` — en connaissance de cause.
 | Trier | `e` archive, décompte mis à jour, auto-avance au message suivant |
 | Répondre | À / « Re: » / citation pré-remplis ; envoi hors ligne → **journalisé, « 1 en attente »** (la règle d'or, visible à l'écran) |
 | Brouillon | Échap conserve le texte, Reprendre le restitue intact |
+
+## Contrat de sélecteurs de test (R0-S6)
+
+Le gate sélectionne l'UI par trois moyens **stables**, pour survivre à la
+refonte v2 sans réécrire les tests (*lockstep*). **v2 doit honorer ce
+contrat — toute modification ici est une modification du gate, à traiter
+comme une API.**
+
+1. **`data-testid` sur le markup généré** (`app.js` le pose ; les composants
+   v2 portent les mêmes valeurs) :
+   `message-row`, `search-result`, `thread-item`, `attachment`, `subject`,
+   `thread-count`, `clip`, `account-dot`, `account-chip`, `move-target`,
+   `draft-row`.
+2. **IDs sémantiques préservés** pour les structures de haut niveau — v2
+   porte les mêmes `id` :
+   - composeur : `#compose` `#compose-title` `#compose-to` `#compose-subject`
+     `#compose-body` `#compose-send` `#compose-from` `#compose-from-row`
+   - lecture : `#detail` `#detail-subject` `#detail-frame` `#attachments`
+     `#star` `#move`
+   - liste / recherche : `#rows` `#scroll-space` `#perf` `#search`
+     `#search-results` `#status`
+   - ajout de compte : `#connect` `#add-menu` `#add-gmail` `#add-microsoft`
+     `#add-imap` `#ms-dialog` `#ms-email` `#imap-dialog` `#imap-email`
+     `#imap-host` `#imap-password` `#smtp-host` `#imap-form`
+   - dialogues / bandeaux : `#move-dialog` `#outbox-bar` `#outbox-summary`
+     `#drafts-bar` `#drafts-summary` `#drafts-list` `#update-bar`
+     `#telemetry-optin-bar` `#crash-report-bar` `#backfill-bar`
+3. **Classes d'état conservées** : `flagged` (sur `message-row`), `current`
+   (sur `thread-item`).
+4. **Nom accessible** : le bouton « Reprendre » (sélectionné par rôle).
+
+**Décision (GO S6).** On désolidarise ce qui *bouge* — le markup généré,
+passé en `data-testid`. Ce qui est *déjà stable* — IDs sémantiques et
+classes d'état — reste sélectionné directement, comme contrat explicite
+plutôt que churn sans gain. Départage assumé : « la justesse par la
+retenue » vaut aussi pour le testing.
