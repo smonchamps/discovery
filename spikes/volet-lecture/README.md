@@ -26,6 +26,9 @@ pixel neutre. **La Douceur ne touche JAMAIS le HTML de l'expéditeur.**
    `email_document` au Système — police système, 15 px, 1,65, encre — en
    **sélecteurs simples, sans `!important`**. Ce sont des défauts : le texte
    non stylé prend la Douceur, **tout style d'expéditeur l'emporte** (cas 3).
+   **Gouttière : 20 px, pas 12** — verdict terrain (2026-08-10, vrais mails) :
+   à 12 px le corps colle au bord de la carte ; il s'aligne sur la
+   respiration du chrome (en-tête à 20 px).
 3. **La colonne de lecture 68 ch** ne s'applique **qu'au texte brut converti**
    (`is_plain_text`), pas au HTML — sinon on briderait une mise en page
    (cas 2 vs cas 1).

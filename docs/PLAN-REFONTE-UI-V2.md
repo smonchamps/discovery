@@ -52,19 +52,29 @@ sur le vrai noyau**.
 Aucun écran de production. On sort des **décisions écrites** ou des **chiffres**
 (§2.2). Rien ne se code tant que R0 n'est pas soldé.
 
-- **S1 — Frontière du volet de lecture. ✓ FAIT (spike)** (2026-08-10). Le
+- **S1 — Frontière du volet de lecture. ✓ FAIT** (2026-08-10). Le
   corps reste dans l'iframe `sandbox` + CSP par message — **inchangé**. La
   Douceur habille **(a)** le chrome hors iframe, **(b)** la base typographique
   de `email_document` en sélecteurs simples **sans écraser l'expéditeur** ;
   colonne 68 ch réservée au **texte brut** ; encre **bakée par thème**
   (l'iframe ne voit pas les variables de l'hôte), HTML sur surface claire même
   en thème sombre. Prouvé sur 4 cas —
-  [`spikes/volet-lecture/`](../spikes/volet-lecture/README.md). **Dû :**
-  validation sur un VRAI mail par le Chef Ingénieur.
-- **S2 — Ligne à hauteur fixe.** Vérifier sur contenu réel que la ligne 104 px
-  tient (objets/aperçus réels tronqués, puces logées). L'ADR 0015 a tranché
-  *fixe* ; ceci le prouve au terrain. Sinon : virtualisation mesurée (coût
-  **égal aux trois familles**, sans effet sur le socle).
+  [`spikes/volet-lecture/`](../spikes/volet-lecture/README.md). **Dû soldé**
+  (2026-08-10) : validé par le Chef Ingénieur sur ses VRAIS mails (kit
+  [`spikes/terrain-r0/`](../spikes/terrain-r0/README.md)) avec une retouche
+  de terrain : **gouttière du corps à 20 px, pas 12** — alignée sur la
+  respiration du chrome.
+- **S2 — Ligne à hauteur fixe. ✓ FAIT** (2026-08-10, terrain Chef
+  Ingénieur). Verdict brut sur 120 fils réels : **8/120 lignes débordaient**
+  de 104 px — toutes à cause des **pilules de 32 px importées du
+  prototype**. **Ruling du Chef Ingénieur : le prototype n'est PAS
+  normatif ; seul le Système lie.** Or la « Ligne de message » du Système a
+  exactement **trois zones** (expéditeur + heure / objet 18 / aperçu 13,
+  troncature à une ligne) et **aucune puce** ; hauteur naturelle ≈ 98 px →
+  **la ligne fixe de 104 px est actée**. Les marqueurs dus au contrat S6
+  (trombone, compteur de fil) se logent **en ligne 1**, façon « Icônes et
+  libellés » (icône 16 px + nombre) — pas de 4ᵉ zone. Contre-preuve kit :
+  **GO — 0/120**, marqueurs inclus.
 - **S3 — Icônes vendorisées. ✓ FAIT** (2026-08-10). L'inventaire exhaustif
   du handoff (trois documents + `support.js`) donne **31 glyphes**, pas 34 —
   le terrain corrige l'estimation. Sous-ensemble Material Symbols Rounded
@@ -126,9 +136,11 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
   [`e2e/README.md`](../e2e/README.md).
 
 **GO/NO-GO :** chaque point a sa décision ou son chiffre. Budgets non touchés.
-**S6, S1, S4, S5 et S3 sont clos** (S1 : décision + spike, validation
-terrain due) ; reste **S2** (terrain : ligne à hauteur fixe sur contenu
-réel) avant R1.
+**R0 EST CLOS** (2026-08-10) : les six points portent chacun une décision ou
+un chiffre, S1 et S2 validés au terrain par le Chef Ingénieur sur ses vrais
+mails. Règle générale née de S2, valable pour toute la suite : **le
+prototype du handoff est illustratif ; seul le document Système est
+normatif.** Quand les deux divergent, le prototype plie. R1 peut s'ouvrir.
 
 ## R1 — Socle de jetons sur v1 (le socle invisible, prouvé à bas coût)
 
