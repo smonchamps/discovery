@@ -140,7 +140,11 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
 un chiffre, S1 et S2 validés au terrain par le Chef Ingénieur sur ses vrais
 mails. Règle générale née de S2, valable pour toute la suite : **le
 prototype du handoff est illustratif ; seul le document Système est
-normatif.** Quand les deux divergent, le prototype plie. R1 peut s'ouvrir.
+normatif.** Quand les deux divergent, le prototype plie. Le Système est
+**versionné** — [`docs/design/systeme.dc.html`](design/systeme.dc.html),
+copie vivante et normative (version handoff, 17 sections), amendements
+**A1–A4** issus du terrain R0 inscrits, journal daté en fin de document.
+R1 peut s'ouvrir.
 
 ## R1 — Socle de jetons sur v1 (le socle invisible, prouvé à bas coût)
 

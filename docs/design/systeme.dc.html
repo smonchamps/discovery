@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+<style>
+  .ms { font-family:'Material Symbols Rounded'; font-weight:300; font-size:16px; line-height:1; flex:none; font-variation-settings:'opsz' 20; }
+
+  html, body { margin:0; padding:0; background:#f0f2ef; }
+  * { box-sizing:border-box; }
+  a { color:#2f6e5b; text-decoration:underline; }
+  a:hover { color:#26594a; }
+  table { border-collapse:collapse; }
+</style>
+</helmet>
+
+<div style="font-family:-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif; color:#232725; background:#f0f2ef; padding:72px; display:flex; flex-direction:column; gap:88px; align-items:flex-start">
+
+  <header style="display:flex; flex-direction:column; gap:14px; max-width:760px">
+    <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e">Discovery — direction « Douceur »</p>
+    <h1 style="margin:0; font-size:40px; line-height:1.1; font-weight:600; letter-spacing:-.02em">Système de référence et écrans</h1>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f">Retenue, calme, matière chaude. Quatre actions visibles à l'écran, jamais plus. Un seul accent, un seul poids de filet, un seul niveau d'élévation. Ce document est la source à transmettre à l'implémentation.</p>
+  </header>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Principes</h2>
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:760px">Deux gestes venus du Japon guident cette direction. Ils ne sont pas des ornements ; ils expliquent chaque règle du système. Le calme de l'interface n'est pas une absence : c'est le résultat d'un soin qui cherche à ne pas se voir.</p>
+    <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:24px">
+      <div style="background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); padding:28px; display:flex; flex-direction:column; gap:14px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Omotenashi — l'hospitalité</p>
+        <h3 style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em">Anticiper, puis s'effacer</h3>
+        <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f">L'hôte prépare tout à l'avance et retire ce qui encombre, pour que l'invité n'ait rien à demander. De là vient la règle des quatre actions au plus, le serveur qui se configure seul, l'accueil qui ne réclame qu'une adresse. Le produit devance le besoin au lieu d'offrir des options.</p>
+      </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); padding:28px; display:flex; flex-direction:column; gap:14px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Takumi — l'artisan</p>
+        <h3 style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em">La justesse par la retenue</h3>
+        <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f">Le maître atteint la précision en retirant, jamais en ajoutant. De là viennent le filet unique de 1 px, l'accent unique, l'élévation unique, les deux seuls rayons. Chaque trait porte une intention ; rien n'est décoratif. La matière est chaude, l'ombre tire vers l'encre, jamais vers le gris.</p>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Couleurs</h2>
+    <table style="width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; overflow:hidden">
+      <thead>
+        <tr style="background:#eaece9">
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:88px">Teinte</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:240px">Jeton</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:140px">Valeur</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Emploi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#f0f2ef"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Fond application</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#f0f2ef</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Fond général, volet liste, fond du volet de lecture</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#eaece9"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Fond panneaux / nav</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#eaece9</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Navigation, barre d'état, en-têtes de tableau</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#ffffff"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Surface / cartes</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#ffffff</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Éléments actifs, volet de lecture, composition, champs</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#232725"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Encre principale</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#232725</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Titres, objets, corps de message</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#4d534f"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Texte secondaire</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#4d534f</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Aperçus, valeurs de champs, libellés de puces</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#5c625e"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Texte atténué</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#5c625e</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Méta, horodatage, compteurs de total, barre d'état</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#dadfda"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Filets / bordures</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#dadfda</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Un seul poids : 1 px, partout, sans exception</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#2f6e5b"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Accent — vert pin</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#2f6e5b</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Action principale, filet de signature, compteur de non-lus, focus</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#26594a"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Accent survol / appui</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#26594a</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Survol et enfoncement des surfaces d'accent</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#e6ede9"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Teinte sélection</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#e6ede9</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Survol de ligne, onglet de filtre actif, dossier ouvert</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#8c2f22"></span></td>
+          <td style="padding:12px 20px; font-size:13px">Alerte</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">#8c2f22</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Échec d'envoi, perte de connexion. Jamais décoratif, jamais pour Supprimer</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Thèmes de couleur</h2>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Neuf thèmes, chacun autour d'un élément. Tous conservent la même structure de jetons — fond, panneau, surface, encre, accent, sélection — et le même unique accent par thème. Seules les valeurs changent ; les règles de forme, d'élévation et de signature restent identiques. « La nature » est la direction actuelle. « La nuit » est le thème sombre : les surfaces s'assombrissent, l'encre s'éclaircit, l'accent est adouci pour tenir le contraste.</p>
+    <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:20px">
+
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">L'air</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Ciels pâles et bleu clair, beaucoup de respiration.</p></div>
+        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
+          <span style="flex:1; background:#eef2f5"></span><span style="flex:1; background:#e3e9ee"></span><span style="flex:1; background:#ffffff"></span><span style="flex:1; background:#2d6f99"></span><span style="flex:1; background:#e0ecf3"></span><span style="flex:1; background:#22303a"></span>
+        </div>
+        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#eef2f5 · #e3e9ee · #ffffff · accent #2d6f99 · #e0ecf3 · encre #22303a</p>
+      </div>
+
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Le vent</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Sauge pâle et gris frais, un accent ardoise-vert.</p></div>
+        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
+          <span style="flex:1; background:#eef1ef"></span><span style="flex:1; background:#e4e8e5"></span><span style="flex:1; background:#ffffff"></span><span style="flex:1; background:#457269"></span><span style="flex:1; background:#e2ebe8"></span><span style="flex:1; background:#242a29"></span>
+        </div>
+        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#eef1ef · #e4e8e5 · #ffffff · accent #457269 · #e2ebe8 · encre #242a29</p>
+      </div>
+
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Le feu</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Sables chauds et braise, un accent orangé profond.</p></div>
+        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
+          <span style="flex:1; background:#f5efe8"></span><span style="flex:1; background:#eee3d9"></span><span style="flex:1; background:#fffaf5"></span><span style="flex:1; background:#c0492b"></span><span style="flex:1; background:#f3e2d5"></span><span style="flex:1; background:#2d201b"></span>
+        </div>
+        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#f5efe8 · #eee3d9 · #fffaf5 · accent #c0492b · #f3e2d5 · encre #2d201b</p>
+      </div>
+
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Tournesol</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Crème et or, un accent ambre chaud.</p></div>
+        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
+          <span style="flex:1; background:#fbf6e6"></span><span style="flex:1; background:#f4ecd4"></span><span style="flex:1; background:#fffef8"></span><span style="flex:1; background:#8f6410"></span><span style="flex:1; background:#f3e7c6"></span><span style="flex:1; background:#2e2716"></span>
+        </div>
+        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#fbf6e6 · #f4ecd4 · #fffef8 · accent #8f6410 · #f3e7c6 · encre #2e2716</p>
+      </div>
+
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">L'eau</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Verts d'eau et sarcelle, fond frais et minéral.</p></div>
+        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
+          <span style="flex:1; background:#e9f1f0"></span><span style="flex:1; background:#dce9e7"></span><span style="flex:1; background:#ffffff"></span><span style="flex:1; background:#1f7d6d"></span><span style="flex:1; background:#d8ebe7"></span><span style="flex:1; background:#16302d"></span>
+        </div>
+        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#e9f1f0 · #dce9e7 · #ffffff · accent #1f7d6d · #d8ebe7 · encre #16302d</p>
+      </div>
+
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Les astres</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Gris bleutés et indigo, une lumière nocturne claire.</p></div>
+        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
+          <span style="flex:1; background:#eef0f6"></span><span style="flex:1; background:#e4e6f0"></span><span style="flex:1; background:#ffffff"></span><span style="flex:1; background:#5b53b5"></span><span style="flex:1; background:#e6e5f4"></span><span style="flex:1; background:#22243a"></span>
+        </div>
+        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#eef0f6 · #e4e6f0 · #ffffff · accent #5b53b5 · #e6e5f4 · encre #22243a</p>
+      </div>
+
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">La terre</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Argile, ocre et lin, un accent terracotta.</p></div>
+        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
+          <span style="flex:1; background:#f1eee6"></span><span style="flex:1; background:#e8e2d6"></span><span style="flex:1; background:#fbf9f3"></span><span style="flex:1; background:#9c5a30"></span><span style="flex:1; background:#ece3d3"></span><span style="flex:1; background:#2b271e"></span>
+        </div>
+        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#f1eee6 · #e8e2d6 · #fbf9f3 · accent #9c5a30 · #ece3d3 · encre #2b271e</p>
+      </div>
+
+      <div style="background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); padding:24px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#2f6e5b; font-weight:600">La nature · actuel</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Vert pin sur ivoire — la direction de référence.</p></div>
+        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
+          <span style="flex:1; background:#f0f2ef"></span><span style="flex:1; background:#eaece9"></span><span style="flex:1; background:#ffffff"></span><span style="flex:1; background:#2f6e5b"></span><span style="flex:1; background:#e6ede9"></span><span style="flex:1; background:#232725"></span>
+        </div>
+        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#f0f2ef · #eaece9 · #ffffff · accent #2f6e5b · #e6ede9 · encre #232725</p>
+      </div>
+
+      <div style="grid-column:1 / -1; background:#1b1e21; border:1px solid #394045; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
+        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#89918d; font-weight:600">La nuit · thème sombre</p><p style="margin:0; font-size:14px; line-height:1.5; color:#b7bebb">Surfaces sombres, encre claire, pin adouci pour tenir le contraste.</p></div>
+        <div style="display:flex; gap:0; border:1px solid #394045; border-radius:8px; overflow:hidden; height:56px">
+          <span style="flex:1; background:#1b1e21"></span><span style="flex:1; background:#23272b"></span><span style="flex:1; background:#2b3034"></span><span style="flex:1; background:#57a88f"></span><span style="flex:1; background:#313f39"></span><span style="flex:1; background:#edefed"></span>
+        </div>
+        <p style="margin:0; font-size:12px; color:#89918d; font-variant-numeric:tabular-nums">#1b1e21 · #23272b · #2b3034 · accent #57a88f · #313f39 · encre #edefed</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Typographie</h2>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Police système. L'autorité est graduée par la taille, pas par la graisse : un seul poids d'affichage pour les objets (600), le reste en 400 ou 500.</p>
+    <table style="width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; overflow:hidden">
+      <thead>
+        <tr style="background:#eaece9">
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:110px">Taille</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:300px">Rôle</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:200px">Graisse / interlignage</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Échantillon</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:14px 20px; font-size:13px">12 px</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">Méta, libellés majuscules, total des messages</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">600 · interlettrage .1em</td>
+          <td style="padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Fichiers joints</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:14px 20px; font-size:13px">13 px</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">Aperçu de liste, contrôles, puces d'info</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">400 · 1,45</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">J'ai repris les articles 4 et 7 après notre échange.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:14px 20px; font-size:13px">15 px</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">Corps du message, nom d'expéditeur déplié</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">400 · 1,65</td>
+          <td style="padding:14px 20px; font-size:15px; line-height:1.65">Il reste la clause de renouvellement à trancher.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:14px 20px; font-size:13px">18 px</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">Objet dans la liste des messages</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">600 · 1,3</td>
+          <td style="padding:14px 20px; font-size:18px; font-weight:600; line-height:1.3">Relecture du contrat Vantis</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:14px 20px; font-size:13px">24 px</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">Titre de conversation, volet de lecture</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">600 · 1,2</td>
+          <td style="padding:14px 20px; font-size:24px; font-weight:600; letter-spacing:-.01em">Relecture du contrat Vantis</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:14px 20px; font-size:13px">40 px</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">Hero d'onboarding, usage unique</td>
+          <td style="padding:14px 20px; font-size:13px; color:#4d534f">600 · 1,1</td>
+          <td style="padding:14px 20px; font-size:40px; font-weight:600; letter-spacing:-.02em; line-height:1.1">Votre adresse</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Troncature des titres</h2>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Un titre — objet dans la liste, titre du volet de lecture ou de la conversation — ne passe jamais à la ligne. Quand il dépasse la largeur disponible, il se tronque sur une seule ligne et se termine par une ellipse, exactement comme l'aperçu d'un message dans le volet central. Le titre garde ainsi une hauteur constante et l'alignement des lignes reste régulier ; le titre complet reste lisible dans le volet de lecture.</p>
+    <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:24px">
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:26px; display:flex; flex-direction:column; gap:16px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#2f6e5b; font-weight:600">Appliqué</p>
+        <div style="width:360px; max-width:100%; background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+          <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:13px; font-weight:600; flex:1">Camille Rousseau</span><span style="font-size:12px; color:#5c625e">09:12</span></div>
+          <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Relecture du contrat Vantis et de ses annexes tarifaires</p>
+          <p style="margin:0; font-size:13px; line-height:1.45; color:#4d534f; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Il reste la clause de renouvellement à trancher.</p>
+        </div>
+        <p style="margin:0; font-size:13px; line-height:1.55; color:#4d534f">Une seule ligne, ellipse en fin. La ligne conserve sa hauteur ; l'objet et l'aperçu se coupent de la même façon.</p>
+      </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:26px; display:flex; flex-direction:column; gap:16px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#8c2f22; font-weight:600">À éviter</p>
+        <div style="width:360px; max-width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+          <div style="display:flex; align-items:baseline; gap:12px"><span style="font-size:13px; font-weight:600; flex:1">Camille Rousseau</span><span style="font-size:12px; color:#5c625e">09:12</span></div>
+          <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em">Relecture du contrat Vantis et de ses annexes tarifaires</p>
+          <p style="margin:0; font-size:13px; line-height:1.45; color:#4d534f">Il reste la clause de renouvellement à trancher.</p>
+        </div>
+        <p style="margin:0; font-size:13px; line-height:1.55; color:#4d534f">Le titre qui passe à la ligne fait varier la hauteur des lignes et casse le rythme vertical de la liste.</p>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Formes, élévation, signature</h2>
+    <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:24px">
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:26px; display:flex; flex-direction:column; gap:16px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Deux rayons</p>
+        <div style="display:flex; align-items:flex-end; gap:18px">
+          <span style="width:96px; height:72px; border-radius:10px; border:1px solid #dadfda; background:#f0f2ef"></span>
+          <span style="width:96px; height:36px; border-radius:6px; border:1px solid #dadfda; background:#f0f2ef"></span>
+        </div>
+        <p style="margin:0; font-size:13px; line-height:1.5; color:#4d534f">10 px pour les surfaces (cartes, volets, fenêtres). 6 px pour les contrôles (boutons, champs, puces, onglets). Aucune autre valeur.</p>
+      </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:26px; display:flex; flex-direction:column; gap:16px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Une élévation</p>
+        <div style="height:72px; display:flex; align-items:center">
+          <span style="width:100%; height:56px; border-radius:10px; background:#ffffff; border:1px solid #dadfda; box-shadow:0 2px 8px rgba(35,39,37,0.08)"></span>
+        </div>
+        <p style="margin:0; font-size:13px; line-height:1.5; color:#4d534f">0 2px 8px rgba(35,39,37,0.08). Ombre chaude, jamais grise. Réservée au volet de lecture, à la conversation active et à la composition.</p>
+      </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:26px; display:flex; flex-direction:column; gap:16px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">La signature</p>
+        <div style="height:72px; display:flex; align-items:center; background:#f0f2ef; border-radius:10px; padding:8px">
+          <span style="width:100%; height:56px; border-radius:10px; background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; box-shadow:0 2px 8px rgba(35,39,37,0.08)"></span>
+        </div>
+        <p style="margin:0; font-size:13px; line-height:1.5; color:#4d534f">Surface ivoire légèrement surélevée, filet d'accent de 2 px au bord gauche. Exactement le même traitement partout où quelque chose est actif.</p>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Kit unifié</h2>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Icônes Material Symbols Rounded, graisse 300, corps 16 px, toujours à gauche du libellé. Le dossier ouvert passe son icône en remplissage (FILL 1, graisse 600) dans l'accent ; partout ailleurs elles restent en contour, en texte atténué.</p>
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch"><b>Amendement A3.</b> L'inventaire du Système est <b>arrêté à 31
+glyphes</b> — ceux de ce document. La police est <b>vendorisée dans le
+dépôt</b> (<code>assets/icones/</code>, sous-ensemble Material Symbols
+Rounded, axes opsz 20, graisse 300–600, FILL 0–1) : hors ligne par
+construction, aucun CDN. Tout glyphe nouveau entre d'abord dans cette
+liste.</p>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Boutons, onglets de filtre et puces d'info partagent le même rayon de 6 px, le même filet de 1 px et la même hauteur de 32 px. Seul le remplissage distingue leur rôle.</p>
+    <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:30px; display:flex; flex-direction:column; gap:28px">
+      <div style="display:flex; flex-direction:column; gap:14px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Boutons — repos, survol, appui, désactivé</p>
+        <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap">
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">send</span>Envoyer</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#26594a; border:1px solid #26594a; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">send</span>Envoyer</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#26594a; border:1px solid #26594a; border-radius:6px; transform:translateY(1px)">Envoyer</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">attach_file</span>Joindre</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#e6ede9; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">attach_file</span>Joindre</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#5c625e; background:#f0f2ef; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">attach_file</span>Joindre</span>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px; border-top:1px solid #dadfda; padding-top:24px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Onglets de filtre — actif, repos</p>
+        <div style="display:flex; gap:10px; align-items:center">
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 14px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#232725; background:#e6ede9; border:1px solid #2f6e5b; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">inbox</span>Tous</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 14px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">mark_email_unread</span>Non lus</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 14px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">edit_note</span>Brouillons</span>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:14px; border-top:1px solid #dadfda; padding-top:24px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Puces d'info et compteurs</p>
+        <p style="margin:0; font-size:13px; line-height:1.5; color:#4d534f; max-width:88ch">Une puce porte une seule information, précédée de l'icône de son type : conversation, pièce jointe, fichier, poids. Deux informations font deux puces.</p>
+        <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap">
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px">3 messages · 2 fichiers</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">description</span>Contrat_Vantis_v4.pdf</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">storage</span>1,2 Mo</span>
+          <span style="display:inline-flex; align-items:baseline; gap:5px; padding-left:14px; border-left:1px solid #dadfda">
+            <span style="font-size:15px; font-weight:600; color:#2f6e5b; font-variant-numeric:tabular-nums">4</span>
+            <span style="font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">/ 18</span>
+          </span>
+          <span style="font-size:13px; color:#5c625e">Le non-lu est le chiffre héros ; le total reste subordonné.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Icônes et libellés</h2>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">L'inventaire complet des symboles Material Rounded employés dans les écrans, chacun relié à son libellé et à son emplacement. Une icône ne porte qu'un seul sens dans tout le produit ; quand elle sert deux gestes proches (dossier et action), les deux sont notés.</p>
+    <table style="width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; overflow:hidden">
+      <thead>
+        <tr style="background:#eaece9">
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:72px">Icône</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:220px">Symbole</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:300px">Libellé</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Emploi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">search</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">search</td><td style="padding:12px 20px; font-size:13px">Chercher un message, une personne, un fichier</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Champ de recherche, en-tête</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">edit_square</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">edit_square</td><td style="padding:12px 20px; font-size:13px">Écrire</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Action principale, en-tête</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">settings</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">settings</td><td style="padding:12px 20px; font-size:13px">Réglages</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Accès secondaire, en-tête</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">inbox</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">inbox</td><td style="padding:12px 20px; font-size:13px">Boîte de réception · Tous</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Dossier (nav) et onglet de filtre</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">send</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">send</td><td style="padding:12px 20px; font-size:13px">Envoyés · Envoyer</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Dossier (nav) et action d'envoi</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">edit_note</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">edit_note</td><td style="padding:12px 20px; font-size:13px">Brouillons</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Dossier (nav) et onglet de filtre</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">report</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">report</td><td style="padding:12px 20px; font-size:13px">Indésirables</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Dossier (nav)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">archive</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">archive</td><td style="padding:12px 20px; font-size:13px">Archives · Archiver</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Dossier (nav) et action</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">delete</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">delete</td><td style="padding:12px 20px; font-size:13px">Corbeille · Supprimer</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Dossier (nav) et action</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">all_inbox</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">all_inbox</td><td style="padding:12px 20px; font-size:13px">Toutes les boîtes</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Boîte agrégée (nav)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">work</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">work</td><td style="padding:12px 20px; font-size:13px">Travail</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Boîte de compte (nav)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">person</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">person</td><td style="padding:12px 20px; font-size:13px">Personnel</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Boîte de compte (nav)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">mark_email_unread</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">mark_email_unread</td><td style="padding:12px 20px; font-size:13px">Non lus</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Onglet de filtre, pied de liste</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">forum</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">forum</td><td style="padding:12px 20px; font-size:13px">3 messages</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Puce conversation (nombre de messages)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">attach_file</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">attach_file</td><td style="padding:12px 20px; font-size:13px">2 fichiers · Joindre</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Puce pièces jointes et action de la composition</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">description</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">description</td><td style="padding:12px 20px; font-size:13px">Contrat_Vantis_v4.pdf</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Puce fichier (nom du document)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">storage</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">storage</td><td style="padding:12px 20px; font-size:13px">1,2 Mo</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Puce poids du fichier</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">unfold_more</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">unfold_more</td><td style="padding:12px 20px; font-size:13px">Tout déplier · Voir la conversation</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Déplier le fil, en-tête de lecture</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">reply</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">reply</td><td style="padding:12px 20px; font-size:13px">Répondre</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Action de message (barre)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">forward</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">forward</td><td style="padding:12px 20px; font-size:13px">Transférer</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Action de message (barre)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">open_in_new</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">open_in_new</td><td style="padding:12px 20px; font-size:13px">Rendre indépendante</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Détacher la fenêtre de composition</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">close</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">close</td><td style="padding:12px 20px; font-size:13px; color:#5c625e">— (sans libellé)</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Fermer la composition</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">group_add</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">group_add</td><td style="padding:12px 20px; font-size:13px">Cc</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Ajouter une adresse en copie</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">visibility_off</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">visibility_off</td><td style="padding:12px 20px; font-size:13px">Cci</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Ajouter une copie cachée</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">format_list_bulleted</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">format_list_bulleted</td><td style="padding:12px 20px; font-size:13px">Liste</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Mise en forme du corps (composition)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">link</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">link</td><td style="padding:12px 20px; font-size:13px">Lien</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Insérer un lien (composition)</td></tr>
+        <tr style="border-top:1px solid #dadfda"><td style="padding:12px 20px"><span class="ms" aria-hidden="true" style="font-size:22px; color:#4d534f">format_quote</span></td><td style="padding:12px 20px; font-size:13px; font-family:ui-monospace,Menlo,monospace; color:#4d534f">format_quote</td><td style="padding:12px 20px; font-size:13px">Citation</td><td style="padding:12px 20px; font-size:13px; color:#4d534f">Insérer une citation (composition)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <div style="display:flex; flex-direction:column; gap:6px">
+      <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e; font-weight:600">Écran 1</p>
+      <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Onboarding</h2>
+    </div>
+    <div data-screen-label="01 Onboarding" style="width:1440px; height:900px; background:#f0f2ef; border:1px solid #dadfda; border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center">
+      <div style="width:520px; display:flex; flex-direction:column; gap:26px">
+        <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e; font-weight:600">Discovery</p>
+        <h3 style="margin:0; font-size:40px; line-height:1.1; font-weight:600; letter-spacing:-.02em">Votre adresse.<br />C'est tout.</h3>
+        <div style="display:flex; flex-direction:column; gap:12px">
+          <label for="ob-adresse" style="font-size:13px; color:#4d534f">Adresse e-mail</label>
+          <input id="ob-adresse" type="email" value="paul.merand@atelier-nord.fr" readOnly="{{ true }}" style="height:52px; font-size:15px; font-family:inherit; padding:0 16px; background:#ffffff; color:#232725; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:6px; box-shadow:0 2px 8px rgba(35,39,37,0.08)" />
+          <button type="button" style="height:32px; flex:none; white-space:nowrap; padding:0 16px; align-self:flex-start; font-size:13px; font-weight:600; font-family:inherit; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; cursor:pointer" style-hover="background:#26594a; border-color:#26594a">Continuer</button>
+        </div>
+        <p style="margin:0; font-size:13px; line-height:1.5; color:#5c625e">Le serveur est détecté automatiquement. Rien d'autre à régler.</p>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <div style="display:flex; flex-direction:column; gap:6px">
+      <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e; font-weight:600">Écran 2</p>
+      <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Boîte de réception</h2>
+    </div>
+    <div data-screen-label="02 Boîte de réception" style="width:1440px; height:900px; background:#f0f2ef; border:1px solid #dadfda; border-radius:10px; overflow:hidden; display:flex; flex-direction:column">
+
+      <div style="height:60px; flex:none; background:#ffffff; border-bottom:1px solid #dadfda; display:flex; align-items:center; gap:20px; padding:0 24px">
+        <span style="font-size:15px; font-weight:600; width:212px">Discovery</span>
+        <span style="flex:1; height:32px; display:flex; align-items:center; gap:10px; padding:0 14px; font-size:13px; color:#5c625e; background:#f0f2ef; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true" style="color:#5c625e">search</span>Chercher un message, une personne, un fichier</span>
+        <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">edit_square</span>Écrire</span>
+        <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">settings</span>Réglages</span>
+      </div>
+
+      <div style="flex:1; display:grid; grid-template-columns:236px 400px minmax(0,1fr); min-height:0">
+
+        <nav aria-label="Dossiers et comptes" style="background:#eaece9; border-right:1px solid #dadfda; padding:20px 16px; display:flex; flex-direction:column; gap:4px">
+          <div style="display:flex; align-items:center; gap:10px; height:36px; padding:0 12px; border-radius:6px; background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; box-shadow:0 2px 8px rgba(35,39,37,0.08)">
+            <span class="ms" aria-hidden="true" style="color:#2f6e5b; font-variation-settings:'FILL' 1, 'wght' 600">inbox</span><span style="font-size:13px; font-weight:600; flex:1">Boîte de réception</span>
+            <span style="font-size:15px; font-weight:600; color:#2f6e5b; font-variant-numeric:tabular-nums">4</span>
+            <span style="font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">/ 18</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; height:36px; padding:0 12px; border-radius:6px">
+            <span class="ms" aria-hidden="true" style="color:#5c625e">send</span><span style="font-size:13px; color:#4d534f; flex:1">Envoyés</span>
+            <span style="font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">12</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; height:36px; padding:0 12px; border-radius:6px">
+            <span class="ms" aria-hidden="true" style="color:#5c625e">edit_note</span><span style="font-size:13px; color:#4d534f; flex:1">Brouillons</span>
+            <span style="font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">2</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; height:36px; padding:0 12px; border-radius:6px">
+            <span class="ms" aria-hidden="true" style="color:#5c625e">report</span><span style="font-size:13px; color:#4d534f; flex:1">Indésirables</span>
+            <span style="font-size:15px; font-weight:600; color:#2f6e5b; font-variant-numeric:tabular-nums">2</span>
+            <span style="font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">/ 3</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; height:36px; padding:0 12px; border-radius:6px; background:#e6ede9">
+            <span class="ms" aria-hidden="true" style="color:#5c625e">archive</span><span style="font-size:13px; color:#232725; flex:1">Archives</span>
+            <span style="font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">64</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:10px; height:36px; padding:0 12px; border-radius:6px">
+            <span class="ms" aria-hidden="true" style="color:#5c625e">delete</span><span style="font-size:13px; color:#4d534f; flex:1">Corbeille</span>
+            <span style="font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">3</span>
+          </div>
+
+          <div style="margin-top:auto; padding-top:16px; border-top:1px solid #dadfda; display:flex; flex-direction:column; gap:4px">
+            <p style="margin:0 0 6px; padding:0 12px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Boîtes</p>
+            <div style="display:flex; align-items:center; gap:10px; height:36px; padding:0 12px; border-radius:6px; background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b">
+              <span class="ms" aria-hidden="true" style="color:#2f6e5b; font-variation-settings:'FILL' 1, 'wght' 600">all_inbox</span><span style="font-size:13px; font-weight:600; flex:1">Toutes les boîtes</span>
+              <span style="font-size:15px; font-weight:600; color:#2f6e5b; font-variant-numeric:tabular-nums">4</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; height:36px; padding:0 12px; border-radius:6px">
+              <span class="ms" aria-hidden="true" style="color:#5c625e">work</span><span style="font-size:13px; color:#4d534f; flex:1">Travail</span>
+              <span style="font-size:15px; font-weight:600; color:#2f6e5b; font-variant-numeric:tabular-nums">3</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px; height:36px; padding:0 12px; border-radius:6px">
+              <span class="ms" aria-hidden="true" style="color:#5c625e">person</span><span style="font-size:13px; color:#4d534f; flex:1">Personnel</span>
+              <span style="font-size:15px; font-weight:600; color:#2f6e5b; font-variant-numeric:tabular-nums">1</span>
+            </div>
+          </div>
+        </nav>
+
+        <section aria-label="Liste des messages" style="background:#f0f2ef; border-right:1px solid #dadfda; display:flex; flex-direction:column; min-height:0">
+          <div style="flex:1; padding:12px; display:flex; flex-direction:column; gap:8px; overflow:hidden">
+
+            <div style="background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+              <div style="display:flex; align-items:baseline; gap:12px">
+                <span style="font-size:13px; font-weight:600; flex:1">Camille Rousseau</span>
+                <span style="font-size:12px; color:#5c625e">09:12</span>
+              </div>
+              <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em">Relecture du contrat Vantis</p>
+              <p style="margin:0; font-size:13px; line-height:1.45; color:#4d534f; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">J'ai repris les articles 4 et 7, il reste la clause de renouvellement.</p>
+              <span style="display:flex; gap:8px; margin-top:2px"><span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">forum</span>3 messages</span><span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">attach_file</span>2 fichiers</span></span>
+            </div>
+
+            <div style="padding:14px 16px; border-radius:10px; border:1px solid transparent; display:flex; flex-direction:column; gap:6px">
+              <div style="display:flex; align-items:baseline; gap:12px">
+                <span style="font-size:13px; font-weight:600; flex:1">Yanis Belkacem</span>
+                <span style="font-size:12px; color:#5c625e">08:40</span>
+              </div>
+              <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em">Planning de la semaine 33</p>
+              <p style="margin:0; font-size:13px; line-height:1.45; color:#4d534f; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Deux créneaux se chevauchent mardi après-midi, je propose de décaler.</p>
+            </div>
+
+            <div style="padding:14px 16px; border-radius:10px; border:1px solid #dadfda; background:#e6ede9; display:flex; flex-direction:column; gap:6px">
+              <div style="display:flex; align-items:baseline; gap:12px">
+                <span style="font-size:13px; font-weight:600; flex:1">Léa Fontaine</span>
+                <span style="font-size:12px; color:#5c625e">Hier</span>
+              </div>
+              <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em">Compte rendu du 4 août</p>
+              <p style="margin:0; font-size:13px; line-height:1.45; color:#4d534f; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Trois décisions actées, une question ouverte sur le calendrier.</p>
+            </div>
+
+            <div style="padding:14px 16px; border-radius:10px; border:1px solid transparent; display:flex; flex-direction:column; gap:6px">
+              <div style="display:flex; align-items:baseline; gap:12px">
+                <span style="font-size:13px; color:#4d534f; flex:1">Service comptabilité</span>
+                <span style="font-size:12px; color:#5c625e">5 août</span>
+              </div>
+              <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em; color:#4d534f">Facture 2026-0841 réglée</p>
+              <p style="margin:0; font-size:13px; line-height:1.45; color:#5c625e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Le virement a été émis le 6 août, réception sous deux jours ouvrés.</p>
+            </div>
+
+            <div style="padding:14px 16px; border-radius:10px; border:1px solid transparent; display:flex; flex-direction:column; gap:6px">
+              <div style="display:flex; align-items:baseline; gap:12px">
+                <span style="font-size:13px; color:#4d534f; flex:1">Sofia Nardi</span>
+                <span style="font-size:12px; color:#5c625e">4 août</span>
+              </div>
+              <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em; color:#4d534f">Atelier de septembre</p>
+              <p style="margin:0; font-size:13px; line-height:1.45; color:#5c625e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Nous visons la semaine du 14, deux salles réservées à Milan.</p>
+            </div>
+
+          </div>
+          <div style="flex:none; height:52px; padding:0 12px; display:flex; align-items:center; gap:10px; border-top:1px solid #dadfda; background:#eaece9">
+            <span style="height:32px; flex:none; white-space:nowrap; padding:0 14px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#232725; background:#e6ede9; border:1px solid #2f6e5b; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">inbox</span>Tous</span>
+            <span style="height:32px; flex:none; white-space:nowrap; padding:0 14px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">mark_email_unread</span>Non lus</span>
+            <span style="height:32px; flex:none; white-space:nowrap; padding:0 14px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">edit_note</span>Brouillons</span>
+          </div>
+        </section>
+
+        <main aria-label="Message" style="background:#f0f2ef; padding:20px; min-width:0; display:flex; flex-direction:column">
+          <div style="flex:1; background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); display:flex; flex-direction:column; min-height:0; overflow:hidden">
+            <div style="padding:26px 30px 22px; border-bottom:1px solid #dadfda; display:flex; flex-direction:column; gap:14px">
+              <h3 style="margin:0; font-size:24px; font-weight:600; line-height:1.2; letter-spacing:-.01em">Relecture du contrat Vantis</h3>
+              <div style="display:flex; align-items:center; gap:10px">
+                <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px">3 messages · 2 fichiers</span>
+                <span style="font-size:12px; color:#5c625e">Dernier message aujourd'hui, 09:12</span>
+              </div>
+            </div>
+            <div style="padding:26px 30px; display:flex; flex-direction:column; gap:18px; min-height:0">
+              <div style="display:flex; flex-direction:column; gap:4px">
+                <span style="font-size:15px; font-weight:600">Camille Rousseau</span>
+                <span style="font-size:13px; color:#5c625e">c.rousseau@atelier-nord.fr · à Paul Mérand</span>
+              </div>
+              <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Bonjour Paul, j'ai repris les articles 4 et 7 après notre échange de lundi. Il reste la clause de renouvellement à trancher : reconduction tacite de douze mois, ou renégociation annuelle.</p>
+              <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Si tu peux me dire d'ici jeudi, je transmets la version finale au cabinet vendredi matin.</p>
+            </div>
+            <div style="margin-top:auto; padding:18px 30px; border-top:1px solid #dadfda; display:flex; gap:12px">
+              <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">reply</span>Répondre</span>
+              <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">forward</span>Transférer</span>
+              <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">archive</span>Archiver</span>
+              <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">delete</span>Supprimer</span>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <div style="height:36px; flex:none; background:#eaece9; border-top:1px solid #dadfda; display:flex; align-items:center; padding:0 24px">
+        <span style="font-size:12px; color:#5c625e">Tous les messages sont à jour · dernière synchronisation il y a 2 minutes</span>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <div style="display:flex; flex-direction:column; gap:6px">
+      <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e; font-weight:600">Écran 3</p>
+      <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Conversation en lecture</h2>
+    </div>
+    <div data-screen-label="03 Lecture" style="width:1440px; height:900px; background:#f0f2ef; border:1px solid #dadfda; border-radius:10px; overflow:hidden; padding:28px; display:flex">
+      <div style="flex:1; background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); display:flex; flex-direction:column; overflow:hidden">
+
+        <div style="padding:28px 36px 24px; border-bottom:1px solid #dadfda; display:flex; flex-direction:column; gap:14px">
+          <h3 style="margin:0; font-size:24px; font-weight:600; line-height:1.2; letter-spacing:-.01em">Relecture du contrat Vantis</h3>
+          <div style="display:flex; align-items:center; gap:10px">
+            <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">forum</span>3 messages</span>
+            <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">attach_file</span>2 fichiers</span>
+            <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">unfold_more</span>Tout déplier</span>
+          </div>
+        </div>
+
+        <div style="flex:1; padding:24px 36px; display:flex; flex-direction:column; gap:12px; min-height:0; overflow:auto">
+
+          <div style="border:1px solid #dadfda; border-radius:10px; padding:14px 20px; display:flex; align-items:center; gap:14px; background:#f0f2ef">
+            <span style="font-size:13px; font-weight:600; flex:1">Paul Mérand</span>
+            <span style="font-size:13px; color:#4d534f; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40ch">Merci, je regarde ça ce soir et je te réponds demain.</span>
+            <span style="font-size:12px; color:#5c625e">Lundi, 18:20</span>
+          </div>
+
+          <div style="border:1px solid #dadfda; border-radius:10px; padding:14px 20px; display:flex; align-items:center; gap:14px; background:#f0f2ef">
+            <span style="font-size:13px; font-weight:600; flex:1">Sofia Nardi</span>
+            <span style="font-size:13px; color:#4d534f; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40ch">J'ajoute la grille tarifaire mise à jour au fil.</span>
+            <span style="font-size:12px; color:#5c625e">Mardi, 11:05</span>
+          </div>
+
+          <div style="flex:none; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; background:#ffffff; box-shadow:0 2px 8px rgba(35,39,37,0.08); overflow:hidden">
+            <div style="padding:20px 24px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #dadfda">
+              <span style="font-size:15px; font-weight:600; flex:1">Camille Rousseau</span>
+              <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">attach_file</span>2 fichiers</span>
+              <span style="font-size:12px; color:#5c625e">Aujourd'hui, 09:12</span>
+            </div>
+            <div style="padding:22px 24px 26px; display:flex; flex-direction:column; gap:20px">
+              <dl style="margin:0; display:grid; grid-template-columns:auto 1fr; column-gap:16px; row-gap:6px; font-size:13px">
+                <dt style="color:#5c625e">De</dt>
+                <dd style="margin:0; color:#4d534f">Camille Rousseau &lt;c.rousseau@atelier-nord.fr&gt;</dd>
+                <dt style="color:#5c625e">À</dt>
+                <dd style="margin:0; color:#4d534f">Paul Mérand &lt;paul.merand@atelier-nord.fr&gt;</dd>
+                <dt style="color:#5c625e">Objet</dt>
+                <dd style="margin:0; color:#4d534f">Relecture du contrat Vantis avant vendredi</dd>
+              </dl>
+              <div style="display:flex; flex-direction:column; gap:16px; max-width:68ch">
+                <p style="margin:0; font-size:15px; line-height:1.65">Bonjour Paul,</p>
+                <p style="margin:0; font-size:15px; line-height:1.65">J'ai repris les articles 4 et 7 après notre échange de lundi. Il reste la clause de renouvellement à trancher : reconduction tacite de douze mois, ou renégociation annuelle. Les deux options sont annotées dans le document.</p>
+                <p style="margin:0; font-size:15px; line-height:1.65">Si tu peux me dire d'ici jeudi, je transmets la version finale au cabinet vendredi matin.</p>
+                <p style="margin:0; font-size:15px; line-height:1.65">Camille</p>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:12px">
+                <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Fichiers joints</p>
+                <div style="display:flex; gap:12px; flex-wrap:wrap">
+                  <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">description</span>Contrat_Vantis_v4.pdf</span>
+                  <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">storage</span>1,2 Mo</span>
+                  <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">description</span>Annexe_tarifs.xlsx</span>
+                  <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">storage</span>84 Ko</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:20px 36px; border-top:1px solid #dadfda; display:flex; gap:12px">
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">reply</span>Répondre</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">forward</span>Transférer</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">archive</span>Archiver</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">delete</span>Supprimer</span>
+        </div>
+      </div>
+    </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px 26px; display:flex; flex-direction:column; gap:10px">
+      <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Règles de transmission — amendement A1</p>
+      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Le corps du message respire à <b>20 px</b> du bord de sa carte — la même
+respiration que l'en-tête. Le texte brut converti se lit en colonne de
+<b>68 caractères</b> ; une mise en page d'expéditeur n'est jamais bridée.
+En thème sombre, le chrome bascule mais le corps HTML reste sur
+<b>surface claire</b> : les mails sont composés pour un fond clair, on ne
+les trahit pas.</p>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:20px">
+    <div style="display:flex; flex-direction:column; gap:6px">
+      <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e; font-weight:600">Écran 4</p>
+      <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Composition</h2>
+    </div>
+    <div data-screen-label="04 Composition" style="width:1440px; height:900px; background:#eaece9; border:1px solid #dadfda; border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center">
+      <div style="width:860px; background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); display:flex; flex-direction:column; overflow:hidden">
+
+        <div style="height:48px; flex:none; padding:0 16px 0 22px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #dadfda">
+          <span style="font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Nouveau message</span>
+          <span style="font-size:13px; color:#5c625e; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Relecture du contrat Vantis</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">open_in_new</span>Rendre indépendante</span>
+          <span style="height:32px; flex:none; white-space:nowrap; width:32px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">close</span></span>
+        </div>
+
+        <div style="padding:18px 22px 0; display:flex; flex-direction:column">
+          <div style="height:44px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #dadfda">
+            <span style="width:52px; font-size:13px; color:#5c625e">De</span>
+            <span style="flex:1; font-size:13px; color:#232725">Paul Mérand — paul.merand@atelier-nord.fr (Travail)</span>
+          </div>
+          <div style="height:44px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #dadfda">
+            <span style="width:52px; font-size:13px; color:#5c625e">À</span>
+            <span style="flex:1; font-size:13px; color:#232725">Camille Rousseau &lt;c.rousseau@atelier-nord.fr&gt;</span>
+            <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">group_add</span>Cc</span>
+            <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">visibility_off</span>Cci</span>
+          </div>
+          <div style="height:44px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #dadfda">
+            <span style="width:52px; font-size:13px; color:#5c625e">Cc</span>
+            <span style="flex:1; font-size:13px; color:#5c625e">Ajouter une adresse en copie</span>
+          </div>
+          <div style="height:44px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #dadfda">
+            <span style="width:52px; font-size:13px; color:#5c625e">Objet</span>
+            <span style="flex:1; font-size:13px; color:#232725">Re : Relecture du contrat Vantis avant vendredi</span>
+          </div>
+        </div>
+
+        <div style="padding:20px 22px; display:flex; flex-direction:column; gap:14px; min-height:240px">
+          <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Bonjour Camille,</p>
+          <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Je retiens la reconduction tacite de douze mois, avec un préavis de trois mois. Je te renvoie le document annoté demain matin.</p>
+        </div>
+
+        <div style="padding:0 22px 14px; display:flex; gap:10px">
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">description</span>Contrat_Vantis_v4.pdf</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true">storage</span>1,2 Mo</span>
+        </div>
+
+        <div style="flex:none; padding:8px 18px; border-top:1px solid #dadfda; background:#eaece9; display:flex; align-items:center; gap:8px">
+          <span style="height:32px; flex:none; white-space:nowrap; min-width:32px; padding:0 10px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px">G</span>
+          <span style="height:32px; flex:none; white-space:nowrap; min-width:32px; padding:0 10px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-style:italic; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px">I</span>
+          <span style="height:32px; flex:none; white-space:nowrap; min-width:32px; padding:0 10px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; text-decoration:underline; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px">S</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">format_list_bulleted</span>Liste</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">link</span>Lien</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; font-size:13px; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">format_quote</span>Citation</span>
+        </div>
+
+        <div style="flex:none; padding:14px 22px 18px; border-top:1px solid #dadfda; display:flex; align-items:center; gap:12px">
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">send</span>Envoyer</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">attach_file</span>Joindre</span>
+          <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">drafts</span>Enregistrer le brouillon</span>
+          <span style="margin-left:auto; font-size:13px; color:#5c625e; text-decoration:underline">Annuler</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Avis et progression</h2>
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Les messages de l'application — mises à jour, incidents, attentes —
+obéissent à la même retenue que le reste : <b>trois régions, jamais un
+empilement</b> (amendement A4).</p>
+    <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px 26px; display:flex; flex-direction:column; gap:10px">
+      <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Règles de transmission</p>
+      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">La <b>modale de migration</b> est seule de son espèce : exclusive et
+bloquante au démarrage. Rien d'autre ne bloque jamais.</p>
+      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">La <b>fente d'avis</b>, en haut : au plus <b>UN</b> avis persistant,
+choisi par priorité fixe — échec d'envoi (alerte), mise à jour prête,
+rapport d'incident, consentement télémétrie, brouillons. L'avis porte la
+signature (surface, filet d'accent 2 px, ombre unique). Le suivant
+n'apparaît qu'une fois le précédent résolu ou écarté.</p>
+      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">La <b>ligne de progression</b>, en bas contre la barre d'état : au plus
+<b>UNE</b> progression (synchronisation ou rattrapage), en texte atténué,
+qui ne vole jamais la vedette à un avis. L'attente sereine de la boîte
+d'envoi (« N en attente ») vit ici ; seul l'<b>échec</b> monte en avis.</p>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <div style="display:flex; flex-direction:column; gap:6px">
+      <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e; font-weight:600">États</p>
+      <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Ligne de message</h2>
+    </div>
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:20px; background:#f0f2ef">
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Lu — repos</p>
+        <div style="padding:14px 16px; border-radius:10px; border:1px solid transparent; display:flex; flex-direction:column; gap:6px">
+          <div style="display:flex; align-items:baseline; gap:12px">
+            <span style="font-size:13px; color:#4d534f; flex:1">Sofia Nardi</span>
+            <span style="font-size:12px; color:#5c625e">4 août</span>
+          </div>
+          <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em; color:#4d534f">Atelier de septembre</p>
+          <p style="margin:0; font-size:13px; line-height:1.45; color:#5c625e">Nous visons la semaine du 14.</p>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Non lu</p>
+        <div style="padding:14px 16px; border-radius:10px; border:1px solid transparent; display:flex; flex-direction:column; gap:6px">
+          <div style="display:flex; align-items:baseline; gap:12px">
+            <span style="font-size:13px; font-weight:600; flex:1">Yanis Belkacem</span>
+            <span style="font-size:12px; color:#5c625e">08:40</span>
+          </div>
+          <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em">Planning de la semaine 33</p>
+          <p style="margin:0; font-size:13px; line-height:1.45; color:#4d534f">Deux créneaux se chevauchent mardi.</p>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Survol</p>
+        <div style="padding:14px 16px; border-radius:10px; border:1px solid #dadfda; background:#e6ede9; display:flex; flex-direction:column; gap:6px">
+          <div style="display:flex; align-items:baseline; gap:12px">
+            <span style="font-size:13px; font-weight:600; flex:1">Léa Fontaine</span>
+            <span style="font-size:12px; color:#5c625e">Hier</span>
+          </div>
+          <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em">Compte rendu du 4 août</p>
+          <p style="margin:0; font-size:13px; line-height:1.45; color:#4d534f">Trois décisions actées.</p>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Sélectionné — signature</p>
+        <div style="background:#ffffff; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); padding:14px 16px; display:flex; flex-direction:column; gap:6px">
+          <div style="display:flex; align-items:baseline; gap:12px">
+            <span style="font-size:13px; font-weight:600; flex:1">Camille Rousseau</span>
+            <span style="font-size:12px; color:#5c625e">09:12</span>
+          </div>
+          <p style="margin:0; font-size:18px; font-weight:600; line-height:1.3; letter-spacing:-.01em">Relecture du contrat Vantis</p>
+          <p style="margin:0; font-size:13px; line-height:1.45; color:#4d534f">Il reste la clause de renouvellement.</p>
+        </div>
+      </div>
+    </div>
+    <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px 26px; display:flex; flex-direction:column; gap:10px">
+      <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Règles de transmission</p>
+      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Le non-lu se lit par la graisse de l'expéditeur et la densité de l'encre, jamais par une pastille colorée. Le survol teinte le fond sans déplacer le contenu. La sélection ajoute la surface ivoire, le filet d'accent de 2 px et l'unique ombre. Quatre actions au plus dans une barre : Répondre, Transférer, Archiver, Supprimer — le reste vit dans le message lui-même.</p>
+      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch"><b>Amendement A2.</b> La ligne a une hauteur <b>fixe : 104 px</b>,
+quelle que soit sa charge — le rythme vertical ne se négocie pas. Le fil et
+les pièces jointes se signalent par des <b>marqueurs logés dans la première
+ligne</b>, à gauche de l'heure : l'icône à 16 px suivie du nombre, en texte
+atténué. Les puces (conversation, fichiers) appartiennent au <b>volet de
+lecture</b> — jamais à la ligne de liste.</p>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Journal des amendements</h2>
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Ce document est la <b>copie vivante et normative</b> du Système,
+versionnée dans le dépôt (<code>docs/design/</code>). Le prototype du
+handoff est illustratif : quand ils divergent, <b>le prototype plie</b>
+(ruling du Chef Ingénieur, 2026-08-10). Chaque amendement est daté, motivé
+par le terrain — de vrais mails, de vraies mesures — et tracé par un
+commit.</p>
+    <table style="width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; overflow:hidden">
+      <thead>
+        <tr style="background:#eaece9">
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:120px">Date</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600; width:120px">Réf.</th>
+          <th scope="col" style="text-align:left; padding:14px 20px; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Amendement</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A1 · R0-S1</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Conversation en lecture — gouttière du corps à 20 px ; colonne 68 ch pour le texte brut seul ; corps HTML sur surface claire même en thème sombre. Verdict terrain sur vrais mails.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A2 · R0-S2</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Ligne de message — hauteur fixe 104 px ; marqueurs fil/pièces en première ligne (icône 16 px + nombre) ; les puces appartiennent au volet de lecture, jamais à la ligne. Terrain : 8/120 lignes débordaient avec les pilules du prototype ; 0/120 en ligne du Système.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A3 · R0-S3</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Icônes — inventaire arrêté à 31 glyphes ; police vendorisée dans le dépôt (assets/icones/), aucun CDN.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A4 · R0-S4</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Nouvelle section « Avis et progression » — trois régions, jamais un empilement.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+</div>
+
+</x-dc>
+</body>
+</html>
