@@ -96,6 +96,7 @@ function renderSearchResults() {
 function buildResultRow(message) {
   const row = document.createElement('div');
   row.className = 'row search-result';
+  row.dataset.testid = 'search-result';
   if (isUnread(message)) row.classList.add('unread');
   if (message.flagged) row.classList.add('flagged');
   if (currentMessage
@@ -686,6 +687,7 @@ function renderVisible() {
 function buildRow(index) {
   const row = document.createElement('div');
   row.className = 'row';
+  row.dataset.testid = 'message-row';
   row.style.top = `${index * ROW_HEIGHT}px`;
   const message = rowAt(index);
   if (!message) {
@@ -789,6 +791,7 @@ function renderThread(messages, current) {
   for (const message of messages) {
     const item = document.createElement('button');
     item.className = 'thread-item';
+    item.dataset.testid = 'thread-item';
     if (message.uid === current.uid && message.account_id === current.account_id) {
       item.classList.add('current');
     }
@@ -836,6 +839,7 @@ function renderAttachments(found, message) {
 function buildAttachmentButton(attachment, message) {
   const button = document.createElement('button');
   button.className = 'attachment';
+  button.dataset.testid = 'attachment';
   button.type = 'button';
   // textContent, jamais innerHTML : ce nom vient du réseau.
   button.textContent = `📎 ${attachment.name} (${attachment.size})`;

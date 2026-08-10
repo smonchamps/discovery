@@ -26,13 +26,13 @@ test.afterAll(async () => {
 test('boîte unifiée : les deux comptes fusionnés, pastilles visibles', async () => {
   await expect(page.locator('.account-chip')).toHaveCount(2);
   await expect(page.locator('#perf')).toContainText('40 conversations');
-  await expect(page.locator('.row').first()).toBeVisible();
+  await expect(page.locator('[data-testid="message-row"]').first()).toBeVisible();
   await expect(page.locator('.row .account-dot').first()).toBeVisible();
 });
 
 test("répondre depuis la boîte unifiée : le compte du message est l'émetteur", async () => {
   // Le plus récent (n°30) appartient au premier compte seedé.
-  await page.locator('.row').first().click();
+  await page.locator('[data-testid="message-row"]').first().click();
   await page.keyboard.press('r');
 
   await expect(page.locator('#compose')).toBeVisible();

@@ -36,8 +36,8 @@ test.beforeEach(async () => {
 });
 
 test("lire : la liste s'affiche, le plus récent d'abord, et le corps s'ouvre", async () => {
-  await expect(page.locator('.row').first()).toBeVisible();
-  await expect(page.locator('.row').first()).toContainText('n°200');
+  await expect(page.locator('[data-testid="message-row"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="message-row"]').first()).toContainText('n°200');
   await expect(page.locator('#perf')).toContainText('160 conversations');
 
   // Tant que rien n'est sélectionné, le panneau de lecture est ABSENT —
@@ -48,7 +48,7 @@ test("lire : la liste s'affiche, le plus récent d'abord, et le corps s'ouvre", 
   // les raccourcis mouraient tant qu'on ne cliquait pas ailleurs.
   await expect(page.locator('#detail')).toBeHidden();
 
-  await page.locator('.row').first().click();
+  await page.locator('[data-testid="message-row"]').first().click();
 
   await expect(page.locator('#detail-subject')).toContainText('n°200');
   await expect(page.locator('#detail-frame')).toHaveAttribute(
@@ -63,7 +63,7 @@ test('trier : « e » archive le message ouvert, la liste et le compte suivent',
   // Le n°200 repondait au n°199 : les archiver l'un apres l'autre vide
   // le meme fil, et le nombre de CONVERSATIONS ne bouge qu'au second.
   await expect(page.locator('#perf')).toContainText('160 conversations');
-  await expect(page.locator('.row').first()).toContainText('n°199');
+  await expect(page.locator('[data-testid="message-row"]').first()).toContainText('n°199');
   // L'auto-avance ouvre le message suivant : le triage ne casse pas le flux.
   await expect(page.locator('#detail-subject')).toContainText('n°199');
 });
@@ -71,11 +71,11 @@ test('trier : « e » archive le message ouvert, la liste et le compte suivent',
 test("étoiler : « s » pose l'étoile — visible en liste — puis la retire", async () => {
   await page.keyboard.press('s');
   await expect(page.locator('#star')).toHaveText('★');
-  await expect(page.locator('.row').first()).toHaveClass(/flagged/);
+  await expect(page.locator('[data-testid="message-row"]').first()).toHaveClass(/flagged/);
 
   await page.keyboard.press('s');
   await expect(page.locator('#star')).toHaveText('☆');
-  await expect(page.locator('.row').first()).not.toHaveClass(/flagged/);
+  await expect(page.locator('[data-testid="message-row"]').first()).not.toHaveClass(/flagged/);
 });
 
 test('répondre : destinataire, « Re: » et citation pré-remplis — envoi hors ligne journalisé, jamais perdu', async () => {
@@ -164,14 +164,14 @@ test('pièces jointes : listées quand il y en a, absentes sinon', async () => {
   // donc le 189 n'a plus de ligne à lui — c'est le n°190 qui représente
   // leur conversation. Choisir un message qui n'est pas en tête de fil,
   // c'est chercher une ligne qui n'existe pas.
-  await page.locator('.row', { hasText: 'n°190' }).first().click();
+  await page.locator('[data-testid="message-row"]', { hasText: 'n°190' }).first().click();
   await expect(page.locator('#detail-subject')).toContainText('n°190');
   await expect(page.locator('#attachments')).toBeVisible();
-  await expect(page.locator('#attachments .attachment')).toHaveCount(1);
-  await expect(page.locator('#attachments .attachment')).toContainText('facture-190.pdf');
-  await expect(page.locator('#attachments .attachment')).toContainText('20 Ko');
+  await expect(page.locator('[data-testid="attachment"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="attachment"]')).toContainText('facture-190.pdf');
+  await expect(page.locator('[data-testid="attachment"]')).toContainText('20 Ko');
 
-  await page.locator('.row', { hasText: 'n°188' }).first().click();
+  await page.locator('[data-testid="message-row"]', { hasText: 'n°188' }).first().click();
   await expect(page.locator('#detail-subject')).toContainText('n°188');
   await expect(page.locator('#attachments')).toBeHidden();
 });
@@ -180,8 +180,8 @@ test('pièces jointes : listées quand il y en a, absentes sinon', async () => {
 /// message : c'est la que l'utilisateur trie. Un message sur dix en
 /// porte un dans le decor — le voisin immediat doit rester nu.
 test('liste : le trombone marque les messages porteurs, et eux seuls', async () => {
-  const withClip = page.locator('.row', { hasText: 'n°180' }).first();
-  const without = page.locator('.row', { hasText: 'n°179' }).first();
+  const withClip = page.locator('[data-testid="message-row"]', { hasText: 'n°180' }).first();
+  const without = page.locator('[data-testid="message-row"]', { hasText: 'n°179' }).first();
 
   await expect(withClip.locator('.clip')).toBeVisible();
   await expect(without.locator('.clip')).toHaveCount(0);
@@ -195,7 +195,7 @@ test('liste : le trombone marque les messages porteurs, et eux seuls', async () 
 /// Le décor expose « Archiv&AOk-s » : le nom AFFICHÉ doit être
 /// « Archivés », preuve que le décodage UTF-7 arrive jusqu'à l'œil.
 test('déplacer : choisir un dossier retire le message, hors ligne', async () => {
-  await page.locator('.row').first().click();
+  await page.locator('[data-testid="message-row"]').first().click();
   await expect(page.locator('#detail')).toBeVisible();
   const subject = await page.locator('#detail-subject').textContent();
   await expect(page.locator('#move-dialog')).toBeHidden();
@@ -218,7 +218,7 @@ test('déplacer : choisir un dossier retire le message, hors ligne', async () =>
 /// l'utilisateur au milieu d'une action destructive serait pire que pas
 /// de dialogue du tout.
 test('déplacer : Échap referme sans rien faire', async () => {
-  await page.locator('.row').first().click();
+  await page.locator('[data-testid="message-row"]').first().click();
   const subject = await page.locator('#detail-subject').textContent();
 
   await page.locator('#move').click();
@@ -239,19 +239,19 @@ test('conversations : une ligne par fil, compteur visible, échange navigable', 
   await page.keyboard.press('Escape');
   await expect(page.locator('#scroll-space')).toBeVisible();
 
-  const fil = page.locator('.row', { hasText: 'n°190' }).first();
+  const fil = page.locator('[data-testid="message-row"]', { hasText: 'n°190' }).first();
   await expect(fil.locator('.thread-count')).toHaveText('2');
   // Le message intermédiaire n'a pas de ligne à lui : c'est tout l'objet.
-  await expect(page.locator('.row', { hasText: 'n°189' })).toHaveCount(0);
+  await expect(page.locator('[data-testid="message-row"]', { hasText: 'n°189' })).toHaveCount(0);
 
   await fil.click();
   await expect(page.locator('#detail-subject')).toContainText('n°190');
-  await expect(page.locator('#thread-strip .thread-item')).toHaveCount(2);
+  await expect(page.locator('[data-testid="thread-item"]')).toHaveCount(2);
 
   // Ouvrir le message plus ancien depuis le bandeau, sans quitter le fil.
-  await page.locator('#thread-strip .thread-item').first().click();
+  await page.locator('[data-testid="thread-item"]').first().click();
   await expect(page.locator('#detail-subject')).toContainText('n°189');
-  await expect(page.locator('#thread-strip .thread-item').first()).toHaveClass(/current/);
+  await expect(page.locator('[data-testid="thread-item"]').first()).toHaveClass(/current/);
 });
 
 /// Deux versions d'un même brouillon — même sujet, même destinataire,

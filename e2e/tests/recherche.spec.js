@@ -27,12 +27,12 @@ test('recherche : / ouvre le champ, une saisie trouve des résultats', async () 
   await page.locator('#search').fill('facture');
 
   // Le debounce côté UI déclenche la recherche après ~150 ms.
-  await expect(page.locator('#search-results .row').first()).toBeVisible({ timeout: 5_000 });
-  await expect(page.locator('#search-results .row').first()).toContainText('facture');
+  await expect(page.locator('[data-testid="search-result"]').first()).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[data-testid="search-result"]').first()).toContainText('facture');
 });
 
 test("recherche : ouvrir un résultat affiche le message, Échap revient à l'unifiée", async () => {
-  await page.locator('#search-results .row').first().click();
+  await page.locator('[data-testid="search-result"]').first().click();
 
   await expect(page.locator('#detail')).toBeVisible();
   await expect(page.locator('#detail-subject')).toContainText('facture');
@@ -73,7 +73,7 @@ test('télémétrie : aucun bandeau opt-in ni incident en E2E', async () => {
 test('recherche : archiver un résultat le retire des résultats (régression #4)', async () => {
   await page.keyboard.press('/');
   await page.locator('#search').fill('facture');
-  const results = page.locator('#search-results .row');
+  const results = page.locator('[data-testid="search-result"]');
   await expect(results.first()).toBeVisible({ timeout: 5_000 });
 
   const before = await results.count();
