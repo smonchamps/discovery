@@ -68,11 +68,28 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
 - **S3 — Icônes vendorisées.** Sous-ensemble Material Symbols Rounded (34
   glyphes du Système), **local** (offline + CSP interdisent le CDN). Mesurer
   le poids.
-- **S4 — Règle de relogement des bandeaux.** Une **région système unique,
-  priorisée** (au plus un bandeau visible), cohérente avec la signature,
-  **hors de tout `<header>`** + garde `#id[hidden]{display:none}`. Doit
-  survivre aux 7 bandeaux conditionnels (outbox, brouillons, MAJ, synchro,
-  rattrapage, télémétrie, crash) + la modale de migration.
+- **S4 — Relogement des bandeaux. ✓ FAIT** (2026-08-10). Aujourd'hui : 7
+  bandeaux **indépendants, sans priorité, empilables** (anti-Douceur), chacun
+  avec un garde-fou `#id[hidden]` à la main (8 occurrences) et la dette
+  `header{display:flex}` qui fuit sur `#detail-header`. **Règle décidée —
+  trois régions, jamais un empilement :**
+  - **Modale de migration** : exclusive, bloquante au démarrage (inchangée,
+    ADR 0012).
+  - **Fente d'avis** (haut, hors `<header>`) : **au plus UN** avis persistant,
+    par priorité fixe — **échec boîte d'envoi** (`--alert`) > **mise à jour
+    prête** > **rapport de crash** > **opt-in télémétrie** > **brouillons**.
+    Habillage = la **signature** (surface + filet accent 2 px + ombre). Le
+    suivant n'apparaît qu'une fois le précédent résolu/écarté.
+  - **Ligne de progression** (bas, contre la barre d'état) : **au plus une**
+    progression (synchro OU rattrapage), subtile (`--muted`) ; coexiste avec
+    un avis sans lui voler la vedette. L'attente non-fautive de la boîte
+    d'envoi (« N en attente ») vit ici, pas dans la fente d'avis — seul
+    l'**échec** monte en avis d'alerte.
+  - **Les deux dettes disparaissent par construction en v2** : le rendu
+    conditionnel (`{#if}`) retire du DOM les bandeaux masqués → **plus de
+    garde-fou `[hidden]`** ; les styles **scopés par composant** → **plus de
+    sélecteur d'élément `header{}` qui fuit**. S4 est donc aussi une **reprise
+    de dette**, pas seulement une règle.
 - **S5 — Port de transport.** Définir l'interface UI↔cœur ; livrer l'impl
   **en-processus** (Tauri IPC). L'impl **distante** (HTTP/WS) est esquissée,
   pas due ici.
@@ -87,8 +104,9 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
   [`e2e/README.md`](../e2e/README.md).
 
 **GO/NO-GO :** chaque point a sa décision ou son chiffre. Budgets non touchés.
-**S6 et S1 sont clos** (S1 : décision + spike ; validation terrain due) ;
-S2–S5 restent à jouer avant R1.
+**S6, S1 et S4 sont clos** (S1 : décision + spike, validation terrain due) ;
+restent **S2** (terrain : ligne à hauteur fixe sur contenu réel), **S3**
+(icônes vendorisées) et **S5** (port de transport) avant R1.
 
 ## R1 — Socle de jetons sur v1 (le socle invisible, prouvé à bas coût)
 
