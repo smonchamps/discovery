@@ -1,4 +1,4 @@
-# Plan de phase — refonte UI v2 (« Douceur »)
+# Plan de phase — refonte UI v2 (« Clarity »)
 
 > Plan **prospectif** d'exécution. Source de la décision de socle :
 > [ADR 0015](adr/0015-socle-ui-v2-svelte.md). Méthode : le *shusa*
@@ -23,7 +23,7 @@ Faciles à casser en silence (§6 PASSATION). À vérifier à chaque revue :
 1. **`mail-core` intouché** (ADR 0001) : la refonte est UI seule. L'UI affiche
    un état, émet des intentions — via le **port de transport** (ADR 0015 §4).
 2. **Sécurité du rendu** : corps de mail dans l'**iframe sandbox + CSP**,
-   images distantes bloquées, `textContent` jamais `innerHTML`. La « Douceur »
+   images distantes bloquées, `textContent` jamais `innerHTML`. La « Clarity »
    habille le chrome, pas le HTML de l'expéditeur.
 3. **Credentials au coffre de l'OS** ; **boîte d'envoi** aux deux règles d'or
    (ADR 0003) : jamais d'envoi perdu, jamais d'envoi fantôme.
@@ -54,7 +54,7 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
 
 - **S1 — Frontière du volet de lecture. ✓ FAIT** (2026-08-10). Le
   corps reste dans l'iframe `sandbox` + CSP par message — **inchangé**. La
-  Douceur habille **(a)** le chrome hors iframe, **(b)** la base typographique
+  Clarity habille **(a)** le chrome hors iframe, **(b)** la base typographique
   de `email_document` en sélecteurs simples **sans écraser l'expéditeur** ;
   colonne 68 ch réservée au **texte brut** ; encre **bakée par thème**
   (l'iframe ne voit pas les variables de l'hôte), HTML sur surface claire même
@@ -89,7 +89,7 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
   fonctionnel** (le « dossier ouvert » du Système). L'inventaire du README
   est le contrat : tout ajout régénère le fichier et tient la liste.
 - **S4 — Relogement des bandeaux. ✓ FAIT** (2026-08-10). Aujourd'hui : 7
-  bandeaux **indépendants, sans priorité, empilables** (anti-Douceur), chacun
+  bandeaux **indépendants, sans priorité, empilables** (anti-Clarity), chacun
   avec un garde-fou `#id[hidden]` à la main (8 occurrences) et la dette
   `header{display:flex}` qui fuit sur `#detail-header`. **Règle décidée —
   trois régions, jamais un empilement :**

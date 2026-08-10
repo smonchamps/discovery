@@ -48,7 +48,7 @@ node spikes/terrain-r0/servir.mjs
 
 ### S2 — `ligne-104.html`
 
-La ligne Douceur exacte du prototype (expéditeur + heure, objet 18 px,
+La ligne Clarity exacte du prototype (expéditeur + heure, objet 18 px,
 aperçu 13 px, puces 32 px, troncature à une ligne partout), remplie de tes
 messages. Deux modes **mesurés** :
 
@@ -75,7 +75,7 @@ Système (sélecteurs simples, sans `!important`). À vérifier, surtout sur
 une newsletter riche et un mail à images distantes :
 
 1. la newsletter garde **sa** mise en page (la base ne surcharge rien) ;
-2. le mail simple prend la Douceur (police système, 15 px, 1,65) ;
+2. le mail simple prend la Clarity (police système, 15 px, 1,65) ;
 3. **aucune image distante ne se charge** (cadres vides/alt — c'est le
    comportement voulu, le pixel espion reste aveugle) ;
 4. case « thème sombre » : le chrome bascule, le corps HTML **reste sur

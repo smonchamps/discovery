@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Spike S1 — frontière du volet de lecture</title>
 <style>
-  /* Le CHROME (hors iframe) : plein Douceur, jetons du Système « nature ». */
+  /* Le CHROME (hors iframe) : plein Clarity, jetons du Système « nature ». */
   :root {
     --bg:#f0f2ef; --surface:#ffffff; --ink:#232725; --ink2:#4d534f;
     --muted:#5c625e; --border:#dadfda; --accent:#2f6e5b;
@@ -35,7 +35,7 @@
 message <code>default-src 'none'; img-src data: cid:; style-src
 'unsafe-inline'</code>. Seule la base typographique de <code>&lt;style&gt;body{…}&gt;</code>
 change — en sélecteurs simples, sans <code>!important</code>. Le CHROME
-autour (cette carte, sa signature) est plein Douceur, hors iframe.</p>
+autour (cette carte, sa signature) est plein Clarity, hors iframe.</p>
 
 <div class="grille" id="grille"></div>
 
@@ -59,7 +59,7 @@ function emailDocument(body, { plainText = false, ink = '#232725' } = {}) {
 const cas = [
   {
     titre: '1 — Texte brut (corps converti)',
-    verdict: 'Douceur pleine',
+    verdict: 'Clarity pleine',
     note: "Aucun style d'expediteur : la base habille tout — police systeme, "
       + "15 px / 1,65, colonne 68 px, encre du theme.",
     plainText: true,
@@ -69,7 +69,7 @@ const cas = [
   },
   {
     titre: '2 — HTML simple, non stylise',
-    verdict: 'Douceur, sans bride de largeur',
+    verdict: 'Clarity, sans bride de largeur',
     note: "Structure HTML mais sans style propre : la base typographique "
       + "s'applique ; PAS de colonne 68 px (ne pas brider une mise en page).",
     plainText: false,

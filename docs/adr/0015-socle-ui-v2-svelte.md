@@ -5,7 +5,7 @@ mesures (spike jetable, deux moteurs : Blink desktop **et** Android-classe).
 
 ## Contexte
 
-Un handoff de design « Douceur », réalisé séparément du code, fixe la
+Un handoff de design « Clarity », réalisé séparément du code, fixe la
 direction visuelle de la refonte. Ce qui lie Discovery n'est PAS ses choix
 techniques de prototype (un runtime maison, non repris) mais les **règles
 de son document Système** : 14 jetons pilotant toute couleur (bascule de

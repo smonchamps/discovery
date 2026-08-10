@@ -4,7 +4,7 @@
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
-## Inventaire (la source : le Système « Douceur »)
+## Inventaire (la source : le Système « Clarity »)
 
 Relevé exhaustif du handoff (les trois documents + `support.js`, par classe
 `ms` et par `icon:'…'`) :

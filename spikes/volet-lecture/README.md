@@ -1,6 +1,6 @@
 # Spike S1 — la frontière du volet de lecture
 
-**Question à trancher :** appliquer la typographie « Douceur » du Système au
+**Question à trancher :** appliquer la typographie « Clarity » du Système au
 volet de lecture **sans percer le bac à sable ni écraser les styles de
 l'expéditeur**.
 
@@ -14,18 +14,18 @@ Le corps reste rendu par `mail-render::email_document` dans une iframe
 `sandbox` (sans jeton = verrouillage total), via `srcdoc`, avec une **CSP par
 message** `default-src 'none'; img-src data: cid:; style-src 'unsafe-inline'`.
 `ammonia` retire scripts et handlers ; les images distantes deviennent un
-pixel neutre. **La Douceur ne touche JAMAIS le HTML de l'expéditeur.**
+pixel neutre. **La Clarity ne touche JAMAIS le HTML de l'expéditeur.**
 (Prouvé — cas 4 : script inerte, image distante bloquée ; + tests mail-render.)
 
-## Décision — où la Douceur s'applique
+## Décision — où la Clarity s'applique
 
 1. **Le chrome** (carte, en-tête, expéditeur/méta, barre d'actions,
-   signature) : plein Douceur, dans le DOM de l'app (CSS v2), **hors iframe**.
+   signature) : plein Clarity, dans le DOM de l'app (CSS v2), **hors iframe**.
    Liberté totale.
 2. **La base typographique de l'iframe** : on **étend** le `<style>body{…}` de
    `email_document` au Système — police système, 15 px, 1,65, encre — en
    **sélecteurs simples, sans `!important`**. Ce sont des défauts : le texte
-   non stylé prend la Douceur, **tout style d'expéditeur l'emporte** (cas 3).
+   non stylé prend la Clarity, **tout style d'expéditeur l'emporte** (cas 3).
    **Gouttière : 20 px, pas 12** — verdict terrain (2026-08-10, vrais mails) :
    à 12 px le corps colle au bord de la carte ; il s'aligne sur la
    respiration du chrome (en-tête à 20 px).
@@ -46,8 +46,8 @@ claire toujours ; texte brut suit le thème.
 
 | Cas | Attendu | Observé |
 |---|---|---|
-| 1 — texte brut | Douceur pleine (colonne 68 ch) | ✅ |
-| 2 — HTML simple, non stylé | Douceur typo, **sans** bride de largeur | ✅ |
+| 1 — texte brut | Clarity pleine (colonne 68 ch) | ✅ |
+| 2 — HTML simple, non stylé | Clarity typo, **sans** bride de largeur | ✅ |
 | 3 — HTML stylé par l'expéditeur | l'expéditeur garde la main | ✅ (Georgia, couleurs, 520 px préservés) |
 | 4 — image distante + script injecté | inertes | ✅ (image bloquée, script non exécuté) |
 
