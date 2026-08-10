@@ -77,7 +77,7 @@ test('recherche : archiver un résultat le retire des résultats (régression #4
   await expect(results.first()).toBeVisible({ timeout: 5_000 });
 
   const before = await results.count();
-  const archived = await results.first().locator('.subject').textContent();
+  const archived = await results.first().locator('[data-testid="subject"]').textContent();
 
   // Ouvrir le premier résultat, puis l'archiver (raccourci e).
   await results.first().click();

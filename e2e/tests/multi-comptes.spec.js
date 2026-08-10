@@ -24,10 +24,10 @@ test.afterAll(async () => {
 });
 
 test('boîte unifiée : les deux comptes fusionnés, pastilles visibles', async () => {
-  await expect(page.locator('.account-chip')).toHaveCount(2);
+  await expect(page.locator('[data-testid="account-chip"]')).toHaveCount(2);
   await expect(page.locator('#perf')).toContainText('40 conversations');
   await expect(page.locator('[data-testid="message-row"]').first()).toBeVisible();
-  await expect(page.locator('.row .account-dot').first()).toBeVisible();
+  await expect(page.locator('[data-testid="account-dot"]').first()).toBeVisible();
 });
 
 test("répondre depuis la boîte unifiée : le compte du message est l'émetteur", async () => {

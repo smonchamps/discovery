@@ -183,8 +183,8 @@ test('liste : le trombone marque les messages porteurs, et eux seuls', async () 
   const withClip = page.locator('[data-testid="message-row"]', { hasText: 'n°180' }).first();
   const without = page.locator('[data-testid="message-row"]', { hasText: 'n°179' }).first();
 
-  await expect(withClip.locator('.clip')).toBeVisible();
-  await expect(without.locator('.clip')).toHaveCount(0);
+  await expect(withClip.locator('[data-testid="clip"]')).toBeVisible();
+  await expect(without.locator('[data-testid="clip"]')).toHaveCount(0);
 });
 
 /// Déplacer, de bout en bout et HORS LIGNE. C'est le test qui compte :
@@ -202,9 +202,9 @@ test('déplacer : choisir un dossier retire le message, hors ligne', async () =>
 
   await page.locator('#move').click();
   await expect(page.locator('#move-dialog')).toBeVisible();
-  await expect(page.locator('#move-list button').first()).toHaveText('Archivés');
+  await expect(page.locator('[data-testid="move-target"]').first()).toHaveText('Archivés');
 
-  await page.locator('#move-list button', { hasText: 'Archivés' }).click();
+  await page.locator('[data-testid="move-target"]', { hasText: 'Archivés' }).click();
 
   await expect(page.locator('#move-dialog')).toBeHidden();
   // On n'assertionne PAS le bandeau de confirmation : l'ouverture
@@ -240,7 +240,7 @@ test('conversations : une ligne par fil, compteur visible, échange navigable', 
   await expect(page.locator('#scroll-space')).toBeVisible();
 
   const fil = page.locator('[data-testid="message-row"]', { hasText: 'n°190' }).first();
-  await expect(fil.locator('.thread-count')).toHaveText('2');
+  await expect(fil.locator('[data-testid="thread-count"]')).toHaveText('2');
   // Le message intermédiaire n'a pas de ligne à lui : c'est tout l'objet.
   await expect(page.locator('[data-testid="message-row"]', { hasText: 'n°189' })).toHaveCount(0);
 
@@ -278,7 +278,7 @@ test('brouillons : deux versions de même sujet se distinguent au corps', async 
     await expect(page.locator('#compose')).toBeHidden();
   }
 
-  const versions = page.locator('#drafts-list .bar-row', { hasText: 'Devis' });
+  const versions = page.locator('[data-testid="draft-row"]', { hasText: 'Devis' });
   await expect(versions).toHaveCount(2);
   await expect(page.locator('#drafts-list')).toContainText('Première version');
   await expect(page.locator('#drafts-list')).toContainText('Seconde version');

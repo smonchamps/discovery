@@ -111,6 +111,7 @@ function buildResultRow(message) {
   ]) {
     const span = document.createElement('span');
     span.className = cls;
+    span.dataset.testid = cls;
     span.textContent = text;
     row.appendChild(span);
   }
@@ -148,6 +149,7 @@ function appendRowMarks(row, message) {
   if (message.thread_size > 1) {
     const count = document.createElement('span');
     count.className = 'thread-count';
+    count.dataset.testid = 'thread-count';
     count.textContent = message.thread_size;
     count.title = `${message.thread_size} messages dans cette conversation`;
     marks.appendChild(count);
@@ -155,6 +157,7 @@ function appendRowMarks(row, message) {
   if (message.has_attachment) {
     const clip = document.createElement('span');
     clip.className = 'clip';
+    clip.dataset.testid = 'clip';
     clip.textContent = '📎';
     clip.title = 'Contient une pièce jointe';
     marks.appendChild(clip);
@@ -162,6 +165,7 @@ function appendRowMarks(row, message) {
   if (connectedAccounts.length > 1) {
     const dot = document.createElement('span');
     dot.className = 'dot account-dot';
+    dot.dataset.testid = 'account-dot';
     dot.style.background = accountColor(message.account_id);
     dot.title = message.account_email;
     marks.appendChild(dot);
@@ -396,6 +400,7 @@ function renderAccounts() {
   for (const account of connectedAccounts) {
     const chip = document.createElement('span');
     chip.className = 'account-chip';
+    chip.dataset.testid = 'account-chip';
     const dot = document.createElement('span');
     dot.className = 'dot';
     dot.style.background = accountColor(account.id);
@@ -704,6 +709,7 @@ function buildRow(index) {
   ]) {
     const span = document.createElement('span');
     span.className = cls;
+    span.dataset.testid = cls;
     span.textContent = text;
     row.appendChild(span);
   }
@@ -962,6 +968,7 @@ function buildFolderChoice(folder) {
   const button = document.createElement('button');
   button.type = 'button';
   // textContent : ce nom vient du serveur.
+  button.dataset.testid = 'move-target';
   button.textContent = folder.display;
   button.addEventListener('click', async () => {
     el('move-dialog').hidden = true;
@@ -1332,6 +1339,7 @@ function draftRow(draft) {
   // Sans lui, deux versions du même brouillon sont indiscernables — et
   // toute consigne de validation qui porte sur elles est invérifiable.
   // Le corps est déjà là (« Reprendre » s'en sert) : aucun aller-retour.
+  row.dataset.testid = 'draft-row';
   const extrait = document.createElement('span');
   extrait.className = 'draft-excerpt';
   extrait.textContent = extraitBrouillon(draft.body);
