@@ -1,0 +1,4 @@
+# Dépendances et build de l'option ② (Svelte/Vite) : régénérés par
+# `npm install` puis `npm run build`. Le code source suffit comme preuve.
+option2-svelte/node_modules/
+option2-svelte/dist/

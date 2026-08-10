@@ -272,6 +272,7 @@ scénarios du terrain sans réseau.
 | [0012](adr/0012-migration-visible-interruptible.md) | Migration **visible et interruptible** | L'adoption est UNE transaction rembobinable — annuler laisse `user_version` inchangé, jamais d'adoption partielle ; sonde `pending_adoption` en lecture seule, qui annonce la **portée** |
 | [0013](adr/0013-installeur-nsis-maj-signee.md) | Installeur **NSIS** + mise à jour signée | **Pas MSIX** (virtualiserait `%APPDATA%`, orphelinerait la base) ; updater signé minisign, piloté depuis Rust ; signature Windows reportée ; tag GitHub = **version nue**, `latest.json` sans BOM (`scripts/faire-release.ps1`) |
 | [0014](adr/0014-telemetrie-de-crash-locale.md) | Télémétrie de crash **locale, opt-in** | Fichier local seul (aucun réseau/tiers) ; panics seuls ; **message du panic supprimé** (seul vecteur de PII) ; hook qui ne touche jamais la base ; un crash thread principal fait un **double panic** (compteur `SEQ` + filtre `cannot unwind`) |
+| [0015](adr/0015-socle-ui-v2-svelte.md) | **Socle UI v2 = Svelte**, front web unique porté partout (Tauri 2 desktop+mobile + navigateur) | Départage set-based (vanilla / Svelte / WASM) **sur mesure** : liste 256 k + bascule de thème, deux moteurs (Blink desktop, Android-classe CPU ×6) — rendu neutralisé par fenêtrage + thème CSS. **Système écrit une fois** (Stratégie A) ; WASM écarté, vanilla en repli ; **iOS/WKWebView : validation terrain due** ; frontière UI↔cœur = port de transport ; `mail-core` intouché (ADR 0001) |
 
 Décisions Phase 0 ([PHASE0.md](PHASE0.md) §2) : SQLite local ; CONDSTORE ;
 parsing MIME par `mail-parser` ; OAuth2 PKCE loopback + coffre OS ; rendu
@@ -689,7 +690,7 @@ vrai.**
 | Fichier | Rôle |
 |---|---|
 | [`docs/PLAN.md`](PLAN.md) | Concept paper — source de vérité produit |
-| [`docs/adr/`](adr/) | Les 12 décisions gelées |
+| [`docs/adr/`](adr/) | Les 15 décisions gelées |
 | [`docs/PHASE0.md`](PHASE0.md) → [`PHASE3.md`](PHASE3.md) | Revues de clôture |
 | [`crates/mail-core/src/store.rs`](../crates/mail-core/src/store.rs) | Stockage SQLite (WAL), schéma, migrations, boîte unifiée, portée du regroupement |
 | [`crates/mail-core/src/sync.rs`](../crates/mail-core/src/sync.rs) | Moteur de synchro + `sync_order`, `sync_percent`, `disk_shortfall` |
@@ -708,6 +709,7 @@ vrai.**
 | [`scripts/faire-release.ps1`](../scripts/faire-release.ps1) | Prépare le `latest.json` signé d'une version (ADR 0013) — sans BOM, URL au tag nu |
 | [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | Rédaction PURE d'un rapport de crash — écarte le message (PII) (ADR 0014) |
 | [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, consentement en fichier, écriture locale du rapport (ADR 0014) |
+| [`spikes/ui-socle-v2/`](../spikes/ui-socle-v2/RAPPORT.md) | Spike de départage du socle UI v2 — preuve de l'ADR 0015, **jetable** |
 
 ---
 

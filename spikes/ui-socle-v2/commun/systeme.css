@@ -1,0 +1,58 @@
+/* Jetons du Système — deux thèmes suffisent pour exercer la bascule :
+   « la nature » (défaut) et « la nuit » (sombre). Toute couleur est
+   pilotée par un jeton : c'est ce qui rend la bascule O(1) pour le
+   navigateur (un restyle, aucun JS de framework). */
+:root {
+  --bg:#f0f2ef; --panel:#eaece9; --surface:#ffffff;
+  --ink:#232725; --ink2:#4d534f; --muted:#5c625e;
+  --border:#dadfda; --accent:#2f6e5b; --accentH:#26594a;
+  --sel:#e6ede9; --alert:#8c2f22; --onAccent:#ffffff;
+  --shadow:0 2px 8px rgba(35,39,37,0.08);
+}
+:root[data-theme="nuit"] {
+  --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+  --ink:#edefed; --ink2:#b7bebb; --muted:#98a09c;
+  --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+  --sel:#313f39; --alert:#d9776b; --onAccent:#11201b;
+  --shadow:0 2px 12px rgba(0,0,0,0.40);
+}
+
+* { box-sizing:border-box; }
+html, body { margin:0; height:100%; }
+body {
+  font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:var(--bg); color:var(--ink);
+}
+
+/* Le cadre de liste : plein écran, défilable. L'espace porte la hauteur
+   totale (256 312 x ROW) ; seules les lignes de la fenêtre existent. */
+.liste-cadre { height:100vh; overflow:auto; background:var(--bg); padding:12px; }
+.espace { position:relative; }
+.rows { position:absolute; top:0; left:0; right:0; display:flex; flex-direction:column; gap:8px; }
+
+/* Ligne de message — fidèle au Système : rayon 10, filet 1 px unique,
+   objet 18/600 tronqué, aperçu 13 tronqué, puces 6 px. Hauteur FIXE
+   (le fenêtrage l'exige, et la règle de troncature du Système veut une
+   « hauteur constante »). */
+.ligne {
+  height:104px; overflow:hidden;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:14px 16px;
+  display:flex; flex-direction:column; gap:6px;
+}
+.ligne.selected { border-left:2px solid var(--accent); box-shadow:var(--shadow); }
+.rangee-exp { display:flex; align-items:baseline; gap:12px; min-width:0; }
+.exp { flex:1; min-width:0; font-size:13px; color:var(--ink2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ligne.nonlu .exp { font-weight:600; color:var(--ink); }
+.heure { font-size:12px; color:var(--muted); flex:none; }
+.objet { margin:0; font-size:18px; font-weight:600; line-height:1.3;
+  letter-spacing:-.01em; color:var(--ink2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ligne.nonlu .objet { color:var(--ink); }
+.apercu { margin:0; font-size:13px; line-height:1.45; color:var(--muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.puces { display:flex; gap:8px; }
+.puce { height:24px; padding:0 10px; display:inline-flex; align-items:center;
+  font-size:13px; color:var(--ink2); background:var(--surface);
+  border:1px solid var(--border); border-radius:6px; }
