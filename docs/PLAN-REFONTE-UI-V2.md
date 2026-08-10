@@ -65,9 +65,19 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
   tient (objets/aperçus réels tronqués, puces logées). L'ADR 0015 a tranché
   *fixe* ; ceci le prouve au terrain. Sinon : virtualisation mesurée (coût
   **égal aux trois familles**, sans effet sur le socle).
-- **S3 — Icônes vendorisées.** Sous-ensemble Material Symbols Rounded (34
-  glyphes du Système), **local** (offline + CSP interdisent le CDN). Mesurer
-  le poids.
+- **S3 — Icônes vendorisées. ✓ FAIT** (2026-08-10). L'inventaire exhaustif
+  du handoff (trois documents + `support.js`) donne **31 glyphes**, pas 34 —
+  le terrain corrige l'estimation. Sous-ensemble Material Symbols Rounded
+  vendorisé dans [`assets/icones/`](../assets/icones/README.md) : **15 484
+  octets** (15,1 Kio) woff2, axes resserrés au besoin réel (`opsz` 20 figé,
+  `wght` 300–600, `FILL` 0–1, `GRAD` retiré — 48,6 Kio en axes pleins,
+  **−69 %**). Le découpage par ligatures ne se faisant pas proprement en
+  local (fermeture GSUB), le subsetteur Google Fonts est utilisé **une
+  fois** ; le fichier vit dans le dépôt (offline + CSP `font-src 'self'`),
+  licence Apache 2.0 vendorisée. **Preuve** : page sous CSP
+  `default-src 'none'` — PASS, 32/32 ligatures repliées, **FILL 1 / 600
+  fonctionnel** (le « dossier ouvert » du Système). L'inventaire du README
+  est le contrat : tout ajout régénère le fichier et tient la liste.
 - **S4 — Relogement des bandeaux. ✓ FAIT** (2026-08-10). Aujourd'hui : 7
   bandeaux **indépendants, sans priorité, empilables** (anti-Douceur), chacun
   avec un garde-fou `#id[hidden]` à la main (8 occurrences) et la dette
@@ -116,9 +126,9 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
   [`e2e/README.md`](../e2e/README.md).
 
 **GO/NO-GO :** chaque point a sa décision ou son chiffre. Budgets non touchés.
-**S6, S1, S4 et S5 sont clos** (S1 : décision + spike, validation terrain
-due) ; restent **S2** (terrain : ligne à hauteur fixe sur contenu réel) et
-**S3** (icônes vendorisées) avant R1.
+**S6, S1, S4, S5 et S3 sont clos** (S1 : décision + spike, validation
+terrain due) ; reste **S2** (terrain : ligne à hauteur fixe sur contenu
+réel) avant R1.
 
 ## R1 — Socle de jetons sur v1 (le socle invisible, prouvé à bas coût)
 

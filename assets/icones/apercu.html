@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<!-- La CSP de la preuve interdit toute ressource distante : si les glyphes
+     s'affichent, c'est que le fichier local suffit — offline et CSP prouvés. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; font-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Aperçu — icônes vendorisées (R0-S3)</title>
+<style>
+  @font-face {
+    font-family: 'Material Symbols Rounded';
+    font-style: normal;
+    font-weight: 300 600;
+    font-display: block;
+    src: url('material-symbols-rounded.subset.woff2') format('woff2');
+  }
+  :root { --bg:#f0f2ef; --surface:#fff; --ink:#232725; --muted:#5c625e;
+    --border:#dadfda; --accent:#2f6e5b; --shadow:0 2px 8px rgba(35,39,37,.08); }
+  body { font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:var(--bg); color:var(--ink); margin:0; padding:28px; }
+  h1 { font-size:24px; font-weight:600; margin:0 0 6px; }
+  p.sous { font-size:13px; color:var(--muted); margin:0 0 20px; }
+  #verdict { font-size:15px; font-weight:600; margin:0 0 20px; }
+  .grille { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
+    gap:8px; }
+  .g { background:var(--surface); border:1px solid var(--border);
+    border-left:2px solid var(--accent); border-radius:10px; box-shadow:var(--shadow);
+    padding:10px 12px; display:flex; align-items:center; gap:10px; min-width:0; }
+  .g small { font-size:12px; color:var(--muted); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  /* La classe du Système : graisse 300, corps 16, opsz 20, contour. */
+  .ms { font-family:'Material Symbols Rounded'; font-weight:300; font-size:16px;
+    line-height:1; flex:none; color:var(--muted);
+    font-variation-settings:'opsz' 20, 'FILL' 0; }
+  /* Le dossier OUVERT du Système : remplissage + graisse 600, dans l'accent. */
+  .ms.ouvert { font-variation-settings:'opsz' 20, 'FILL' 1; font-weight:600;
+    color:var(--accent); }
+</style>
+</head>
+<body>
+<h1>Icônes vendorisées — le sous-ensemble du Système</h1>
+<p class="sous">31 glyphes Material Symbols Rounded, axes opsz 20 · wght 300–600 ·
+FILL 0–1, servis depuis le dépôt sous CSP <code>font-src 'self'</code>.
+La première tuile montre l'état « dossier ouvert » (FILL 1, 600, accent).</p>
+<p id="verdict">Vérification…</p>
+<div class="grille" id="grille"></div>
+<script>
+const NOMS = ['all_inbox','archive','arrow_back','attach_file','bookmark',
+  'check_circle','close','delete','description','drafts','edit_note',
+  'edit_square','format_list_bulleted','format_quote','forum','forward',
+  'group_add','inbox','link','mark_email_unread','open_in_new','person',
+  'reply','report','search','send','settings','storage','unfold_more',
+  'visibility_off','work'];
+
+const grille = document.getElementById('grille');
+// Tuile témoin : inbox en état « dossier ouvert » (FILL 1, graisse 600).
+for (const [nom, classe] of [['inbox', 'ms ouvert'],
+                             ...NOMS.map((n) => [n, 'ms'])]) {
+  const g = document.createElement('div');
+  g.className = 'g';
+  const i = document.createElement('span');
+  i.className = classe;
+  i.textContent = nom;
+  const l = document.createElement('small');
+  l.textContent = classe.includes('ouvert') ? nom + ' (ouvert)' : nom;
+  g.append(i, l);
+  grille.appendChild(g);
+}
+
+// Verdict objectif : une ligature RÉSOLUE se replie sur ~1 em ; un nom
+// resté en toutes lettres est bien plus large. On compte les replis.
+document.fonts.ready.then(() => {
+  const chargee = document.fonts.check("300 16px 'Material Symbols Rounded'");
+  const spans = [...document.querySelectorAll('.ms')];
+  const replis = spans.filter((s) => s.offsetWidth <= 24).length;
+  const ok = chargee && replis === spans.length;
+  const v = document.getElementById('verdict');
+  v.textContent = (ok ? 'PASS' : 'ECHEC') + ' — police locale chargée : '
+    + chargee + ' ; ligatures repliées : ' + replis + '/' + spans.length;
+  v.style.color = ok ? 'var(--accent)' : '#b3261e';
+});
+</script>
+</body>
+</html>
