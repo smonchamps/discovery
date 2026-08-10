@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Terrain S1 (dû) — le volet de lecture sur TES mails</title>
+<style>
+  :root { --bg:#f0f2ef; --surface:#ffffff; --sel:#e7ebe6; --ink:#232725;
+    --ink2:#4d534f; --muted:#5c625e; --border:#dadfda; --accent:#2f6e5b;
+    --shadow:0 2px 8px rgba(35,39,37,.08); }
+  :root.sombre { --bg:#1d211f; --surface:#262b28; --sel:#2e332f; --ink:#e8eae7;
+    --ink2:#c2c6c2; --muted:#9aa09b; --border:#3a403c; --accent:#7fb8a4;
+    --shadow:0 2px 8px rgba(0,0,0,.35); }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:var(--bg); color:var(--ink); margin:0; padding:24px;
+    display:grid; grid-template-columns:340px minmax(0,1fr); gap:20px;
+    height:100vh; }
+  #gauche { min-width:0; display:flex; flex-direction:column; gap:10px; overflow:auto; }
+  h1 { font-size:24px; font-weight:600; margin:0; }
+  .sous { font-size:13px; color:var(--muted); margin:0 0 6px; line-height:1.5; }
+  label.mode { font-size:13px; color:var(--ink2); display:flex; gap:8px; align-items:center; }
+  .choix { background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; padding:10px 12px; cursor:pointer; }
+  .choix.actif { border-left:2px solid var(--accent); box-shadow:var(--shadow); }
+  .choix b { display:block; font-size:13px; font-weight:600; color:var(--ink);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .choix small { font-size:12px; color:var(--muted); }
+  #carte { background:var(--surface); border:1px solid var(--border);
+    border-left:2px solid var(--accent); border-radius:10px;
+    box-shadow:var(--shadow); display:flex; flex-direction:column;
+    overflow:hidden; min-width:0; }
+  #entete { padding:16px 20px; border-bottom:1px solid var(--border); }
+  #entete h2 { margin:0 0 2px; font-size:18px; font-weight:600; letter-spacing:-.01em;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #entete p { margin:0; font-size:13px; color:var(--muted); }
+  iframe { flex:1; width:100%; border:0; background:#fff; }
+</style>
+</head>
+<body>
+<div id="gauche">
+  <h1>S1 (dû) — tes mails dans le bac à sable</h1>
+  <p class="sous">Chaque corps est rendu par la MÊME frontière que la
+  production : iframe <code>sandbox</code> (sans jeton) + CSP par message,
+  base typographique étendue au Système (sélecteurs simples, jamais
+  <code>!important</code>). À juger : la newsletter garde SA mise en page ;
+  le mail simple prend la Douceur ; AUCUNE image distante ne se charge ;
+  en thème sombre, le corps HTML reste sur surface claire.</p>
+  <label class="mode"><input id="sombre" type="checkbox"> thème sombre (le
+    chrome bascule, le corps HTML reste clair — la décision S1)</label>
+  <div id="choix"></div>
+</div>
+<div id="carte">
+  <div id="entete"><h2 id="t-objet">—</h2><p id="t-exp">—</p></div>
+  <iframe id="cadre" sandbox title="corps du message"></iframe>
+</div>
+<script src="donnees.gen.js"></script>
+<script>
+// La MEME fonction que le spike S1 (reimplementation fidele de
+// mail-render::email_document, base etendue au Systeme). Ici pas
+// d'ammonia : le bac a sable + la CSP portent seuls la garde (le cas 4
+// du spike a prouve qu'ils suffisent a rendre script et pixel inertes).
+function emailDocument(body, { plainText = false, ink = '#232725' } = {}) {
+  const sys = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  const colonne = plainText ? 'max-width:68ch;margin:12px auto;' : 'margin:12px;';
+  const base = `body{font-family:${sys};font-size:15px;line-height:1.65;`
+    + `color:${ink};${colonne}overflow-wrap:break-word;background:#fff}`;
+  return `<!doctype html><html><head><meta charset="utf-8">`
+    + `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; `
+    + `img-src data: cid:; style-src 'unsafe-inline'">`
+    + `<style>${base}</style></head><body>${body}</body></html>`;
+}
+
+if (typeof TERRAIN === 'undefined') {
+  document.getElementById('t-objet').textContent =
+    'donnees.gen.js absent — lance d’abord : node spikes/terrain-r0/extraire.mjs';
+} else {
+  const zone = document.getElementById('choix');
+  let actif = null;
+  const montrer = (c, el) => {
+    document.getElementById('t-objet').textContent = c.subject;
+    document.getElementById('t-exp').textContent =
+      (c.sender || '') + ' — ' + c.motif + ' — ' + (c.taille / 1024).toFixed(1) + ' Kio';
+    document.getElementById('cadre').srcdoc = emailDocument(c.html);
+    actif?.classList.remove('actif'); el.classList.add('actif'); actif = el;
+  };
+  TERRAIN.corps.forEach((c, n) => {
+    const d = document.createElement('div');
+    d.className = 'choix';
+    const b = document.createElement('b'); b.textContent = c.subject;
+    const s = document.createElement('small');
+    s.textContent = c.motif + ' — ' + (c.taille / 1024).toFixed(1) + ' Kio';
+    d.append(b, s);
+    d.addEventListener('click', () => montrer(c, d));
+    zone.appendChild(d);
+    if (n === 0) montrer(c, d);
+  });
+  document.getElementById('sombre').addEventListener('change', (e) => {
+    document.documentElement.classList.toggle('sombre', e.target.checked);
+  });
+}
+</script>
+</body>
+</html>

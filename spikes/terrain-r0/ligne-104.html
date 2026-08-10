@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; font-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Terrain S2 — la ligne de 104 px sur TON contenu</title>
+<style>
+  @font-face {
+    font-family: 'Material Symbols Rounded';
+    font-style: normal; font-weight: 300 600; font-display: block;
+    src: url('../../assets/icones/material-symbols-rounded.subset.woff2') format('woff2');
+  }
+  :root { --bg:#f0f2ef; --surface:#ffffff; --sel:#e7ebe6; --ink:#232725;
+    --ink2:#4d534f; --muted:#5c625e; --border:#dadfda; --accent:#2f6e5b;
+    --alert:#b3261e; --shadow:0 2px 8px rgba(35,39,37,.08); }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background:var(--bg); color:var(--ink); margin:0; padding:24px; }
+  h1 { font-size:24px; font-weight:600; margin:0 0 4px; }
+  .sous { font-size:13px; color:var(--muted); margin:0 0 16px; max-width:78ch; line-height:1.5; }
+  #controles { display:flex; align-items:center; gap:16px; margin:0 0 8px; font-size:13px; color:var(--ink2); flex-wrap:wrap; }
+  #verdict { font-size:15px; font-weight:600; margin:0 0 16px; }
+  #liste { display:flex; flex-direction:column; gap:2px; }
+  .ms { font-family:'Material Symbols Rounded'; font-weight:300; font-size:16px;
+    line-height:1; flex:none; font-variation-settings:'opsz' 20, 'FILL' 0; }
+
+  /* La ligne Douceur, TELLE QUE le prototype la definit. */
+  .ligne { padding:14px 16px; border-radius:10px; display:flex;
+    flex-direction:column; gap:6px; border:1px solid transparent; }
+  /* Sans quoi la flex-colonne contrainte COMPRIME objet et apercu au lieu
+     de laisser deborder — et le verdict mentirait (faux GO). */
+  .ligne > * { flex-shrink:0; }
+  .ligne.signature { background:var(--surface); border:1px solid var(--border);
+    border-left:2px solid var(--accent); box-shadow:var(--shadow); }
+  .l1 { display:flex; align-items:baseline; gap:12px; }
+  .exp { font-size:13px; color:var(--ink2); flex:1; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  .non-lu .exp { font-weight:600; color:var(--ink); }
+  .heure { font-size:12px; color:var(--muted); flex:none; }
+  .objet { margin:0; font-size:18px; font-weight:600; line-height:1.3;
+    letter-spacing:-.01em; color:var(--ink2); overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap; }
+  .non-lu .objet { color:var(--ink); }
+  .apercu { margin:0; font-size:13px; line-height:1.45; color:var(--muted);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .non-lu .apercu { color:var(--ink2); }
+  .puces { display:flex; gap:8px; margin-top:2px; }
+  .puce { height:32px; padding:0 12px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; flex:none; }
+
+  /* Mode « fixe » : 104 px, deborde = defaut visible. */
+  body.fixe .ligne { height:104px; overflow:hidden; }
+  body.fixe .ligne.deborde { outline:2px dashed var(--alert); outline-offset:-2px; }
+  /* Mode « naturelle » : hauteur libre, relevee et affichee. */
+  body.naturelle .ligne { position:relative; }
+  body.naturelle .ligne::after { content:attr(data-h) ' px'; position:absolute;
+    right:8px; bottom:6px; font-size:11px; color:var(--accent); font-weight:600; }
+</style>
+</head>
+<body class="fixe">
+<h1>S2 — la ligne de 104 px, jugée sur ton contenu réel</h1>
+<p class="sous">Chaque ligne est la ligne Douceur du prototype (expéditeur +
+heure, objet 18 px, aperçu 13 px, puces 32 px — troncature à UNE ligne
+partout), remplie avec tes messages. En mode <b>fixe 104 px</b>, une ligne
+dont le contenu déborde est cerclée d'alerte. En mode <b>naturelle</b>, la
+hauteur réelle de chaque ligne est relevée — c'est le chiffre qui départage
+« fixe » et « virtualisation mesurée ».</p>
+<div id="controles">
+  <label><input type="radio" name="mode" value="fixe" checked> fixe 104 px</label>
+  <label><input type="radio" name="mode" value="naturelle"> naturelle (relevé)</label>
+  <label>largeur de liste <input id="largeur" type="range" min="320" max="560" value="420">
+    <span id="largeur-v">420 px</span></label>
+</div>
+<p id="verdict">Chargement…</p>
+<div id="liste"></div>
+<script src="donnees.gen.js"></script>
+<script>
+if (typeof TERRAIN === 'undefined') {
+  document.getElementById('verdict').textContent =
+    'donnees.gen.js absent — lance d’abord : node spikes/terrain-r0/extraire.mjs';
+} else {
+  const liste = document.getElementById('liste');
+  const heure = (epoch) => {
+    if (!epoch) return '';
+    const d = new Date(epoch * 1000), auj = new Date();
+    return d.toDateString() === auj.toDateString()
+      ? d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  };
+  // Regle absolue conservee ici aussi : donnees reelles -> textContent.
+  let i = 0;
+  for (const m of TERRAIN.lignes) {
+    const l = document.createElement('div');
+    l.className = 'ligne' + (m.seen ? '' : ' non-lu') + (i === 0 ? ' signature' : '');
+    const l1 = document.createElement('div'); l1.className = 'l1';
+    const exp = document.createElement('span'); exp.className = 'exp';
+    exp.textContent = m.sender;
+    const h = document.createElement('span'); h.className = 'heure';
+    h.textContent = heure(m.date_epoch);
+    l1.append(exp, h);
+    const objet = document.createElement('p'); objet.className = 'objet';
+    objet.textContent = m.subject;
+    const ap = document.createElement('p'); ap.className = 'apercu';
+    ap.textContent = m.apercu || ' ';
+    l.append(l1, objet, ap);
+    const puces = [];
+    if (m.fil > 1) puces.push(['forum', m.fil + ' messages']);
+    if (m.pieces > 0) puces.push(['attach_file', m.pieces + (m.pieces > 1 ? ' fichiers' : ' fichier')]);
+    if (puces.length) {
+      const zp = document.createElement('div'); zp.className = 'puces';
+      for (const [ic, label] of puces) {
+        const p = document.createElement('span'); p.className = 'puce';
+        const s = document.createElement('span'); s.className = 'ms';
+        s.setAttribute('aria-hidden', 'true'); s.textContent = ic;
+        p.append(s, document.createTextNode(label));
+        zp.appendChild(p);
+      }
+      l.appendChild(zp);
+    }
+    liste.appendChild(l);
+    i++;
+  }
+
+  const mesurer = () => {
+    const lignes = [...document.querySelectorAll('.ligne')];
+    if (document.body.classList.contains('fixe')) {
+      let debordent = 0;
+      for (const l of lignes) {
+        const trop = l.scrollHeight > l.clientHeight + 1;
+        l.classList.toggle('deborde', trop);
+        if (trop) debordent++;
+      }
+      const v = document.getElementById('verdict');
+      v.textContent = (debordent === 0 ? 'GO — ' : 'DEFAUT — ')
+        + debordent + '/' + lignes.length + ' lignes debordent de 104 px'
+        + (debordent ? ' (cerclees d’alerte)' : '');
+      v.style.color = debordent === 0 ? 'var(--accent)' : 'var(--alert)';
+    } else {
+      const hs = lignes.map((l) => { const h = Math.round(l.getBoundingClientRect().height);
+        l.dataset.h = h; return h; });
+      const freq = new Map();
+      for (const h of hs) freq.set(h, (freq.get(h) || 0) + 1);
+      const detail = [...freq.entries()].sort((a, b) => b[1] - a[1])
+        .map(([h, n]) => h + ' px × ' + n).join(' ; ');
+      const v = document.getElementById('verdict');
+      v.textContent = 'Releve : ' + detail;
+      v.style.color = 'var(--ink2)';
+    }
+  };
+
+  for (const r of document.querySelectorAll('input[name=mode]')) {
+    r.addEventListener('change', () => {
+      document.body.className = r.value; mesurer();
+    });
+  }
+  const curseur = document.getElementById('largeur');
+  curseur.addEventListener('input', () => {
+    liste.style.maxWidth = curseur.value + 'px';
+    document.getElementById('largeur-v').textContent = curseur.value + ' px';
+    mesurer();
+  });
+  liste.style.maxWidth = '420px';
+  document.fonts.ready.then(mesurer);
+}
+</script>
+</body>
+</html>
