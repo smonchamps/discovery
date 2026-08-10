@@ -14,6 +14,14 @@ d'abord lancer l'application avec le compte réel et laisser la
 synchronisation **et le rattrapage des corps** tourner (l'aperçu et le
 volet en ont besoin) :
 
+Depuis **PowerShell**, à la racine du dépôt :
+
+```powershell
+$env:Path = "$env:USERPROFILE\.cargo\bin;C:\Program Files\LLVM\bin;$env:Path"; $env:GOOGLE_CLIENT_ID = "…"; $env:GOOGLE_CLIENT_SECRET = "…"; cargo run -p discovery-desktop
+```
+
+Depuis **Git Bash** :
+
 ```bash
 export PATH="$HOME/.cargo/bin:/c/Program Files/LLVM/bin:$PATH" && export GOOGLE_CLIENT_ID="…" GOOGLE_CLIENT_SECRET="…" && cargo run -p discovery-desktop
 ```
