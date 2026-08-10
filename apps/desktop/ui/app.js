@@ -6,7 +6,9 @@
 // Actions de triage : optimistes localement, rejouées au prochain sync.
 // Envoi : journalisé dans la boîte d'envoi AVANT tout réseau, vidangé
 // ensuite — jamais d'envoi perdu, jamais d'envoi fantôme.
-const invoke = window.__TAURI__.core.invoke;
+// R0-S5 : tout le trafic vers le coeur passe par le port de transport
+// (transport.js). app.js ne connait plus Tauri.
+const invoke = creerTransport().appel;
 const el = (id) => document.getElementById(id);
 
 const ROW_HEIGHT = 56;

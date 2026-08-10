@@ -90,9 +90,21 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
     garde-fou `[hidden]`** ; les styles **scopés par composant** → **plus de
     sélecteur d'élément `header{}` qui fuit**. S4 est donc aussi une **reprise
     de dette**, pas seulement une règle.
-- **S5 — Port de transport.** Définir l'interface UI↔cœur ; livrer l'impl
-  **en-processus** (Tauri IPC). L'impl **distante** (HTTP/WS) est esquissée,
-  pas due ici.
+- **S5 — Port de transport. ✓ FAIT** (2026-08-10). Lecture du terrain : la
+  surface UI↔cœur est DÉJÀ un port pur — 39 commandes `invoke(nom, args) →
+  Promise`, **zéro événement Tauri** ; la progression se lit par **sondage**
+  (`sync_progress` 800 ms, `migration_progress`). L'interface tient donc en
+  **une opération** : `appel(commande, arguments) → Promise` (échec = message
+  string, le `Result<T, String>` du cœur, tel quel). Le sondage est un choix
+  de **portabilité**, pas un manque : il traverse un transport distant sans
+  rien changer, là où un canal poussé (WS/SSE) exigerait une seconde
+  abstraction qu'on ne paie pas tant que le besoin n'existe pas. Impl
+  **en-processus** livrée dans v1 même
+  ([`transport.js`](../apps/desktop/ui/transport.js)) — `app.js` ne connaît
+  plus Tauri — prouvée par les **21 parcours e2e** sur la vraie fenêtre.
+  Impl **distante** esquissée dans le même fichier (`POST
+  /api/appel/<commande>`, même vocabulaire, même contrat) ; hors Tauri, le
+  port échoue **franc et nommé**, jamais en silence.
 - **S6 — Hooks de test. ✓ FAIT** (2026-08-10). Le markup **généré** par
   `app.js` (lignes, résultats, fil, pièces jointes, puces, boutons de
   listes) porte des **`data-testid`** stables, et le gate E2E les
@@ -104,9 +116,9 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
   [`e2e/README.md`](../e2e/README.md).
 
 **GO/NO-GO :** chaque point a sa décision ou son chiffre. Budgets non touchés.
-**S6, S1 et S4 sont clos** (S1 : décision + spike, validation terrain due) ;
-restent **S2** (terrain : ligne à hauteur fixe sur contenu réel), **S3**
-(icônes vendorisées) et **S5** (port de transport) avant R1.
+**S6, S1, S4 et S5 sont clos** (S1 : décision + spike, validation terrain
+due) ; restent **S2** (terrain : ligne à hauteur fixe sur contenu réel) et
+**S3** (icônes vendorisées) avant R1.
 
 ## R1 — Socle de jetons sur v1 (le socle invisible, prouvé à bas coût)
 
