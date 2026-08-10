@@ -21,6 +21,20 @@ test.afterAll(async () => {
   await closeApp({ app, browser });
 });
 
+// Filet d'isolation : chaque test part SANS composeur ouvert. Le mode
+// `serial` fait chaîner l'état métier (brouillons, archives, étoiles
+// persistent en base) — ce garde-fou ne touche QUE l'overlay de
+// composition, qu'un test peut laisser ouvert (« brouillon … Reprendre »
+// ne le referme pas). Sans lui, le test suivant échoue par intermittence
+// sous charge : une seule Échap ne suffit pas depuis un champ (elle en
+// sort d'abord), d'où la boucle bornée.
+test.beforeEach(async () => {
+  for (let essais = 0; essais < 3 && (await page.locator('#compose').isVisible()); essais++) {
+    await page.keyboard.press('Escape');
+  }
+  await expect(page.locator('#compose')).toBeHidden();
+});
+
 test("lire : la liste s'affiche, le plus récent d'abord, et le corps s'ouvre", async () => {
   await expect(page.locator('.row').first()).toBeVisible();
   await expect(page.locator('.row').first()).toContainText('n°200');
