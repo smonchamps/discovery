@@ -1,0 +1,16 @@
+# Editeur de liens sur ARM64 Windows.
+#
+# Quand le hook `pre-push` s'execute, git le lance via `sh` (Git Bash), dont
+# le PATH place `/usr/bin/link.exe` — l'outil de hard-link de GNU coreutils —
+# AVANT le `link.exe` de MSVC. rustc appelle `link.exe` nu et tombe sur le
+# mauvais, d'ou l'erreur « link: extra operand / Try 'link --help' ».
+#
+# On force `lld-link`, l'editeur de liens de LLVM (deja requis par `ring`
+# pour assembler sa crypto sur ARM64) : aucun homonyme GNU ne le masque, et
+# il comprend les arguments MSVC. Il resout ses bibliotheques par la
+# detection MSVC de rustc, donc sans vcvars.
+#
+# Portee au SEUL triple aarch64-pc-windows-msvc : aucun effet sur les cibles
+# x86_64 ni sur la CI GitHub hebergee (x64).
+[target.aarch64-pc-windows-msvc]
+linker = "lld-link"
