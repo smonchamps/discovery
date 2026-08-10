@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Spike S1 — frontière du volet de lecture</title>
+<style>
+  /* Le CHROME (hors iframe) : plein Douceur, jetons du Système « nature ». */
+  :root {
+    --bg:#f0f2ef; --surface:#ffffff; --ink:#232725; --ink2:#4d534f;
+    --muted:#5c625e; --border:#dadfda; --accent:#2f6e5b;
+    --shadow:0 2px 8px rgba(35,39,37,0.08);
+    --sys:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { font-family:var(--sys); background:var(--bg); color:var(--ink);
+    margin:0; padding:28px; }
+  h1 { font-size:24px; font-weight:600; letter-spacing:-.01em; margin:0 0 6px; }
+  .sous { font-size:13px; color:var(--muted); margin:0 0 24px; max-width:70ch; line-height:1.5; }
+  .grille { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:24px; }
+  .cas { background:var(--surface); border:1px solid var(--border);
+    border-left:2px solid var(--accent); border-radius:10px;
+    box-shadow:var(--shadow); overflow:hidden; }
+  .cas > figcaption { padding:12px 16px; border-bottom:1px solid var(--border); }
+  .cas h2 { font-size:15px; font-weight:600; margin:0; }
+  .cas p.note { font-size:13px; color:var(--muted); margin:4px 0 0; line-height:1.45; }
+  .cas .verdict { font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+    font-weight:600; color:var(--accent); }
+  iframe { width:100%; height:240px; border:0; display:block; background:#fff; }
+</style>
+</head>
+<body>
+<h1>Spike S1 — la frontière du volet de lecture</h1>
+<p class="sous">Chaque cadre est le vrai bac à sable de production : iframe
+<code>sandbox</code> (sans jeton) + <code>srcdoc</code> portant la CSP par
+message <code>default-src 'none'; img-src data: cid:; style-src
+'unsafe-inline'</code>. Seule la base typographique de <code>&lt;style&gt;body{…}&gt;</code>
+change — en sélecteurs simples, sans <code>!important</code>. Le CHROME
+autour (cette carte, sa signature) est plein Douceur, hors iframe.</p>
+
+<div class="grille" id="grille"></div>
+
+<script>
+// Reimplementation FIDELE de mail-render::email_document, avec la base
+// typographique ETENDUE au Systeme. `plainText` : colonne de lecture 68ch
+// seulement quand on maitrise le corps (texte converti) ; le HTML garde sa
+// largeur. `ink` : couleur bakee (l'iframe ne voit pas les variables de
+// l'hote — document separe).
+function emailDocument(body, { plainText = false, ink = '#232725' } = {}) {
+  const sys = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  const colonne = plainText ? 'max-width:68ch;margin:12px auto;' : 'margin:12px;';
+  const base = `body{font-family:${sys};font-size:15px;line-height:1.65;`
+    + `color:${ink};${colonne}overflow-wrap:break-word;background:#fff}`;
+  return `<!doctype html><html><head><meta charset="utf-8">`
+    + `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; `
+    + `img-src data: cid:; style-src 'unsafe-inline'">`
+    + `<style>${base}</style></head><body>${body}</body></html>`;
+}
+
+const cas = [
+  {
+    titre: '1 — Texte brut (corps converti)',
+    verdict: 'Douceur pleine',
+    note: "Aucun style d'expediteur : la base habille tout — police systeme, "
+      + "15 px / 1,65, colonne 68 px, encre du theme.",
+    plainText: true,
+    body: `<p>Bonjour Paul,</p><p>J'ai repris les articles 4 et 7 apres notre `
+      + `echange de lundi. Il reste la clause de renouvellement a trancher — `
+      + `je te propose d'en parler mardi.</p><p>Bien a toi,<br>Camille</p>`,
+  },
+  {
+    titre: '2 — HTML simple, non stylise',
+    verdict: 'Douceur, sans bride de largeur',
+    note: "Structure HTML mais sans style propre : la base typographique "
+      + "s'applique ; PAS de colonne 68 px (ne pas brider une mise en page).",
+    plainText: false,
+    body: `<h2>Compte rendu du 4 aout</h2><p>Trois decisions actees :</p>`
+      + `<ul><li>Budget valide</li><li>Livraison le 12</li><li>Relance client</li></ul>`
+      + `<p>Une question ouverte sur le calendrier.</p>`,
+  },
+  {
+    titre: "3 — HTML stylise par l'expediteur",
+    verdict: "L'expediteur GARDE la main",
+    note: "Police Georgia, taille 19, couleurs, largeur 520 px, definies par "
+      + "l'expediteur. La base ne surcharge RIEN (selecteurs simples).",
+    plainText: false,
+    body: `<div style="font-family:Georgia,serif;font-size:19px;line-height:1.5;`
+      + `color:#3a3a3a;max-width:520px;margin:auto"><p style="color:#c0492b;`
+      + `font-weight:bold;font-size:22px">Promotion d'ete</p><p>Une mise en page `
+      + `pensee par l'expediteur — police, taille, couleur, largeur. Le socle `
+      + `ne doit rien ecraser ici.</p></div>`,
+  },
+  {
+    titre: '4 — Image distante + script injecte',
+    verdict: 'Bac a sable : inertes',
+    note: "L'image distante est bloquee par la CSP (img-src sans https:) ; le "
+      + "script ne s'execute pas (sandbox + default-src 'none'). Aucun texte rouge.",
+    plainText: false,
+    body: `<p>Ce message tente de charger un pixel espion et d'executer du script.</p>`
+      + `<img src="https://example.com/pixel-espion.png" width="220" height="70" `
+      + `alt="[image distante bloquee]" style="border:1px dashed #c0492b;padding:8px">`
+      + `<script>document.body.insertAdjacentHTML('beforeend',`
+      + `'<p style=\\'color:red;font-weight:bold\\'>SCRIPT EXECUTE — echec du bac a sable</p>')`
+      + `<\/script>`,
+  },
+];
+
+const grille = document.getElementById('grille');
+for (const c of cas) {
+  const fig = document.createElement('figure');
+  fig.className = 'cas';
+  fig.style.margin = '0';
+  const cap = document.createElement('figcaption');
+  cap.innerHTML = `<div class="verdict">${c.verdict}</div>`
+    + `<h2>${c.titre}</h2><p class="note">${c.note}</p>`;
+  const frame = document.createElement('iframe');
+  frame.setAttribute('sandbox', '');            // sans jeton = verrouillage maximal
+  frame.setAttribute('title', c.titre);
+  frame.srcdoc = emailDocument(c.body, { plainText: c.plainText });
+  fig.append(cap, frame);
+  grille.appendChild(fig);
+}
+</script>
+</body>
+</html>

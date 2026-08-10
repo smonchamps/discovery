@@ -52,10 +52,15 @@ sur le vrai noyau**.
 Aucun écran de production. On sort des **décisions écrites** ou des **chiffres**
 (§2.2). Rien ne se code tant que R0 n'est pas soldé.
 
-- **S1 — Frontière du volet de lecture.** Micro-spike : injecter la typo du
-  Système dans le `srcdoc` de l'iframe sur un vrai mail. Confirmer que le corps
-  HTML **reste dans le bac à sable** et que la Douceur habille le chrome +
-  le texte brut, sans jamais surcharger les styles de l'expéditeur.
+- **S1 — Frontière du volet de lecture. ✓ FAIT (spike)** (2026-08-10). Le
+  corps reste dans l'iframe `sandbox` + CSP par message — **inchangé**. La
+  Douceur habille **(a)** le chrome hors iframe, **(b)** la base typographique
+  de `email_document` en sélecteurs simples **sans écraser l'expéditeur** ;
+  colonne 68 ch réservée au **texte brut** ; encre **bakée par thème**
+  (l'iframe ne voit pas les variables de l'hôte), HTML sur surface claire même
+  en thème sombre. Prouvé sur 4 cas —
+  [`spikes/volet-lecture/`](../spikes/volet-lecture/README.md). **Dû :**
+  validation sur un VRAI mail par le Chef Ingénieur.
 - **S2 — Ligne à hauteur fixe.** Vérifier sur contenu réel que la ligne 104 px
   tient (objets/aperçus réels tronqués, puces logées). L'ADR 0015 a tranché
   *fixe* ; ceci le prouve au terrain. Sinon : virtualisation mesurée (coût
@@ -82,7 +87,8 @@ Aucun écran de production. On sort des **décisions écrites** ou des **chiffre
   [`e2e/README.md`](../e2e/README.md).
 
 **GO/NO-GO :** chaque point a sa décision ou son chiffre. Budgets non touchés.
-**S6 est clos** ; S1–S5 restent à jouer avant R1.
+**S6 et S1 sont clos** (S1 : décision + spike ; validation terrain due) ;
+S2–S5 restent à jouer avant R1.
 
 ## R1 — Socle de jetons sur v1 (le socle invisible, prouvé à bas coût)
 
