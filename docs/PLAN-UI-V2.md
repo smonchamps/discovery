@@ -159,6 +159,51 @@ décision du Chef Ingénieur **sur les chiffres**, pas d'avis.
 **Refus :** pas de nav ni de volet complets — juste la liste et une
 lecture minimale, de quoi mesurer.
 
+**Résultats (2026-08-11, banc `e2e/mesure-v2.mjs` + `diag-v2.mjs`,
+256 312 messages seedés = 205 050 conversations, machine ARM64) :**
+
+| Poste | Cible | v2 | v1 iso-décor | Verdict |
+|---|---|---|---|---|
+| Rendu de page (Svelte, pages servies) | <100 ms | méd. 0,4 ms · max 2,1 ms | — | **VERT** |
+| Défilement proche (fenêtre à fenêtre) | <100 ms | méd. 0,6 ms · p95 1,4 ms | — | **VERT** |
+| Saut profond aléatoire (service + rendu) | <100 ms | p95 307,6 ms | même commande : 240,8 ms dès la 1ʳᵉ page à froid | **ANDON — étage cœur** |
+| Bascule de thème | — | p50 0,2 · p95 0,4 ms | — | **VERT** |
+| Ouverture d'un message | <50 ms | p95 8,2 ms | — | **VERT** |
+| RAM au repos (ADR 0002) | <200 Mo | **110,9 Mo** / 7 proc. | 115,8 Mo / 7 proc. | **VERT** — v2 plus légère que v1 |
+| Démarrage à froid | <1 s | 1 386–1 547 ms (mur) | 1 203 ms (interne) | **ANDON partagé** — voir caveat |
+
+Gabarits mesurés de la ligne prototype : **101 / 132 px**. La ligne du
+prototype est **innocentée** : le décompose (`diag-v2.mjs`) montre que le
+saut profond paie la requête cœur (`elapsed_us` : 10,5 ms à l'offset 0 →
+252,6 ms à 200 000, linéaire — l'`OFFSET` exécute la triple jointure ET
+l'`EXISTS` corrélé sur `attachments` pour chaque ligne sautée), l'IPC
+~3 ms, le rendu Svelte 0,4 ms. C'est la dette nommée « défilement
+profond » des reports assumés (PASSATION §8), identique en v1.
+
+**Caveats nommés :** base du banc dans `target/e2e` (OneDrive — la
+synchro peut gonfler démarrage et première page à froid, l'avertissement
+de `mesure.mjs` vaut aussi ici) ; démarrage v1 mesuré par son horloge
+interne, v2 au mur — même ordre de grandeur, pas la même règle. Les deux
+se re-mesurent au terrain sur la vraie base, hors OneDrive.
+
+**Arbitrage Chef Ingénieur (andon) :**
+1. **Saut profond** — (a) statu quo v1 : gate tenu au geste réel, la
+   dette reste au report assumé ; ou (b) **correctif cœur chirurgical**
+   (recommandé) : squelette en sous-requête dans `unified_page_sql` —
+   `threads` seul porte `ORDER BY`/`LIMIT`/`OFFSET` sur son index, les
+   jointures et l'`EXISTS` ne s'exécutent que sur les 200 lignes
+   retenues. Court, testable, **profite aussi à v1**. Décision de cœur →
+   à toi.
+2. **Démarrage** — re-mesure terrain avant tout verdict : les deux UIs
+   paient pareil, le suspect est en amont du front.
+
+**Notes portées à P2 :** aperçu de liste et compte de fichiers par fil
+absents de `MessageRow` (le port doit les exposer pour la ligne et les
+puces complètes) ; éviction LRU des pages en mémoire (longue session :
+la rétention se voit — 270 Mo après 300 sauts + 20 iframes) ; a11y
+clavier de la ligne ; le renderer de l'iframe sandbox est un 8ᵉ processus
+quand un message est ouvert — la méthodologie RAM le comptera.
+
 ### P2 — Boîte de réception (écran 02), câblée au réel
 
 **Objectif :** l'écran principal, pixel-exact, sur les 4 comptes réels.
