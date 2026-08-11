@@ -10,13 +10,17 @@
   // « Voir la conversation » (P3), « Répondre » et « Transférer » (P4)
   // sont présents et inertes — leurs phases les câbleront.
   import { appel } from './lib/transport.js';
-  import { quand } from './lib/quand.js';
+  import { quandLong } from './lib/quand.js';
 
   let { onarchiver = () => {}, onsupprimer = () => {} } = $props();
 
   let ligne = $state(null);
   let corps = $state('');
   let derniereOuvertureMs = $state(null);
+  // Jeton d'ouverture, PAS une comparaison d'objet : `$state` enveloppe
+  // les objets dans un proxy, `ligne !== nouvelle` après un await est
+  // donc toujours vrai — le corps ne se posait jamais.
+  let jeton = 0;
 
   const meta = $derived.by(() => {
     if (!ligne) return '';
@@ -26,6 +30,7 @@
 
   export async function ouvrir(nouvelle) {
     const t0 = performance.now();
+    const mien = ++jeton;
     ligne = nouvelle;
     try {
       const vue = await appel('message_body', {
@@ -34,7 +39,7 @@
         uid: nouvelle.uid,
         showImages: false,
       });
-      if (ligne !== nouvelle) return derniereOuvertureMs; // sélection changée
+      if (mien !== jeton) return derniereOuvertureMs; // sélection changée
       corps = vue.document;
     } catch (err) {
       corps = '';
@@ -61,7 +66,7 @@
         <h3 class="titre" data-testid="lecture-sujet">{ligne.subject}</h3>
         <div class="metas">
           <span class="puce">{meta}</span>
-          <span class="dernier">Dernier message · {quand(ligne.epoch)}</span>
+          <span class="dernier">Dernier message · {quandLong(ligne.epoch)}</span>
           <span class="puce inerte" data-testid="voir-conversation">
             <span class="ms" aria-hidden="true">unfold_more</span>Voir la conversation</span>
         </div>

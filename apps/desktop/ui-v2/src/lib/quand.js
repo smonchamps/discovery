@@ -7,6 +7,18 @@ const MOIS = [
   'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
 ];
 
+// La forme longue du volet de lecture : « Aujourd'hui, 09:12 »,
+// « Hier, 16:30 », « 5 août, 10:12 » — celle du prototype.
+export function quandLong(epoch) {
+  if (!epoch) return '';
+  const date = new Date(epoch * 1000);
+  const heure = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  const court = quand(epoch);
+  if (court === heure) return `Aujourd'hui, ${heure}`;
+  if (court === 'Hier') return `Hier, ${heure}`;
+  return `${court}, ${heure}`;
+}
+
 export function quand(epoch) {
   if (!epoch) return '';
   const date = new Date(epoch * 1000);
