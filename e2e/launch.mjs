@@ -52,16 +52,30 @@ export async function launchApp({
 // `rebuild-v2.mjs`, une fois.
 // `vierge: true` : base NEUVE et aucun compte factice — l'état « zéro
 // compte » qui doit montrer l'écran 01 (onboarding).
-export async function launchAppV2({ vierge = false } = {}) {
+// `comptes: [{email, messages}]` : le décor v1 (seed_inbox) porté sur
+// v2 — les parcours R2 rejouent les graines EXACTES des specs v1.
+export async function launchAppV2({ vierge = false, comptes = null } = {}) {
   construireV2(root, { release: false });
 
   const db = path.join(
-    root, 'target', 'e2e', vierge ? 'parcours-v2-vierge.db' : 'parcours-v2.db',
+    root,
+    'target',
+    'e2e',
+    vierge ? 'parcours-v2-vierge.db' : comptes ? 'parcours-v2-inbox.db' : 'parcours-v2.db',
   );
   rmSync(db, { force: true });
   mkdirSync(path.dirname(db), { recursive: true });
   if (vierge) {
     return attacher(db, []);
+  }
+  if (comptes) {
+    for (const compte of comptes) {
+      execSync(
+        `cargo run -p mail-core --example seed_inbox -- "${db}" ${compte.messages} ${compte.email}`,
+        { cwd: root, stdio: 'inherit' },
+      );
+    }
+    return attacher(db, comptes.map((compte) => compte.email));
   }
   execSync(`cargo run -p mail-core --example seed_clarity -- "${db}"`, {
     cwd: root,

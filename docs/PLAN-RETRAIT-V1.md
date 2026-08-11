@@ -107,6 +107,20 @@ joués sur l'UI v1 par `launchApp`. Destins :
 | Étoile / Déplacer | **soldés par D2** (coupés) — les parcours tombent avec, ligne motivée |
 | Compte générique (ajout IMAP réel contre serveur de test) | **à porter** sur l'écran 01 (le guichet générique existe) |
 
+**Trou découvert au portage (2026-08-11), à câbler AVANT B1 :** v1
+offrait « ajouter un compte » à tout moment (bouton + 3 dialogues) ;
+v2 n'a AUCUNE porte d'ajout dès qu'un compte existe — l'écran 01 ne
+s'affiche qu'à zéro compte. Destination proposée : une section
+« Comptes » dans Réglages (rangées des comptes réels + « Ajouter un
+compte » routé comme l'écran 01). À arbitrer par le Chef Ingénieur.
+
+**Abandons de portage motivés** (consignés en tête de
+`refonte-parcours-v1.spec.js`) : étoiler/déplacer (D2) ; auto-avance
+après archivage (le prototype ferme le volet, écart A6) ; distinction
+au corps de deux brouillons locaux (le bandeau-liste v1 n'existe plus —
+l'équivalent v2 est le dossier Brouillons après reflet, parcours
+terrain).
+
 **Gate R2 :** la suite e2e v2 couvre chaque parcours « à porter » ;
 `npm test` complet vert AVEC les specs v1 encore en place (les deux
 suites coexistent jusqu'à B2).

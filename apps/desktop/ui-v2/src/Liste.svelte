@@ -178,26 +178,28 @@
   let resultats = $state(null);
   let minuterieRecherche;
   let jetonRecherche = 0;
+  async function executerRecherche(q) {
+    const mien = ++jetonRecherche;
+    try {
+      const lignes = await appel('search_messages', { query: q });
+      if (mien !== jetonRecherche) return; // frappe plus récente
+      resultats = lignes;
+      onresultats(lignes.length);
+    } catch (err) {
+      console.error('search_messages :', err);
+    }
+  }
   $effect(() => {
     const q = recherche.trim();
     untrack(() => {
       clearTimeout(minuterieRecherche);
-      const mien = ++jetonRecherche;
       if (q.length < 3) {
+        jetonRecherche += 1;
         resultats = null;
         onresultats(null);
         return;
       }
-      minuterieRecherche = setTimeout(async () => {
-        try {
-          const lignes = await appel('search_messages', { query: q });
-          if (mien !== jetonRecherche) return; // frappe plus récente
-          resultats = lignes;
-          onresultats(lignes.length);
-        } catch (err) {
-          console.error('search_messages :', err);
-        }
-      }, 150);
+      minuterieRecherche = setTimeout(() => executerRecherche(q), 150);
     });
   });
 
@@ -268,6 +270,12 @@
     version += 1;
     servirPage(Math.floor(premier / PAGE));
     servirPage(0);
+    // Une recherche ACTIVE se resert aussi : archiver un résultat doit
+    // le retirer des résultats — la régression #4 de v1, même trou.
+    if (resultats !== null) {
+      const q = recherche.trim();
+      if (q.length >= 3) executerRecherche(q);
+    }
   }
 </script>
 

@@ -45,3 +45,21 @@ test('un domaine inconnu révèle le guichet IMAP/SMTP, serveurs proposés', asy
   // Rien n'est parti : pas d'erreur de connexion, le formulaire attend.
   await expect(page.locator('[data-testid="onboarding-erreur"]')).toHaveCount(0);
 });
+
+// Porté de compte-generique.spec.js (R2) : le contrat IPC du formulaire
+// générique. Le défaut d'origine — champs envoyés à plat au lieu de la
+// struct `input` — rendait l'ajout IMAP impossible SANS qu'aucun test ne
+// le voie. On vise un hôte qui ne résout jamais (`.test`, TLD réservé) :
+// l'échec DOIT venir de la connexion, jamais de la désérialisation.
+test("compte générique : le formulaire atteint la connexion (contrat IPC)", async () => {
+  await page.locator('#ob-mdp').fill('mot-de-passe-factice');
+  await page.locator('#ob-imap').fill('imap.invalide.test');
+  await page.locator('#ob-smtp').fill('smtp.invalide.test');
+  await page.locator('[data-testid="onboarding-continuer"]').click();
+
+  const erreur = page.locator('[data-testid="onboarding-erreur"]');
+  await expect(erreur).toContainText('connexion IMAP impossible', { timeout: 30_000 });
+  // La régression d'origine, nommée : elle ne doit jamais revenir.
+  await expect(erreur).not.toContainText('invalid args');
+  await expect(erreur).not.toContainText('missing required key');
+});
