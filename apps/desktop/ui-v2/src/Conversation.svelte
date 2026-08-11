@@ -17,6 +17,7 @@
   // sinon l'adresse du compte. Approximation dite, pas cachée.
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
+  import { activation } from './lib/clavier.js';
 
   let {
     onretour = () => {},
@@ -164,7 +165,9 @@
             {#if ligne.attachment_count > 0}
               <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{ligne.attachment_count} fichier{ligne.attachment_count > 1 ? 's' : ''}</span>
             {/if}
-            <span class="puce bouton" data-testid="tout-deplier" onclick={toutDeplier}>
+            <span class="puce bouton" data-testid="tout-deplier"
+                  role="button" tabindex="0"
+                  onclick={toutDeplier} onkeydown={activation(toutDeplier)}>
               <span class="ms" aria-hidden="true">unfold_more</span>Tout déplier</span>
           </div>
         </div>
@@ -173,7 +176,9 @@
           {#each fil as m (cle(m))}
             {#if deplies[cle(m)]}
               <article class="deplie" data-testid="message-deplie">
-                <div class="tete-message" onclick={() => basculer(m)}>
+                <div class="tete-message" role="button" tabindex="0"
+                     aria-expanded="true"
+                     onclick={() => basculer(m)} onkeydown={activation(() => basculer(m))}>
                   <span class="auteur">{m.sender}</span>
                   {#if m.attachment_count > 0}
                     <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{m.attachment_count} fichier{m.attachment_count > 1 ? 's' : ''}</span>
@@ -206,7 +211,9 @@
                 </div>
               </article>
             {:else}
-              <div class="replie" data-testid="message-replie" onclick={() => basculer(m)}>
+              <div class="replie" data-testid="message-replie"
+                   role="button" tabindex="0" aria-expanded="false"
+                   onclick={() => basculer(m)} onkeydown={activation(() => basculer(m))}>
                 <span class="auteur">{m.sender}</span>
                 <span class="apercu">{m.preview ?? ''}</span>
                 <span class="heure">{quand(m.epoch)}</span>

@@ -478,7 +478,7 @@
     <span class="recherche" data-testid="recherche">
       <span class="ms" aria-hidden="true">search</span>
       <input type="text" bind:this={champRecherche} bind:value={recherche}
-             data-testid="champ-recherche"
+             data-testid="champ-recherche" aria-label="Recherche"
              placeholder="Chercher un message, une personne, un fichier"></span>
     <button type="button" class="principal" data-testid="ecrire" onclick={ecrire}>
       <span class="ms" aria-hidden="true">edit_square</span>Écrire</button>

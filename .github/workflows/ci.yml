@@ -51,6 +51,8 @@ jobs:
       - name: Build Vite
         run: npm run build
         working-directory: apps/desktop/ui-v2
+      - name: Contrastes WCAG (A8)
+        run: node e2e/contraste.mjs
 
   audit:
     name: cargo audit (CVE des dépendances)

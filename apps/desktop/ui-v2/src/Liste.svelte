@@ -9,6 +9,7 @@
   import { tick, untrack } from 'svelte';
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
+  import { activation } from './lib/clavier.js';
 
   let {
     categorie = 'reception',
@@ -288,11 +289,13 @@
       </div>
     {/if}
     {#snippet rangee(ligne)}
-      <article class="ligne"
-               class:nonlu={ligne.thread_unseen > 0}
-               class:choisie={estChoisie(ligne)}
-               data-testid="ligne"
-               onclick={() => choisir(ligne)}>
+      <div class="ligne"
+           class:nonlu={ligne.thread_unseen > 0}
+           class:choisie={estChoisie(ligne)}
+           data-testid="ligne"
+           role="button" tabindex="0"
+           onclick={() => choisir(ligne)}
+           onkeydown={activation(() => choisir(ligne))}>
         <div class="l1">
           <span class="exp">{ligne.sender}</span>
           <span class="heure">{quand(ligne.epoch)}</span>
@@ -309,7 +312,7 @@
             {/if}
           </span>
         {/if}
-      </article>
+      </div>
     {/snippet}
     {#if resultats !== null}
       <div class="fenetre-recherche" data-testid="resultats">
@@ -345,7 +348,9 @@
     {#each ONGLETS as o (o.id)}
       <span class="onglet" class:actif={ongletActif === o.id}
             data-testid="onglet" data-onglet={o.id}
-            onclick={() => ononglet(o.id)}>
+            role="button" tabindex="0" aria-pressed={ongletActif === o.id}
+            onclick={() => ononglet(o.id)}
+            onkeydown={activation(() => ononglet(o.id))}>
         <span class="ms" aria-hidden="true">{o.icone}</span>{o.libelle}
       </span>
     {/each}

@@ -5,6 +5,7 @@
   // (localStorage['discovery-theme'], défaut `nature` — l'OS sombre
   // automatique est en D6, après bascule).
   import { FICHES, appliquerTheme, themeActuel } from './lib/theme.js';
+  import { activation } from './lib/clavier.js';
 
   let visible = $state(false);
   let actif = $state(themeActuel());
@@ -27,7 +28,7 @@
 
 {#if visible}
   <div class="scrim" data-testid="reglages-modal">
-    <div class="carte">
+    <div class="carte" role="dialog" aria-modal="true" aria-label="Réglages">
       <div class="tete">
         <span class="titre">Réglages</span>
         <button type="button" class="fermer" aria-label="Fermer" onclick={fermer}>
@@ -39,7 +40,9 @@
           {#each FICHES as fiche (fiche.id)}
             <div class="rangee" class:active={actif === fiche.id}
                  data-testid="theme" data-theme-id={fiche.id}
-                 onclick={() => choisir(fiche.id)}>
+                 role="button" tabindex="0" aria-pressed={actif === fiche.id}
+                 onclick={() => choisir(fiche.id)}
+                 onkeydown={activation(() => choisir(fiche.id))}>
               <span class="pastilles">
                 {#each fiche.pastilles as couleur (couleur)}
                   <span class="pastille" style="background:{couleur}"></span>

@@ -249,6 +249,22 @@ test('les raccourcis servent le clavier (D3)', async () => {
   );
 });
 
+test("le clavier active ce que le clic active (A8) : nav, rangée, onglet", async () => {
+  // Une rangée de nav n'est pas un <button> (géométrie du prototype) :
+  // elle doit répondre à Entrée quand même.
+  await page.locator('[data-testid="nav-dossier"][data-categorie="archives"]').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-testid="statut"]')).toContainText('Archives ·');
+  // Une ligne de liste, à Espace.
+  await page.locator('[data-testid="ligne"]').first().focus();
+  await page.keyboard.press(' ');
+  await expect(page.locator('[data-testid="lecture-sujet"]')).not.toBeEmpty();
+  // Retour réception par le clavier.
+  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+});
+
 test('les réglages appliquent et persistent le thème', async () => {
   await page.locator('[data-testid="reglages"]').click();
   await expect(page.locator('[data-testid="theme"]')).toHaveCount(7);

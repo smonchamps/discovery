@@ -269,7 +269,7 @@
 
 {#if visible}
   <div class="scrim" data-testid="composition">
-    <div class="carte">
+    <div class="carte" role="dialog" aria-modal="true" aria-label={KICKERS[mode]}>
       <div class="tete">
         <span class="kicker" data-testid="composition-kicker">{KICKERS[mode]}</span>
         <span class="rappel">{objet}</span>
@@ -323,7 +323,8 @@
           <span class="ms" aria-hidden="true">attach_file</span>Joindre</button>
         <button type="button" onclick={enregistrerBrouillon} data-testid="composition-brouillon">
           <span class="ms" aria-hidden="true">drafts</span>Enregistrer le brouillon</button>
-        <span class="annuler" data-testid="composition-annuler" onclick={fermer}>Annuler</span>
+        <button type="button" class="annuler" data-testid="composition-annuler"
+                onclick={fermer}>Annuler</button>
       </div>
     </div>
   </div>
@@ -422,7 +423,9 @@
   .principal:hover { background:var(--accentH); border-color:var(--accentH); }
   .principal:disabled { opacity:.6; cursor:default; }
   .annuler {
-    margin-left:auto; font-size:13px; color:var(--muted);
+    margin-left:auto; height:auto; padding:0; border:none;
+    background:transparent; font-size:13px; color:var(--muted);
     text-decoration:underline; cursor:pointer;
   }
+  .annuler:hover { background:transparent; color:var(--ink2); }
 </style>

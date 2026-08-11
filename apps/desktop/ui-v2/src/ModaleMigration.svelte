@@ -70,7 +70,8 @@
 
 {#if visible}
   <div class="scrim" data-testid="migration-modale">
-    <div class="carte">
+    <div class="carte" role="dialog" aria-modal="true"
+         aria-label="Mise à jour de la base de messages">
       <p class="kicker">Discovery</p>
       <h3 class="titre">Vos messages deviennent des conversations.</h3>
       <p class="note">{note}</p>

@@ -9,6 +9,7 @@
   //
   import { appel } from './lib/transport.js';
   import { quandLong } from './lib/quand.js';
+  import { activation } from './lib/clavier.js';
 
   let {
     onarchiver = () => {},
@@ -94,7 +95,10 @@
           <span class="dernier">Dernier message · {quandLong(ligne.epoch)}</span>
           <span class="puce" class:cliquable={ligne.thread_id != null}
                 data-testid="voir-conversation"
-                onclick={() => ligne.thread_id != null && onconversation(ligne)}>
+                role="button" tabindex={ligne.thread_id != null ? 0 : -1}
+                aria-disabled={ligne.thread_id == null}
+                onclick={() => ligne.thread_id != null && onconversation(ligne)}
+                onkeydown={activation(() => ligne.thread_id != null && onconversation(ligne))}>
             <span class="ms" aria-hidden="true">unfold_more</span>Voir la conversation</span>
         </div>
       </div>

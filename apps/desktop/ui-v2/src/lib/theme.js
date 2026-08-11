@@ -13,7 +13,7 @@ const CLE = 'discovery-theme';
 // chaque thème SANS l'appliquer, d'où les hex répétés ici.
 export const FICHES = [
   { id: 'air', label: "L'air", desc: 'Ciels pâles et bleu clair, beaucoup de respiration.',
-    pastilles: ['#3f86b0', '#eef2f5', '#e3e9ee', '#ffffff', '#22303a'] },
+    pastilles: ['#3a7aa1', '#eef2f5', '#e3e9ee', '#ffffff', '#22303a'] },
   { id: 'feu', label: 'Le feu', desc: 'Sables chauds et braise, un accent orangé profond.',
     pastilles: ['#c0492b', '#f5efe8', '#eee3d9', '#fffaf5', '#2d201b'] },
   { id: 'eau', label: "L'eau", desc: "Verts d'eau et sarcelle, fond frais et minéral.",

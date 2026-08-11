@@ -4,7 +4,7 @@
 </script>
 
 {#if message}
-  <div class="toast" data-testid="toast">
+  <div class="toast" data-testid="toast" role="status">
     <span class="ms coche" aria-hidden="true">check_circle</span>
     <span class="texte">{message}</span>
   </div>

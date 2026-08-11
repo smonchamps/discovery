@@ -4,6 +4,8 @@
   // puis « Boîtes » : Toutes les boîtes + un rang par compte RÉEL — la
   // fiction « Travail / Personnel » n'existe pas ; icône `person` par
   // défaut (décision D7), libellé = adresse du compte.
+  import { activation } from './lib/clavier.js';
+
   let { comptes = [], categorie, compte, onchoisir = () => {} } = $props();
 
   const somme = (champ) => comptes.reduce((n, c) => n + c[champ], 0);
@@ -46,7 +48,9 @@
   {#each dossiers as d (d.id)}
     <div class="rang" class:actif={categorie === d.id}
          data-testid="nav-dossier" data-categorie={d.id}
-         onclick={() => onchoisir({ categorie: d.id })}>
+         role="button" tabindex="0" aria-current={categorie === d.id}
+         onclick={() => onchoisir({ categorie: d.id })}
+         onkeydown={activation(() => onchoisir({ categorie: d.id }))}>
       <span class="ms icone" aria-hidden="true">{d.icone}</span>
       <span class="libelle">{d.libelle}</span>
       {#if d.heros !== undefined}
@@ -63,7 +67,9 @@
     {#each boites as b (b.id)}
       <div class="rang" class:actif={compte === b.id}
            data-testid="nav-boite"
-           onclick={() => onchoisir({ compte: b.id })}>
+           role="button" tabindex="0" aria-current={compte === b.id}
+           onclick={() => onchoisir({ compte: b.id })}
+           onkeydown={activation(() => onchoisir({ compte: b.id }))}>
         <span class="ms icone" aria-hidden="true">{b.icone}</span>
         <span class="libelle">{b.libelle}</span>
         <span class="heros">{b.nonLues}</span>
