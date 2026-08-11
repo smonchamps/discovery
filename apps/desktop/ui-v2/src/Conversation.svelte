@@ -22,6 +22,9 @@
     onretour = () => {},
     onarchiver = () => {},
     onsupprimer = () => {},
+    onrepondre = () => {},
+    ontransferer = () => {},
+    onecrire = () => {},
   } = $props();
 
   let ligne = $state(null);
@@ -95,6 +98,11 @@
     for (const m of fil) basculer(m, true);
   }
 
+  // Répondre / Transférer depuis la conversation visent le DERNIER
+  // message du fil — la règle du prototype (la réponse reprend ses
+  // fichiers, la citation son corps).
+  const dernier = () => fil[fil.length - 1] ?? ligne;
+
   const propre = (m) => ligne && m.sender_address === ligne.account_email;
   const ligneDe = (m) =>
     m.sender_address ? `${m.sender} <${m.sender_address}>` : m.sender;
@@ -113,7 +121,7 @@
       <button type="button" class="retour" data-testid="retour-boite" onclick={onretour}>
         <span class="ms" aria-hidden="true">arrow_back</span>Boîte de réception</button>
       <span class="espace"></span>
-      <button type="button" class="principal">
+      <button type="button" class="principal" onclick={onecrire}>
         <span class="ms" aria-hidden="true">edit_square</span>Écrire</button>
     </header>
 
@@ -176,9 +184,11 @@
         </div>
 
         <div class="actions">
-          <button type="button" class="principal" data-testid="conv-repondre">
+          <button type="button" class="principal" data-testid="conv-repondre"
+                  onclick={() => onrepondre(dernier())}>
             <span class="ms" aria-hidden="true">reply</span>Répondre</button>
-          <button type="button" data-testid="conv-transferer">
+          <button type="button" data-testid="conv-transferer"
+                  onclick={() => ontransferer(dernier())}>
             <span class="ms" aria-hidden="true">forward</span>Transférer</button>
           <button type="button" data-testid="conv-archiver" onclick={() => onarchiver(ligne)}>
             <span class="ms" aria-hidden="true">archive</span>Archiver</button>

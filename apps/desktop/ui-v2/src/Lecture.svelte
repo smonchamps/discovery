@@ -7,8 +7,6 @@
   // `message_body` (assaini côté coeur, images distantes bloquées, encre
   // bakée par thème — S1), jamais innerHTML.
   //
-  // « Voir la conversation » (P3), « Répondre » et « Transférer » (P4)
-  // sont présents et inertes — leurs phases les câbleront.
   import { appel } from './lib/transport.js';
   import { quandLong } from './lib/quand.js';
 
@@ -16,6 +14,8 @@
     onarchiver = () => {},
     onsupprimer = () => {},
     onconversation = () => {},
+    onrepondre = () => {},
+    ontransferer = () => {},
   } = $props();
 
   let ligne = $state(null);
@@ -84,9 +84,9 @@
       </div>
       <iframe class="corps" sandbox srcdoc={corps} title="Contenu du message"></iframe>
       <div class="actions">
-        <button type="button" class="principal" data-testid="repondre">
+        <button type="button" class="principal" data-testid="repondre" onclick={() => onrepondre(ligne)}>
           <span class="ms" aria-hidden="true">reply</span>Répondre</button>
-        <button type="button" data-testid="transferer">
+        <button type="button" data-testid="transferer" onclick={() => ontransferer(ligne)}>
           <span class="ms" aria-hidden="true">forward</span>Transférer</button>
         <button type="button" data-testid="archiver" onclick={() => onarchiver(ligne)}>
           <span class="ms" aria-hidden="true">archive</span>Archiver</button>

@@ -120,3 +120,72 @@ test("le retour rend la boîte intacte, sélection comprise", async () => {
     'Relecture du contrat Vantis',
   );
 });
+
+// ——— Écran 04 + Réglages : composition et thèmes (P4) ————————————————
+
+test("écrire ouvre la composition ; l'annuler vide ne laisse rien", async () => {
+  await page.locator('[data-testid="ecrire"]').click();
+  await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText(
+    'Nouveau message',
+  );
+  // Le compte émetteur réel, adresse seule (écart dit : pas de nom).
+  await expect(page.locator('[data-testid="composition-de"]')).toHaveText(
+    'paul.merand@atelier-nord.fr',
+  );
+  await page.locator('[data-testid="composition-annuler"]').click();
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="toast"]')).toHaveCount(0);
+});
+
+test('répondre préremplit depuis le coeur : adresse, Re :, amorce, citation, fichiers', async () => {
+  await page.locator('[data-testid="repondre"]').click();
+  await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText('Répondre');
+  await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(
+    'c.rousseau@atelier-nord.fr',
+  );
+  await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(
+    'Re : Relecture du contrat Vantis',
+  );
+  const corps = await page.locator('[data-testid="composition-corps"]').inputValue();
+  expect(corps.startsWith('Bonjour Camille,\n\n')).toBe(true);
+  expect(corps).toContain('a écrit :');
+  // Les fichiers du message répondu, en puces (nom + taille).
+  await expect(page.locator('[data-testid="composition"]')).toContainText(
+    'Contrat_Vantis_v4.pdf',
+  );
+});
+
+test('enregistrer le brouillon conserve et confirme', async () => {
+  await page.locator('[data-testid="composition-brouillon"]').click();
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="toast"]')).toContainText(
+    'Brouillon enregistré.',
+  );
+});
+
+test("envoyer journalise dans la boîte d'envoi et confirme", async () => {
+  await page.locator('[data-testid="repondre"]').click();
+  await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(
+    'c.rousseau@atelier-nord.fr',
+  );
+  await page.locator('[data-testid="composition-envoyer"]').click();
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
+});
+
+test('les réglages appliquent et persistent le thème', async () => {
+  await page.locator('[data-testid="reglages"]').click();
+  await expect(page.locator('[data-testid="theme"]')).toHaveCount(7);
+  await page.locator('[data-theme-id="nuit"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nuit');
+  await page.locator('[data-testid="reglages-termine"]').click();
+  await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
+  // Persistance : le choix survit dans localStorage (rechargé au montage).
+  expect(await page.evaluate(() => localStorage.getItem('discovery-theme'))).toBe('nuit');
+  // La coche suit le choix à la réouverture ; retour à `nature` pour ne
+  // pas teinter d'autres parcours.
+  await page.locator('[data-testid="reglages"]').click();
+  await expect(page.locator('[data-theme-id="nuit"] .coche')).toBeVisible();
+  await page.locator('[data-theme-id="nature"]').click();
+  await page.locator('[data-testid="reglages-termine"]').click();
+});

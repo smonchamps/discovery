@@ -7,6 +7,9 @@
   import Liste from './Liste.svelte';
   import Lecture from './Lecture.svelte';
   import Conversation from './Conversation.svelte';
+  import Composition from './Composition.svelte';
+  import Reglages from './Reglages.svelte';
+  import Onboarding from './Onboarding.svelte';
   import Toast from './Toast.svelte';
 
   let liste;
@@ -15,8 +18,14 @@
   // plein écran, la boîte reste montée dessous — défilement, pages et
   // sélection sont intacts au retour.
   let conversation;
+  let composition;
+  let reglages;
 
   let comptes = $state([]);
+  // L'écran 01 ne s'affiche qu'une fois la nav CONNUE vide — jamais
+  // pendant le premier chargement, sinon il clignoterait à chaque
+  // démarrage.
+  let navPrete = $state(false);
   let categorie = $state('reception');
   let compte = $state(null);
   let onglet = $state('tous');
@@ -53,6 +62,7 @@
   async function chargerNav() {
     try {
       comptes = await appel('nav_snapshot');
+      navPrete = true;
     } catch (err) {
       console.error('nav_snapshot :', err);
     }
@@ -108,6 +118,26 @@
   }
   function retourBoite() {
     conversation.fermer();
+  }
+
+  function ecrire() {
+    composition.ouvrir('new');
+  }
+  function repondre(ligne) {
+    composition.ouvrir('reply', ligne);
+  }
+  function transferer(ligne) {
+    composition.ouvrir('forward', ligne);
+  }
+  // Après une vidange : les compteurs (Envoyés) ont pu bouger.
+  function apresEnvoi() {
+    chargerNav();
+  }
+  // Porte simple (D4) : le compte est ajouté, la nav se recharge et
+  // l'écran 01 s'efface de lui-même (comptes non vides).
+  function compteAjoute() {
+    flash('Compte ajouté.');
+    chargerNav();
   }
 
   function surSelection(ligne) {
@@ -176,9 +206,9 @@
     <span class="recherche" data-testid="recherche">
       <span class="ms" aria-hidden="true">search</span>
       Chercher un message, une personne, un fichier</span>
-    <button type="button" class="principal" data-testid="ecrire">
+    <button type="button" class="principal" data-testid="ecrire" onclick={ecrire}>
       <span class="ms" aria-hidden="true">edit_square</span>Écrire</button>
-    <button type="button" data-testid="reglages">
+    <button type="button" data-testid="reglages" onclick={() => reglages.ouvrir()}>
       <span class="ms" aria-hidden="true">settings</span>Réglages</button>
   </header>
 
@@ -188,7 +218,8 @@
            onselect={surSelection} ononglet={surOnglet}
            ontotal={(t) => (totalListe = t)} />
     <Lecture bind:this={lecture} onarchiver={archiver} onsupprimer={supprimer}
-             onconversation={ouvrirConversation} />
+             onconversation={ouvrirConversation}
+             onrepondre={repondre} ontransferer={transferer} />
   </div>
 
   <div class="statut" data-testid="statut">
@@ -198,7 +229,16 @@
 
   <Conversation bind:this={conversation} onretour={retourBoite}
                 onarchiver={async (l) => { await archiver(l); retourBoite(); }}
-                onsupprimer={async (l) => { await supprimer(l); retourBoite(); }} />
+                onsupprimer={async (l) => { await supprimer(l); retourBoite(); }}
+                onrepondre={repondre} ontransferer={transferer} onecrire={ecrire} />
+
+  {#if navPrete && comptes.length === 0}
+    <Onboarding onajoute={compteAjoute} />
+  {/if}
+
+  <Composition bind:this={composition} {comptes} {compte}
+               onflash={flash} onenvoye={apresEnvoi} />
+  <Reglages bind:this={reglages} />
 
   <Toast message={toast} />
 </div>

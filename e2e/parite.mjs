@@ -7,9 +7,9 @@
 //
 //   node parite.mjs
 //
-// États capturés : réception avec le fil Vantis ouvert, onglet Non lus,
-// thème « La nuit ». (Conversation, composition et réglages viendront
-// avec P3/P4.)
+// États capturés : onboarding (écran 01), réception avec le fil Vantis
+// ouvert, onglet Non lus, conversation plein écran, composition en mode
+// réponse, surimpression Réglages, thème « La nuit ».
 import { spawn, execSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -30,6 +30,8 @@ mkdirSync(sortie, { recursive: true });
   const page = await contexte.newPage();
   await page.goto('file://' + path.join(root, 'docs', 'design', 'ui_prototype.html').replaceAll('\\', '/'));
   await page.locator('button', { hasText: 'Continuer' }).waitFor({ timeout: 60000 });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(sortie, 'proto-onboarding.png') });
   await page.locator('button', { hasText: 'Continuer' }).click();
   await page.locator('text=Boîte de réception').first().waitFor();
   await page.waitForTimeout(400);
@@ -43,13 +45,22 @@ mkdirSync(sortie, { recursive: true });
   await page.screenshot({ path: path.join(sortie, 'proto-conversation.png') });
   await page.locator('button', { hasText: 'Boîte de réception' }).click();
   await page.waitForTimeout(200);
+  // Pas d'ancrage exact : le texte du bouton contient AUSSI la ligature
+  // de son icône (« reply »).
+  await page.locator('button', { hasText: 'Répondre' }).first().click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(sortie, 'proto-composition.png') });
+  await page.locator('span', { hasText: /^Annuler$/ }).click();
+  await page.waitForTimeout(200);
   await page.locator('button', { hasText: 'Réglages' }).click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(sortie, 'proto-reglages.png') });
   await page.locator('span', { hasText: 'La nuit' }).first().click();
   await page.locator('button', { hasText: 'Terminé' }).click();
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(sortie, 'proto-nuit.png') });
   await navigateur.close();
-  console.log('prototype capturé (3 états)');
+  console.log('prototype capturé (6 états)');
 }
 
 // --- 2. v2 sur le décor Clarity, fenêtre aux mêmes dimensions -------
@@ -111,13 +122,67 @@ try {
   await page.screenshot({ path: path.join(sortie, 'v2-conversation.png') });
   await page.locator('[data-testid="retour-boite"]').click();
   await page.waitForTimeout(200);
-  await page.evaluate(() => window.__mesure.theme('nuit'));
+  await page.locator('[data-testid="repondre"]').click();
+  await page.locator('[data-testid="composition"]').waitFor();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(sortie, 'v2-composition.png') });
+  // Vider AVANT d'annuler : fermer conserve (brouillon + toast), et le
+  // banc ne doit ni dériver le décor ni photographier un toast.
+  await page.locator('[data-testid="composition-a"]').fill('');
+  await page.locator('[data-testid="composition-objet"]').fill('');
+  await page.locator('[data-testid="composition-corps"]').fill('');
+  await page.locator('[data-testid="composition-annuler"]').click();
+  await page.waitForTimeout(300);
+  // Réglages puis « La nuit » par le VRAI parcours — plus de crochet.
+  await page.locator('[data-testid="reglages"]').click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(sortie, 'v2-reglages.png') });
+  await page.locator('[data-theme-id="nuit"]').click();
+  await page.locator('[data-testid="reglages-termine"]').click();
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(sortie, 'v2-nuit.png') });
   await page.evaluate(() => window.__mesure.theme('nature'));
-  console.log('v2 capturée (3 états)');
-  console.log(`paires dans ${sortie}`);
+  console.log('v2 capturée (5 états)');
 } finally {
   if (browser) await browser.close();
   app.kill();
+  await new Promise((r) => setTimeout(r, 1500));
+}
+
+// --- 3. v2 à zéro compte : l'écran 01 sur base VIERGE ----------------
+{
+  const dbVierge = path.join(root, 'target', 'e2e', 'clarity-vierge.db');
+  rmSync(dbVierge, { force: true });
+  const envVierge = { ...env, DISCOVERY_DB_PATH: dbVierge };
+  delete envVierge.DISCOVERY_E2E_ACCOUNT;
+  purgerCacheHttp(profile);
+  const appVierge = spawn(path.join(root, 'target', 'release', 'discovery-desktop.exe'), [], {
+    env: envVierge,
+    stdio: 'ignore',
+  });
+  let nav = null;
+  for (let n = 0; n < 300 && !nav; n++) {
+    try { nav = await chromium.connectOverCDP('http://127.0.0.1:9222'); }
+    catch { await new Promise((r) => setTimeout(r, 100)); }
+  }
+  if (!nav) {
+    appVierge.kill();
+    throw new Error('CDP injoignable pour le lancement vierge.');
+  }
+  try {
+    let page = null;
+    for (let n = 0; n < 300 && !page; n++) {
+      page = nav.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes('tauri.localhost'));
+      if (!page) await new Promise((r) => setTimeout(r, 100));
+    }
+    if (!page) throw new Error('fenêtre Tauri (vierge) introuvable après 30 s.');
+    await page.locator('[data-testid="onboarding"]').waitFor({ timeout: 60000 });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(sortie, 'v2-onboarding.png') });
+    console.log('v2 vierge capturée (écran 01)');
+    console.log(`paires dans ${sortie}`);
+  } finally {
+    await nav.close();
+    appVierge.kill();
+  }
 }

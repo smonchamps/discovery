@@ -265,6 +265,12 @@ câblée.
 un volet : entête propre (« ← Boîte de réception », « Écrire »), carte
 unique signature.
 
+**État : ✓ clos** (GO du Chef Ingénieur à l'ouverture de P4). Écarts
+assumés et dits : hauteur du corps bornée (le bac à sable opaque
+interdit de mesurer le contenu — relâcher le sandbox serait un troc
+refusé) ; « À » approximé par la règle du prototype (les destinataires
+ne sont pas stockés par le cœur).
+
 **Livré :** repli/dépli par message (dernier déplié par défaut), « Tout
 déplier », puces fil/fichiers, bloc De/À/Objet, **corps par message
 déplié = une iframe sandbox par message**, section « Fichiers joints »
@@ -283,6 +289,17 @@ de 20+ — montage paresseux, mesuré au budget d'ouverture.
 
 **Objectif :** les surfaces restantes du prototype, câblées aux flux
 réels.
+
+**État : livré, en validation terrain.** 17 parcours e2e verts (14 sur
+le décor Clarity + 3 écran 01 sur base vierge) ; paires de parité
+onboarding / composition / réglages / nuit au banc. Écarts assumés et
+dits : la ligne « De » montre l'adresse seule (le cœur ne stocke ni nom
+d'affichage ni étiquette de compte) ; le toast « Message envoyé. » est
+celui du prototype et confirme la REMISE à la boîte d'envoi — l'incident
+d'envoi visible est la fente d'avis (P5) ; la citation de réponse est
+réelle (le prototype s'arrêtait à l'amorce) ; un brouillon local
+n'apparaît dans le dossier Brouillons qu'au retour du reflet serveur
+(comportement v1 conservé).
 
 **Livré :**
 - **Composition** (surimpression 860 px) : modes nouveau / répondre /
