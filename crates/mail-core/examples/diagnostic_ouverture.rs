@@ -35,17 +35,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         row.get::<_, String>(0)
     })?;
     let _un: i64 = conn.query_row("SELECT 1", [], |row| row.get(0))?;
-    println!("ouverture brute (SQLite + WAL + SELECT 1) : {:?}", depart.elapsed());
+    println!(
+        "ouverture brute (SQLite + WAL + SELECT 1) : {:?}",
+        depart.elapsed()
+    );
     drop(conn);
 
     let depart = Instant::now();
     let store = Store::open(std::path::Path::new(&path))?;
-    println!("Store::open — premier du processus       : {:?}", depart.elapsed());
+    println!(
+        "Store::open — premier du processus       : {:?}",
+        depart.elapsed()
+    );
     drop(store);
 
     let depart = Instant::now();
     let store = Store::open(std::path::Path::new(&path))?;
-    println!("Store::open — second, même processus     : {:?}", depart.elapsed());
+    println!(
+        "Store::open — second, même processus     : {:?}",
+        depart.elapsed()
+    );
     drop(store);
 
     // ——— Le suspect : la recherche d'orphelins, rejouée à chaque
