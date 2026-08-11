@@ -191,6 +191,14 @@ test('la recherche sert ses résultats aux lignes du prototype (D1)', async () =
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
+test("l'aperçu décode les entités HTML — jamais de résidu &eacute;", async () => {
+  // Le corps du décor porte &eacute; et &nbsp; : le texte visible doit
+  // être celui du prototype, sans une seule esperluette.
+  const ligne = page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' });
+  await expect(ligne).toContainText('pour éviter toute interruption de service.');
+  await expect(ligne).not.toContainText('&');
+});
+
 test("les images distantes restent bloquées, l'opt-in est par message", async () => {
   await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
   await expect(page.locator('[data-testid="garde-images"]')).toContainText(

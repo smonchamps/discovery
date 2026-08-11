@@ -1627,6 +1627,47 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
         "CREATE INDEX IF NOT EXISTS idx_bodies_apercu_manquant
              ON bodies(mailbox_id, uid) WHERE preview IS NULL;",
     )?;
+    // Réparation des aperçus extraits par le premier décodeur, qui
+    // laissait passer les entités numériques (&#233;) et nommées
+    // (&eacute;, &zwnj;…) — défaut vu au terrain. Remettre à NULL suffit :
+    // le rattrapage par lots les recalcule avec le décodeur complet, hors
+    // du chemin d'ouverture. Le critère est LE scanner du décodeur
+    // lui-même (pas un motif SQL approximatif). UNE seule passe, tenue
+    // par un marqueur : un corps double-encodé (« &amp;gt; ») produit
+    // légitimement « &gt; » dans l'aperçu neuf — sans le marqueur, la
+    // réparation le remettrait à NULL à chaque ouverture, pour rien.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS reparations (nom TEXT PRIMARY KEY);",
+    )?;
+    let deja_faite: bool = conn
+        .prepare("SELECT 1 FROM reparations WHERE nom = 'apercus-entites'")?
+        .exists([])?;
+    if !deja_faite {
+        let mut stmt = conn.prepare(
+            "SELECT mailbox_id, uid, preview FROM bodies
+                 WHERE preview IS NOT NULL AND preview LIKE '%&%'",
+        )?;
+        let pollues: Vec<(i64, u32)> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, u32>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?
+            .filter_map(Result::ok)
+            .filter(|(_, _, p)| crate::body::contient_entite_residuelle(p))
+            .map(|(m, u, _)| (m, u))
+            .collect();
+        drop(stmt);
+        for (mailbox_id, uid) in pollues {
+            conn.execute(
+                "UPDATE bodies SET preview = NULL WHERE mailbox_id = ?1 AND uid = ?2",
+                params![mailbox_id, uid],
+            )?;
+        }
+        conn.execute_batch("INSERT INTO reparations (nom) VALUES ('apercus-entites');")?;
+    }
     add_missing_columns(
         conn,
         "accounts",

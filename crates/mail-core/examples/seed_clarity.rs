@@ -369,19 +369,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ]),
         &[piece(0, "CR_04-08.pdf", "application/pdf", 225_280)],
     )?;
-    // Le seul corps du décor à IMAGE DISTANTE : il prouve la garde
-    // d'images du volet (bloquées par défaut, opt-in par message — §6).
+    // Le seul corps du décor à IMAGE DISTANTE (garde d'images, §6) — et
+    // le seul aux accents en ENTITÉS HTML (nommées, décimales, hex),
+    // comme les newsletters réelles : l'aperçu doit les décoder, jamais
+    // les montrer.
+    // Le texte VISIBLE reste celui du prototype — seul l'ENCODAGE
+    // change : l'aperçu doit décoder, jamais montrer un résidu.
     store.save_body(
         inbox_p,
         2,
-        &format!(
-            "{}\n<img src=\"https://registrar.exemple/logo.png\" alt=\"Registrar\">",
-            corps(&[
-                "Bonjour,",
-                "Le domaine atelier-nord.fr expire le 2 septembre. Renouvelez-le pour éviter toute interruption de service.",
-                "Support",
-            ])
-        ),
+        "<p>Bonjour,</p>\n\
+         <p>Le domaine atelier-nord.fr expire le 2&nbsp;septembre. Renouvelez-le \
+         pour &eacute;viter toute interruption de&nbsp;service.</p>\n\
+         <p>Support</p>\n\
+         <img src=\"https://registrar.exemple/logo.png\" alt=\"Registrar\">",
         &[],
     )?;
     let brouillons_p = boite(&mut store, personnel, "Brouillons")?;
