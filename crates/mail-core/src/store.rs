@@ -1370,10 +1370,13 @@ impl Store {
         // Le départ se fait depuis `threads`, pas depuis `envelopes` : un
         // `GROUP BY thread_id` avec un `MAX(date)` obligerait SQLite à
         // parcourir puis trier les 200 000 enveloppes à chaque page de
-        // défilement. Ici l'index `idx_threads_date` porte à la fois le
-        // tri et la pagination — le coût d'une page ne dépend plus de la
-        // taille de la boîte. C'est l'agrégat matérialisé qui paie ça, et
-        // il se maintient dans la transaction d'écriture.
+        // défilement. Ici l'index `idx_threads_date_globale` porte à la
+        // fois le tri et la pagination — le coût d'une page ne dépend
+        // plus de la taille de la boîte. C'est l'agrégat matérialisé qui
+        // paie ça, et il se maintient dans la transaction d'écriture.
+        //
+        // La pagination vit dans une SOUS-REQUÊTE sur `threads` seul :
+        // voir `unified_page_sql`.
         let mut stmt = self.0.prepare(&unified_page_sql())?;
         let rows = stmt
             .query_map(params![limit as i64, offset as i64], row_to_threaded)?
@@ -1477,15 +1480,33 @@ pub struct AccountConfig {
 /// non une copie qui divergerait le jour où l'une des deux change. Le
 /// coût de cette requête est le chemin le plus chaud du produit.
 fn unified_page_sql() -> String {
+    // La pagination (`LIMIT`/`OFFSET`) s'applique dans une sous-requête
+    // sur `threads` SEUL, pas sur la jointure : `OFFSET` produit puis
+    // jette chaque ligne sautée, donc tout ce qui se calcule par ligne —
+    // la triple jointure et l'`EXISTS` corrélé sur `attachments` de
+    // SELECT_UNIFIED — se payait pour les 200 000 lignes d'un saut
+    // profond. Mesuré (gate P1 de la refonte, 205 050 conversations) :
+    // 252,6 ms à l'offset 200 000, croissance linéaire. Avec le squelette
+    // en sous-requête, le saut ne parcourt que l'index partiel
+    // `idx_threads_date_globale` — qui porte la clé de tri COMPLÈTE
+    // (last_epoch DESC, last_uid DESC, account_id) et le filtre
+    // `inbox_size > 0` — et les jointures ne s'exécutent que sur les
+    // `limit` lignes retenues.
+    //
+    // Le ORDER BY externe re-trie les lignes retenues avec la même clé :
+    // il garantit l'ordre final quelle que soit la stratégie de jointure,
+    // pour le prix d'un tri de `limit` lignes.
     format!(
         "{SELECT_UNIFIED}{THREAD_AGGREGATE}
-         FROM threads t
+         FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
+                 FROM threads
+                WHERE inbox_size > 0
+                ORDER BY last_epoch DESC, last_uid DESC, account_id
+                LIMIT ?1 OFFSET ?2) t
          JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
          JOIN mailboxes m ON m.id = e.mailbox_id
          JOIN accounts a ON a.id = t.account_id
-         WHERE t.inbox_size > 0
-         ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id
-         LIMIT ?1 OFFSET ?2"
+         ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id"
     )
 }
 
