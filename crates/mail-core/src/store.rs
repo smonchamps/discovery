@@ -1668,6 +1668,26 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
         }
         conn.execute_batch("INSERT INTO reparations (nom) VALUES ('apercus-entites');")?;
     }
+    // Réparation des corps mutilés au décodage — défaut vu au terrain
+    // (25 corps sur la base de mesure). Deux causes, corrigées côté
+    // mail-imap : les charsets multi-octets (gb2312…) exigeaient la
+    // feature `full_encoding` de mail-parser, et un charset absent
+    // tombait en UTF-8 avec remplacement au lieu du windows-1252 de fait.
+    // Supprimer la ligne suffit : le rattrapage (`bodies_to_backfill`)
+    // retélécharge tout message sans corps, et `save_body` refait au
+    // passage l'aperçu, l'index de recherche et les pièces. Les U+FFFD
+    // authentiques (envoyés tels quels) reviendront identiques — c'est un
+    // retéléchargement pour rien, mais UNE seule fois, tenu par le
+    // marqueur.
+    let deja_faite: bool = conn
+        .prepare("SELECT 1 FROM reparations WHERE nom = 'corps-fffd'")?
+        .exists([])?;
+    if !deja_faite {
+        conn.execute_batch(
+            "DELETE FROM bodies WHERE html LIKE '%' || char(65533) || '%';
+             INSERT INTO reparations (nom) VALUES ('corps-fffd');",
+        )?;
+    }
     add_missing_columns(
         conn,
         "accounts",
@@ -2659,6 +2679,46 @@ mod tests {
         store.save_body(id, 1, "<p>x</p>", &[]).unwrap();
         assert_eq!(store.remove_absent(id, &HashSet::new()).unwrap(), 1);
         assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
+    }
+
+    /// Réparation `corps-fffd` : un corps mutilé au décodage (U+FFFD) est
+    /// purgé pour que le rattrapage le retélécharge avec le décodeur
+    /// corrigé ; un corps sain reste en place.
+    #[test]
+    fn reparation_corps_fffd_purge_les_corps_mutiles() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[envelope(1, "a", 100, false), envelope(2, "b", 100, false)],
+            )
+            .unwrap();
+        store
+            .save_body(id, 1, "<p>journ\u{FFFD}es</p>", &[])
+            .unwrap();
+        store.save_body(id, 2, "<p>sain</p>", &[]).unwrap();
+        // Simule une base d'avant la réparation : le marqueur disparaît,
+        // et la migration se rejoue comme à la prochaine ouverture.
+        store
+            .conn()
+            .execute("DELETE FROM reparations WHERE nom = 'corps-fffd'", [])
+            .unwrap();
+        migrate(store.conn()).unwrap();
+        let account = test_account(&store);
+        assert_eq!(
+            store.body(account, "INBOX", 1).unwrap(),
+            None,
+            "corps mutilé purgé"
+        );
+        assert!(
+            store.body(account, "INBOX", 2).unwrap().is_some(),
+            "corps sain conservé"
+        );
+        // Le message purgé redevient une cible du rattrapage.
+        assert_eq!(
+            store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
+            vec![1]
+        );
     }
 
     /// Régression (bug #2) : ré-ajouter un compte générique déjà connu
