@@ -84,3 +84,39 @@ test('archiver agit sur le coeur et confirme par le toast', async () => {
   );
   await expect(dossier('reception')).toContainText('/ 17');
 });
+
+// ——— Écran 03 : la conversation plein écran (P3) ————————————————————
+
+test('voir la conversation ouvre le fil plein écran, dernier message déplié', async () => {
+  await page.locator('[data-testid="ligne"]').first().click();
+  await page.locator('[data-testid="voir-conversation"]').click();
+  await expect(page.locator('[data-testid="conversation-sujet"]')).toHaveText(
+    'Relecture du contrat Vantis',
+  );
+  await expect(page.locator('[data-testid="message-replie"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(1);
+  // Le corps du déplié vit dans SA propre iframe sandbox (S1).
+  await expect(
+    page.frameLocator('[data-testid="message-deplie"] iframe').locator('body'),
+  ).toContainText('Bonjour Paul');
+  // Les fichiers joints réels du message.
+  await expect(page.locator('[data-testid="message-deplie"]')).toContainText(
+    'Contrat_Vantis_v4.pdf',
+  );
+});
+
+test("tout déplier déplie le fil, l'entête d'un message le replie", async () => {
+  await page.locator('[data-testid="tout-deplier"]').click();
+  await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(3);
+  await page.locator('[data-testid="message-deplie"]').first().locator('.tete-message').click();
+  await expect(page.locator('[data-testid="message-replie"]')).toHaveCount(1);
+});
+
+test("le retour rend la boîte intacte, sélection comprise", async () => {
+  await page.locator('[data-testid="retour-boite"]').click();
+  await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(
+    'Relecture du contrat Vantis',
+  );
+});

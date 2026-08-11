@@ -6,10 +6,15 @@
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
   import Lecture from './Lecture.svelte';
+  import Conversation from './Conversation.svelte';
   import Toast from './Toast.svelte';
 
   let liste;
   let lecture;
+  // La conversation REMPLACE l'écran (prototype) : elle se superpose en
+  // plein écran, la boîte reste montée dessous — défilement, pages et
+  // sélection sont intacts au retour.
+  let conversation;
 
   let comptes = $state([]);
   let categorie = $state('reception');
@@ -98,6 +103,13 @@
     lecture.fermer();
   }
 
+  function ouvrirConversation(ligne) {
+    conversation.ouvrir(ligne);
+  }
+  function retourBoite() {
+    conversation.fermer();
+  }
+
   function surSelection(ligne) {
     lecture.ouvrir(ligne);
     if (ligne.thread_unseen > 0) {
@@ -175,13 +187,18 @@
     <Liste bind:this={liste} {categorie} {compte} {onglet}
            onselect={surSelection} ononglet={surOnglet}
            ontotal={(t) => (totalListe = t)} />
-    <Lecture bind:this={lecture} onarchiver={archiver} onsupprimer={supprimer} />
+    <Lecture bind:this={lecture} onarchiver={archiver} onsupprimer={supprimer}
+             onconversation={ouvrirConversation} />
   </div>
 
   <div class="statut" data-testid="statut">
     <span>{statut}</span>
     <span id="perf" data-testid="perf" data-startup={startup}>{perf}</span>
   </div>
+
+  <Conversation bind:this={conversation} onretour={retourBoite}
+                onarchiver={async (l) => { await archiver(l); retourBoite(); }}
+                onsupprimer={async (l) => { await supprimer(l); retourBoite(); }} />
 
   <Toast message={toast} />
 </div>

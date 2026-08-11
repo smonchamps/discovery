@@ -12,7 +12,11 @@
   import { appel } from './lib/transport.js';
   import { quandLong } from './lib/quand.js';
 
-  let { onarchiver = () => {}, onsupprimer = () => {} } = $props();
+  let {
+    onarchiver = () => {},
+    onsupprimer = () => {},
+    onconversation = () => {},
+  } = $props();
 
   let ligne = $state(null);
   let corps = $state('');
@@ -68,7 +72,9 @@
         <div class="metas">
           <span class="puce">{meta}</span>
           <span class="dernier">Dernier message · {quandLong(ligne.epoch)}</span>
-          <span class="puce inerte" data-testid="voir-conversation">
+          <span class="puce" class:cliquable={ligne.thread_id != null}
+                data-testid="voir-conversation"
+                onclick={() => ligne.thread_id != null && onconversation(ligne)}>
             <span class="ms" aria-hidden="true">unfold_more</span>Voir la conversation</span>
         </div>
       </div>
@@ -122,6 +128,8 @@
     border:1px solid var(--border); border-radius:6px; white-space:nowrap;
   }
   .dernier { font-size:12px; color:var(--muted); }
+  .cliquable { cursor:pointer; }
+  .cliquable:hover { background:var(--sel); }
   .auteur {
     padding:26px 30px 0; display:flex; flex-direction:column; gap:4px;
   }

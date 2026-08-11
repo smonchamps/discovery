@@ -93,6 +93,9 @@ pub struct MessageRow {
     /// L'aperçu sous l'objet (écran 02 v2) ; `None` tant que le corps
     /// n'est pas rapatrié ou rattrapé.
     pub preview: Option<String>,
+    /// Adresse brute de l'expéditeur — la ligne « De » de l'écran 03
+    /// (`Nom <adresse>`). `sender` reste la chaîne d'affichage.
+    pub sender_address: Option<String>,
 }
 
 #[tauri::command]
@@ -808,6 +811,7 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         epoch: row.envelope.date.map(|date| date.timestamp()).unwrap_or(0),
         attachment_count: row.attachment_count,
         preview: row.preview,
+        sender_address: row.envelope.sender_address.clone(),
         has_attachment: row.has_attachment,
         account_id: row.account_id,
         account_email: row.account_email,
