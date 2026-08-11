@@ -187,15 +187,21 @@ interne, v2 au mur — même ordre de grandeur, pas la même règle. Les deux
 se re-mesurent au terrain sur la vraie base, hors OneDrive.
 
 **Arbitrage Chef Ingénieur (andon) :**
-1. **Saut profond** — (a) statu quo v1 : gate tenu au geste réel, la
-   dette reste au report assumé ; ou (b) **correctif cœur chirurgical**
-   (recommandé) : squelette en sous-requête dans `unified_page_sql` —
-   `threads` seul porte `ORDER BY`/`LIMIT`/`OFFSET` sur son index, les
-   jointures et l'`EXISTS` ne s'exécutent que sur les 200 lignes
-   retenues. Court, testable, **profite aussi à v1**. Décision de cœur →
-   à toi.
-2. **Démarrage** — re-mesure terrain avant tout verdict : les deux UIs
-   paient pareil, le suspect est en amont du front.
+1. **Saut profond — TRANCHÉ ✓ (2026-08-11) : correctif cœur appliqué**
+   (commit `135cd49`). Pagination en sous-requête sur `threads` seul,
+   portée par l'index partiel `idx_threads_date_globale` ; jointures et
+   `EXISTS` sur les seules lignes retenues. Contre-preuve, même banc :
+   cœur **9,0 → 14,6 ms** de l'offset 0 à 200 000 (avant : 10,5 →
+   252,6 — courbe plate, ×17 au plus profond) ; **page p95 307,6 →
+   38,4 ms**, max 50,3 ms. Budget < 100 ms **tenu, sauts profonds
+   compris**. Sémantique tenue par les 224 tests du crate ; profite
+   aussi à v1. La dette « défilement profond » des reports assumés est
+   soldée. Kaizen noté, non dû : ~9 ms résiduels par appel =
+   `Store::open` + `COUNT(*)` — à ne toucher que si un budget le
+   demande.
+2. **Démarrage** — re-mesure terrain due sur la vraie base, hors
+   OneDrive : les deux UIs paient pareil, le suspect est en amont du
+   front.
 
 **Notes portées à P2 :** aperçu de liste et compte de fichiers par fil
 absents de `MessageRow` (le port doit les exposer pour la ligne et les
