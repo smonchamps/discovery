@@ -1,0 +1,78 @@
+/* Système Clarity — jetons et styles de base de la v2.
+   14 rôles × 7 thèmes, valeurs VERBATIM du prototype
+   (docs/design/ui_prototype.html, objet `themes` du template). Le
+   prototype est la cible normative (A6) ; toute couleur passe par un
+   jeton — c'est ce qui rend la bascule de thème O(1) pour le navigateur
+   (un restyle, aucun JS de framework). */
+
+:root {
+  /* la nature — défaut */
+  --bg:#f0f2ef; --panel:#eaece9; --surface:#ffffff;
+  --ink:#232725; --ink2:#4d534f; --muted:#5c625e;
+  --border:#dadfda; --accent:#2f6e5b; --accentH:#26594a;
+  --sel:#e6ede9; --alert:#8c2f22; --onAccent:#ffffff;
+  --shadow:0 2px 8px rgba(35,39,37,0.08); --scrim:rgba(35,39,37,0.28);
+}
+:root[data-theme="air"] {
+  --bg:#eef2f5; --panel:#e3e9ee; --surface:#ffffff;
+  --ink:#22303a; --ink2:#46545e; --muted:#78858e;
+  --border:#d4dde3; --accent:#3f86b0; --accentH:#326d92;
+  --sel:#e0ecf3; --alert:#8c2f22; --onAccent:#ffffff;
+  --shadow:0 2px 8px rgba(34,48,58,0.09); --scrim:rgba(34,48,58,0.26);
+}
+:root[data-theme="feu"] {
+  --bg:#f5efe8; --panel:#eee3d9; --surface:#fffaf5;
+  --ink:#2d201b; --ink2:#59453b; --muted:#897060;
+  --border:#e4d6c8; --accent:#c0492b; --accentH:#a33a1f;
+  --sel:#f3e2d5; --alert:#7a2617; --onAccent:#ffffff;
+  --shadow:0 2px 8px rgba(60,32,20,0.10); --scrim:rgba(45,32,27,0.30);
+}
+:root[data-theme="eau"] {
+  --bg:#e9f1f0; --panel:#dce9e7; --surface:#ffffff;
+  --ink:#16302d; --ink2:#3c5551; --muted:#6c827d;
+  --border:#ccdedb; --accent:#1f7d6d; --accentH:#155d51;
+  --sel:#d8ebe7; --alert:#8c2f22; --onAccent:#ffffff;
+  --shadow:0 2px 8px rgba(18,48,44,0.09); --scrim:rgba(22,48,45,0.28);
+}
+:root[data-theme="astres"] {
+  --bg:#eef0f6; --panel:#e4e6f0; --surface:#ffffff;
+  --ink:#22243a; --ink2:#464a63; --muted:#757992;
+  --border:#d6d8e6; --accent:#5b53b5; --accentH:#4a439c;
+  --sel:#e6e5f4; --alert:#8c2f22; --onAccent:#ffffff;
+  --shadow:0 2px 8px rgba(30,32,64,0.10); --scrim:rgba(34,36,58,0.30);
+}
+:root[data-theme="terre"] {
+  --bg:#f1eee6; --panel:#e8e2d6; --surface:#fbf9f3;
+  --ink:#2b271e; --ink2:#544f3e; --muted:#827b67;
+  --border:#ddd5c4; --accent:#9c5a30; --accentH:#814826;
+  --sel:#ece3d3; --alert:#8c2f22; --onAccent:#ffffff;
+  --shadow:0 2px 8px rgba(52,40,24,0.10); --scrim:rgba(43,39,30,0.30);
+}
+:root[data-theme="nuit"] {
+  --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+  --ink:#edefed; --ink2:#b7bebb; --muted:#89918d;
+  --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+  --sel:#313f39; --alert:#d9776b; --onAccent:#11201b;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+
+/* Icônes Material Symbols Rounded — sous-ensemble vendorisé (A3),
+   aucun CDN, CSP font-src 'self'. */
+@font-face {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-weight: 300 600;
+  src: url('/icones/material-symbols-rounded.subset.woff2') format('woff2');
+}
+.ms {
+  font-family:'Material Symbols Rounded'; font-weight:300; font-size:16px;
+  line-height:1; flex:none; font-variation-settings:'opsz' 20;
+}
+
+* { box-sizing:border-box; }
+html, body { margin:0; padding:0; height:100%; }
+body {
+  font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background:var(--bg); color:var(--ink); overflow:hidden;
+}
+input, textarea, button { font-family:inherit; }

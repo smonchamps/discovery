@@ -15,13 +15,18 @@
 # Contournement d'urgence : git push --no-verify (en connaissance de cause).
 set -e
 
-echo "[1/4] format"
+echo "[1/5] format"
 cargo fmt --all -- --check
 
-echo "[2/4] clippy (warnings = erreurs)"
+echo "[2/5] build ui-v2 (Svelte + Vite)"
+# Rapide (~3 s) : echoue tot si la refonte ne compile plus. `npm ci`
+# n'est PAS rejoue ici — installer une fois, le build suffit ensuite.
+(cd apps/desktop/ui-v2 && npm run build)
+
+echo "[3/5] clippy (warnings = erreurs)"
 cargo clippy --workspace --all-targets -- -D warnings
 
-echo "[3/4] tests Rust"
+echo "[4/5] tests Rust"
 # `--all-targets` n'est PAS décoratif : sans lui, cargo ignore les tests
 # des EXEMPLES. Or les diagnostics du terrain vivent là (crates/mail-core/
 # examples/), et ils portent leurs propres tests — dont celui qui empêche
@@ -32,7 +37,7 @@ echo "[3/4] tests Rust"
 cargo test --workspace --all-targets
 cargo test --workspace --doc
 
-echo "[4/4] E2E — la vraie fenêtre pilotée via CDP"
+echo "[5/5] E2E — la vraie fenêtre pilotée via CDP"
 cd e2e
 npm test
 
