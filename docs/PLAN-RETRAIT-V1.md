@@ -38,6 +38,16 @@ R2 (parcours portés) → B1 (bascule de défaut, réversible) → observation
 **Objectif :** tout ce que v1 déclenche, v2 le déclenche — selon D5 :
 synchro AUTOMATIQUE, sans bouton.
 
+**État : livré (GO du 2026-08-11), gate terrain en cours** — le témoin
+est l'envoi réel resté en file (`queued`, 0 tentative) constaté par le
+Chef Ingénieur : il doit partir SEUL à la première passe. Choix
+d'implémentation actés : l'échec TOTAL de synchro vit dans la ligne de
+progression (« Synchronisation impossible — nouvelle tentative
+automatique »), pas dans la fente — §6 n'y met pas la synchro, et
+« hors ligne » n'est pas un incident ; l'échec de RECONNEXION, lui, est
+un avis (« Compte non reconnecté — raison », Réessayer/Ignorer), inséré
+sous l'échec d'envoi dans la priorité.
+
 **Livré :**
 1. **Démarrage** : après la modale de migration, `connect_accounts`
    (reconnexion silencieuse par le coffre). Échecs partiels → fente

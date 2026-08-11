@@ -52,18 +52,22 @@
 
   // --- Fente d'avis (§6) : au plus UN, priorité décroissante ----------
   let avisEnvoi = $state(null);
+  let avisConnexion = $state(null);
   let avisMaj = $state(null);
   let avisCrash = $state(null);
   let avisTelemetrie = $state(null);
   let avisBrouillons = $state(null);
   const avis = $derived(
-    avisEnvoi ?? avisMaj ?? avisCrash ?? avisTelemetrie ?? avisBrouillons,
+    avisEnvoi ?? avisConnexion ?? avisMaj ?? avisCrash ?? avisTelemetrie ?? avisBrouillons,
   );
 
   // --- Ligne de progression (§6) : au plus UNE ------------------------
   let envoisEnAttente = $state(0);
   let rattrapageApercus = $state(false);
   let rattrapageCorps = $state(null); // restant, ou null si rien à faire
+  // Échec TOTAL de la dernière synchro : dans la ligne, pas la fente —
+  // §6 n'y met pas la synchro, et « hors ligne » n'est pas un incident.
+  let synchroEchec = $state(false);
 
   const LIBELLES = {
     reception: 'Boîte de réception',
@@ -94,6 +98,9 @@
     }
     if (envoisEnAttente > 0) {
       return `Boîte d'envoi · ${envoisEnAttente} envoi${envoisEnAttente > 1 ? 's' : ''} en attente`;
+    }
+    if (synchroEchec) {
+      return 'Synchronisation impossible — nouvelle tentative automatique';
     }
     return 'Tous les messages sont à jour';
   });
@@ -295,6 +302,65 @@
     } catch { /* les brouillons reviendront à la prochaine session */ }
   }
 
+  // --- R1 : la colonne vertébrale de synchro (PLAN-RETRAIT-V1) --------
+  // v1 déclenchait tout ; v2 devient autonome — reconnexion silencieuse
+  // au démarrage, puis cycle AUTOMATIQUE (D5 : pas de bouton) : synchro,
+  // vidange de la boîte d'envoi (le réseau est peut-être revenu — règle
+  // d'or), reflet des brouillons. Séquence v1 conservée à l'identique.
+
+  async function connecter() {
+    try {
+      const bilan = await appel('connect_accounts');
+      if (bilan.problems.length > 0) {
+        // Dire LEQUEL manque et pourquoi — une pastille absente sans
+        // explication laisse l'utilisateur démuni (leçon v1).
+        avisConnexion = {
+          alerte: true,
+          icone: 'link_off',
+          texte: `Compte non reconnecté — ${bilan.problems.join(' ; ')}`,
+          actions: [
+            { libelle: 'Réessayer', principale: true, faire: async () => {
+              avisConnexion = null;
+              await connecter();
+              synchroniser();
+            } },
+            { libelle: 'Ignorer', faire: () => { avisConnexion = null; } },
+          ],
+        };
+      } else {
+        avisConnexion = null;
+      }
+    } catch (err) {
+      console.error('connect_accounts :', err);
+    }
+  }
+
+  let enSynchro = false;
+  async function synchroniser() {
+    if (enSynchro) return; // réentrance interdite : un cycle à la fois
+    enSynchro = true;
+    try {
+      const bilan = await appel('sync_inbox');
+      synchroEchec = bilan.accounts === 0 && bilan.errors.length > 0;
+      // Le réseau est peut-être revenu : la boîte d'envoi retente sa
+      // chance, puis les brouillons se reflètent (poussée + purge).
+      await appel('flush_outbox').catch((err) => console.error('flush_outbox :', err));
+      await appel('sync_drafts').catch(() => { /* hors ligne : le cycle suivant retentera */ });
+      sonderEnvois();
+      chargerNav();
+      verifierBrouillons();
+      if (bilan.fetched > 0 || bilan.deleted > 0) {
+        liste?.recharger();
+        rattraperCorps();
+      }
+    } catch (err) {
+      synchroEchec = true;
+      console.error('sync_inbox :', err);
+    } finally {
+      enSynchro = false;
+    }
+  }
+
   // Le démarrage, dans l'ordre qui protège : migration d'abord (rien ne
   // touche la base avant), puis les boucles — et les contrôles uniques.
   onMount(async () => {
@@ -312,6 +378,13 @@
     verifierTelemetrie();
     verifierBrouillons();
     setInterval(verifierBrouillons, 10000);
+    // R1 — le cycle de synchro : APRÈS les premiers rendus (la liste est
+    // utilisable avant, « enveloppes d'abord ») ; jamais bloquant.
+    (async () => {
+      await connecter();
+      await synchroniser();
+    })();
+    setInterval(synchroniser, 300000);
   });
 
   function choisir(quoi) {
@@ -402,11 +475,13 @@
   function apresEnvoi() {
     chargerNav();
   }
-  // Porte simple (D4) : le compte est ajouté, la nav se recharge et
-  // l'écran 01 s'efface de lui-même (comptes non vides).
+  // Porte simple (D4) : le compte est ajouté, la nav se recharge,
+  // l'écran 01 s'efface de lui-même — et la première synchro part
+  // aussitôt (la session vient d'être posée par l'ajout).
   function compteAjoute() {
     flash('Compte ajouté.');
     chargerNav();
+    synchroniser();
   }
 
   function surSelection(ligne) {
