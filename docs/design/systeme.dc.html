@@ -810,12 +810,15 @@ lecture</b> — jamais à la ligne de liste.</p>
 
   <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
     <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Journal des amendements</h2>
-    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Ce document est la <b>copie vivante et normative</b> du Système,
-versionnée dans le dépôt (<code>docs/design/</code>). Le prototype du
-handoff est illustratif : quand ils divergent, <b>le prototype plie</b>
-(ruling du Chef Ingénieur, 2026-08-10). Chaque amendement est daté, motivé
-par le terrain — de vrais mails, de vraies mesures — et tracé par un
-commit.</p>
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Ce document est la <b>copie vivante</b> du Système, versionnée
+dans le dépôt (<code>docs/design/</code>). Depuis la directive du
+2026-08-11 (amendement A6), le prototype interactif
+(<code>docs/design/ui_prototype.html</code>) est la <b>cible normative</b>
+de la refonte : quand ils divergent, <b>le prototype l'emporte</b> et
+l'écart s'inscrit ici. Le Système reste la référence là où le prototype
+est muet — avis et progression, corps HTML, inventaire d'icônes,
+contrastes. Chaque amendement est daté, motivé — terrain ou directive —
+et tracé par un commit.</p>
     <table style="width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; overflow:hidden">
       <thead>
         <tr style="background:#eaece9">
@@ -849,6 +852,26 @@ commit.</p>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
           <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A5</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f">Le Système prend le nom <b>« Clarity »</b> (anciennement « Douceur »). Décision du Chef Ingénieur ; le nom est renommé dans tout le dépôt, l’historique des commits n’est pas réécrit.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A6</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Inversion de normativité — directive du Chef Ingénieur : la refonte UI v2 livre <b>exactement l'UI du prototype</b> (<code>ui_prototype.html</code>) ; en cas de divergence le prototype l'emporte, l'écart s'inscrit à ce journal. Le Système complète là où le prototype est muet. Conséquence : A2 (ligne fixe 104 px, puces bannies de la liste) est <b>rétrogradé en repli documenté</b> du gate perf P1 (<code>docs/PLAN-UI-V2.md</code>) — le fait terrain (8/120 débordements) reste acté. Les invariants (iframe sandbox, règles d'or, budgets) restent hors du champ du prototype.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A7</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Barres de défilement — le Système était muet, la webview affichait la barre classique de l'OS (verdict terrain du Chef Ingénieur : « comme dans le prototype »). Règle : barres <b>discrètes</b> partout — épaisseur <b>10 px</b>, piste <b>transparente</b>, <b>aucune flèche</b> ; poignée au rayon des contrôles (<b>6 px</b>), <b>filet</b> (<code>--border</code>) au repos, <b>texte atténué</b> (<code>--muted</code>) au survol et à la saisie. Aucune couleur hors jetons : la barre suit le thème comme tout le reste. Le corps de mail (iframe) garde les barres de son propre document — on n'habille pas le HTML de l'expéditeur.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A8</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Accessibilité — directive du Chef Ingénieur : <b>quand le prototype et l'accessibilité se contredisent, l'accessibilité l'emporte</b> (exception mesurée à A6, inscrite ici). Trois règles. <b>1. Contrastes</b> : toute paire (encre, fond) posée par l'UI tient <b>≥ 4,5:1</b> pour le texte, <b>≥ 3:1</b> pour les composants ; la gate est <code>e2e/contraste.mjs</code>. Sept jetons du prototype passaient sous le seuil et sont corrigés à la teinte constante, luminosité minimale : <code>--muted</code> — l'air <code>#78858e→#5e686f</code>, le feu <code>#897060→#766053</code>, l'eau <code>#6c827d→#576965</code>, les astres <code>#757992→#62657a</code>, la terre <code>#827b67→#686252</code>, la nuit <code>#89918d→#929a96</code> ; <code>--accent</code> de l'air <code>#3f86b0→#3a7aa1</code> (texte blanc dessus). <b>2. Clavier</b> : tout élément actionnable est un <code>&lt;button&gt;</code> ou porte <code>role</code>, <code>tabindex</code> et répond à Entrée/Espace ; le focus est <b>visible</b> — anneau <code>--accent</code> de 2 px, décalé de 2 px (<code>:focus-visible</code>), jamais supprimé sans remplacement. <b>3. Assistance</b> : icônes décoratives en <code>aria-hidden</code>, toast en <code>role="status"</code>, surimpressions en <code>role="dialog"</code> + <code>aria-modal</code>, iframes titrées ; le mouvement respecte <code>prefers-reduced-motion</code>.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A9</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Objet des lignes de liste — verdict terrain du Chef Ingénieur : les <b>18 px</b> du prototype dominaient la ligne ; l'objet passe à <b>16 px</b> (graisse 600, interlignage et troncature inchangés). Divergence du prototype assumée et inscrite, conformément à A6. Les gabarits de la liste fenêtrée se sondent à l'exécution : aucune constante de hauteur à retoucher.</td>
         </tr>
       </tbody>
     </table>

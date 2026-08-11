@@ -88,6 +88,9 @@ deux couches s'additionnent.
 
 ## 3. Acter
 
-Reporter les deux verdicts dans
-[`docs/PLAN-REFONTE-UI-V2.md`](../../docs/PLAN-REFONTE-UI-V2.md) (S2 et le
-dû S1) — puis R0 est clos et R1 peut s'ouvrir.
+Fait — les deux verdicts sont inscrits au journal du Système (A1, A2 dans
+[`docs/design/systeme.dc.html`](../../docs/design/systeme.dc.html)) et R0
+est clos. Le plan R0–R6 a depuis été remplacé par
+[`docs/PLAN-UI-V2.md`](../../docs/PLAN-UI-V2.md) (directive du
+2026-08-11 : le prototype devient la cible ; la ligne A2 reste le repli
+documenté de son gate P1).

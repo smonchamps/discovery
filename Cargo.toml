@@ -28,7 +28,7 @@ imap = "3.0.0-alpha.14"
 imap-proto = "0.16"
 keyring = { version = "3", features = ["windows-native"] }
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "rustls-tls", "builder"] }
-mail-parser = "0.11"
+mail-parser = { version = "0.11", features = ["full_encoding"] }
 oauth2 = { version = "5", default-features = false, features = ["reqwest-blocking", "rustls-tls"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

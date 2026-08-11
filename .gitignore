@@ -5,5 +5,7 @@ spikes/search-engine/target/
 spikes/microsoft/target/
 spikes/body-backfill/target/
 e2e/node_modules/
+apps/desktop/ui-v2/node_modules/
+apps/desktop/ui-v2/dist/
 e2e/test-results/
 e2e/playwright-report/

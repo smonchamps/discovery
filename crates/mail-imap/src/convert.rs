@@ -346,7 +346,74 @@ fn text_header(raw: &[u8]) -> Option<String> {
 pub(crate) fn extract_html(raw: &[u8]) -> Option<String> {
     let message = mail_parser::MessageParser::new().parse(raw)?;
     let html = message.body_html(0)?.into_owned();
+    let html = redecode_sans_charset(html, &message, raw);
     Some(inline_cid_images(html, &message))
+}
+
+/// Répare le corps quand `mail-parser` a remplacé des octets par U+FFFD.
+///
+/// Sans charset déclaré (ou avec un charset qu'aucun décodeur ne connaît),
+/// `mail-parser` lit les octets en UTF-8 avec remplacement — et les accents
+/// Latin-1 du courrier réel deviennent des « � ». Le défaut de fait du
+/// terrain est windows-1252 (sur-ensemble d'ISO-8859-1) : si les octets de
+/// la partie ne sont pas de l'UTF-8 valide, on les redécode ainsi.
+///
+/// Si le charset déclaré est connu, ou si les octets sont de l'UTF-8 valide
+/// (le U+FFFD vient alors de l'expéditeur), le corps est laissé tel quel.
+fn redecode_sans_charset(html: String, message: &mail_parser::Message<'_>, raw: &[u8]) -> String {
+    use mail_parser::MimeHeaders;
+
+    if !html.contains('\u{FFFD}') {
+        return html;
+    }
+    // La partie d'où `body_html(0)` a tiré le corps : la partie HTML s'il y
+    // en a une, sinon la partie texte convertie en HTML.
+    let (part, was_text) = match message.html_part(0) {
+        Some(part) => (part, false),
+        None => match message.text_part(0) {
+            Some(part) => (part, true),
+            None => return html,
+        },
+    };
+    let declared = part
+        .content_type()
+        .and_then(|content_type| content_type.attribute("charset"));
+    if let Some(charset) = declared
+        && mail_parser::decoders::charsets::map::charset_decoder(charset.as_bytes()).is_some()
+    {
+        return html;
+    }
+    let Some(bytes) = raw.get(part.offset_body as usize..part.offset_end as usize) else {
+        return html;
+    };
+    let bytes = match part.encoding {
+        mail_parser::Encoding::None => std::borrow::Cow::Borrowed(bytes),
+        mail_parser::Encoding::QuotedPrintable => {
+            match mail_parser::decoders::quoted_printable::quoted_printable_decode(bytes) {
+                Some(decoded) => std::borrow::Cow::Owned(decoded),
+                None => return html,
+            }
+        }
+        mail_parser::Encoding::Base64 => {
+            match mail_parser::decoders::base64::base64_decode(bytes) {
+                Some(decoded) => std::borrow::Cow::Owned(decoded),
+                None => return html,
+            }
+        }
+    };
+    if std::str::from_utf8(&bytes).is_ok() {
+        return html;
+    }
+    let Some(decoder) = mail_parser::decoders::charsets::map::charset_decoder(b"windows-1252")
+    else {
+        return html;
+    };
+    let text = decoder(&bytes);
+    if was_text {
+        mail_parser::decoders::html::text_to_html(&text)
+    } else {
+        text
+    }
 }
 
 /// Type MIME d'une partie, `application/octet-stream` à défaut.
@@ -606,6 +673,63 @@ mod tests {
         let raw = b"From: a@b.c\r\nSubject: t\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>Bonjour <b>monde</b></p>";
         let html = extract_html(raw).expect("corps html attendu");
         assert!(html.contains("<b>monde</b>"));
+    }
+
+    // --- Charsets : défauts vus au terrain ------------------------
+
+    /// Charset absent + octets Latin-1 : le courrier réel en est plein.
+    /// Sans repli, chaque accent devient U+FFFD dès le stockage — défaut
+    /// constaté sur 25 corps de la base de mesure.
+    #[test]
+    fn html_sans_charset_en_latin1_est_redecode_en_windows_1252() {
+        let raw = b"From: a@b.c\r\nSubject: t\r\nContent-Type: text/html\r\n\r\n<p>journ\xe9es d'acc\xe8s r\xe9compens\xe9es</p>";
+        let html = extract_html(raw).expect("corps html attendu");
+        assert!(
+            html.contains("journées d'accès récompensées"),
+            "accents attendus, obtenu : {html}"
+        );
+        assert!(!html.contains('\u{FFFD}'));
+    }
+
+    /// Même repli pour un message texte-seul : la conversion en HTML doit
+    /// repartir du texte redécodé, pas du texte mutilé.
+    #[test]
+    fn texte_seul_sans_charset_en_latin1_est_redecode() {
+        let raw = b"From: a@b.c\r\nSubject: t\r\nContent-Type: text/plain\r\n\r\nune journ\xe9e enti\xe8re";
+        let html = extract_html(raw).expect("corps html attendu");
+        assert!(
+            html.contains("une journée entière"),
+            "accents attendus, obtenu : {html}"
+        );
+    }
+
+    /// Quoted-printable sans charset : le repli doit redécoder les octets
+    /// APRÈS levée du transfert, pas les `=E9` littéraux.
+    #[test]
+    fn quoted_printable_sans_charset_est_redecode() {
+        let raw = b"From: a@b.c\r\nSubject: t\r\nContent-Type: text/html\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n<p>journ=E9es</p>";
+        let html = extract_html(raw).expect("corps html attendu");
+        assert!(html.contains("journées"), "obtenu : {html}");
+    }
+
+    /// Un U+FFFD envoyé TEL QUEL par l'expéditeur (UTF-8 valide) n'est pas
+    /// une erreur de décodage : le corps reste intact, pas de repli.
+    #[test]
+    fn fffd_authentique_en_utf8_valide_est_conserve() {
+        let raw = "From: a@b.c\r\nSubject: t\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<p>brisé chez l'expéditeur : \u{FFFD}</p>".as_bytes();
+        let html = extract_html(raw).expect("corps html attendu");
+        assert!(html.contains("brisé chez l'expéditeur : \u{FFFD}"));
+    }
+
+    /// gb2312 exige la feature `full_encoding` de mail-parser : sans elle,
+    /// le décodeur retombe sur UTF-8 avec remplacement (14 des 25 corps
+    /// mutilés de la base de mesure). Ce test verrouille la feature.
+    #[test]
+    fn gb2312_est_decode_grace_a_full_encoding() {
+        let raw = b"From: a@b.c\r\nSubject: t\r\nContent-Type: text/html; charset=gb2312\r\n\r\n<p>\xc4\xe3\xba\xc3</p>";
+        let html = extract_html(raw).expect("corps html attendu");
+        assert!(html.contains("你好"), "obtenu : {html}");
+        assert!(!html.contains('\u{FFFD}'));
     }
 
     // --- Pièces jointes -------------------------------------------

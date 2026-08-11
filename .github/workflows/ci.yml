@@ -35,6 +35,25 @@ jobs:
   # WebView2 (mesuré — voir ADR 0005). Les parcours E2E sont joués par le
   # hook `.githooks/pre-push`, sur une vraie session Windows.
 
+  ui-v2:
+    name: build ui-v2 (Svelte + Vite, PLAN-UI-V2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/ui-v2/package-lock.json
+      - name: Dependances
+        run: npm ci
+        working-directory: apps/desktop/ui-v2
+      - name: Build Vite
+        run: npm run build
+        working-directory: apps/desktop/ui-v2
+      - name: Contrastes WCAG (A8)
+        run: node e2e/contraste.mjs
+
   audit:
     name: cargo audit (CVE des dépendances)
     runs-on: ubuntu-latest

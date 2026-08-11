@@ -211,6 +211,7 @@ impl Store {
                  JOIN envelopes e ON e.mailbox_id = d.mailbox_id AND e.uid = d.uid
                  JOIN mailboxes m ON m.id = e.mailbox_id
                  JOIN accounts a ON a.id = m.account_id
+                 LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
                  WHERE search_fts MATCH ?{clauses}
                  ORDER BY {order}
                  LIMIT ?"
@@ -221,6 +222,7 @@ impl Store {
                  FROM envelopes e
                  JOIN mailboxes m ON m.id = e.mailbox_id
                  JOIN accounts a ON a.id = m.account_id
+                 LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
                  WHERE 1 = 1{clauses}
                  ORDER BY e.date_epoch DESC, e.uid DESC
                  LIMIT ?"

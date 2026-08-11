@@ -83,6 +83,19 @@ pub struct MessageRow {
     /// Non-lus de la conversation : c'est LUI qui décide du gras, et non
     /// l'état du seul message affiché.
     pub thread_unseen: u32,
+    /// Secondes Unix du message — la v2 formate l'heure côté client
+    /// (« 09:12 », « Hier », « 5 août ») ; `date` reste la chaîne brute
+    /// que la v1 affiche telle quelle. 0 = date inconnue.
+    pub epoch: i64,
+    /// COMBIEN de pièces jointes — la puce du prototype dit « 2
+    /// fichiers ». 0 tant que le corps n'a pas été lu.
+    pub attachment_count: u32,
+    /// L'aperçu sous l'objet (écran 02 v2) ; `None` tant que le corps
+    /// n'est pas rapatrié ou rattrapé.
+    pub preview: Option<String>,
+    /// Adresse brute de l'expéditeur — la ligne « De » de l'écran 03
+    /// (`Nom <adresse>`). `sender` reste la chaîne d'affichage.
+    pub sender_address: Option<String>,
 }
 
 #[tauri::command]
@@ -795,6 +808,10 @@ pub fn thread_messages(app: AppHandle, thread_id: i64) -> Result<Vec<MessageRow>
 /// Mapping partagé entre la boîte unifiée et les résultats de recherche.
 fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
     MessageRow {
+        epoch: row.envelope.date.map(|date| date.timestamp()).unwrap_or(0),
+        attachment_count: row.attachment_count,
+        preview: row.preview,
+        sender_address: row.envelope.sender_address.clone(),
         has_attachment: row.has_attachment,
         account_id: row.account_id,
         account_email: row.account_email,
@@ -840,6 +857,133 @@ pub fn list_messages(app: AppHandle, offset: usize, limit: usize) -> Result<Mess
         rows,
         elapsed_us: timer.elapsed().as_micros() as u64,
     })
+}
+
+/// Un compte de la nav v2 (écran 02), avec ses compteurs — dossiers
+/// canoniques résolus côté cœur (`nav.rs`), l'UI ne voit jamais un nom
+/// de boîte réseau.
+#[derive(Serialize)]
+pub struct NavAccount {
+    pub account_id: i64,
+    pub email: String,
+    pub reception_total: u64,
+    pub reception_non_lues: u64,
+    pub envoyes: u64,
+    pub brouillons: u64,
+    pub indesirables_total: u64,
+    pub indesirables_non_lus: u64,
+    pub archives: u64,
+    pub corbeille: u64,
+}
+
+/// L'état complet de la nav en UN appel : comptes et compteurs par
+/// catégorie. « Toutes les boîtes » s'agrège côté UI.
+#[tauri::command]
+pub fn nav_snapshot(app: AppHandle) -> Result<Vec<NavAccount>, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let mut sortie = Vec::new();
+    for compte in store.accounts().map_err(|err| err.to_string())? {
+        let dossiers = store
+            .canonical_folders(compte.id)
+            .map_err(|err| err.to_string())?;
+        let compteurs = store
+            .nav_counts(compte.id, &dossiers)
+            .map_err(|err| err.to_string())?;
+        sortie.push(NavAccount {
+            account_id: compte.id,
+            email: compte.email,
+            reception_total: compteurs.reception_total,
+            reception_non_lues: compteurs.reception_non_lues,
+            envoyes: compteurs.envoyes,
+            brouillons: compteurs.brouillons,
+            indesirables_total: compteurs.indesirables_total,
+            indesirables_non_lus: compteurs.indesirables_non_lus,
+            archives: compteurs.archives,
+            corbeille: compteurs.corbeille,
+        });
+    }
+    Ok(sortie)
+}
+
+/// Une page d'une catégorie de la nav, bornée ou non à un compte.
+/// `reception` = la boîte unifiée (conversations) ; les autres = les
+/// messages des boîtes canoniques résolues, fusionnés par date.
+#[tauri::command]
+pub fn list_category(
+    app: AppHandle,
+    category: String,
+    account_id: Option<i64>,
+    non_lus: bool,
+    offset: usize,
+    limit: usize,
+) -> Result<MessagePage, String> {
+    let timer = Instant::now();
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let limit = limit.min(LIST_LIMIT_MAX);
+    if category == "reception" {
+        let total = store
+            .unified_count_scoped(account_id, non_lus)
+            .map_err(|err| err.to_string())?;
+        let rows = store
+            .unified_recent_scoped(account_id, non_lus, offset, limit)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(to_message_row)
+            .collect();
+        return Ok(MessagePage {
+            total,
+            offset,
+            rows,
+            elapsed_us: timer.elapsed().as_micros() as u64,
+        });
+    }
+    let comptes: Vec<i64> = match account_id {
+        Some(id) => vec![id],
+        None => store
+            .accounts()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|compte| compte.id)
+            .collect(),
+    };
+    let mut boites = Vec::new();
+    for compte in comptes {
+        let dossiers = store
+            .canonical_folders(compte)
+            .map_err(|err| err.to_string())?;
+        if let Some(nom) = dossiers.boite(&category)
+            && let Some(state) = store
+                .sync_state(compte, &nom)
+                .map_err(|err| err.to_string())?
+        {
+            boites.push(state.mailbox_id);
+        }
+    }
+    let (tous, jamais_lus) = store
+        .category_totals(&boites)
+        .map_err(|err| err.to_string())?;
+    let total = if non_lus { jamais_lus } else { tous };
+    let rows = store
+        .category_page(&boites, non_lus, offset, limit)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .map(to_message_row)
+        .collect();
+    Ok(MessagePage {
+        total,
+        offset,
+        rows,
+        elapsed_us: timer.elapsed().as_micros() as u64,
+    })
+}
+
+/// Rattrape l'aperçu des corps écrits avant la colonne `preview`, par
+/// lots bornés — l'UI l'appelle au fil de son sondage jusqu'à zéro,
+/// jamais sur le chemin d'ouverture. Rend le nombre restant.
+#[tauri::command]
+pub fn preview_catchup(app: AppHandle, limit: usize) -> Result<u64, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store.preview_catchup(limit).map_err(|err| err.to_string())
 }
 
 /// Recherche plein-texte sur tous les comptes. Le déclenchement à partir

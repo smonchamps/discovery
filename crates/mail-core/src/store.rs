@@ -210,6 +210,13 @@ pub struct UnifiedRow {
     /// recherche dans le texte. Le trombone apparait donc au fil du
     /// rattrapage, jamais a tort.
     pub has_attachment: bool,
+    /// COMBIEN de pièces jointes — la puce du prototype dit « 2
+    /// fichiers », pas « des fichiers ». 0 tant que le corps n'a pas été
+    /// lu, comme `has_attachment`.
+    pub attachment_count: u32,
+    /// L'aperçu texte sous l'objet (écran 02) — calculé à l'écriture du
+    /// corps, `None` tant que le corps n'est pas rapatrié.
+    pub preview: Option<String>,
     /// Le fil auquel ce message appartient. `None` seulement pendant la
     /// fenêtre où une base héritée n'a pas encore été adoptée.
     pub thread_id: Option<i64>,
@@ -231,7 +238,13 @@ pub struct UnifiedRow {
 /// La derniere colonne est un EXISTS sur `attachments` : la liste doit
 /// pouvoir afficher le trombone sans une requete par ligne. La cle
 /// primaire (mailbox_id, uid, idx) rend ce test indexe.
-pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, EXISTS(SELECT 1 FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name";
+// Exige les alias `e` (envelopes), `m` (mailboxes), `a` (accounts) ET la
+// jointure `LEFT JOIN bodies b` — l'aperçu de liste vient de là, NULL
+// tant que le corps n'est pas rapatrié. Le COUNT de pièces jointes
+// remplace l'ancien EXISTS : la puce du prototype dit « 2 fichiers »,
+// pas « des fichiers ». Les deux ne s'exécutent que sur les lignes
+// RETENUES par la pagination (gate P1).
+pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, (SELECT COUNT(*) FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name, b.preview";
 
 /// Le SELECT de la liste groupée : les colonnes ci-dessus, plus l'agrégat
 /// du fil. Il exige la jointure sur `threads` (alias `t`), que la
@@ -1063,9 +1076,9 @@ impl Store {
     ) -> Result<(), Error> {
         let tx = self.0.unchecked_transaction()?;
         tx.execute(
-            "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html, scanned)
-             VALUES (?1, ?2, ?3, 1)",
-            params![mailbox_id, uid, html],
+            "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html, scanned, preview)
+             VALUES (?1, ?2, ?3, 1, ?4)",
+            params![mailbox_id, uid, html, crate::body::extraire_apercu(html)],
         )?;
         // Remplacement intégral : un message re-téléchargé dont une pièce
         // aurait disparu ne doit pas garder l'ancienne ligne fantôme.
@@ -1152,6 +1165,37 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Rattrape l'aperçu des corps écrits AVANT la colonne `preview` —
+    /// par lots bornés. Appelé par le shell au fil de son sondage :
+    /// jamais sur le chemin d'ouverture (budget démarrage < 1 s, leçon
+    /// de la chasse aux orphelins), jamais au défilement. Rend le nombre
+    /// de retardataires restants — zéro quand la passe est soldée.
+    pub fn preview_catchup(&self, limit: usize) -> Result<u64, Error> {
+        let lot: Vec<(i64, Uid, String)> = self
+            .0
+            .prepare("SELECT mailbox_id, uid, html FROM bodies WHERE preview IS NULL LIMIT ?1")?
+            .query_map(params![limit as i64], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<Result<_, _>>()?;
+        if !lot.is_empty() {
+            let tx = self.0.unchecked_transaction()?;
+            for (mailbox_id, uid, html) in &lot {
+                tx.execute(
+                    "UPDATE bodies SET preview = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
+                    params![mailbox_id, uid, crate::body::extraire_apercu(html)],
+                )?;
+            }
+            tx.commit()?;
+        }
+        let restants: i64 = self.0.query_row(
+            "SELECT COUNT(*) FROM bodies WHERE preview IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(restants as u64)
     }
 
     /// Les pièces jointes connues d'un message, dans l'ordre du MIME.
@@ -1370,11 +1414,14 @@ impl Store {
         // Le départ se fait depuis `threads`, pas depuis `envelopes` : un
         // `GROUP BY thread_id` avec un `MAX(date)` obligerait SQLite à
         // parcourir puis trier les 200 000 enveloppes à chaque page de
-        // défilement. Ici l'index `idx_threads_date` porte à la fois le
-        // tri et la pagination — le coût d'une page ne dépend plus de la
-        // taille de la boîte. C'est l'agrégat matérialisé qui paie ça, et
-        // il se maintient dans la transaction d'écriture.
-        let mut stmt = self.0.prepare(&unified_page_sql())?;
+        // défilement. Ici l'index `idx_threads_date_globale` porte à la
+        // fois le tri et la pagination — le coût d'une page ne dépend
+        // plus de la taille de la boîte. C'est l'agrégat matérialisé qui
+        // paie ça, et il se maintient dans la transaction d'écriture.
+        //
+        // La pagination vit dans une SOUS-REQUÊTE sur `threads` seul :
+        // voir `unified_page_sql`.
+        let mut stmt = self.0.prepare(&unified_page_sql(false, false))?;
         let rows = stmt
             .query_map(params![limit as i64, offset as i64], row_to_threaded)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1408,6 +1455,7 @@ impl Store {
              JOIN threads t ON t.id = e.thread_id
              JOIN mailboxes m ON m.id = e.mailbox_id
              JOIN accounts a ON a.id = m.account_id
+             LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
              WHERE e.thread_id = ?1
              ORDER BY e.date_epoch ASC, e.uid ASC"
         ))?;
@@ -1476,16 +1524,47 @@ pub struct AccountConfig {
 /// Isolée pour qu'un test puisse interroger **son** plan d'exécution, et
 /// non une copie qui divergerait le jour où l'une des deux change. Le
 /// coût de cette requête est le chemin le plus chaud du produit.
-fn unified_page_sql() -> String {
+pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool) -> String {
+    // La pagination (`LIMIT`/`OFFSET`) s'applique dans une sous-requête
+    // sur `threads` SEUL, pas sur la jointure : `OFFSET` produit puis
+    // jette chaque ligne sautée, donc tout ce qui se calcule par ligne —
+    // la triple jointure et l'`EXISTS` corrélé sur `attachments` de
+    // SELECT_UNIFIED — se payait pour les 200 000 lignes d'un saut
+    // profond. Mesuré (gate P1 de la refonte, 205 050 conversations) :
+    // 252,6 ms à l'offset 200 000, croissance linéaire. Avec le squelette
+    // en sous-requête, le saut ne parcourt que l'index partiel
+    // `idx_threads_date_globale` — qui porte la clé de tri COMPLÈTE
+    // (last_epoch DESC, last_uid DESC, account_id) et le filtre
+    // `inbox_size > 0` — et les jointures ne s'exécutent que sur les
+    // `limit` lignes retenues.
+    //
+    // Le ORDER BY externe re-trie les lignes retenues avec la même clé :
+    // il garantit l'ordre final quelle que soit la stratégie de jointure,
+    // pour le prix d'un tri de `limit` lignes.
+    // `par_compte` ajoute le filtre `account_id = ?3` de la nav v2
+    // (« Boîtes » de l'écran 02) : même squelette, l'index préfixé
+    // `idx_threads_date (account_id, …)` porte alors tri et pagination.
+    // `non_lues` est l'onglet « Non lus » du prototype — filtré ICI, pas
+    // côté client : 331 conversations sur 2 929 au terrain, une page ne
+    // doit transporter que ce qu'elle affiche.
+    let filtre = if par_compte {
+        " AND account_id = ?3"
+    } else {
+        ""
+    };
+    let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
     format!(
         "{SELECT_UNIFIED}{THREAD_AGGREGATE}
-         FROM threads t
+         FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
+                 FROM threads
+                WHERE inbox_size > 0{filtre}{non_lues_seulement}
+                ORDER BY last_epoch DESC, last_uid DESC, account_id
+                LIMIT ?1 OFFSET ?2) t
          JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
          JOIN mailboxes m ON m.id = e.mailbox_id
          JOIN accounts a ON a.id = t.account_id
-         WHERE t.inbox_size > 0
-         ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id
-         LIMIT ?1 OFFSET ?2"
+         LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+         ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id"
     )
 }
 
@@ -1538,6 +1617,75 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
     // Les corps deja en base valent 0 : ils datent d'avant les pieces
     // jointes, et le rattrapage devra les relire une fois.
     add_missing_columns(conn, "bodies", &[("scanned", "INTEGER NOT NULL DEFAULT 0")])?;
+    // L'aperçu de liste (écran 02 de la refonte) se calcule à l'ÉCRITURE
+    // du corps ; les corps antérieurs le rattrapent PAR LOTS
+    // (`preview_catchup`, appelé par le shell au fil du sondage) — jamais
+    // sur le chemin d'ouverture ni au défilement. L'index partiel rend la
+    // sonde « des retardataires ? » gratuite une fois la passe soldée.
+    add_missing_columns(conn, "bodies", &[("preview", "TEXT")])?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_bodies_apercu_manquant
+             ON bodies(mailbox_id, uid) WHERE preview IS NULL;",
+    )?;
+    // Réparation des aperçus extraits par le premier décodeur, qui
+    // laissait passer les entités numériques (&#233;) et nommées
+    // (&eacute;, &zwnj;…) — défaut vu au terrain. Remettre à NULL suffit :
+    // le rattrapage par lots les recalcule avec le décodeur complet, hors
+    // du chemin d'ouverture. Le critère est LE scanner du décodeur
+    // lui-même (pas un motif SQL approximatif). UNE seule passe, tenue
+    // par un marqueur : un corps double-encodé (« &amp;gt; ») produit
+    // légitimement « &gt; » dans l'aperçu neuf — sans le marqueur, la
+    // réparation le remettrait à NULL à chaque ouverture, pour rien.
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS reparations (nom TEXT PRIMARY KEY);")?;
+    let deja_faite: bool = conn
+        .prepare("SELECT 1 FROM reparations WHERE nom = 'apercus-entites'")?
+        .exists([])?;
+    if !deja_faite {
+        let mut stmt = conn.prepare(
+            "SELECT mailbox_id, uid, preview FROM bodies
+                 WHERE preview IS NOT NULL AND preview LIKE '%&%'",
+        )?;
+        let pollues: Vec<(i64, u32)> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, u32>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?
+            .filter_map(Result::ok)
+            .filter(|(_, _, p)| crate::body::contient_entite_residuelle(p))
+            .map(|(m, u, _)| (m, u))
+            .collect();
+        drop(stmt);
+        for (mailbox_id, uid) in pollues {
+            conn.execute(
+                "UPDATE bodies SET preview = NULL WHERE mailbox_id = ?1 AND uid = ?2",
+                params![mailbox_id, uid],
+            )?;
+        }
+        conn.execute_batch("INSERT INTO reparations (nom) VALUES ('apercus-entites');")?;
+    }
+    // Réparation des corps mutilés au décodage — défaut vu au terrain
+    // (25 corps sur la base de mesure). Deux causes, corrigées côté
+    // mail-imap : les charsets multi-octets (gb2312…) exigeaient la
+    // feature `full_encoding` de mail-parser, et un charset absent
+    // tombait en UTF-8 avec remplacement au lieu du windows-1252 de fait.
+    // Supprimer la ligne suffit : le rattrapage (`bodies_to_backfill`)
+    // retélécharge tout message sans corps, et `save_body` refait au
+    // passage l'aperçu, l'index de recherche et les pièces. Les U+FFFD
+    // authentiques (envoyés tels quels) reviendront identiques — c'est un
+    // retéléchargement pour rien, mais UNE seule fois, tenu par le
+    // marqueur.
+    let deja_faite: bool = conn
+        .prepare("SELECT 1 FROM reparations WHERE nom = 'corps-fffd'")?
+        .exists([])?;
+    if !deja_faite {
+        conn.execute_batch(
+            "DELETE FROM bodies WHERE html LIKE '%' || char(65533) || '%';
+             INSERT INTO reparations (nom) VALUES ('corps-fffd');",
+        )?;
+    }
     add_missing_columns(
         conn,
         "accounts",
@@ -1664,6 +1812,7 @@ fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
 /// Mapping partagé par les lectures de la boîte unifiée — l'ordre des
 /// colonnes est celui de [`SELECT_UNIFIED`].
 pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
+    let attachment_count = row.get::<_, i64>(10)?.max(0) as u32;
     Ok(UnifiedRow {
         account_id: row.get(0)?,
         account_email: row.get(1)?,
@@ -1681,7 +1830,9 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
             in_reply_to: row.get(12)?,
         },
         mailbox: row.get(13)?,
-        has_attachment: row.get(10)?,
+        has_attachment: attachment_count > 0,
+        attachment_count,
+        preview: row.get(14)?,
         thread_id: row.get(11)?,
         // Valeurs d'un message vu SEUL — c'est le cas de la recherche, qui
         // ne joint pas `threads`. La liste groupée les écrase avec
@@ -1693,10 +1844,10 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
 
 /// Mapping de la liste groupée : les colonnes unifiées, puis l'agrégat du
 /// fil ajouté par [`THREAD_AGGREGATE`].
-fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
+pub(crate) fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
     Ok(UnifiedRow {
-        thread_size: row.get(14)?,
-        thread_unseen: row.get(15)?,
+        thread_size: row.get(15)?,
+        thread_unseen: row.get(16)?,
         ..row_to_unified(row)?
     })
 }
@@ -2526,6 +2677,46 @@ mod tests {
         store.save_body(id, 1, "<p>x</p>", &[]).unwrap();
         assert_eq!(store.remove_absent(id, &HashSet::new()).unwrap(), 1);
         assert_eq!(store.body(test_account(&store), "INBOX", 1).unwrap(), None);
+    }
+
+    /// Réparation `corps-fffd` : un corps mutilé au décodage (U+FFFD) est
+    /// purgé pour que le rattrapage le retélécharge avec le décodeur
+    /// corrigé ; un corps sain reste en place.
+    #[test]
+    fn reparation_corps_fffd_purge_les_corps_mutiles() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[envelope(1, "a", 100, false), envelope(2, "b", 100, false)],
+            )
+            .unwrap();
+        store
+            .save_body(id, 1, "<p>journ\u{FFFD}es</p>", &[])
+            .unwrap();
+        store.save_body(id, 2, "<p>sain</p>", &[]).unwrap();
+        // Simule une base d'avant la réparation : le marqueur disparaît,
+        // et la migration se rejoue comme à la prochaine ouverture.
+        store
+            .conn()
+            .execute("DELETE FROM reparations WHERE nom = 'corps-fffd'", [])
+            .unwrap();
+        migrate(store.conn()).unwrap();
+        let account = test_account(&store);
+        assert_eq!(
+            store.body(account, "INBOX", 1).unwrap(),
+            None,
+            "corps mutilé purgé"
+        );
+        assert!(
+            store.body(account, "INBOX", 2).unwrap().is_some(),
+            "corps sain conservé"
+        );
+        // Le message purgé redevient une cible du rattrapage.
+        assert_eq!(
+            store.bodies_to_backfill(account, "INBOX", 0, 10).unwrap(),
+            vec![1]
+        );
     }
 
     /// Régression (bug #2) : ré-ajouter un compte générique déjà connu
@@ -3648,7 +3839,10 @@ mod tests {
 
         let mut stmt = store
             .0
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", unified_page_sql()))
+            .prepare(&format!(
+                "EXPLAIN QUERY PLAN {}",
+                unified_page_sql(false, false)
+            ))
             .unwrap();
         let plan: Vec<String> = stmt
             .query_map(params![200i64, 0i64], |row| row.get::<_, String>(3))

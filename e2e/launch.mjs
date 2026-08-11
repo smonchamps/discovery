@@ -20,6 +20,7 @@ import { spawn, execSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
+import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const CDP_PORT = 9222;
@@ -42,21 +43,50 @@ export async function launchApp({
       { cwd: root, stdio: 'inherit' },
     );
   }
+  return attacher(db, accounts.map((account) => account.email));
+}
 
+// La refonte (PLAN-UI-V2) : même harnais, mais l'app embarque ui-v2 et
+// le décor est le jeu d'essai Clarity (seed_clarity). Les pièges du
+// rebuild (dist périmé, zombie, config à restaurer) vivent dans
+// `rebuild-v2.mjs`, une fois.
+// `vierge: true` : base NEUVE et aucun compte factice — l'état « zéro
+// compte » qui doit montrer l'écran 01 (onboarding).
+export async function launchAppV2({ vierge = false } = {}) {
+  construireV2(root, { release: false });
+
+  const db = path.join(
+    root, 'target', 'e2e', vierge ? 'parcours-v2-vierge.db' : 'parcours-v2.db',
+  );
+  rmSync(db, { force: true });
+  mkdirSync(path.dirname(db), { recursive: true });
+  if (vierge) {
+    return attacher(db, []);
+  }
+  execSync(`cargo run -p mail-core --example seed_clarity -- "${db}"`, {
+    cwd: root,
+    stdio: 'inherit',
+  });
+  return attacher(db, ['paul.merand@atelier-nord.fr', 'paul@merand.fr']);
+}
+
+async function attacher(db, emails) {
   // Profil WebView2 explicite et inscriptible : sur un runner CI,
   // l'emplacement par défaut peut être refusé. Stable d'un lancement à
   // l'autre — un profil neuf à chaque fois rendrait chaque démarrage
   // froid, donc lent, pour rien.
   const profile = path.join(root, 'target', 'e2e', 'webview2');
   mkdirSync(profile, { recursive: true });
+  purgerCacheHttp(profile);
 
   const env = {
     ...process.env,
     DISCOVERY_DB_PATH: db,
-    DISCOVERY_E2E_ACCOUNT: accounts.map((account) => account.email).join(','),
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
     WEBVIEW2_USER_DATA_FOLDER: profile,
   };
+  if (emails.length > 0) env.DISCOVERY_E2E_ACCOUNT = emails.join(',');
+  else delete env.DISCOVERY_E2E_ACCOUNT;
   delete env.GOOGLE_CLIENT_ID;
   delete env.GOOGLE_CLIENT_SECRET;
 
@@ -126,5 +156,15 @@ function startupFailure(exited, connected, log) {
 
 export async function closeApp({ app, browser }) {
   if (browser) await browser.close().catch(() => {});
-  if (app) app.kill();
+  if (app) {
+    // Attendre la sortie RÉELLE : un second lancement dans la même gate
+    // (écran 01 sur base vierge) réutilise le port CDP et le profil
+    // WebView2 — les reprendre à un processus encore vivant est une course.
+    const fini = new Promise((resolve) => {
+      if (app.exitCode !== null) resolve();
+      else app.once('exit', resolve);
+    });
+    app.kill();
+    await fini;
+  }
 }

@@ -560,10 +560,21 @@ fn orphans(conn: &Connection, account: Option<i64>) -> Result<Vec<Orphan>, Error
     // (ADR 0010 §3). Sans ce filtre, l'adoption les reprendrait à chaque
     // ouverture sans jamais les solder — sur le chemin déjà mesuré à 3,7 s
     // pour 200 000 messages, et que la synchronisation intégrale allonge.
+    //
+    // Et ce sont les BOÎTES EN PORTÉE qui pilotent le balayage (`CROSS
+    // JOIN` : l'ordre de jointure est figé, l'index (mailbox_id, …)
+    // porte le parcours). Parti des enveloppes, le plan partait de
+    // `idx_envelopes_thread (thread_id=NULL)` et énumérait les NULL
+    // éternels de TOUTE la base pour les écarter après jointure —
+    // 247 835 lignes, 398 ms, à CHAQUE `Store::open`, donc à chaque
+    // commande (mesuré au gate P1 de la refonte,
+    // `diagnostic_ouverture`). Piloté par la portée : 3 229 lignes,
+    // 23 ms — le coût suit ce que l'adoption peut avoir à faire, plus
+    // la taille de la base.
     const BASE: &str = "SELECT m.account_id, e.mailbox_id, e.uid,
                 e.message_id, e.in_reply_to, e.refs
-         FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
-         WHERE e.thread_id IS NULL AND m.threaded = 1";
+         FROM mailboxes m CROSS JOIN envelopes e ON e.mailbox_id = m.id
+         WHERE m.threaded = 1 AND e.thread_id IS NULL";
     let lire = |row: &rusqlite::Row<'_>| {
         Ok((
             row.get(0)?,
