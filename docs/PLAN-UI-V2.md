@@ -356,7 +356,10 @@ Ingénieur : la signature de l'Annexe A et la gate de bascule.
 **Gate de bascule :** budgets sur base réelle + 4 comptes + **deux
 semaines sans défaut critique** → `apps/desktop/ui/` retiré, e2e
 entièrement sur v2, revue de clôture `docs/PHASE-REFONTE.md` (livré vs
-plan, budgets, enseignements, reports, GO/NO-GO).
+plan, budgets, enseignements, reports, GO/NO-GO). Le plan d'exécution
+détaillé du retrait est **`docs/PLAN-RETRAIT-V1.md`** (R1 autonomie de
+synchro → R2 parcours portés → B1 bascule réversible → deux semaines →
+B2 retrait).
 
 ## 6. Dus de bascule — hors prototype, mais sans eux v2 ne s'expédie pas
 
