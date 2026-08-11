@@ -38,9 +38,20 @@ R2 (parcours portés) → B1 (bascule de défaut, réversible) → observation
 **Objectif :** tout ce que v1 déclenche, v2 le déclenche — selon D5 :
 synchro AUTOMATIQUE, sans bouton.
 
-**État : livré (GO du 2026-08-11), gate terrain en cours** — le témoin
-est l'envoi réel resté en file (`queued`, 0 tentative) constaté par le
-Chef Ingénieur : il doit partir SEUL à la première passe. Choix
+**État : livré (GO du 2026-08-11), gate terrain aux deux tiers** — le
+témoin (envoi réel resté en file) est **parti seul** à la première
+passe (`sent` en base) et sa copie a été **tirée dans Envoyés** par le
+cycle automatique, constaté par le Chef Ingénieur le jour même. Deux
+incidents de mise en route consignés : la configuration OAuth
+(`GOOGLE_CLIENT_ID`/`SECRET`) n'était posée nulle part — posée au
+niveau utilisateur conformément à PASSATION §7.2, en se souvenant
+qu'un terminal déjà ouvert ne voit jamais les variables nouvelles ; et
+un gel de ~10 s au premier lancement d'un binaire fraîchement
+recompilé (analyse Defender probable — à confirmer : il ne doit PAS se
+reproduire au second lancement du même binaire). Restent pour clore la
+gate : un mail ENTRANT qui apparaît sans action en ≤ 5 min, un
+brouillon poussé visible dans Gmail, et les budgets P1 re-mesurés avec
+le cycle actif. Choix
 d'implémentation actés : l'échec TOTAL de synchro vit dans la ligne de
 progression (« Synchronisation impossible — nouvelle tentative
 automatique »), pas dans la fente — §6 n'y met pas la synchro, et
