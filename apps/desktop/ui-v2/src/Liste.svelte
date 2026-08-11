@@ -395,7 +395,9 @@
   .nonlu .exp { font-weight:600; color:var(--ink); }
   .heure { font-size:12px; color:var(--muted); }
   .objet {
-    margin:0; font-size:18px; font-weight:600; line-height:1.3;
+    /* 16 px, pas les 18 px du prototype — verdict terrain du Chef
+       Ingénieur (A9) : l'objet dominait la ligne. */
+    margin:0; font-size:16px; font-weight:600; line-height:1.3;
     letter-spacing:-.01em; color:var(--ink2);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
