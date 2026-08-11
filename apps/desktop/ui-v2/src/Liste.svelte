@@ -18,7 +18,7 @@
   const PAD = 12;
   const OVER = 8;
 
-  let cadre;                    // l'élément défilable
+  let cadre = $state(null);     // l'élément défilable ($state : `visibles` en dépend)
   let total = $state(0);
   let premier = $state(0);
   let version = $state(0);      // bump à chaque page servie
@@ -157,9 +157,16 @@
     surDefilement();
   }
   export async function allerEtServir(index) {
+    // Demande EXPLICITE des pages de la fenêtre cible : le $effect qui
+    // les demanderait ne s'exécute qu'au flush suivant — attendre
+    // `pending` sans cela mesurerait un saut sans son service IPC.
     const t0 = performance.now();
     aller(index);
-    await Promise.all([...pending.values()]);
+    const de = Math.floor(Math.max(0, index - OVER) / PAGE);
+    const a = Math.floor(Math.min(Math.max(0, total - 1), index + visibles + OVER) / PAGE);
+    const attentes = [];
+    for (let p = de; p <= a; p++) attentes.push(servirPage(p));
+    await Promise.all(attentes);
     await tick();
     void cadre.offsetHeight; // reflow forcé : le travail est réellement fait
     return performance.now() - t0;
