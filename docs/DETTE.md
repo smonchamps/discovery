@@ -1,0 +1,54 @@
+# Registre de dette
+
+La dette assumée EN CONNAISSANCE : chaque entrée dit le fait mesuré, le
+choix, et ce qui la rouvrirait. Une entrée se solde par un commit qui la
+raye — jamais par l'oubli. (PASSATION §2.6 : un report = une ligne
+motivée.)
+
+## Ouverte
+
+### D-1 · Ouverture p95 au-dessus du budget sur les très gros corps
+
+- **Fait (2026-08-11, gate R1)** : ouverture p95 mesurée à 52–55 ms
+  (budget 50 ms) sur la base réelle — p50 ~14 ms. Le dépassement est
+  porté par UN corps > 1 Mo de l'échantillon déterministe ; la base en
+  compte 207 (jusqu'à 28 Mo). Identique avec et sans le cycle de
+  synchro : coût d'assainissement du HTML, pré-existant à la refonte.
+- **Décision CE (2026-08-11)** : acté en dette, à traiter plus tard.
+- **Piste** : assainissement paresseux ou streaming des très gros
+  corps ; à instruire comme chantier cœur séparé.
+- **Rouvre si** : le terrain rapporte des ouvertures perceptiblement
+  lentes, ou si le p50 dérive.
+
+### D-2 · Éviction LRU des pages de liste
+
+- **Fait (P1-P2)** : la liste fenêtrée garde toutes les pages servies en
+  mémoire ; sur une session très longue à grands défilements, la RAM
+  monte sans redescendre.
+- **Piste** : éviction LRU des pages hors fenêtre.
+- **Rouvre si** : la RAM dépasse le budget (200 Mo) en usage réel.
+
+### D-3 · Dates en jour de semaine (2 à 6 jours)
+
+- **Fait (P3)** : le prototype affiche « Lundi, 18:20 » pour les
+  messages de la semaine ; `quand()` affiche « 8 août ». Écart visuel
+  mineur, dit à la livraison P3.
+- **Piste** : étendre `quand()` (2–6 jours → jour de semaine).
+
+### D-4 · Piège de focus des surimpressions
+
+- **Fait (A8)** : Tab peut sortir d'une surimpression (composition,
+  réglages) vers le fond ; Échap et le focus visible couvrent
+  l'essentiel.
+- **Rouvre si** : le terrain au lecteur d'écran le réclame.
+
+### D-5 · Charset amont (U+FFFD dans les corps stockés)
+
+- **Fait (2026-08-11)** : 15 corps de la base réelle portent U+FFFD dès
+  le HTML stocké — décodage du charset MIME à la synchronisation.
+- **État** : chantier EN COURS dans une session séparée (fiche posée le
+  2026-08-11). Cette entrée se raye à sa livraison.
+
+## Soldée
+
+(rien encore — une entrée soldée reste ici, rayée, avec son commit)
