@@ -169,7 +169,7 @@ fn decoder_entite(reste: &str) -> Option<(usize, Option<char>)> {
         .iter()
         .position(|o| !o.is_ascii_alphanumeric())
         .map(|n| 1 + n)?;
-    if fin < 3 || fin > 33 || octets.get(fin) != Some(&b';') || !octets[1].is_ascii_alphabetic() {
+    if !(3..=33).contains(&fin) || octets.get(fin) != Some(&b';') || !octets[1].is_ascii_alphabetic() {
         return None;
     }
     let nom = &reste[1..fin];
