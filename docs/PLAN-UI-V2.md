@@ -199,9 +199,21 @@ se re-mesurent au terrain sur la vraie base, hors OneDrive.
    soldée. Kaizen noté, non dû : ~9 ms résiduels par appel =
    `Store::open` + `COUNT(*)` — à ne toucher que si un budget le
    demande.
-2. **Démarrage** — re-mesure terrain due sur la vraie base, hors
-   OneDrive : les deux UIs paient pareil, le suspect est en amont du
-   front.
+2. **Démarrage — TRANCHÉ ✓ (2026-08-11, terrain sur copie de la vraie
+   base).** La re-mesure a montré une SECONDE dette cœur, invisible en
+   synthétique : `orphans()` énumérait à chaque `Store::open` les
+   247 835 enveloppes hors portée (`thread_id` NULL pour toujours,
+   ADR 0010 §3) — ~400 ms par commande. Corrigé sur GO du Chef
+   Ingénieur (`0acbe0b`) : le balayage est piloté par les boîtes en
+   portée (3 229 enveloppes). `Store::open` 428 → **3,3 ms** ; première
+   page sur la vraie base 1 944 (froid) / 389 (chaud) → **51,8 ms**.
+   Démarrage au mur : **1 167 ms, dont ~52 ms d'application** — la
+   masse restante est le spawn + l'init WebView2, partagée avec v1,
+   gonflée par le port CDP du banc, **hors du périmètre du front**.
+   Statut : les budgets imputables à l'UI sont tous verts sur la vraie
+   base ; l'écart résiduel du démarrage est une piste séparée
+   (coquille/WebView2), à instruire hors refonte si le terrain le
+   réclame. Diagnostic conservé : `diagnostic_ouverture`.
 
 **Notes portées à P2 :** aperçu de liste et compte de fichiers par fil
 absents de `MessageRow` (le port doit les exposer pour la ligne et les
