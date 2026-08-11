@@ -6,12 +6,19 @@
   // automatique est en D6, après bascule).
   import { FICHES, appliquerTheme, themeActuel } from './lib/theme.js';
   import { activation } from './lib/clavier.js';
+  import GuichetCompte from './GuichetCompte.svelte';
+
+  // A11 — la section « Comptes » : v1 offrait l'ajout à tout moment,
+  // l'écran 01 ne vient qu'à zéro compte ; la porte permanente vit ici.
+  let { comptes = [], onajoute = () => {} } = $props();
 
   let visible = $state(false);
   let actif = $state(themeActuel());
+  let ajoutOuvert = $state(false);
 
   export function ouvrir() {
     actif = themeActuel();
+    ajoutOuvert = false;
     visible = true;
   }
   export function fermer() {
@@ -57,6 +64,25 @@
               {/if}
             </div>
           {/each}
+        </div>
+
+        <p class="section">Comptes</p>
+        <div class="rangees" data-testid="reglages-comptes">
+          {#each comptes as c (c.account_id)}
+            <div class="compte">
+              <span class="ms" aria-hidden="true">person</span>
+              <span class="adresse">{c.email}</span>
+            </div>
+          {/each}
+          {#if ajoutOuvert}
+            <!-- Démonté à la fermeture ou au succès : le guichet repart
+                 toujours propre. -->
+            <GuichetCompte compact onajoute={() => { ajoutOuvert = false; onajoute(); }} />
+          {:else}
+            <button type="button" class="ajouter" data-testid="reglages-ajouter"
+                    onclick={() => (ajoutOuvert = true)}>
+              <span class="ms" aria-hidden="true">person_add</span>Ajouter un compte</button>
+          {/if}
         </div>
       </div>
       <div class="pied">
@@ -121,6 +147,22 @@
   .nom { font-size:14px; font-weight:600; color:var(--ink); }
   .desc { font-size:12px; line-height:1.4; color:var(--muted); }
   .coche { color:var(--accent); font-variation-settings:'FILL' 1; }
+  .compte {
+    display:flex; align-items:center; gap:12px; padding:10px 16px;
+    font-size:13px; color:var(--ink2);
+  }
+  .compte .ms { color:var(--muted); }
+  .adresse {
+    color:var(--ink); overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .ajouter {
+    height:32px; padding:0 16px; align-self:flex-start; display:inline-flex;
+    align-items:center; gap:8px; font-size:13px; color:var(--ink);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; cursor:pointer;
+  }
+  .ajouter:hover { background:var(--sel); }
   .pied {
     flex:none; padding:14px 22px 18px; border-top:1px solid var(--border);
     display:flex; align-items:center;

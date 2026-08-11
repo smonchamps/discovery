@@ -107,12 +107,12 @@ joués sur l'UI v1 par `launchApp`. Destins :
 | Étoile / Déplacer | **soldés par D2** (coupés) — les parcours tombent avec, ligne motivée |
 | Compte générique (ajout IMAP réel contre serveur de test) | **à porter** sur l'écran 01 (le guichet générique existe) |
 
-**Trou découvert au portage (2026-08-11), à câbler AVANT B1 :** v1
-offrait « ajouter un compte » à tout moment (bouton + 3 dialogues) ;
-v2 n'a AUCUNE porte d'ajout dès qu'un compte existe — l'écran 01 ne
-s'affiche qu'à zéro compte. Destination proposée : une section
-« Comptes » dans Réglages (rangées des comptes réels + « Ajouter un
-compte » routé comme l'écran 01). À arbitrer par le Chef Ingénieur.
+**Trou découvert au portage (2026-08-11) — soldé le jour même** : v1
+offrait « ajouter un compte » à tout moment ; v2 n'avait aucune porte
+d'ajout dès qu'un compte existait. Arbitrage CE : section « Comptes »
+dans Réglages (rangées des comptes réels + « Ajouter un compte » qui
+déplie LE guichet de l'écran 01, implémentation partagée). Amendement
+A11 au journal du Système.
 
 **Abandons de portage motivés** (consignés en tête de
 `refonte-parcours-v1.spec.js`) : étoiler/déplacer (D2) ; auto-avance

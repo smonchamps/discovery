@@ -292,3 +292,19 @@ test('les réglages appliquent et persistent le thème', async () => {
   await page.locator('[data-theme-id="nature"]').click();
   await page.locator('[data-testid="reglages-termine"]').click();
 });
+
+test("la section Comptes liste les comptes réels et ouvre le guichet d'ajout (A11)", async () => {
+  await page.locator('[data-testid="reglages"]').click();
+  const section = page.locator('[data-testid="reglages-comptes"]');
+  await expect(section).toContainText('paul.merand@atelier-nord.fr');
+  await expect(section).toContainText('paul@merand.fr');
+  // « Ajouter un compte » déplie LE guichet de l'écran 01 — même
+  // implémentation : adresse, routage par domaine, champs génériques.
+  await page.locator('[data-testid="reglages-ajouter"]').click();
+  await page.locator('[data-testid="onboarding-adresse"]').fill('paul@exemple.fr');
+  await page.locator('[data-testid="onboarding-continuer"]').click();
+  await expect(page.locator('#ob-imap')).toHaveValue('imap.exemple.fr');
+  // Rien n'est parti ; Terminé referme, le guichet se démonte propre.
+  await page.locator('[data-testid="reglages-termine"]').click();
+  await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
+});

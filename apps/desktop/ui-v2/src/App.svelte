@@ -592,7 +592,7 @@
 
     <Composition bind:this={composition} {comptes} {compte}
                  onflash={flash} onenvoye={apresEnvoi} />
-    <Reglages bind:this={reglages} />
+    <Reglages bind:this={reglages} {comptes} onajoute={compteAjoute} />
   {/if}
 
   <ModaleMigration bind:this={modaleMigration} />
