@@ -48,10 +48,18 @@ niveau utilisateur conformément à PASSATION §7.2, en se souvenant
 qu'un terminal déjà ouvert ne voit jamais les variables nouvelles ; et
 un gel de ~10 s au premier lancement d'un binaire fraîchement
 recompilé (analyse Defender probable — à confirmer : il ne doit PAS se
-reproduire au second lancement du même binaire). Restent pour clore la
-gate : un mail ENTRANT qui apparaît sans action en ≤ 5 min, un
-brouillon poussé visible dans Gmail, et les budgets P1 re-mesurés avec
-le cycle actif. Choix
+reproduire au second lancement du même binaire). **Gate close le 2026-08-11** : mail entrant arrivé sans action ✓
+(terrain CE) ; brouillon reflété ✓ (poussée immédiate à la fermeture
+ajoutée — elle n'était que dans le cycle) ; budgets re-mesurés avec le
+cycle actif sur copie de la base réelle (2 942 conversations,
+2 passes à chaud) : démarrage 578-649 ms ✓, première page 94-99 ms ✓,
+page p95 9,2-9,7 ms ✓, thème p95 0,4 ms ✓, RAM 184-187 Mo ✓,
+ouverture p50 ~14 ms ✓ et **p95 52-55 ms** — 2 à 5 ms au-dessus du
+budget, porté par UN corps > 1 Mo de l'échantillon déterministe (la
+base en compte 207, jusqu'à 28 Mo) : coût d'assainissement du courrier
+réel, pré-existant à R1, mesuré identique avec et sans le cycle. Écart
+soumis à l'arbitrage du Chef Ingénieur ; piste si refusé :
+assainissement paresseux des très gros corps, chantier séparé. Choix
 d'implémentation actés : l'échec TOTAL de synchro vit dans la ligne de
 progression (« Synchronisation impossible — nouvelle tentative
 automatique »), pas dans la fente — §6 n'y met pas la synchro, et
