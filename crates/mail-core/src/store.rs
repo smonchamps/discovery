@@ -1636,9 +1636,7 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
     // par un marqueur : un corps double-encodé (« &amp;gt; ») produit
     // légitimement « &gt; » dans l'aperçu neuf — sans le marqueur, la
     // réparation le remettrait à NULL à chaque ouverture, pour rien.
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS reparations (nom TEXT PRIMARY KEY);",
-    )?;
+    conn.execute_batch("CREATE TABLE IF NOT EXISTS reparations (nom TEXT PRIMARY KEY);")?;
     let deja_faite: bool = conn
         .prepare("SELECT 1 FROM reparations WHERE nom = 'apercus-entites'")?
         .exists([])?;

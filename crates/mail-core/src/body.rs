@@ -169,7 +169,10 @@ fn decoder_entite(reste: &str) -> Option<(usize, Option<char>)> {
         .iter()
         .position(|o| !o.is_ascii_alphanumeric())
         .map(|n| 1 + n)?;
-    if !(3..=33).contains(&fin) || octets.get(fin) != Some(&b';') || !octets[1].is_ascii_alphabetic() {
+    if !(3..=33).contains(&fin)
+        || octets.get(fin) != Some(&b';')
+        || !octets[1].is_ascii_alphabetic()
+    {
         return None;
     }
     let nom = &reste[1..fin];
@@ -275,15 +278,13 @@ pub(crate) fn contient_entite_residuelle(texte: &str) -> bool {
         .char_indices()
         .filter(|(_, c)| *c == '&')
         .any(|(i, _)| decoder_entite(&texte[i..]).is_some());
-    let queue_tronquee = texte
-        .rfind('&')
-        .is_some_and(|i| {
-            let apres = &texte[i + 1..];
-            !apres.is_empty()
-                && apres
-                    .bytes()
-                    .all(|o| o.is_ascii_alphanumeric() || o == b'#')
-        });
+    let queue_tronquee = texte.rfind('&').is_some_and(|i| {
+        let apres = &texte[i + 1..];
+        !apres.is_empty()
+            && apres
+                .bytes()
+                .all(|o| o.is_ascii_alphanumeric() || o == b'#')
+    });
     entiere || queue_tronquee
 }
 
@@ -331,7 +332,9 @@ mod tests {
         // Le motif RÉEL du terrain : accents en entités décimales, hex
         // et nommées — plus l'apostrophe typographique.
         assert_eq!(
-            extraire_apercu("Vos r&#233;f&#233;rences ont &#xE9;t&#xE9; re&ccedil;ues, merci d&rsquo;avoir voyag&eacute;."),
+            extraire_apercu(
+                "Vos r&#233;f&#233;rences ont &#xE9;t&#xE9; re&ccedil;ues, merci d&rsquo;avoir voyag&eacute;."
+            ),
             "Vos références ont été reçues, merci d’avoir voyagé."
         );
     }
@@ -341,11 +344,16 @@ mod tests {
         // Chevilles de pré-en-tête des newsletters : zwnj, shy, espaces
         // fines en entités — jamais un résidu « &#8199; » à l'écran.
         assert_eq!(
-            extraire_apercu("R&#233;compense&#847;&zwnj;&#8199;&shy;&zwnj; &#8202; d&eacute;bloqu&eacute;e"),
+            extraire_apercu(
+                "R&#233;compense&#847;&zwnj;&#8199;&shy;&zwnj; &#8202; d&eacute;bloqu&eacute;e"
+            ),
             "Récompense débloquée"
         );
         // Une entité INCONNUE vaut un blanc, pas un résidu.
-        assert_eq!(extraire_apercu("avant&inconnue;apr&egrave;s"), "avant après");
+        assert_eq!(
+            extraire_apercu("avant&inconnue;apr&egrave;s"),
+            "avant après"
+        );
         // Un « & » ordinaire reste un caractère : R&D.
         assert_eq!(extraire_apercu("R&D et &#litige"), "R&D et &#litige");
     }
@@ -359,7 +367,9 @@ mod tests {
         assert!(contient_entite_residuelle("des journ es &#12852"));
         assert!(contient_entite_residuelle("fin coup&eacu"));
         // Texte sain : rien à réparer.
-        assert!(!contient_entite_residuelle("références décodées, R&D comprise."));
+        assert!(!contient_entite_residuelle(
+            "références décodées, R&D comprise."
+        ));
         assert!(!contient_entite_residuelle("aucune esperluette"));
     }
 

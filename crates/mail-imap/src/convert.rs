@@ -360,11 +360,7 @@ pub(crate) fn extract_html(raw: &[u8]) -> Option<String> {
 ///
 /// Si le charset déclaré est connu, ou si les octets sont de l'UTF-8 valide
 /// (le U+FFFD vient alors de l'expéditeur), le corps est laissé tel quel.
-fn redecode_sans_charset(
-    html: String,
-    message: &mail_parser::Message<'_>,
-    raw: &[u8],
-) -> String {
+fn redecode_sans_charset(html: String, message: &mail_parser::Message<'_>, raw: &[u8]) -> String {
     use mail_parser::MimeHeaders;
 
     if !html.contains('\u{FFFD}') {
@@ -408,8 +404,7 @@ fn redecode_sans_charset(
     if std::str::from_utf8(&bytes).is_ok() {
         return html;
     }
-    let Some(decoder) =
-        mail_parser::decoders::charsets::map::charset_decoder(b"windows-1252")
+    let Some(decoder) = mail_parser::decoders::charsets::map::charset_decoder(b"windows-1252")
     else {
         return html;
     };
