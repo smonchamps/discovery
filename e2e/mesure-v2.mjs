@@ -122,6 +122,12 @@ try {
   const etat = await page.evaluate(() => window.__mesure.etat());
   console.log(`décor      : ${etat.total} lignes · gabarits ${etat.h1}/${etat.h2} px`);
 
+  // MESURE_SANS_ACTIVITE=1 : peser la RAM AU REPOS, méthodologie ADR
+  // 0002 — la même posture que le banc v1, sans quoi la comparaison
+  // pèse un marathonien contre un dormeur.
+  const auRepos = process.env.MESURE_SANS_ACTIVITE === '1';
+
+  if (!auRepos) {
   // Pages : 300 sauts répartis sur la profondeur, LCG déterministe.
   const pages_ms = await page.evaluate(async () => {
     let graine = 42;
@@ -153,8 +159,9 @@ try {
     return mesures;
   });
   console.log(`ouverture  : ${stats(ouvertures_ms)}`);
+  }
 
-  console.log('stabilisation 30 s avant la mesure RAM…');
+  console.log(`stabilisation 30 s avant la mesure RAM${auRepos ? ' (repos, aucune activité)' : ''}…`);
   await new Promise((resolve) => setTimeout(resolve, 30000));
   const ram = execSync(
     `powershell -NoProfile -ExecutionPolicy Bypass -File "${path.join(import.meta.dirname, 'mesure-ram.ps1')}"`
