@@ -810,12 +810,15 @@ lecture</b> — jamais à la ligne de liste.</p>
 
   <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
     <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Journal des amendements</h2>
-    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Ce document est la <b>copie vivante et normative</b> du Système,
-versionnée dans le dépôt (<code>docs/design/</code>). Le prototype du
-handoff est illustratif : quand ils divergent, <b>le prototype plie</b>
-(ruling du Chef Ingénieur, 2026-08-10). Chaque amendement est daté, motivé
-par le terrain — de vrais mails, de vraies mesures — et tracé par un
-commit.</p>
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Ce document est la <b>copie vivante</b> du Système, versionnée
+dans le dépôt (<code>docs/design/</code>). Depuis la directive du
+2026-08-11 (amendement A6), le prototype interactif
+(<code>docs/design/ui_prototype.html</code>) est la <b>cible normative</b>
+de la refonte : quand ils divergent, <b>le prototype l'emporte</b> et
+l'écart s'inscrit ici. Le Système reste la référence là où le prototype
+est muet — avis et progression, corps HTML, inventaire d'icônes,
+contrastes. Chaque amendement est daté, motivé — terrain ou directive —
+et tracé par un commit.</p>
     <table style="width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; overflow:hidden">
       <thead>
         <tr style="background:#eaece9">
@@ -849,6 +852,11 @@ commit.</p>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
           <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A5</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f">Le Système prend le nom <b>« Clarity »</b> (anciennement « Douceur »). Décision du Chef Ingénieur ; le nom est renommé dans tout le dépôt, l’historique des commits n’est pas réécrit.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A6</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Inversion de normativité — directive du Chef Ingénieur : la refonte UI v2 livre <b>exactement l'UI du prototype</b> (<code>ui_prototype.html</code>) ; en cas de divergence le prototype l'emporte, l'écart s'inscrit à ce journal. Le Système complète là où le prototype est muet. Conséquence : A2 (ligne fixe 104 px, puces bannies de la liste) est <b>rétrogradé en repli documenté</b> du gate perf P1 (<code>docs/PLAN-UI-V2.md</code>) — le fait terrain (8/120 débordements) reste acté. Les invariants (iframe sandbox, règles d'or, budgets) restent hors du champ du prototype.</td>
         </tr>
       </tbody>
     </table>
