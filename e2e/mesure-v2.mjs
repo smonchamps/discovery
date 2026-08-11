@@ -109,11 +109,19 @@ const stats = (valeurs) => {
 };
 
 try {
-  const page = browser
-    .contexts()
-    .flatMap((context) => context.pages())
-    .find((candidate) => candidate.url().includes('tauri.localhost'));
-  await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 30000 });
+  // On attend la PAGE, pas le port (leçon de launch.mjs) : le CDP répond
+  // avant que la fenêtre n'ait créé son document — chercher la page une
+  // seule fois est une course, perdue dès que le démarrage est froid.
+  let page = null;
+  for (let attempt = 0; attempt < 60 && !page; attempt++) {
+    page = browser
+      .contexts()
+      .flatMap((context) => context.pages())
+      .find((candidate) => candidate.url().includes('tauri.localhost'));
+    if (!page) await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!page) throw new Error('fenêtre Tauri introuvable après 30 s — le processus a-t-il démarré ?');
+  await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 60000 });
   const demarrage = performance.now() - t0;
   await page.waitForFunction(() => document.getElementById('perf').dataset.startup);
   console.log(`démarrage  : ${demarrage.toFixed(0)} ms (spawn -> première ligne, horloge murale)`);

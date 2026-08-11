@@ -44,11 +44,17 @@ if (!browser) {
 }
 
 try {
-  const page = browser
-    .contexts()
-    .flatMap((context) => context.pages())
-    .find((candidate) => candidate.url().includes('tauri.localhost'));
-  await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 30000 });
+  // On attend la PAGE, pas le port (leçon de launch.mjs).
+  let page = null;
+  for (let attempt = 0; attempt < 60 && !page; attempt++) {
+    page = browser
+      .contexts()
+      .flatMap((context) => context.pages())
+      .find((candidate) => candidate.url().includes('tauri.localhost'));
+    if (!page) await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  if (!page) throw new Error('fenêtre Tauri introuvable après 30 s — le processus a-t-il démarré ?');
+  await page.locator('[data-testid="ligne"]').first().waitFor({ timeout: 60000 });
 
   // 1. Étage coeur + IPC : appel BRUT, sans aucun rendu. `elapsed_us`
   //    est mesuré DANS la commande Rust — la différence avec le mur,
