@@ -218,6 +218,9 @@
     const bilan = await sauverMaintenant();
     visible = false;
     if (!(bilan && bilan.forked)) onflash('Brouillon enregistré.');
+    // Le reflet part TOUT DE SUITE, en silence (R1, séquence v1) : hors
+    // ligne, le cycle suivant retentera — rien à dire.
+    appel('sync_drafts').catch(() => {});
   }
 
   async function enregistrerBrouillon() {
@@ -256,9 +259,11 @@
       await appel('delete_draft', { id: regle }).catch(() => {});
     }
     // Vidange en arrière-plan ; hors ligne, la file attend — l'incident
-    // visible est la fente d'avis (P5).
+    // visible est la fente d'avis (P5). Puis purge du reflet distant du
+    // brouillon réglé (séquence v1).
     appel('flush_outbox')
       .catch((err) => console.error('flush_outbox :', err))
+      .then(() => appel('sync_drafts').catch(() => {}))
       .finally(() => onenvoye());
   }
 
