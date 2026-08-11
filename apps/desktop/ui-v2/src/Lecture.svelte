@@ -25,7 +25,8 @@
   const meta = $derived.by(() => {
     if (!ligne) return '';
     const messages = ligne.thread_size > 1 ? `${ligne.thread_size} messages` : '1 message';
-    return ligne.has_attachment ? `${messages} · fichiers` : messages;
+    const n = ligne.attachment_count;
+    return n > 0 ? `${messages} · ${n} fichier${n > 1 ? 's' : ''}` : messages;
   });
 
   export async function ouvrir(nouvelle) {

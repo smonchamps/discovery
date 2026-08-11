@@ -210,6 +210,13 @@ pub struct UnifiedRow {
     /// recherche dans le texte. Le trombone apparait donc au fil du
     /// rattrapage, jamais a tort.
     pub has_attachment: bool,
+    /// COMBIEN de pièces jointes — la puce du prototype dit « 2
+    /// fichiers », pas « des fichiers ». 0 tant que le corps n'a pas été
+    /// lu, comme `has_attachment`.
+    pub attachment_count: u32,
+    /// L'aperçu texte sous l'objet (écran 02) — calculé à l'écriture du
+    /// corps, `None` tant que le corps n'est pas rapatrié.
+    pub preview: Option<String>,
     /// Le fil auquel ce message appartient. `None` seulement pendant la
     /// fenêtre où une base héritée n'a pas encore été adoptée.
     pub thread_id: Option<i64>,
@@ -231,7 +238,13 @@ pub struct UnifiedRow {
 /// La derniere colonne est un EXISTS sur `attachments` : la liste doit
 /// pouvoir afficher le trombone sans une requete par ligne. La cle
 /// primaire (mailbox_id, uid, idx) rend ce test indexe.
-pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, EXISTS(SELECT 1 FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name";
+// Exige les alias `e` (envelopes), `m` (mailboxes), `a` (accounts) ET la
+// jointure `LEFT JOIN bodies b` — l'aperçu de liste vient de là, NULL
+// tant que le corps n'est pas rapatrié. Le COUNT de pièces jointes
+// remplace l'ancien EXISTS : la puce du prototype dit « 2 fichiers »,
+// pas « des fichiers ». Les deux ne s'exécutent que sur les lignes
+// RETENUES par la pagination (gate P1).
+pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, (SELECT COUNT(*) FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name, b.preview";
 
 /// Le SELECT de la liste groupée : les colonnes ci-dessus, plus l'agrégat
 /// du fil. Il exige la jointure sur `threads` (alias `t`), que la
@@ -1063,9 +1076,9 @@ impl Store {
     ) -> Result<(), Error> {
         let tx = self.0.unchecked_transaction()?;
         tx.execute(
-            "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html, scanned)
-             VALUES (?1, ?2, ?3, 1)",
-            params![mailbox_id, uid, html],
+            "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html, scanned, preview)
+             VALUES (?1, ?2, ?3, 1, ?4)",
+            params![mailbox_id, uid, html, crate::body::extraire_apercu(html)],
         )?;
         // Remplacement intégral : un message re-téléchargé dont une pièce
         // aurait disparu ne doit pas garder l'ancienne ligne fantôme.
@@ -1152,6 +1165,37 @@ impl Store {
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Rattrape l'aperçu des corps écrits AVANT la colonne `preview` —
+    /// par lots bornés. Appelé par le shell au fil de son sondage :
+    /// jamais sur le chemin d'ouverture (budget démarrage < 1 s, leçon
+    /// de la chasse aux orphelins), jamais au défilement. Rend le nombre
+    /// de retardataires restants — zéro quand la passe est soldée.
+    pub fn preview_catchup(&self, limit: usize) -> Result<u64, Error> {
+        let lot: Vec<(i64, Uid, String)> = self
+            .0
+            .prepare("SELECT mailbox_id, uid, html FROM bodies WHERE preview IS NULL LIMIT ?1")?
+            .query_map(params![limit as i64], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .collect::<Result<_, _>>()?;
+        if !lot.is_empty() {
+            let tx = self.0.unchecked_transaction()?;
+            for (mailbox_id, uid, html) in &lot {
+                tx.execute(
+                    "UPDATE bodies SET preview = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
+                    params![mailbox_id, uid, crate::body::extraire_apercu(html)],
+                )?;
+            }
+            tx.commit()?;
+        }
+        let restants: i64 = self.0.query_row(
+            "SELECT COUNT(*) FROM bodies WHERE preview IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(restants as u64)
     }
 
     /// Les pièces jointes connues d'un message, dans l'ordre du MIME.
@@ -1411,6 +1455,7 @@ impl Store {
              JOIN threads t ON t.id = e.thread_id
              JOIN mailboxes m ON m.id = e.mailbox_id
              JOIN accounts a ON a.id = m.account_id
+             LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
              WHERE e.thread_id = ?1
              ORDER BY e.date_epoch ASC, e.uid ASC"
         ))?;
@@ -1518,6 +1563,7 @@ pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool) -> String {
          JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
          JOIN mailboxes m ON m.id = e.mailbox_id
          JOIN accounts a ON a.id = t.account_id
+         LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
          ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id"
     )
 }
@@ -1571,6 +1617,16 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
     // Les corps deja en base valent 0 : ils datent d'avant les pieces
     // jointes, et le rattrapage devra les relire une fois.
     add_missing_columns(conn, "bodies", &[("scanned", "INTEGER NOT NULL DEFAULT 0")])?;
+    // L'aperçu de liste (écran 02 de la refonte) se calcule à l'ÉCRITURE
+    // du corps ; les corps antérieurs le rattrapent PAR LOTS
+    // (`preview_catchup`, appelé par le shell au fil du sondage) — jamais
+    // sur le chemin d'ouverture ni au défilement. L'index partiel rend la
+    // sonde « des retardataires ? » gratuite une fois la passe soldée.
+    add_missing_columns(conn, "bodies", &[("preview", "TEXT")])?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_bodies_apercu_manquant
+             ON bodies(mailbox_id, uid) WHERE preview IS NULL;",
+    )?;
     add_missing_columns(
         conn,
         "accounts",
@@ -1697,6 +1753,7 @@ fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
 /// Mapping partagé par les lectures de la boîte unifiée — l'ordre des
 /// colonnes est celui de [`SELECT_UNIFIED`].
 pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
+    let attachment_count = row.get::<_, i64>(10)?.max(0) as u32;
     Ok(UnifiedRow {
         account_id: row.get(0)?,
         account_email: row.get(1)?,
@@ -1714,7 +1771,9 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
             in_reply_to: row.get(12)?,
         },
         mailbox: row.get(13)?,
-        has_attachment: row.get(10)?,
+        has_attachment: attachment_count > 0,
+        attachment_count,
+        preview: row.get(14)?,
         thread_id: row.get(11)?,
         // Valeurs d'un message vu SEUL — c'est le cas de la recherche, qui
         // ne joint pas `threads`. La liste groupée les écrase avec
@@ -1728,8 +1787,8 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
 /// fil ajouté par [`THREAD_AGGREGATE`].
 pub(crate) fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
     Ok(UnifiedRow {
-        thread_size: row.get(14)?,
-        thread_unseen: row.get(15)?,
+        thread_size: row.get(15)?,
+        thread_unseen: row.get(16)?,
         ..row_to_unified(row)?
     })
 }

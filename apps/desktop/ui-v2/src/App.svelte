@@ -54,6 +54,24 @@
   }
   chargerNav();
   setInterval(chargerNav, 10000);
+
+  // Rattrapage des aperçus pour les corps écrits avant la colonne
+  // `preview` : par lots, jamais sur le chemin d'ouverture ni au
+  // défilement. Converge puis se tait ; la liste se rafraîchit une fois
+  // la passe soldée pour montrer les aperçus rattrapés.
+  async function rattraperApercus() {
+    try {
+      let restants = await appel('preview_catchup', { limit: 2000 });
+      while (restants > 0) {
+        await new Promise((r) => setTimeout(r, 250));
+        restants = await appel('preview_catchup', { limit: 2000 });
+      }
+      liste?.recharger();
+    } catch (err) {
+      console.error('preview_catchup :', err);
+    }
+  }
+  setTimeout(rattraperApercus, 1500);
   async function sonderSynchro() {
     try {
       synchro = await appel('sync_progress');

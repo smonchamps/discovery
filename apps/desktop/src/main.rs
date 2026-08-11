@@ -71,6 +71,7 @@ fn main() {
             commands::list_messages,
             commands::nav_snapshot,
             commands::list_category,
+            commands::preview_catchup,
             commands::thread_messages,
             commands::search_messages,
             commands::message_body,

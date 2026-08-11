@@ -87,6 +87,12 @@ pub struct MessageRow {
     /// (« 09:12 », « Hier », « 5 août ») ; `date` reste la chaîne brute
     /// que la v1 affiche telle quelle. 0 = date inconnue.
     pub epoch: i64,
+    /// COMBIEN de pièces jointes — la puce du prototype dit « 2
+    /// fichiers ». 0 tant que le corps n'a pas été lu.
+    pub attachment_count: u32,
+    /// L'aperçu sous l'objet (écran 02 v2) ; `None` tant que le corps
+    /// n'est pas rapatrié ou rattrapé.
+    pub preview: Option<String>,
 }
 
 #[tauri::command]
@@ -800,6 +806,8 @@ pub fn thread_messages(app: AppHandle, thread_id: i64) -> Result<Vec<MessageRow>
 fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
     MessageRow {
         epoch: row.envelope.date.map(|date| date.timestamp()).unwrap_or(0),
+        attachment_count: row.attachment_count,
+        preview: row.preview,
         has_attachment: row.has_attachment,
         account_id: row.account_id,
         account_email: row.account_email,
@@ -963,6 +971,15 @@ pub fn list_category(
         rows,
         elapsed_us: timer.elapsed().as_micros() as u64,
     })
+}
+
+/// Rattrape l'aperçu des corps écrits avant la colonne `preview`, par
+/// lots bornés — l'UI l'appelle au fil de son sondage jusqu'à zéro,
+/// jamais sur le chemin d'ouverture. Rend le nombre restant.
+#[tauri::command]
+pub fn preview_catchup(app: AppHandle, limit: usize) -> Result<u64, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store.preview_catchup(limit).map_err(|err| err.to_string())
 }
 
 /// Recherche plein-texte sur tous les comptes. Le déclenchement à partir

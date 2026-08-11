@@ -293,6 +293,7 @@ impl Store {
              JOIN envelopes e ON e.mailbox_id = page.mailbox_id AND e.uid = page.uid
              JOIN mailboxes m ON m.id = e.mailbox_id
              JOIN accounts a ON a.id = m.account_id
+             LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
              LEFT JOIN threads t ON t.id = e.thread_id
              ORDER BY e.date_epoch DESC, e.uid DESC, e.mailbox_id",
             tranches = tranches.join(" UNION ALL "),
@@ -462,6 +463,66 @@ mod tests {
             .map(|row| row.envelope.subject.as_deref().unwrap())
             .collect();
         assert_eq!(sujets, ["a3"]);
+        // Aperçu et COMPTE de pièces : posés à l'écriture du corps.
+        store
+            .save_body(
+                gauche,
+                2,
+                "<p>Aperçu de a3</p>",
+                &[
+                    crate::Attachment {
+                        index: 0,
+                        name: "un.pdf".into(),
+                        mime: "application/pdf".into(),
+                        size: 10,
+                    },
+                    crate::Attachment {
+                        index: 1,
+                        name: "deux.pdf".into(),
+                        mime: "application/pdf".into(),
+                        size: 10,
+                    },
+                ],
+            )
+            .unwrap();
+        let page = store
+            .category_page(&[gauche, droite], false, 0, 10)
+            .unwrap();
+        let a3 = page
+            .iter()
+            .find(|row| row.envelope.subject.as_deref() == Some("a3"))
+            .unwrap();
+        assert_eq!(a3.preview.as_deref(), Some("Aperçu de a3"));
+        assert_eq!(a3.attachment_count, 2);
+        assert!(a3.has_attachment);
+    }
+
+    #[test]
+    fn le_rattrapage_d_apercu_solde_les_corps_anterieurs() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("a@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(inbox, &[envelope(1, "ancien", 100, true)])
+            .unwrap();
+        // Un corps écrit À L'ANCIENNE : la colonne `preview` n'existait pas.
+        store
+            .conn()
+            .execute(
+                "INSERT INTO bodies (mailbox_id, uid, html, scanned, preview)
+                 VALUES (?1, 1, '<p>Vieux corps</p>', 1, NULL)",
+                params![inbox],
+            )
+            .unwrap();
+        assert_eq!(
+            store.preview_catchup(10).unwrap(),
+            0,
+            "plus de retardataires"
+        );
+        let page = store.category_page(&[inbox], false, 0, 10).unwrap();
+        assert_eq!(page[0].preview.as_deref(), Some("Vieux corps"));
     }
 
     #[test]

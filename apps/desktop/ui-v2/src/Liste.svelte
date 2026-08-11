@@ -272,14 +272,14 @@
                 <span class="heure">{quand(ligne.epoch)}</span>
               </div>
               <p class="objet">{ligne.subject}</p>
-              <p class="apercu"></p>
+              <p class="apercu">{ligne.preview ?? ''}</p>
               {#if aPuces(ligne)}
                 <span class="puces">
                   {#if ligne.thread_size > 1}
                     <span class="puce"><span class="ms" aria-hidden="true">forum</span>{ligne.thread_size} messages</span>
                   {/if}
-                  {#if ligne.has_attachment}
-                    <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>fichiers</span>
+                  {#if ligne.attachment_count > 0}
+                    <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{ligne.attachment_count} fichier{ligne.attachment_count > 1 ? 's' : ''}</span>
                   {/if}
                 </span>
               {/if}
