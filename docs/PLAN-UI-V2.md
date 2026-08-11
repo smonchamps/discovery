@@ -133,7 +133,7 @@ en P1) :
 Chaque phase se clôt par : parité visuelle sur le banc (§4), budgets
 re-mesurés si le rendu a bougé, terrain du Chef Ingénieur, GO/NO-GO.
 
-### P1 — Gate perf : la ligne du prototype à 256 312 réels
+### P1 — Gate perf : la ligne du prototype à 256 312 réels — ✓ CLOS (2026-08-11, GO Chef Ingénieur)
 
 **Objectif :** prouver que la ligne **exacte** du prototype — hauteur
 variable, puces comprises — tient les budgets sur la vraie base, via le
