@@ -128,10 +128,13 @@ test("écrire ouvre la composition ; l'annuler vide ne laisse rien", async () =>
   await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText(
     'Nouveau message',
   );
-  // Le compte émetteur réel, adresse seule (écart dit : pas de nom).
-  await expect(page.locator('[data-testid="composition-de"]')).toHaveText(
-    'paul.merand@atelier-nord.fr',
-  );
+  // Le compte émetteur SE CHOISIT (A10) : deux comptes au décor, le
+  // premier par défaut, l'autre sélectionnable.
+  const de = page.locator('[data-testid="composition-de"]');
+  await expect(de).toHaveValue('paul.merand@atelier-nord.fr');
+  await expect(de.locator('option')).toHaveCount(2);
+  await de.selectOption('paul@merand.fr');
+  await expect(de).toHaveValue('paul@merand.fr');
   await page.locator('[data-testid="composition-annuler"]').click();
   await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toHaveCount(0);

@@ -280,7 +280,23 @@
       <div class="champs">
         <div class="rang">
           <span class="etiquette">De</span>
-          <span class="valeur" data-testid="composition-de">{expediteur?.email ?? ''}</span>
+          {#if comptes.length > 1}
+            <!-- A10 : le compte émetteur SE CHOISIT (verdict terrain) —
+                 le prototype figeait la ligne, v1 avait le sélecteur. -->
+            <select class="valeur" data-testid="composition-de" aria-label="Compte émetteur"
+                    value={expediteur?.email ?? ''}
+                    onchange={(e) => {
+                      const choisi = comptes.find((c) => c.email === e.target.value);
+                      if (choisi) expediteur = { account_id: choisi.account_id, email: choisi.email };
+                      programmerSauvegarde();
+                    }}>
+              {#each comptes as c (c.account_id)}
+                <option value={c.email}>{c.email}</option>
+              {/each}
+            </select>
+          {:else}
+            <span class="valeur" data-testid="composition-de">{expediteur?.email ?? ''}</span>
+          {/if}
         </div>
         <div class="rang">
           <span class="etiquette">À</span>
@@ -375,6 +391,11 @@
   }
   .etiquette { width:52px; font-size:13px; color:var(--muted); flex:none; }
   .valeur { flex:1; font-size:13px; color:var(--ink); }
+  select.valeur {
+    border:none; background:transparent; cursor:pointer; padding:0;
+    font:inherit; font-size:13px; color:var(--ink); min-width:0;
+  }
+  select.valeur option { background:var(--surface); color:var(--ink); }
   .rang input {
     flex:1; font-size:13px; color:var(--ink); border:none; outline:none;
     background:transparent; min-width:0;

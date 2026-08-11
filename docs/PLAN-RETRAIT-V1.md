@@ -74,7 +74,7 @@ joués sur l'UI v1 par `launchApp`. Destins :
 |---|---|
 | Envoi, brouillon, conflit d'édition, boîte d'envoi (requeue/abandon), pièces jointes, migration | **à porter** sur v2 (les surfaces existent : composition, fente d'avis, modale) — mêmes seeds, testids v2 |
 | Recherche (6 : accents, sujets, bornes) | **à porter** sur la recherche D1 (le décor `seed_inbox` reste) |
-| Multi-comptes (pastilles, sélecteur De) | **remplacés** : la nav Boîtes v2 couvre le besoin ; le sélecteur De multi-comptes v2 = compte du contexte (écart déjà dit en P4) |
+| Multi-comptes (pastilles, sélecteur De) | **remplacés/câblés** : la nav Boîtes v2 couvre les pastilles ; le sélecteur De est câblé en v2 (A10, verdict terrain) — porter le parcours « choisir le compte émetteur » |
 | Étoile / Déplacer | **soldés par D2** (coupés) — les parcours tombent avec, ligne motivée |
 | Compte générique (ajout IMAP réel contre serveur de test) | **à porter** sur l'écran 01 (le guichet générique existe) |
 
