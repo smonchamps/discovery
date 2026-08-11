@@ -369,14 +369,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ]),
         &[piece(0, "CR_04-08.pdf", "application/pdf", 225_280)],
     )?;
+    // Le seul corps du décor à IMAGE DISTANTE : il prouve la garde
+    // d'images du volet (bloquées par défaut, opt-in par message — §6).
     store.save_body(
         inbox_p,
         2,
-        &corps(&[
-            "Bonjour,",
-            "Le domaine atelier-nord.fr expire le 2 septembre. Renouvelez-le pour éviter toute interruption de service.",
-            "Support",
-        ]),
+        &format!(
+            "{}\n<img src=\"https://registrar.exemple/logo.png\" alt=\"Registrar\">",
+            corps(&[
+                "Bonjour,",
+                "Le domaine atelier-nord.fr expire le 2 septembre. Renouvelez-le pour éviter toute interruption de service.",
+                "Support",
+            ])
+        ),
         &[],
     )?;
     let brouillons_p = boite(&mut store, personnel, "Brouillons")?;

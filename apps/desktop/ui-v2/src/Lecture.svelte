@@ -20,6 +20,10 @@
 
   let ligne = $state(null);
   let corps = $state('');
+  // Images distantes : bloquées par DÉFAUT (invariant), comptées par le
+  // coeur ; l'opt-in est PAR MESSAGE et ne survit pas à la sélection.
+  let imagesBloquees = $state(0);
+  let imagesVoulues = false;
   let derniereOuvertureMs = $state(null);
   // Jeton d'ouverture, PAS une comparaison d'objet : `$state` enveloppe
   // les objets dans un proxy, `ligne !== nouvelle` après un await est
@@ -35,6 +39,12 @@
 
   export async function ouvrir(nouvelle) {
     const t0 = performance.now();
+    imagesVoulues = false;
+    const duree = await servir(nouvelle, false, t0);
+    return duree;
+  }
+
+  async function servir(nouvelle, avecImages, t0 = null) {
     const mien = ++jeton;
     ligne = nouvelle;
     try {
@@ -42,20 +52,30 @@
         accountId: nouvelle.account_id,
         mailbox: nouvelle.mailbox,
         uid: nouvelle.uid,
-        showImages: false,
+        showImages: avecImages,
       });
       if (mien !== jeton) return derniereOuvertureMs; // sélection changée
       corps = vue.document;
+      imagesBloquees = avecImages ? 0 : vue.remote_images_blocked;
     } catch (err) {
       corps = '';
+      imagesBloquees = 0;
       console.error('message_body :', err);
     }
-    derniereOuvertureMs = performance.now() - t0;
+    if (t0 !== null) derniereOuvertureMs = performance.now() - t0;
     return derniereOuvertureMs;
   }
+
+  function afficherImages() {
+    if (!ligne || imagesVoulues) return;
+    imagesVoulues = true;
+    servir(ligne, true);
+  }
+
   export function fermer() {
     ligne = null;
     corps = '';
+    imagesBloquees = 0;
   }
   export function etat() {
     return { derniereOuvertureMs };
@@ -82,6 +102,16 @@
         <span class="nom">{ligne.sender}</span>
         <span class="adresse">à {ligne.account_email}</span>
       </div>
+      {#if imagesBloquees > 0}
+        <div class="garde-images" data-testid="garde-images">
+          <span class="ms" aria-hidden="true">visibility_off</span>
+          <span class="garde-texte">{imagesBloquees} image{imagesBloquees > 1 ? 's' : ''}
+            distante{imagesBloquees > 1 ? 's' : ''} bloquée{imagesBloquees > 1 ? 's' : ''}
+            pour protéger votre vie privée.</span>
+          <button type="button" data-testid="afficher-images" onclick={afficherImages}>
+            Afficher les images</button>
+        </div>
+      {/if}
       <iframe class="corps" sandbox srcdoc={corps} title="Contenu du message"></iframe>
       <div class="actions">
         <button type="button" class="principal" data-testid="repondre" onclick={() => onrepondre(ligne)}>
@@ -135,6 +165,14 @@
   }
   .nom { font-size:15px; font-weight:600; color:var(--ink); }
   .adresse { font-size:13px; color:var(--muted); }
+  .garde-images {
+    margin:18px 30px 0; padding:10px 14px; display:flex;
+    align-items:center; gap:10px; font-size:13px; color:var(--ink2);
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:6px;
+  }
+  .garde-images .ms { color:var(--muted); }
+  .garde-texte { flex:1; }
   .corps {
     flex:1; border:none; background:#ffffff; margin:18px 30px 0;
     min-height:0;

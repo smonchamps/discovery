@@ -25,6 +25,7 @@
     onrepondre = () => {},
     ontransferer = () => {},
     onecrire = () => {},
+    onflash = () => {},
   } = $props();
 
   let ligne = $state(null);
@@ -57,6 +58,9 @@
     jeton += 1;
     ligne = null;
     fil = [];
+  }
+  export function estOuverte() {
+    return ligne !== null;
   }
 
   async function chargerMessage(m) {
@@ -96,6 +100,30 @@
   }
   function toutDeplier() {
     for (const m of fil) basculer(m, true);
+  }
+
+  // Enregistrer une pièce jointe (dû de bascule §6) : les octets sont
+  // retéléchargés à la demande, une fois — jamais mis en cache (ADR
+  // 0007). Le visuel des puces ne change pas, elles deviennent des
+  // boutons.
+  let enregistrements = $state({});
+  async function enregistrer(m, piece) {
+    const k = `${cle(m)}#${piece.index}`;
+    if (enregistrements[k]) return;
+    enregistrements[k] = true;
+    try {
+      const chemin = await appel('save_attachment', {
+        accountId: m.account_id,
+        mailbox: m.mailbox,
+        uid: m.uid,
+        index: piece.index,
+      });
+      onflash(`Pièce enregistrée : ${chemin}`);
+    } catch (err) {
+      onflash(`Enregistrement impossible : ${err}`);
+    } finally {
+      enregistrements[k] = false;
+    }
   }
 
   // Répondre / Transférer depuis la conversation visent le DERNIER
@@ -165,7 +193,11 @@
                       <p class="titre-fichiers">Fichiers joints</p>
                       <div class="puces">
                         {#each pieces[cle(m)] ?? [] as piece (piece.index)}
-                          <span class="puce"><span class="ms" aria-hidden="true">description</span>{piece.name}</span>
+                          <button type="button" class="puce bouton" data-testid="piece-jointe"
+                                  disabled={enregistrements[`${cle(m)}#${piece.index}`]}
+                                  onclick={() => enregistrer(m, piece)}
+                                  title="Enregistrer dans Téléchargements">
+                            <span class="ms" aria-hidden="true">description</span>{piece.name}</button>
                           <span class="puce"><span class="ms" aria-hidden="true">storage</span>{piece.size}</span>
                         {/each}
                       </div>

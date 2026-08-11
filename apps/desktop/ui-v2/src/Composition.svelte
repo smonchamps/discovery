@@ -140,6 +140,25 @@
     }, 0);
   }
 
+  // Reprendre un brouillon local (fente d'avis, dû §6) : le contenu
+  // revient tel quel, l'autosave repart de SON epoch — le conflit
+  // d'édition reste couvert.
+  export function ouvrirBrouillon(brouillon) {
+    jeton += 1;
+    mode = 'new';
+    expediteur = compteDe(brouillon.account_id);
+    a = brouillon.to;
+    objet = brouillon.subject;
+    corps = brouillon.body;
+    fichiers = [];
+    replyToMailbox = null;
+    replyToUid = brouillon.reply_to_uid ?? null;
+    brouillonId = brouillon.id;
+    brouillonEpoch = brouillon.updated_epoch;
+    visible = true;
+    setTimeout(() => champCorps?.focus(), 0);
+  }
+
   const vide = () => !a.trim() && !objet.trim() && !corps.trim();
 
   function programmerSauvegarde() {
@@ -177,6 +196,10 @@
       // La prochaine frappe retentera — le filet n'alarme pas pour rien.
     }
     return null;
+  }
+
+  export function estOuverte() {
+    return visible;
   }
 
   // Fermer = conserver : un contenu non vide devient (ou reste) un

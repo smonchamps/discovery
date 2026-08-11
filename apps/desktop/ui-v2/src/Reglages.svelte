@@ -16,6 +16,9 @@
   export function fermer() {
     visible = false;
   }
+  export function estOuverte() {
+    return visible;
+  }
   function choisir(id) {
     appliquerTheme(id);
     actif = id;

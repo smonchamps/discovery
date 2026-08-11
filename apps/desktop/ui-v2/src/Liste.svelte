@@ -14,9 +14,11 @@
     categorie = 'reception',
     compte = null,
     onglet = 'tous',
+    recherche = '',
     onselect = () => {},
     ononglet = () => {},
     ontotal = () => {},
+    onresultats = () => {},
   } = $props();
 
   const PAGE = 200;
@@ -168,6 +170,36 @@
     premier = indexPour(cadre.scrollTop);
   }
 
+  // D1 — recherche (FTS5, `search_messages`) : les résultats prennent la
+  // place de la liste, AUX LIGNES MÊMES du prototype — aucune UI neuve.
+  // Bornés côté coeur : pas de fenêtrage. En deçà de 3 caractères, la
+  // boîte revient telle quelle.
+  let resultats = $state(null);
+  let minuterieRecherche;
+  let jetonRecherche = 0;
+  $effect(() => {
+    const q = recherche.trim();
+    untrack(() => {
+      clearTimeout(minuterieRecherche);
+      const mien = ++jetonRecherche;
+      if (q.length < 3) {
+        resultats = null;
+        onresultats(null);
+        return;
+      }
+      minuterieRecherche = setTimeout(async () => {
+        try {
+          const lignes = await appel('search_messages', { query: q });
+          if (mien !== jetonRecherche) return; // frappe plus récente
+          resultats = lignes;
+          onresultats(lignes.length);
+        } catch (err) {
+          console.error('search_messages :', err);
+        }
+      }, 150);
+    });
+  });
+
   $effect(() => {
     const t = total;
     untrack(() => ontotal(t));
@@ -255,45 +287,59 @@
         </article>
       </div>
     {/if}
-    {#if total === 0 && premierePageMs !== null}
-      <div class="vide"><p>Aucun message ici.</p></div>
-    {/if}
-    <div class="espace" style="height:{hauteurEspace}px">
-      <div class="fenetre" style="transform:translateY({decalage(debut)}px)">
-        {#each fenetre as { i, ligne } (i)}
-          {#if ligne}
-            <article class="ligne"
-                     class:nonlu={ligne.thread_unseen > 0}
-                     class:choisie={estChoisie(ligne)}
-                     data-testid="ligne"
-                     onclick={() => choisir(ligne)}>
-              <div class="l1">
-                <span class="exp">{ligne.sender}</span>
-                <span class="heure">{quand(ligne.epoch)}</span>
-              </div>
-              <p class="objet">{ligne.subject}</p>
-              <p class="apercu">{ligne.preview ?? ''}</p>
-              {#if aPuces(ligne)}
-                <span class="puces">
-                  {#if ligne.thread_size > 1}
-                    <span class="puce"><span class="ms" aria-hidden="true">forum</span>{ligne.thread_size} messages</span>
-                  {/if}
-                  {#if ligne.attachment_count > 0}
-                    <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{ligne.attachment_count} fichier{ligne.attachment_count > 1 ? 's' : ''}</span>
-                  {/if}
-                </span>
-              {/if}
-            </article>
-          {:else}
-            <article class="ligne attente" data-testid="ligne-attente">
-              <div class="l1"><span class="exp">…</span><span class="heure"></span></div>
-              <p class="objet">…</p>
-              <p class="apercu"></p>
-            </article>
-          {/if}
+    {#snippet rangee(ligne)}
+      <article class="ligne"
+               class:nonlu={ligne.thread_unseen > 0}
+               class:choisie={estChoisie(ligne)}
+               data-testid="ligne"
+               onclick={() => choisir(ligne)}>
+        <div class="l1">
+          <span class="exp">{ligne.sender}</span>
+          <span class="heure">{quand(ligne.epoch)}</span>
+        </div>
+        <p class="objet">{ligne.subject}</p>
+        <p class="apercu">{ligne.preview ?? ''}</p>
+        {#if aPuces(ligne)}
+          <span class="puces">
+            {#if ligne.thread_size > 1}
+              <span class="puce"><span class="ms" aria-hidden="true">forum</span>{ligne.thread_size} messages</span>
+            {/if}
+            {#if ligne.attachment_count > 0}
+              <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{ligne.attachment_count} fichier{ligne.attachment_count > 1 ? 's' : ''}</span>
+            {/if}
+          </span>
+        {/if}
+      </article>
+    {/snippet}
+    {#if resultats !== null}
+      <div class="fenetre-recherche" data-testid="resultats">
+        {#if resultats.length === 0}
+          <div class="vide-recherche"><p>Aucun résultat.</p></div>
+        {/if}
+        {#each resultats as ligne (`${ligne.account_id}/${ligne.mailbox}/${ligne.uid}`)}
+          {@render rangee(ligne)}
         {/each}
       </div>
-    </div>
+    {:else}
+      {#if total === 0 && premierePageMs !== null}
+        <div class="vide"><p>Aucun message ici.</p></div>
+      {/if}
+      <div class="espace" style="height:{hauteurEspace}px">
+        <div class="fenetre" style="transform:translateY({decalage(debut)}px)">
+          {#each fenetre as { i, ligne } (i)}
+            {#if ligne}
+              {@render rangee(ligne)}
+            {:else}
+              <article class="ligne attente" data-testid="ligne-attente">
+                <div class="l1"><span class="exp">…</span><span class="heure"></span></div>
+                <p class="objet">…</p>
+                <p class="apercu"></p>
+              </article>
+            {/if}
+          {/each}
+        </div>
+      </div>
+    {/if}
   </div>
   <div class="onglets" data-testid="onglets">
     {#each ONGLETS as o (o.id)}
@@ -324,6 +370,11 @@
     justify-content:center; padding:40px; text-align:center;
   }
   .vide p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
+  .fenetre-recherche {
+    padding:12px; display:flex; flex-direction:column; gap:8px;
+  }
+  .vide-recherche { padding:40px; text-align:center; }
+  .vide-recherche p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
 
   .ligne {
     padding:14px 16px; border-radius:10px; border:1px solid transparent;

@@ -329,6 +329,20 @@ re-vérifié, thème `nuit` en premier) ; banc Clarity.
 **Objectif :** v2 devient l'UI expédiée — sans régression sur ce qui
 protège l'utilisateur.
 
+**État : dus livrés, en validation terrain.** Les cinq dus du §6 sont
+câblés (fente d'avis à cinq sources par priorité, ligne de progression
+dans la barre de statut, modale de migration bloquante avant tout accès
+base, garde d'images opt-in par message, puces de pièces jointes
+cliquables → Téléchargements). Décisions : **D1 câblée** (recherche
+FTS5, résultats aux lignes mêmes du prototype dans la colonne liste) ;
+**D3 câblée** (c / r / f / e / Suppr / « / » / Échap ; j-k non repris —
+absents de D3) ; **D2 coupée à la bascule** (étoile et déplacer n'ont
+pas été réclamés au terrain pendant P2–P5 ; la barre reste à 4 actions,
+réversible par spéc courte au Système si l'usage réel les réclame) ;
+**D4 soldée en P4** ; **D5 coupée** (aucun bouton de synchronisation
+manuel — synchro automatique + ligne de progression). Reste au Chef
+Ingénieur : la signature de l'Annexe A et la gate de bascule.
+
 **Livré :**
 - Les **dus de bascule** (§6), en style Clarity spécifié par le Système
   (A4) là où le prototype est muet.
@@ -381,19 +395,22 @@ Aucune ne bloque P1. Chacune se pose à l'ouverture de sa phase.
 La liste opposable pour la parité poste à poste de P5. « Appui » = ce qui
 existe déjà (commandes du port, UI v1).
 
+État à la livraison P5 — chaque ligne attend la signature du Chef
+Ingénieur (« câblée », « due plus tard » ou « coupée en connaissance ») :
+
 | Capacité v1 | Appui existant | Destin |
 |---|---|---|
-| Recherche plein texte (≥ 3 car., debounce, résultats) | `search_messages`, ADR 0004 | **D1** |
-| Ajout de comptes Gmail / Microsoft / IMAP | 3 dialogues v1, `add_account`, `add_microsoft_account`, `add_generic_account` | derrière l'onboarding — **D4** |
-| Étoile | `mark_flagged` | **D2** |
-| Déplacer vers… | `move_message`, `list_folders`, dialogue v1 | **D2** |
-| Afficher les images (opt-in) | v1, garde d'images distantes | **dû de bascule** (§6) |
-| Pièces jointes : ouvrir / enregistrer | `message_attachments`, `save_attachment` | **dû de bascule** (§6) |
-| 7 bandeaux (envoi, brouillons, màj, synchro, rattrapage, télémétrie, crash) | v1 + ADR 0012/0013/0014 | **dû de bascule** (§6) — refondus en 3 régions A4 |
-| Migration visible et interruptible | modale v1, ADR 0012 | **dû de bascule** (§6) |
-| Raccourcis clavier | v1 | **D3** |
-| Synchronisation manuelle (bouton) | v1, `sync_inbox` | **D5** |
-| Autosave brouillon + conflit d'édition | v1, `composeDraftEpoch` | conservé en **P4**, sous le bouton du prototype |
+| Recherche plein texte (≥ 3 car., debounce, résultats) | `search_messages`, ADR 0004 | **D1 — ✓ câblée en P5** (résultats aux lignes du prototype, colonne liste) |
+| Ajout de comptes Gmail / Microsoft / IMAP | 3 dialogues v1, `add_account`, `add_microsoft_account`, `add_generic_account` | **D4 — ✓ câblée en P4** (écran 01, routage par domaine) |
+| Étoile | `mark_flagged` | **D2 — coupée à la bascule** (non réclamée au terrain P2–P5 ; réversible par spéc courte) |
+| Déplacer vers… | `move_message`, `list_folders`, dialogue v1 | **D2 — coupée à la bascule** (même motif ; les commandes du cœur restent) |
+| Afficher les images (opt-in) | v1, garde d'images distantes | **✓ câblée en P5** (garde dans le volet, opt-in par message) |
+| Pièces jointes : ouvrir / enregistrer | `message_attachments`, `save_attachment` | **✓ câblée en P5** (puces cliquables → Téléchargements, visuel inchangé) |
+| 7 bandeaux (envoi, brouillons, màj, synchro, rattrapage, télémétrie, crash) | v1 + ADR 0012/0013/0014 | **✓ câblés en P5** — refondus en fente d'avis (5 sources, priorité) + ligne de progression |
+| Migration visible et interruptible | modale v1, ADR 0012 | **✓ câblée en P5** (modale bloquante avant tout accès base, Annuler/Reprendre) |
+| Raccourcis clavier | v1 | **D3 — ✓ câblés en P5** (c/r/f/e/Suppr/«/»/Échap ; j-k et s/v non repris) |
+| Synchronisation manuelle (bouton) | v1, `sync_inbox` | **D5 — coupée** (synchro automatique + ligne de progression) |
+| Autosave brouillon + conflit d'édition | v1, `composeDraftEpoch` | **✓ conservé en P4**, sous le bouton du prototype |
 | Multi-fenêtre composition (« Rendre indépendante ») | n'existe pas en v1 | reporté ; affordance inerte, comme au prototype |
 | Composition HTML riche (barre G/I/S/…) | n'existe pas en v1 | reportée ; barre inerte, comme au prototype — l'activer rouvre l'envoi HTML, décision séparée |
 | Envoi de pièces jointes (« Joindre ») | capacité cœur absente (report assumé, PASSATION §8) | reporté ; même toast que le prototype |
