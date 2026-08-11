@@ -1377,7 +1377,7 @@ impl Store {
         //
         // La pagination vit dans une SOUS-REQUÊTE sur `threads` seul :
         // voir `unified_page_sql`.
-        let mut stmt = self.0.prepare(&unified_page_sql())?;
+        let mut stmt = self.0.prepare(&unified_page_sql(false))?;
         let rows = stmt
             .query_map(params![limit as i64, offset as i64], row_to_threaded)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -1479,7 +1479,7 @@ pub struct AccountConfig {
 /// Isolée pour qu'un test puisse interroger **son** plan d'exécution, et
 /// non une copie qui divergerait le jour où l'une des deux change. Le
 /// coût de cette requête est le chemin le plus chaud du produit.
-fn unified_page_sql() -> String {
+pub(crate) fn unified_page_sql(par_compte: bool) -> String {
     // La pagination (`LIMIT`/`OFFSET`) s'applique dans une sous-requête
     // sur `threads` SEUL, pas sur la jointure : `OFFSET` produit puis
     // jette chaque ligne sautée, donc tout ce qui se calcule par ligne —
@@ -1496,11 +1496,19 @@ fn unified_page_sql() -> String {
     // Le ORDER BY externe re-trie les lignes retenues avec la même clé :
     // il garantit l'ordre final quelle que soit la stratégie de jointure,
     // pour le prix d'un tri de `limit` lignes.
+    // `par_compte` ajoute le filtre `account_id = ?3` de la nav v2
+    // (« Boîtes » de l'écran 02) : même squelette, l'index préfixé
+    // `idx_threads_date (account_id, …)` porte alors tri et pagination.
+    let filtre = if par_compte {
+        " AND account_id = ?3"
+    } else {
+        ""
+    };
     format!(
         "{SELECT_UNIFIED}{THREAD_AGGREGATE}
          FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                  FROM threads
-                WHERE inbox_size > 0
+                WHERE inbox_size > 0{filtre}
                 ORDER BY last_epoch DESC, last_uid DESC, account_id
                 LIMIT ?1 OFFSET ?2) t
          JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
@@ -1714,7 +1722,7 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
 
 /// Mapping de la liste groupée : les colonnes unifiées, puis l'agrégat du
 /// fil ajouté par [`THREAD_AGGREGATE`].
-fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
+pub(crate) fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
     Ok(UnifiedRow {
         thread_size: row.get(14)?,
         thread_unseen: row.get(15)?,
@@ -3669,7 +3677,7 @@ mod tests {
 
         let mut stmt = store
             .0
-            .prepare(&format!("EXPLAIN QUERY PLAN {}", unified_page_sql()))
+            .prepare(&format!("EXPLAIN QUERY PLAN {}", unified_page_sql(false)))
             .unwrap();
         let plan: Vec<String> = stmt
             .query_map(params![200i64, 0i64], |row| row.get::<_, String>(3))

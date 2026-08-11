@@ -69,6 +69,8 @@ fn main() {
             commands::add_generic_account,
             commands::sync_inbox,
             commands::list_messages,
+            commands::nav_snapshot,
+            commands::list_category,
             commands::thread_messages,
             commands::search_messages,
             commands::message_body,
