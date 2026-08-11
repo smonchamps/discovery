@@ -42,7 +42,41 @@ export async function launchApp({
       { cwd: root, stdio: 'inherit' },
     );
   }
+  return attacher(db, accounts.map((account) => account.email));
+}
 
+// La refonte (PLAN-UI-V2) : même harnais, mais l'app embarque ui-v2 et
+// le décor est le jeu d'essai Clarity (seed_clarity). La config expédiée
+// est échangée LE TEMPS DU BUILD puis restaurée — le dépôt ne reste
+// jamais sale, même sur échec.
+export async function launchAppV2() {
+  const { readFileSync, writeFileSync } = await import('node:fs');
+  execSync('npm run build', {
+    cwd: path.join(root, 'apps', 'desktop', 'ui-v2'),
+    stdio: 'inherit',
+  });
+  const conf = path.join(root, 'apps', 'desktop', 'tauri.conf.json');
+  const origine = readFileSync(conf, 'utf8');
+  const v2 = JSON.parse(origine);
+  v2.build.frontendDist = 'ui-v2/dist';
+  try {
+    writeFileSync(conf, JSON.stringify(v2, null, 2));
+    execSync('cargo build -p discovery-desktop', { cwd: root, stdio: 'inherit' });
+  } finally {
+    writeFileSync(conf, origine);
+  }
+
+  const db = path.join(root, 'target', 'e2e', 'parcours-v2.db');
+  rmSync(db, { force: true });
+  mkdirSync(path.dirname(db), { recursive: true });
+  execSync(`cargo run -p mail-core --example seed_clarity -- "${db}"`, {
+    cwd: root,
+    stdio: 'inherit',
+  });
+  return attacher(db, ['paul.merand@atelier-nord.fr', 'paul@merand.fr']);
+}
+
+async function attacher(db, emails) {
   // Profil WebView2 explicite et inscriptible : sur un runner CI,
   // l'emplacement par défaut peut être refusé. Stable d'un lancement à
   // l'autre — un profil neuf à chaque fois rendrait chaque démarrage
@@ -53,7 +87,7 @@ export async function launchApp({
   const env = {
     ...process.env,
     DISCOVERY_DB_PATH: db,
-    DISCOVERY_E2E_ACCOUNT: accounts.map((account) => account.email).join(','),
+    DISCOVERY_E2E_ACCOUNT: emails.join(','),
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
     WEBVIEW2_USER_DATA_FOLDER: profile,
   };
