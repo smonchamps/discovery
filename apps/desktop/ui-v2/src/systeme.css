@@ -69,6 +69,23 @@
   line-height:1; flex:none; font-variation-settings:'opsz' 20;
 }
 
+/* Barres de défilement (A7) : discrètes, sans flèches, poignée au rayon
+   des contrôles, pilotées par les jetons — la barre suit le thème.
+   `::-webkit-scrollbar` et non `scrollbar-width`/`scrollbar-color` :
+   Chromium IGNORE le premier dès que les propriétés standard sont
+   posées, et seules les règles webkit donnent le rayon et la piste
+   transparente que demande A7. */
+::-webkit-scrollbar { width:10px; height:10px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb {
+  background:var(--border); border-radius:6px;
+  background-clip:padding-box; border:2px solid transparent;
+}
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active { background-color:var(--muted); }
+::-webkit-scrollbar-button { display:none; }
+::-webkit-scrollbar-corner { background:transparent; }
+
 * { box-sizing:border-box; }
 html, body { margin:0; padding:0; height:100%; }
 body {

@@ -6,7 +6,7 @@
 //
 //   node diag-v2.mjs
 import { spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
 
@@ -14,6 +14,9 @@ const root = path.resolve(import.meta.dirname, '..');
 const db = process.env.MESURE_DB || path.join(root, 'target', 'e2e', 'mesure-v2.db');
 const profile = path.join(root, 'target', 'e2e', 'webview2-mesure-v2');
 mkdirSync(profile, { recursive: true });
+for (const dossier of ['Cache', 'Code Cache']) {
+  rmSync(path.join(profile, 'EBWebView', 'Default', dossier), { recursive: true, force: true });
+}
 
 const env = {
   ...process.env,

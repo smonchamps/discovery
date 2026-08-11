@@ -858,6 +858,11 @@ et tracé par un commit.</p>
           <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A6</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f">Inversion de normativité — directive du Chef Ingénieur : la refonte UI v2 livre <b>exactement l'UI du prototype</b> (<code>ui_prototype.html</code>) ; en cas de divergence le prototype l'emporte, l'écart s'inscrit à ce journal. Le Système complète là où le prototype est muet. Conséquence : A2 (ligne fixe 104 px, puces bannies de la liste) est <b>rétrogradé en repli documenté</b> du gate perf P1 (<code>docs/PLAN-UI-V2.md</code>) — le fait terrain (8/120 débordements) reste acté. Les invariants (iframe sandbox, règles d'or, budgets) restent hors du champ du prototype.</td>
         </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-11</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A7</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Barres de défilement — le Système était muet, la webview affichait la barre classique de l'OS (verdict terrain du Chef Ingénieur : « comme dans le prototype »). Règle : barres <b>discrètes</b> partout — épaisseur <b>10 px</b>, piste <b>transparente</b>, <b>aucune flèche</b> ; poignée au rayon des contrôles (<b>6 px</b>), <b>filet</b> (<code>--border</code>) au repos, <b>texte atténué</b> (<code>--muted</code>) au survol et à la saisie. Aucune couleur hors jetons : la barre suit le thème comme tout le reste. Le corps de mail (iframe) garde les barres de son propre document — on n'habille pas le HTML de l'expéditeur.</td>
+        </tr>
       </tbody>
     </table>
   </section>

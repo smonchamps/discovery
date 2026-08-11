@@ -20,6 +20,7 @@ import { spawn, execSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
+import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const CDP_PORT = 9222;
@@ -46,25 +47,11 @@ export async function launchApp({
 }
 
 // La refonte (PLAN-UI-V2) : même harnais, mais l'app embarque ui-v2 et
-// le décor est le jeu d'essai Clarity (seed_clarity). La config expédiée
-// est échangée LE TEMPS DU BUILD puis restaurée — le dépôt ne reste
-// jamais sale, même sur échec.
+// le décor est le jeu d'essai Clarity (seed_clarity). Les pièges du
+// rebuild (dist périmé, zombie, config à restaurer) vivent dans
+// `rebuild-v2.mjs`, une fois.
 export async function launchAppV2() {
-  const { readFileSync, writeFileSync } = await import('node:fs');
-  execSync('npm run build', {
-    cwd: path.join(root, 'apps', 'desktop', 'ui-v2'),
-    stdio: 'inherit',
-  });
-  const conf = path.join(root, 'apps', 'desktop', 'tauri.conf.json');
-  const origine = readFileSync(conf, 'utf8');
-  const v2 = JSON.parse(origine);
-  v2.build.frontendDist = 'ui-v2/dist';
-  try {
-    writeFileSync(conf, JSON.stringify(v2, null, 2));
-    execSync('cargo build -p discovery-desktop', { cwd: root, stdio: 'inherit' });
-  } finally {
-    writeFileSync(conf, origine);
-  }
+  construireV2(root, { release: false });
 
   const db = path.join(root, 'target', 'e2e', 'parcours-v2.db');
   rmSync(db, { force: true });
@@ -83,6 +70,7 @@ async function attacher(db, emails) {
   // froid, donc lent, pour rien.
   const profile = path.join(root, 'target', 'e2e', 'webview2');
   mkdirSync(profile, { recursive: true });
+  purgerCacheHttp(profile);
 
   const env = {
     ...process.env,

@@ -11,12 +11,12 @@
 // thème « La nuit ». (Conversation, composition et réglages viendront
 // avec P3/P4.)
 import { spawn, execSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
+import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const conf = path.join(root, 'apps', 'desktop', 'tauri.conf.json');
 const sortie = path.join(root, 'target', 'parite');
 mkdirSync(sortie, { recursive: true });
 
@@ -48,18 +48,7 @@ mkdirSync(sortie, { recursive: true });
 }
 
 // --- 2. v2 sur le décor Clarity, fenêtre aux mêmes dimensions -------
-execSync('npm run build', { cwd: path.join(root, 'apps', 'desktop', 'ui-v2'), stdio: 'inherit' });
-const confOrigine = readFileSync(conf, 'utf8');
-const confV2 = JSON.parse(confOrigine);
-confV2.build.frontendDist = 'ui-v2/dist';
-confV2.app.windows[0].width = 1440;
-confV2.app.windows[0].height = 900;
-try {
-  writeFileSync(conf, JSON.stringify(confV2, null, 2));
-  execSync('cargo build -p discovery-desktop --release', { cwd: root, stdio: 'inherit' });
-} finally {
-  writeFileSync(conf, confOrigine);
-}
+construireV2(root, { fenetre: { width: 1440, height: 900 } });
 
 const db = path.join(root, 'target', 'e2e', 'clarity.db');
 rmSync(db, { force: true });
@@ -70,6 +59,7 @@ execSync(`cargo run -p mail-core --example seed_clarity --release -- "${db}"`, {
 
 const profile = path.join(root, 'target', 'e2e', 'webview2-parite');
 mkdirSync(profile, { recursive: true });
+purgerCacheHttp(profile);
 const env = {
   ...process.env,
   DISCOVERY_DB_PATH: db,

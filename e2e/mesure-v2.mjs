@@ -24,25 +24,15 @@
 //   couvrent les 500 plus récents) ;
 // - RAM : working sets privés après 30 s (mesure-ram.ps1, ADR 0002).
 import { spawn, execSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
+import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const conf = path.join(root, 'apps', 'desktop', 'tauri.conf.json');
 
 // --- 1. Construire ui-v2 puis le shell qui l'embarque ----------------
-execSync('npm run build', { cwd: path.join(root, 'apps', 'desktop', 'ui-v2'), stdio: 'inherit' });
-
-const confOrigine = readFileSync(conf, 'utf8');
-const confV2 = JSON.parse(confOrigine);
-confV2.build.frontendDist = 'ui-v2/dist';
-try {
-  writeFileSync(conf, JSON.stringify(confV2, null, 2));
-  execSync('cargo build -p discovery-desktop --release', { cwd: root, stdio: 'inherit' });
-} finally {
-  writeFileSync(conf, confOrigine);
-}
+construireV2(root);
 
 // --- 2. Base seedée à l'échelle -------------------------------------
 const db = process.env.MESURE_DB || path.join(root, 'target', 'e2e', 'mesure-v2.db');
@@ -69,6 +59,7 @@ if (process.env.MESURE_REUTILISER && existsSync(db)) {
 // --- 3. Lancer la vraie fenêtre, s'attacher par CDP -----------------
 const profile = path.join(root, 'target', 'e2e', 'webview2-mesure-v2');
 mkdirSync(profile, { recursive: true });
+purgerCacheHttp(profile);
 
 const env = {
   ...process.env,
