@@ -1,43 +1,48 @@
 <script>
-  // Liste fenêtrée — la ligne EXACTE du prototype (A6), à hauteur
-  // variable : une ligne porte des puces (fil > 1 ou pièce jointe) ou
-  // n'en porte pas. Deux gabarits déterministes depuis les données,
-  // mesurés UNE fois au montage sur des lignes sondes — jamais de mesure
-  // par ligne au défilement, les décalages restent en O(pages).
+  // Liste fenêtrée de l'écran 02 — la ligne EXACTE du prototype (A6), à
+  // deux gabarits déterministes (voir P1), servie par `list_category` :
+  // la source est (catégorie, compte, non-lus), les onglets du prototype
+  // vivent dans le pied de cette colonne.
   //
-  // Les pages non servies sont supposées sans puces ; quand une page
-  // arrive avec des puces AU-DESSUS de la fenêtre, le défilement est
-  // compensé du même delta (ancrage) — rien ne bouge à l'écran.
-  import { tick } from 'svelte';
+  // Changement de source = nouvelle génération : les pages en vol de la
+  // source précédente sont jetées à l'arrivée, jamais mélangées.
+  import { tick, untrack } from 'svelte';
   import { appel } from './lib/transport.js';
+  import { quand } from './lib/quand.js';
 
-  let { onselect = () => {} } = $props();
+  let {
+    categorie = 'reception',
+    compte = null,
+    onglet = 'tous',
+    onselect = () => {},
+    ononglet = () => {},
+    ontotal = () => {},
+  } = $props();
 
   const PAGE = 200;
   const GAP = 8;
   const PAD = 12;
   const OVER = 8;
 
-  let cadre = $state(null);     // l'élément défilable ($state : `visibles` en dépend)
+  let cadre = $state(null);
   let total = $state(0);
   let premier = $state(0);
-  let version = $state(0);      // bump à chaque page servie
-  let h1 = $state(98);          // gabarit sans puces (estimation avant sonde)
-  let h2 = $state(132);         // gabarit avec puces
+  let version = $state(0);
+  let h1 = $state(98);
+  let h2 = $state(132);
   let sondees = $state(false);
-  let selection = $state(null); // (account_id, mailbox, uid)
+  let selection = $state(null);
   let premierePageMs = $state(null);
 
-  const pages = new Map();      // index de page -> lignes
-  const chipsParPage = new Map();// index de page -> nombre de lignes à puces
-  const pending = new Map();    // index de page -> Promise
+  let generation = 0;
+  let pages = new Map();
+  let chipsParPage = new Map();
+  let pending = new Map();
 
   const aPuces = (l) => l.thread_size > 1 || l.has_attachment;
   const pitch1 = $derived(h1 + GAP);
   const extraPuce = $derived(h2 - h1);
 
-  // Décalage exact d'une ligne : indices connus exacts, pages non servies
-  // supposées sans puces (corrigé par ancrage à l'arrivée).
   function chipsAvant(i) {
     let extra = 0;
     const pleine = Math.floor(i / PAGE);
@@ -65,8 +70,6 @@
     return PAD * 2 + total * pitch1 - GAP + extra * extraPuce;
   });
 
-  // scrollTop -> premier index visible (point fixe, converge en 2-3 tours
-  // car les extras sont petits devant le pas).
   function indexPour(scrollTop) {
     let i = Math.max(0, Math.floor((scrollTop - PAD) / pitch1));
     for (let tour = 0; tour < 4; tour++) {
@@ -82,9 +85,17 @@
 
   function servirPage(p) {
     if (pages.has(p) || pending.has(p)) return pending.get(p) || Promise.resolve();
+    const nee = generation;
     const t0 = performance.now();
-    const promesse = appel('list_messages', { offset: p * PAGE, limit: PAGE })
+    const promesse = appel('list_category', {
+      category: categorie,
+      accountId: compte,
+      nonLus: onglet === 'nonlus',
+      offset: p * PAGE,
+      limit: PAGE,
+    })
       .then(async (page) => {
+        if (nee !== generation) return; // source changée : page périmée
         total = page.total;
         pages.set(p, page.rows);
         let n = 0;
@@ -92,8 +103,6 @@
         chipsParPage.set(p, n);
         pending.delete(p);
         if (premierePageMs === null) premierePageMs = performance.now() - t0;
-        // Ancrage : la page est entièrement au-dessus de la fenêtre ->
-        // tout ce qui suit descend de n * extraPuce ; on suit.
         if (n > 0 && (p + 1) * PAGE <= premier && cadre) {
           version += 1;
           await tick();
@@ -104,11 +113,32 @@
       })
       .catch((err) => {
         pending.delete(p);
-        console.error(`list_messages page ${p} :`, err);
+        console.error(`list_category ${categorie} page ${p} :`, err);
       });
     pending.set(p, promesse);
     return promesse;
   }
+
+  // Nouvelle source -> repartir du haut, tout jeter, resservir. SEULE la
+  // clé de source est une dépendance : tout le reste est sous `untrack`,
+  // sans quoi l'effet dépendrait de ce qu'il modifie (boucle).
+  $effect(() => {
+    void categorie;
+    void compte;
+    void onglet;
+    untrack(() => {
+      generation += 1;
+      pages = new Map();
+      chipsParPage = new Map();
+      pending = new Map();
+      total = 0;
+      premier = 0;
+      selection = null;
+      if (cadre) cadre.scrollTop = 0;
+      version += 1;
+      servirPage(0);
+    });
+  });
 
   const visibles = $derived(
     cadre ? Math.ceil(cadre.clientHeight / pitch1) + 1 : 12,
@@ -127,39 +157,49 @@
   });
 
   $effect(() => {
-    // Toute fenêtre demande ses pages — y compris l'overscan.
-    for (let p = Math.floor(debut / PAGE); p <= Math.floor(Math.max(0, fin - 1) / PAGE); p++) {
-      servirPage(p);
-    }
+    const de = Math.floor(debut / PAGE);
+    const a = Math.floor(Math.max(0, fin - 1) / PAGE);
+    untrack(() => {
+      for (let p = de; p <= a; p++) servirPage(p);
+    });
   });
 
   function surDefilement() {
     premier = indexPour(cadre.scrollTop);
   }
 
+  $effect(() => {
+    const t = total;
+    untrack(() => ontotal(t));
+  });
+
   function sonder(el, avecPuces) {
-    // Ligne sonde : mesure le gabarit réel une fois, hors interaction.
     const h = el.offsetHeight;
     if (avecPuces) h2 = h;
     else h1 = h;
     sondees = true;
   }
 
+  const cle = (l) => `${l.account_id}/${l.mailbox}/${l.uid}`;
   function choisir(l) {
-    selection = `${l.account_id}/${l.mailbox}/${l.uid}`;
+    selection = cle(l);
     onselect(l);
   }
-  const estChoisie = (l) => selection === `${l.account_id}/${l.mailbox}/${l.uid}`;
+  const estChoisie = (l) => selection === cle(l);
 
-  // --- API de mesure et de pilotage (banc P1, e2e) --------------------
+  const ONGLETS = [
+    { id: 'tous', icone: 'inbox', libelle: 'Tous' },
+    { id: 'nonlus', icone: 'mark_email_unread', libelle: 'Non lus' },
+    { id: 'brouillons', icone: 'edit_note', libelle: 'Brouillons' },
+  ];
+  const ongletActif = $derived(categorie === 'brouillons' ? 'brouillons' : onglet);
+
+  // --- API (App, banc P1, e2e) ---------------------------------------
   export function aller(index) {
     cadre.scrollTop = decalage(index) - PAD;
     surDefilement();
   }
   export async function allerEtServir(index) {
-    // Demande EXPLICITE des pages de la fenêtre cible : le $effect qui
-    // les demanderait ne s'exécute qu'au flush suivant — attendre
-    // `pending` sans cela mesurerait un saut sans son service IPC.
     const t0 = performance.now();
     aller(index);
     const de = Math.floor(Math.max(0, index - OVER) / PAGE);
@@ -168,7 +208,7 @@
     for (let p = de; p <= a; p++) attentes.push(servirPage(p));
     await Promise.all(attentes);
     await tick();
-    void cadre.offsetHeight; // reflow forcé : le travail est réellement fait
+    void cadre.offsetHeight;
     return performance.now() - t0;
   }
   export function etat() {
@@ -178,74 +218,112 @@
     const page = pages.get(Math.floor(index / PAGE));
     return page ? page[index % PAGE] : null;
   }
-
-  servirPage(0);
+  export function marquerLue(ligne) {
+    const id = cle(ligne);
+    for (const page of pages.values()) {
+      for (const l of page) {
+        if (cle(l) === id) l.thread_unseen = 0;
+      }
+    }
+    version += 1;
+  }
+  export function recharger() {
+    generation += 1;
+    pages = new Map();
+    chipsParPage = new Map();
+    pending = new Map();
+    version += 1;
+    servirPage(Math.floor(premier / PAGE));
+    servirPage(0);
+  }
 </script>
 
-<section class="cadre" bind:this={cadre} onscroll={surDefilement}
-         aria-label="Liste des messages" data-testid="liste">
-  {#if !sondees}
-    <div class="sondes" aria-hidden="true">
-      <article class="ligne" use:sonder={false}>
-        <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
-        <p class="objet">Sonde</p>
-        <p class="apercu">Sonde</p>
-      </article>
-      <article class="ligne" use:sonder={true}>
-        <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
-        <p class="objet">Sonde</p>
-        <p class="apercu">Sonde</p>
-        <span class="puces"><span class="puce"><span class="ms" aria-hidden="true">forum</span>3 messages</span></span>
-      </article>
+<section class="colonne" aria-label="Liste des messages" data-testid="liste">
+  <div class="cadre" bind:this={cadre} onscroll={surDefilement}>
+    {#if !sondees}
+      <div class="sondes" aria-hidden="true">
+        <article class="ligne" use:sonder={false}>
+          <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
+          <p class="objet">Sonde</p>
+          <p class="apercu">Sonde</p>
+        </article>
+        <article class="ligne" use:sonder={true}>
+          <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
+          <p class="objet">Sonde</p>
+          <p class="apercu">Sonde</p>
+          <span class="puces"><span class="puce"><span class="ms" aria-hidden="true">forum</span>3 messages</span></span>
+        </article>
+      </div>
+    {/if}
+    {#if total === 0 && premierePageMs !== null}
+      <div class="vide"><p>Aucun message ici.</p></div>
+    {/if}
+    <div class="espace" style="height:{hauteurEspace}px">
+      <div class="fenetre" style="transform:translateY({decalage(debut)}px)">
+        {#each fenetre as { i, ligne } (i)}
+          {#if ligne}
+            <article class="ligne"
+                     class:nonlu={ligne.thread_unseen > 0}
+                     class:choisie={estChoisie(ligne)}
+                     data-testid="ligne"
+                     onclick={() => choisir(ligne)}>
+              <div class="l1">
+                <span class="exp">{ligne.sender}</span>
+                <span class="heure">{quand(ligne.epoch)}</span>
+              </div>
+              <p class="objet">{ligne.subject}</p>
+              <p class="apercu"></p>
+              {#if aPuces(ligne)}
+                <span class="puces">
+                  {#if ligne.thread_size > 1}
+                    <span class="puce"><span class="ms" aria-hidden="true">forum</span>{ligne.thread_size} messages</span>
+                  {/if}
+                  {#if ligne.has_attachment}
+                    <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>fichiers</span>
+                  {/if}
+                </span>
+              {/if}
+            </article>
+          {:else}
+            <article class="ligne attente" data-testid="ligne-attente">
+              <div class="l1"><span class="exp">…</span><span class="heure"></span></div>
+              <p class="objet">…</p>
+              <p class="apercu"></p>
+            </article>
+          {/if}
+        {/each}
+      </div>
     </div>
-  {/if}
-  <div class="espace" style="height:{hauteurEspace}px">
-    <div class="fenetre" style="transform:translateY({decalage(debut)}px)">
-      {#each fenetre as { i, ligne } (i)}
-        {#if ligne}
-          <article class="ligne"
-                   class:nonlu={ligne.thread_unseen > 0}
-                   class:choisie={estChoisie(ligne)}
-                   data-testid="ligne"
-                   onclick={() => choisir(ligne)}>
-            <div class="l1">
-              <span class="exp">{ligne.sender}</span>
-              <span class="heure">{ligne.date}</span>
-            </div>
-            <p class="objet">{ligne.subject}</p>
-            <p class="apercu"></p>
-            {#if aPuces(ligne)}
-              <span class="puces">
-                {#if ligne.thread_size > 1}
-                  <span class="puce"><span class="ms" aria-hidden="true">forum</span>{ligne.thread_size} messages</span>
-                {/if}
-                {#if ligne.has_attachment}
-                  <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>fichiers</span>
-                {/if}
-              </span>
-            {/if}
-          </article>
-        {:else}
-          <article class="ligne attente" data-testid="ligne-attente">
-            <div class="l1"><span class="exp">…</span><span class="heure"></span></div>
-            <p class="objet">…</p>
-            <p class="apercu"></p>
-          </article>
-        {/if}
-      {/each}
-    </div>
+  </div>
+  <div class="onglets" data-testid="onglets">
+    {#each ONGLETS as o (o.id)}
+      <span class="onglet" class:actif={ongletActif === o.id}
+            data-testid="onglet" data-onglet={o.id}
+            onclick={() => ononglet(o.id)}>
+        <span class="ms" aria-hidden="true">{o.icone}</span>{o.libelle}
+      </span>
+    {/each}
   </div>
 </section>
 
 <style>
-  /* Géométrie et états VERBATIM du prototype (écran 02, listItems). */
-  .cadre { height:100%; overflow:auto; background:var(--bg); }
+  /* Géométrie et états VERBATIM du prototype (écran 02). */
+  .colonne {
+    display:flex; flex-direction:column; min-height:0;
+    background:var(--bg); border-right:1px solid var(--border);
+  }
+  .cadre { flex:1; overflow:auto; position:relative; }
   .espace { position:relative; }
   .fenetre {
     position:absolute; top:0; left:12px; right:12px;
     display:flex; flex-direction:column; gap:8px;
   }
   .sondes { position:absolute; visibility:hidden; left:12px; right:12px; }
+  .vide {
+    position:absolute; inset:0; display:flex; align-items:center;
+    justify-content:center; padding:40px; text-align:center;
+  }
+  .vide p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
 
   .ligne {
     padding:14px 16px; border-radius:10px; border:1px solid transparent;
@@ -279,4 +357,21 @@
     border:1px solid var(--border); border-radius:6px; white-space:nowrap;
   }
   .attente { color:var(--muted); }
+
+  .onglets {
+    flex:none; height:52px; padding:0 12px; display:flex;
+    align-items:center; gap:10px; border-top:1px solid var(--border);
+    background:var(--panel);
+  }
+  .onglet {
+    height:32px; padding:0 14px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; border-radius:6px; cursor:pointer;
+    color:var(--ink2); background:var(--surface);
+    border:1px solid var(--border);
+  }
+  .onglet:hover { background:var(--sel); }
+  .onglet.actif {
+    font-weight:600; color:var(--ink); background:var(--sel);
+    border-color:var(--accent);
+  }
 </style>

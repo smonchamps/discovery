@@ -83,6 +83,10 @@ pub struct MessageRow {
     /// Non-lus de la conversation : c'est LUI qui décide du gras, et non
     /// l'état du seul message affiché.
     pub thread_unseen: u32,
+    /// Secondes Unix du message — la v2 formate l'heure côté client
+    /// (« 09:12 », « Hier », « 5 août ») ; `date` reste la chaîne brute
+    /// que la v1 affiche telle quelle. 0 = date inconnue.
+    pub epoch: i64,
 }
 
 #[tauri::command]
@@ -795,6 +799,7 @@ pub fn thread_messages(app: AppHandle, thread_id: i64) -> Result<Vec<MessageRow>
 /// Mapping partagé entre la boîte unifiée et les résultats de recherche.
 fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
     MessageRow {
+        epoch: row.envelope.date.map(|date| date.timestamp()).unwrap_or(0),
         has_attachment: row.has_attachment,
         account_id: row.account_id,
         account_email: row.account_email,
@@ -896,6 +901,7 @@ pub fn list_category(
     app: AppHandle,
     category: String,
     account_id: Option<i64>,
+    non_lus: bool,
     offset: usize,
     limit: usize,
 ) -> Result<MessagePage, String> {
@@ -904,10 +910,10 @@ pub fn list_category(
     let limit = limit.min(LIST_LIMIT_MAX);
     if category == "reception" {
         let total = store
-            .unified_count_scoped(account_id)
+            .unified_count_scoped(account_id, non_lus)
             .map_err(|err| err.to_string())?;
         let rows = store
-            .unified_recent_scoped(account_id, offset, limit)
+            .unified_recent_scoped(account_id, non_lus, offset, limit)
             .map_err(|err| err.to_string())?
             .into_iter()
             .map(to_message_row)
@@ -941,11 +947,12 @@ pub fn list_category(
             boites.push(state.mailbox_id);
         }
     }
-    let (total, _) = store
+    let (tous, jamais_lus) = store
         .category_totals(&boites)
         .map_err(|err| err.to_string())?;
+    let total = if non_lus { jamais_lus } else { tous };
     let rows = store
-        .category_page(&boites, offset, limit)
+        .category_page(&boites, non_lus, offset, limit)
         .map_err(|err| err.to_string())?
         .into_iter()
         .map(to_message_row)

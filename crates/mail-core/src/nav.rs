@@ -190,36 +190,47 @@ impl Store {
     }
 
     /// La boîte unifiée, bornée à un compte quand la nav filtre par
-    /// « Boîte » — même squelette de pagination que [`Store::unified_recent`],
-    /// porté par l'index préfixé `idx_threads_date (account_id, …)`.
+    /// « Boîte », aux non-lues quand l'onglet du prototype l'exige —
+    /// même squelette de pagination que [`Store::unified_recent`].
     pub fn unified_recent_scoped(
         &self,
         account_id: Option<i64>,
+        non_lues: bool,
         offset: usize,
         limit: usize,
     ) -> Result<Vec<UnifiedRow>, Error> {
-        let Some(account_id) = account_id else {
-            return self.unified_recent(offset, limit);
+        let mut stmt = self
+            .conn()
+            .prepare(&unified_page_sql(account_id.is_some(), non_lues))?;
+        let rows = match account_id {
+            None => stmt
+                .query_map(params![limit as i64, offset as i64], row_to_threaded)?
+                .collect::<Result<Vec<_>, _>>()?,
+            Some(id) => stmt
+                .query_map(params![limit as i64, offset as i64, id], row_to_threaded)?
+                .collect::<Result<Vec<_>, _>>()?,
         };
-        let mut stmt = self.conn().prepare(&unified_page_sql(true))?;
-        let rows = stmt
-            .query_map(
-                params![limit as i64, offset as i64, account_id],
-                row_to_threaded,
-            )?
-            .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
 
-    /// Total de la boîte unifiée, borné ou non à un compte.
-    pub fn unified_count_scoped(&self, account_id: Option<i64>) -> Result<u64, Error> {
+    /// Total de la boîte unifiée, sous les mêmes bornes que la page.
+    pub fn unified_count_scoped(
+        &self,
+        account_id: Option<i64>,
+        non_lues: bool,
+    ) -> Result<u64, Error> {
+        let filtre_compte = if account_id.is_some() {
+            " AND account_id = ?1"
+        } else {
+            ""
+        };
+        let filtre_non_lues = if non_lues { " AND unseen > 0" } else { "" };
+        let sql = format!(
+            "SELECT COUNT(*) FROM threads WHERE inbox_size > 0{filtre_compte}{filtre_non_lues}"
+        );
         let count: i64 = match account_id {
-            None => return self.unified_count(),
-            Some(id) => self.conn().query_row(
-                "SELECT COUNT(*) FROM threads WHERE inbox_size > 0 AND account_id = ?1",
-                params![id],
-                |row| row.get(0),
-            )?,
+            None => self.conn().query_row(&sql, [], |row| row.get(0))?,
+            Some(id) => self.conn().query_row(&sql, params![id], |row| row.get(0))?,
         };
         Ok(count as u64)
     }
@@ -254,6 +265,7 @@ impl Store {
     pub fn category_page(
         &self,
         mailbox_ids: &[i64],
+        non_lus: bool,
         offset: usize,
         limit: usize,
     ) -> Result<Vec<UnifiedRow>, Error> {
@@ -261,11 +273,12 @@ impl Store {
             return Ok(Vec::new());
         }
         let n = mailbox_ids.len();
+        let filtre = if non_lus { " AND NOT seen" } else { "" };
         let tranches: Vec<String> = (1..=n)
             .map(|i| {
                 format!(
                     "SELECT * FROM (SELECT mailbox_id, uid, date_epoch FROM envelopes
-                      WHERE mailbox_id = ?{i}
+                      WHERE mailbox_id = ?{i}{filtre}
                       ORDER BY date_epoch DESC, uid DESC LIMIT ?{})",
                     n + 1
                 )
@@ -425,7 +438,7 @@ mod tests {
                 &[envelope(1, "b2", 200, true), envelope(2, "b4", 400, true)],
             )
             .unwrap();
-        let page = store.category_page(&[gauche, droite], 0, 3).unwrap();
+        let page = store.category_page(&[gauche, droite], false, 0, 3).unwrap();
         let sujets: Vec<&str> = page
             .iter()
             .map(|row| row.envelope.subject.as_deref().unwrap())
@@ -436,12 +449,19 @@ mod tests {
         assert_eq!(page[1].thread_unseen, 1);
         assert_eq!(page[0].thread_unseen, 0);
         // L'OFFSET traverse la fusion sans perdre ni dupliquer.
-        let suite = store.category_page(&[gauche, droite], 3, 3).unwrap();
+        let suite = store.category_page(&[gauche, droite], false, 3, 3).unwrap();
         let sujets: Vec<&str> = suite
             .iter()
             .map(|row| row.envelope.subject.as_deref().unwrap())
             .collect();
         assert_eq!(sujets, ["a1"]);
+        // L'onglet « Non lus » filtre côté coeur, dans les tranches mêmes.
+        let non_lus = store.category_page(&[gauche, droite], true, 0, 10).unwrap();
+        let sujets: Vec<&str> = non_lus
+            .iter()
+            .map(|row| row.envelope.subject.as_deref().unwrap())
+            .collect();
+        assert_eq!(sujets, ["a3"]);
     }
 
     #[test]
@@ -468,12 +488,23 @@ mod tests {
             )
             .unwrap();
 
-        let tout = store.unified_recent_scoped(None, 0, 10).unwrap();
+        let tout = store.unified_recent_scoped(None, false, 0, 10).unwrap();
         assert_eq!(tout.len(), 3);
-        let seul_b = store.unified_recent_scoped(Some(second), 0, 10).unwrap();
+        let seul_b = store
+            .unified_recent_scoped(Some(second), false, 0, 10)
+            .unwrap();
         assert_eq!(seul_b.len(), 2);
         assert!(seul_b.iter().all(|row| row.account_id == second));
-        assert_eq!(store.unified_count_scoped(Some(premier)).unwrap(), 1);
-        assert_eq!(store.unified_count_scoped(None).unwrap(), 3);
+        assert_eq!(store.unified_count_scoped(Some(premier), false).unwrap(), 1);
+        assert_eq!(store.unified_count_scoped(None, false).unwrap(), 3);
+        // « chez b aussi » est lue : l'onglet non-lus n'en garde que deux.
+        assert_eq!(store.unified_count_scoped(None, true).unwrap(), 2);
+        assert_eq!(
+            store
+                .unified_recent_scoped(None, true, 0, 10)
+                .unwrap()
+                .len(),
+            2
+        );
     }
 }

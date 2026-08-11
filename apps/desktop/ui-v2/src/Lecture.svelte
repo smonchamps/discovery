@@ -1,31 +1,40 @@
 <script>
-  // Lecture MINIMALE — le refus de périmètre P1 : de quoi mesurer
-  // l'ouverture d'un message, rien de plus. Le volet complet du
-  // prototype (méta, puces, barre des 4 actions) est P2.
+  // Volet de lecture de l'écran 02 — VERBATIM du prototype : carte
+  // signature, titre 24 px tronqué, puce méta + « Dernier message · … »
+  // + « Voir la conversation », auteur, corps, barre des 4 actions.
   //
-  // Invariant intact : le corps vit dans une iframe sandbox, servie par
-  // `message_body` (assaini côté coeur, images distantes bloquées),
-  // jamais innerHTML.
+  // Invariant intact : le corps vit dans l'iframe sandbox, servie par
+  // `message_body` (assaini côté coeur, images distantes bloquées, encre
+  // bakée par thème — S1), jamais innerHTML.
+  //
+  // « Voir la conversation » (P3), « Répondre » et « Transférer » (P4)
+  // sont présents et inertes — leurs phases les câbleront.
   import { appel } from './lib/transport.js';
+  import { quand } from './lib/quand.js';
 
-  let sujet = $state('');
-  let expediteur = $state('');
+  let { onarchiver = () => {}, onsupprimer = () => {} } = $props();
+
+  let ligne = $state(null);
   let corps = $state('');
-  let vide = $state(true);
   let derniereOuvertureMs = $state(null);
 
-  export async function ouvrir(ligne) {
+  const meta = $derived.by(() => {
+    if (!ligne) return '';
+    const messages = ligne.thread_size > 1 ? `${ligne.thread_size} messages` : '1 message';
+    return ligne.has_attachment ? `${messages} · fichiers` : messages;
+  });
+
+  export async function ouvrir(nouvelle) {
     const t0 = performance.now();
-    sujet = ligne.subject;
-    expediteur = ligne.sender;
-    vide = false;
+    ligne = nouvelle;
     try {
       const vue = await appel('message_body', {
-        accountId: ligne.account_id,
-        mailbox: ligne.mailbox,
-        uid: ligne.uid,
+        accountId: nouvelle.account_id,
+        mailbox: nouvelle.mailbox,
+        uid: nouvelle.uid,
         showImages: false,
       });
+      if (ligne !== nouvelle) return derniereOuvertureMs; // sélection changée
       corps = vue.document;
     } catch (err) {
       corps = '';
@@ -34,21 +43,44 @@
     derniereOuvertureMs = performance.now() - t0;
     return derniereOuvertureMs;
   }
+  export function fermer() {
+    ligne = null;
+    corps = '';
+  }
   export function etat() {
     return { derniereOuvertureMs };
   }
 </script>
 
 <main aria-label="Message" data-testid="volet-lecture">
-  {#if vide}
+  {#if !ligne}
     <p class="vide">Sélectionnez un message pour le lire.</p>
   {:else}
     <div class="carte">
       <div class="entete">
-        <h3 class="titre" data-testid="lecture-sujet">{sujet}</h3>
-        <span class="exp">{expediteur}</span>
+        <h3 class="titre" data-testid="lecture-sujet">{ligne.subject}</h3>
+        <div class="metas">
+          <span class="puce">{meta}</span>
+          <span class="dernier">Dernier message · {quand(ligne.epoch)}</span>
+          <span class="puce inerte" data-testid="voir-conversation">
+            <span class="ms" aria-hidden="true">unfold_more</span>Voir la conversation</span>
+        </div>
+      </div>
+      <div class="auteur">
+        <span class="nom">{ligne.sender}</span>
+        <span class="adresse">à {ligne.account_email}</span>
       </div>
       <iframe class="corps" sandbox srcdoc={corps} title="Contenu du message"></iframe>
+      <div class="actions">
+        <button type="button" class="principal" data-testid="repondre">
+          <span class="ms" aria-hidden="true">reply</span>Répondre</button>
+        <button type="button" data-testid="transferer">
+          <span class="ms" aria-hidden="true">forward</span>Transférer</button>
+        <button type="button" data-testid="archiver" onclick={() => onarchiver(ligne)}>
+          <span class="ms" aria-hidden="true">archive</span>Archiver</button>
+        <button type="button" data-testid="supprimer" onclick={() => onsupprimer(ligne)}>
+          <span class="ms" aria-hidden="true">delete</span>Supprimer</button>
+      </div>
     </div>
   {/if}
 </main>
@@ -56,11 +88,11 @@
 <style>
   main {
     background:var(--bg); padding:12px 20px 20px; min-width:0;
-    display:flex; flex-direction:column; height:100%;
+    display:flex; flex-direction:column; min-height:0;
   }
   .vide {
     margin:auto; font-size:13px; line-height:1.5; color:var(--muted);
-    text-align:center;
+    text-align:center; padding:40px;
   }
   .carte {
     flex:1; background:var(--surface); border:1px solid var(--border);
@@ -77,6 +109,35 @@
     letter-spacing:-.01em; color:var(--ink);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .exp { font-size:15px; font-weight:600; color:var(--ink); }
-  .corps { flex:1; border:none; background:#ffffff; }
+  .metas { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .puce {
+    height:32px; padding:0 12px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; white-space:nowrap;
+  }
+  .dernier { font-size:12px; color:var(--muted); }
+  .auteur {
+    padding:26px 30px 0; display:flex; flex-direction:column; gap:4px;
+  }
+  .nom { font-size:15px; font-weight:600; color:var(--ink); }
+  .adresse { font-size:13px; color:var(--muted); }
+  .corps {
+    flex:1; border:none; background:#ffffff; margin:18px 30px 0;
+    min-height:0;
+  }
+  .actions {
+    padding:18px 30px; border-top:1px solid var(--border);
+    display:flex; gap:12px; margin-top:18px;
+  }
+  button {
+    height:32px; padding:0 16px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+  }
+  button:hover { background:var(--sel); }
+  .principal {
+    font-weight:600; color:var(--onAccent); background:var(--accent);
+    border-color:var(--accent);
+  }
+  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
 </style>
