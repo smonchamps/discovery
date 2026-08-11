@@ -20,9 +20,11 @@
 //! prochaine régression, et un test unitaire garde le plan
 //! (`la_boite_unifiee_ne_materialise_pas_son_tri`).
 //!
-//! Ce qu'il ne corrige PAS : `OFFSET` fait parcourir puis jeter *n*
-//! lignes. Le défilement profond reste linéaire — report assumé, seule
-//! une pagination par curseur l'effacerait.
+//! Le défilement profond, lui, a été corrigé au gate P1 de la refonte
+//! (2026-08-11) : la pagination vit dans une sous-requête sur `threads`
+//! seul, et `OFFSET` ne fait plus exécuter jointures et `EXISTS` sur les
+//! lignes sautées — cœur mesuré de 252,6 à 14,6 ms à l'offset 200 000.
+//! Le témoin ci-dessous reflète cette forme.
 //!
 //! Lecture seule : aucune écriture, aucune copie.
 //!
@@ -38,14 +40,16 @@ use rusqlite::Connection;
 /// La forme exacte du tri et de la pagination de `Store::unified_recent`.
 /// La projection est réduite : elle ne change pas la STRATÉGIE de tri,
 /// qui est tout ce que le plan doit nous dire.
-const PAGE_UNIFIEE: &str = "SELECT t.id
-     FROM threads t
+const PAGE_UNIFIEE: &str = "SELECT t.last_uid
+     FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch
+             FROM threads
+            WHERE inbox_size > 0
+            ORDER BY last_epoch DESC, last_uid DESC, account_id
+            LIMIT 200 OFFSET 0) t
      JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
      JOIN mailboxes m ON m.id = e.mailbox_id
      JOIN accounts a ON a.id = t.account_id
-     WHERE t.inbox_size > 0
-     ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id
-     LIMIT 200 OFFSET 0";
+     ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id";
 
 /// La même, mais bornée à UN compte : l'index préfixé redevient utilisable.
 const PAGE_UN_COMPTE: &str = "SELECT t.id
