@@ -123,5 +123,8 @@ Amendement **A13** inscrit au journal du Système.
   rechargement compris), contraste inchangé.
 - **Refus tenus** : pas de re-mappage, pas de réglage inventé, pas de
   groupe vide ; thème immédiat, guichet, Terminé, Échap inchangés.
-- Reste dû hors plan : terrain CE (gate E1) — à jouer sur le poste du
-  Chef Ingénieur.
+- **Terrain CE passé le 2026-08-12** : « E1 et E2 entièrement ok » —
+  base réelle, rail au clic et au clavier, aller-retour des deux
+  réglages neufs constaté (OS sombre, bulles coupées à la synchro
+  réelle), hauteur 640 px non récusée. Les deux gates sont closes ;
+  le plan est SOLDÉ.
