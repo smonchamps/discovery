@@ -176,7 +176,7 @@
         <button type="button" class="principal" data-testid="repondre" onclick={() => onrepondre(ligne)}>
           <span class="ms" aria-hidden="true">reply</span>Répondre</button>
         <button type="button" data-testid="transferer" onclick={() => ontransferer(ligne)}>
-          <span class="ms" aria-hidden="true">forward</span>Transférer</button>
+          <span class="ms" aria-hidden="true">arrow_forward</span>Transférer</button>
         <button type="button" data-testid="archiver" onclick={() => onarchiver(ligne)}>
           <span class="ms" aria-hidden="true">archive</span>Archiver</button>
         <button type="button" data-testid="supprimer" onclick={() => onsupprimer(ligne)}>

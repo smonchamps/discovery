@@ -1,19 +1,23 @@
 # Icônes vendorisées — sous-ensemble Material Symbols Rounded (R0-S3)
 
-**31 glyphes**, **15 484 octets** (15,1 Kio) woff2, servis depuis le dépôt.
+**32 glyphes**, **15 984 octets** (15,6 Kio) woff2, servis depuis le dépôt.
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
 ## Inventaire (la source : le Système « Clarity »)
 
-Relevé exhaustif du handoff (les trois documents + `support.js`, par classe
-`ms` et par `icon:'…'`) :
+Relevé du handoff (classe `ms` et `icon:'…'`), amendé par le journal :
+A11 ajoute `person_add` (section Comptes des Réglages) ; A12 remplace
+`forward` par `arrow_forward` (Transférer, flèche simple — verdict
+terrain du 2026-08-12, le glyphe à double trait du prototype est
+récusé) :
 
-`all_inbox` `archive` `arrow_back` `attach_file` `bookmark` `check_circle`
-`close` `delete` `description` `drafts` `edit_note` `edit_square`
-`format_list_bulleted` `format_quote` `forum` `forward` `group_add` `inbox`
-`link` `mark_email_unread` `open_in_new` `person` `reply` `report` `search`
-`send` `settings` `storage` `unfold_more` `visibility_off` `work`
+`all_inbox` `archive` `arrow_back` `arrow_forward` `attach_file`
+`bookmark` `check_circle` `close` `delete` `description` `drafts`
+`edit_note` `edit_square` `format_list_bulleted` `format_quote` `forum`
+`group_add` `inbox` `link` `mark_email_unread` `open_in_new` `person`
+`person_add` `reply` `report` `search` `send` `settings` `storage`
+`unfold_more` `visibility_off` `work`
 
 Ajouter un glyphe = régénérer le fichier (ci-dessous) **et** tenir cette
 liste à jour — l'inventaire est le contrat.
