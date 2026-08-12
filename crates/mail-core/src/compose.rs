@@ -100,6 +100,39 @@ pub fn forward_subject(original: Option<&str>) -> String {
     }
 }
 
+/// Destinataires d'un « Répondre à tous » : l'expéditeur d'abord, puis
+/// les À, puis les Cc du message d'origine — sans doublon (comparaison
+/// insensible à la casse) et sans sa propre adresse (s'écrire à soi-même
+/// serait du bruit). Peut rendre une liste VIDE : un message qu'on s'est
+/// envoyé à soi seul n'a personne d'autre — l'appelant tranche.
+pub fn reply_all_recipients(
+    sender: Option<&str>,
+    to: &[String],
+    cc: &[String],
+    own_address: &str,
+) -> Vec<String> {
+    let own = own_address.trim().to_lowercase();
+    let mut vus: Vec<String> = Vec::new();
+    let mut liste = Vec::new();
+    let candidats = sender
+        .into_iter()
+        .chain(to.iter().map(String::as_str))
+        .chain(cc.iter().map(String::as_str));
+    for candidat in candidats {
+        let adresse = candidat.trim();
+        if adresse.is_empty() {
+            continue;
+        }
+        let cle = adresse.to_lowercase();
+        if cle == own || vus.contains(&cle) {
+            continue;
+        }
+        vus.push(cle);
+        liste.push(adresse.to_string());
+    }
+    liste
+}
+
 /// Bloc de citation d'une réponse, à placer SOUS le curseur (top-posting) :
 /// une ligne d'attribution puis chaque ligne du texte préfixée de « > ».
 pub fn quote_reply(sender: Option<&str>, date: Option<&str>, body_text: &str) -> String {
@@ -281,6 +314,48 @@ mod tests {
     #[test]
     fn forward_subject_still_prefixes_a_reply_subject() {
         assert_eq!(forward_subject(Some("Re: Réunion")), "Fwd: Re: Réunion");
+    }
+
+    #[test]
+    fn reply_all_orders_sender_then_to_then_cc_without_self() {
+        let to = vec!["moi@exemple.fr".to_string(), "bob@exemple.fr".to_string()];
+        let cc = vec!["carole@exemple.fr".to_string()];
+        assert_eq!(
+            reply_all_recipients(Some("alice@exemple.fr"), &to, &cc, "moi@exemple.fr"),
+            vec!["alice@exemple.fr", "bob@exemple.fr", "carole@exemple.fr"]
+        );
+    }
+
+    /// La casse ne fait pas deux adresses : « Bob@ » et « bob@ » ne
+    /// doivent produire qu'un destinataire, et « MOI@ » reste soi.
+    #[test]
+    fn reply_all_deduplicates_case_insensitively() {
+        let to = vec!["Bob@Exemple.fr".to_string(), "MOI@exemple.fr".to_string()];
+        let cc = vec!["bob@exemple.fr".to_string(), "alice@exemple.fr".to_string()];
+        assert_eq!(
+            reply_all_recipients(Some("alice@exemple.fr"), &to, &cc, "moi@exemple.fr"),
+            vec!["alice@exemple.fr", "Bob@Exemple.fr"]
+        );
+    }
+
+    /// Message envoyé à soi seul : personne d'autre — liste vide, c'est
+    /// à l'appelant de trancher (retomber sur l'expéditeur, ou refuser).
+    #[test]
+    fn reply_all_can_be_empty_when_alone() {
+        let to = vec!["moi@exemple.fr".to_string()];
+        assert_eq!(
+            reply_all_recipients(Some("moi@exemple.fr"), &to, &[], "moi@exemple.fr"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn reply_all_skips_blank_entries_and_missing_sender() {
+        let to = vec!["  ".to_string(), "bob@exemple.fr".to_string()];
+        assert_eq!(
+            reply_all_recipients(None, &to, &[], "moi@exemple.fr"),
+            vec!["bob@exemple.fr"]
+        );
     }
 
     #[test]

@@ -32,6 +32,17 @@ impl FetchedBody {
     }
 }
 
+/// Les destinataires (À / Cc) d'un message, adresses brutes.
+///
+/// L'enveloppe stockée ne porte que l'expéditeur : « Répondre à tous »
+/// relit donc ces listes dans l'ENVELOPE du serveur au moment du clic —
+/// un aller-retour à la demande, pas un octet de plus en base.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MessageRecipients {
+    pub to: Vec<String>,
+    pub cc: Vec<String>,
+}
+
 /// Les en-têtes qui rattachent un message à sa conversation.
 ///
 /// `None` et `Some("")` ne disent PAS la même chose : le premier signifie
@@ -162,6 +173,14 @@ pub trait MailServer {
         uid: Uid,
         index: usize,
     ) -> Result<Option<Vec<u8>>, Error>;
+
+    /// Les destinataires (À / Cc) d'un message — « Répondre à tous ».
+    /// `None` si le message n'existe plus sur le serveur.
+    fn fetch_recipients(
+        &mut self,
+        mailbox: &str,
+        uid: Uid,
+    ) -> Result<Option<MessageRecipients>, Error>;
 
     /// Applique (ou retire) le flag `\Seen` côté serveur.
     fn set_seen(&mut self, mailbox: &str, uid: Uid, seen: bool) -> Result<(), Error>;

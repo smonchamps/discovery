@@ -84,6 +84,7 @@ fn main() {
             commands::move_message,
             commands::delete_message,
             commands::reply_context,
+            commands::reply_all_context,
             commands::forward_context,
             commands::queue_send,
             commands::flush_outbox,

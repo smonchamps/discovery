@@ -15,7 +15,8 @@ mod mutf7;
 use imap_proto::NameAttribute;
 use imap_proto::types::UidSetMember;
 use mail_core::{
-    Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, RemoteDraft, ThreadHeaders, Uid,
+    Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, MessageRecipients, RemoteDraft,
+    ThreadHeaders, Uid,
 };
 
 /// Chaîne SASL XOAUTH2 (Gmail, Microsoft) : jamais de mot de passe.
@@ -460,6 +461,25 @@ impl MailServer for ImapServer {
         Ok(fetches
             .iter()
             .find_map(|fetch| convert::attachment_bytes(fetch.body()?, index)))
+    }
+
+    /// Relit l'ENVELOPE du message pour en tirer À et Cc : l'enveloppe
+    /// stockée localement ne les porte pas, « Répondre à tous » les
+    /// demande au moment du clic — un aller-retour à la demande, pas un
+    /// octet de plus en base ni dans la synchro « enveloppes d'abord ».
+    fn fetch_recipients(
+        &mut self,
+        mailbox: &str,
+        uid: Uid,
+    ) -> Result<Option<MessageRecipients>, Error> {
+        self.ensure_selected(mailbox)?;
+        let fetches = self
+            .session
+            .uid_fetch(uid.to_string(), "(UID ENVELOPE)")
+            .map_err(server_err)?;
+        Ok(fetches
+            .iter()
+            .find_map(|fetch| Some(convert::envelope_recipients(fetch.envelope()?))))
     }
 
     fn folders(&mut self) -> Result<Vec<mail_core::Folder>, Error> {

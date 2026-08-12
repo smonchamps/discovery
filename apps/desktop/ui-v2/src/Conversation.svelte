@@ -24,6 +24,7 @@
     onarchiver = () => {},
     onsupprimer = () => {},
     onrepondre = () => {},
+    onrepondretous = () => {},
     ontransferer = () => {},
     onecrire = () => {},
     onflash = () => {},
@@ -226,6 +227,9 @@
           <button type="button" class="principal" data-testid="conv-repondre"
                   onclick={() => onrepondre(dernier())}>
             <span class="ms" aria-hidden="true">reply</span>Répondre</button>
+          <button type="button" data-testid="conv-repondre-tous"
+                  onclick={() => onrepondretous(dernier())}>
+            <span class="ms" aria-hidden="true">reply_all</span>Répondre à tous</button>
           <button type="button" data-testid="conv-transferer"
                   onclick={() => ontransferer(dernier())}>
             <span class="ms miroir" aria-hidden="true">reply</span>Transférer</button>

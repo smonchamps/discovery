@@ -8,7 +8,7 @@ use chrono::{TimeZone, Utc};
 
 use crate::envelope::{Envelope, Uid};
 use crate::error::Error;
-use crate::remote::{FetchedBody, MailServer, MailboxSnapshot, ThreadHeaders};
+use crate::remote::{FetchedBody, MailServer, MailboxSnapshot, MessageRecipients, ThreadHeaders};
 
 pub(crate) struct FakeServer {
     pub(crate) uid_validity: u32,
@@ -23,6 +23,8 @@ pub(crate) struct FakeServer {
     pub(crate) body_batches: Vec<Vec<Uid>>,
     /// `References` servies par le serveur simulé, par UID.
     pub(crate) references: BTreeMap<Uid, String>,
+    /// Destinataires (À / Cc) servis par le serveur simulé, par UID.
+    pub(crate) recipients: BTreeMap<Uid, MessageRecipients>,
     /// Lots d'en-têtes demandés : la preuve que la passe groupe.
     pub(crate) header_batches: Vec<Vec<Uid>>,
     pub(crate) folders: Vec<crate::remote::Folder>,
@@ -48,6 +50,7 @@ impl FakeServer {
             body_fetches: 0,
             body_batches: Vec::new(),
             references: BTreeMap::new(),
+            recipients: BTreeMap::new(),
             header_batches: Vec::new(),
             folders: Vec::new(),
             moved: Vec::new(),
@@ -208,6 +211,19 @@ impl MailServer for FakeServer {
                 ))
             })
             .collect())
+    }
+
+    /// Le serveur simulé rend les destinataires posés dans `recipients`
+    /// — vides par défaut : un message peut n'avoir ni À ni Cc lisibles.
+    fn fetch_recipients(
+        &mut self,
+        _mailbox: &str,
+        uid: Uid,
+    ) -> Result<Option<MessageRecipients>, Error> {
+        if !self.messages.contains_key(&uid) {
+            return Ok(None);
+        }
+        Ok(Some(self.recipients.get(&uid).cloned().unwrap_or_default()))
     }
 
     /// Le serveur simulé sert les octets qu'on lui a posés — de quoi

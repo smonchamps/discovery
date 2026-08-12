@@ -1,6 +1,6 @@
 # Icônes vendorisées — sous-ensemble Material Symbols Rounded (R0-S3)
 
-**35 glyphes**, **16 828 octets** (16,4 Kio) woff2, servis depuis le dépôt.
+**36 glyphes**, **17 352 octets** (16,9 Kio) woff2, servis depuis le dépôt.
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
@@ -14,18 +14,26 @@ neuf requis). A13 (Réglages en deux volets) purge `arrow_forward`
 (inutilisé depuis la précision d'A12) et ajoute les glyphes des groupes :
 `display_settings` (Affichage), `keyboard` (Raccourcis), `notifications`
 (Notifications), `info` (À propos) — « une icône, un sens » (A3), aucun
-réemploi.
+réemploi. A14 ajoute `reply_all` (« Répondre à tous », barres d'actions
+de la lecture et de la conversation).
 
 `all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
 `check_circle` `close` `delete` `description` `display_settings`
 `drafts` `edit_note` `edit_square` `format_list_bulleted` `format_quote`
 `forum` `group_add` `inbox` `info` `keyboard` `link` `mark_email_unread`
-`notifications` `open_in_new` `person` `person_add` `reply` `report`
-`search` `send` `settings` `storage` `unfold_more` `visibility_off`
-`work`
+`notifications` `open_in_new` `person` `person_add` `reply` `reply_all`
+`report` `search` `send` `settings` `storage` `unfold_more`
+`visibility_off` `work`
 
 Ajouter un glyphe = régénérer le fichier (ci-dessous) **et** tenir cette
 liste à jour — l'inventaire est le contrat.
+
+**La police vit en DEUX exemplaires** : ici (la source vendorisée) et
+[`apps/desktop/ui-v2/public/icones/`](../../apps/desktop/ui-v2/public/icones/)
+— la copie que Vite sert réellement (`/icones/…` dans `systeme.css`).
+Régénérer sans recopier laisse l'app sur l'ancien sous-ensemble : la
+ligature nouvelle reste en toutes lettres à l'écran (vécu à l'ajout de
+`reply_all`). Toute régénération recopie donc le fichier dans `public/`.
 
 ## Axes retenus — le besoin réel, rien de plus
 

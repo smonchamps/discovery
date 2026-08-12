@@ -48,7 +48,17 @@
   let champA = $state(null);
   let champCorps = $state(null);
 
-  const KICKERS = { new: 'Nouveau message', reply: 'Répondre', forward: 'Transférer' };
+  const KICKERS = {
+    new: 'Nouveau message',
+    reply: 'Répondre',
+    reply_all: 'Répondre à tous',
+    forward: 'Transférer',
+  };
+  const COMMANDES = {
+    reply: 'reply_context',
+    reply_all: 'reply_all_context',
+    forward: 'forward_context',
+  };
 
   // Formes du prototype, à la lettre — le cœur produit « Re: » / « Fwd: »,
   // la surface parle français.
@@ -77,16 +87,16 @@
     visible = true;
 
     if (nouveauMode !== 'new' && source) {
-      const commande = nouveauMode === 'reply' ? 'reply_context' : 'forward_context';
+      const enReponse = nouveauMode === 'reply' || nouveauMode === 'reply_all';
       try {
-        const contexte = await appel(commande, {
+        const contexte = await appel(COMMANDES[nouveauMode], {
           accountId: source.account_id,
           mailbox: source.mailbox,
           uid: source.uid,
         });
         if (mien !== jeton) return;
-        objet = nouveauMode === 'reply' ? sujetRe(source.subject) : sujetTr(source.subject);
-        if (nouveauMode === 'reply') {
+        objet = enReponse ? sujetRe(source.subject) : sujetTr(source.subject);
+        if (enReponse) {
           a = contexte.to;
           const prenom = (source.sender ?? '').split(' ')[0];
           // La citation du cœur mène par deux sauts (la place du curseur en
@@ -101,10 +111,16 @@
         }
       } catch (err) {
         if (mien !== jeton) return;
-        if (nouveauMode === 'forward') {
-          // Sans corps, un transfert ne transmettrait rien : échec franc.
+        if (nouveauMode !== 'reply') {
+          // Sans corps, un transfert ne transmettrait rien ; sans la
+          // liste complète, un « à tous » enverrait à moins de monde que
+          // promis (le cœur la relit sur le serveur) : échec franc.
           visible = false;
-          onflash(`Transfert impossible : ${err}`);
+          onflash(
+            nouveauMode === 'forward'
+              ? `Transfert impossible : ${err}`
+              : `Répondre à tous impossible : ${err}`,
+          );
           return;
         }
         // Réponse sans citation : le cœur le permet, on écrit quand même.

@@ -16,6 +16,7 @@
     onsupprimer = () => {},
     onconversation = () => {},
     onrepondre = () => {},
+    onrepondretous = () => {},
     ontransferer = () => {},
     onflash = () => {},
   } = $props();
@@ -175,6 +176,8 @@
       <div class="actions">
         <button type="button" class="principal" data-testid="repondre" onclick={() => onrepondre(ligne)}>
           <span class="ms" aria-hidden="true">reply</span>Répondre</button>
+        <button type="button" data-testid="repondre-tous" onclick={() => onrepondretous(ligne)}>
+          <span class="ms" aria-hidden="true">reply_all</span>Répondre à tous</button>
         <button type="button" data-testid="transferer" onclick={() => ontransferer(ligne)}>
           <span class="ms miroir" aria-hidden="true">reply</span>Transférer</button>
         <button type="button" data-testid="archiver" onclick={() => onarchiver(ligne)}>

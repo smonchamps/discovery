@@ -229,6 +229,26 @@ pub(crate) fn envelope_from_parts(
     }
 }
 
+/// Les destinataires (À / Cc) d'une ENVELOPE, adresses brutes — ce que
+/// « Répondre à tous » relit au moment du clic, l'enveloppe stockée ne
+/// portant que l'expéditeur.
+pub(crate) fn envelope_recipients(proto: &ProtoEnvelope<'_>) -> mail_core::MessageRecipients {
+    mail_core::MessageRecipients {
+        to: address_list(proto.to.as_deref()),
+        cc: address_list(proto.cc.as_deref()),
+    }
+}
+
+/// Les adresses brutes d'une liste d'ENVELOPE ; celles sans
+/// `mailbox@host` complet (groupes RFC 5322, entrées vides) sont tues.
+fn address_list(addresses: Option<&[Address<'_>]>) -> Vec<String> {
+    addresses
+        .into_iter()
+        .flatten()
+        .filter_map(address_literal)
+        .collect()
+}
+
 /// Lit un brouillon brut : destinataires, sujet, et les deux formes de
 /// corps que MIME peut porter.
 ///
@@ -586,6 +606,28 @@ mod tests {
     fn uid_set_handles_single_and_unordered_duplicates() {
         assert_eq!(uid_set(&[4]), "4");
         assert_eq!(uid_set(&[9, 7, 8, 8, 1]), "1,7:9");
+    }
+
+    #[test]
+    fn envelope_recipients_reads_raw_to_and_cc_addresses() {
+        let mut proto = proto_envelope(b"sujet", address(None, Some(b"alice"), Some(b"a.fr")));
+        proto.to = Some(vec![
+            address(Some(b"Bob"), Some(b"bob"), Some(b"b.fr")),
+            // Entrée de groupe RFC 5322 (pas de mailbox@host) : tue.
+            address(Some(b"le groupe"), None, None),
+        ]);
+        proto.cc = Some(vec![address(None, Some(b"carole"), Some(b"c.fr"))]);
+        let recipients = envelope_recipients(&proto);
+        assert_eq!(recipients.to, vec!["bob@b.fr"]);
+        assert_eq!(recipients.cc, vec!["carole@c.fr"]);
+    }
+
+    #[test]
+    fn envelope_recipients_tolerates_missing_lists() {
+        let proto = proto_envelope(b"sujet", address(None, Some(b"alice"), Some(b"a.fr")));
+        let recipients = envelope_recipients(&proto);
+        assert!(recipients.to.is_empty());
+        assert!(recipients.cc.is_empty());
     }
 
     #[test]

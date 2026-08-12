@@ -140,6 +140,32 @@ test("écrire ouvre la composition ; l'annuler vide ne laisse rien", async () =>
   await expect(page.locator('[data-testid="toast"]')).toHaveCount(0);
 });
 
+test('« Répondre à tous » se tient entre Répondre et Transférer (A14)', async () => {
+  // Pas de clic : le décor E2E est hors ligne garanti, et « Répondre à
+  // tous » relit les destinataires sur le serveur (échec franc voulu).
+  // Ici on prouve la place du bouton, dans les DEUX barres d'actions.
+  const barre = await page
+    .locator('[data-testid="volet-lecture"] .actions button')
+    .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
+  expect(barre).toEqual(['repondre', 'repondre-tous', 'transferer', 'archiver', 'supprimer']);
+
+  await page.locator('[data-testid="voir-conversation"]').click();
+  const barreConv = await page
+    .locator('[data-testid="conversation"] .actions button')
+    .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
+  expect(barreConv).toEqual([
+    'conv-repondre',
+    'conv-repondre-tous',
+    'conv-transferer',
+    'conv-archiver',
+    'conv-supprimer',
+  ]);
+  await page.locator('[data-testid="retour-boite"]').click();
+  await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(
+    'Relecture du contrat Vantis',
+  );
+});
+
 test('répondre préremplit depuis le coeur : adresse, Re :, amorce, citation, fichiers', async () => {
   await page.locator('[data-testid="repondre"]').click();
   await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText('Répondre');

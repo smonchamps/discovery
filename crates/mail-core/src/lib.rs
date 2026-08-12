@@ -35,7 +35,10 @@ pub use backfill::{
     backfill_thread_headers,
 };
 pub use body::load_body;
-pub use compose::{Draft, compose, forward_subject, quote_forward, quote_reply, reply_subject};
+pub use compose::{
+    Draft, compose, forward_subject, quote_forward, quote_reply, reply_all_recipients,
+    reply_subject,
+};
 pub use crash::{CrashReport, RawPanic, redact};
 pub use drafts::{DraftContent, DraftPull, DraftSaved, SavedDraft, plan_draft_pull};
 pub use envelope::{Envelope, Uid};
@@ -43,7 +46,9 @@ pub use error::Error;
 pub use nav::{CanonicalFolders, NavCounts};
 pub use notify::{Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
-pub use remote::{FetchedBody, Folder, MailServer, MailboxSnapshot, RemoteDraft, ThreadHeaders};
+pub use remote::{
+    FetchedBody, Folder, MailServer, MailboxSnapshot, MessageRecipients, RemoteDraft, ThreadHeaders,
+};
 pub use store::{Account, AccountConfig, AdoptionProgress, Store, SyncState, UnifiedRow};
 pub use sync::{
     SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall, sync_order,

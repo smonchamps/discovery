@@ -1491,6 +1491,79 @@ pub async fn reply_context(
     })
 }
 
+/// Pré-remplissage d'un « Répondre à tous » : expéditeur + À + Cc du
+/// message d'origine, sans doublon ni sa propre adresse. L'enveloppe
+/// stockée ne porte que l'expéditeur : la liste se relit sur le serveur
+/// au moment du clic — hors ligne, l'échec est FRANC, un « à tous »
+/// amputé enverrait à moins de monde que promis. La citation, elle,
+/// reste un confort : corps inaccessible = on répond sans elle.
+#[tauri::command]
+pub async fn reply_all_context(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<ComposeContext, String> {
+    let envelope = envelope_of(&app, account_id, &mailbox, uid)?;
+    let path = db_path(&app)?;
+    let own = {
+        let store = Store::open(&path).map_err(|err| err.to_string())?;
+        account_email(&store, account_id)?
+    };
+    let session = auth_for(&path, &state, account_id)?;
+    let boite = mailbox.clone();
+    let recipients = tauri::async_runtime::spawn_blocking(move || {
+        fetch_recipients_remote(&session, &boite, uid)
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+    let mut to = mail_core::reply_all_recipients(
+        envelope.sender_address.as_deref(),
+        &recipients.to,
+        &recipients.cc,
+        &own,
+    );
+    if to.is_empty() {
+        // Message qu'on s'est envoyé à soi seul : l'expéditeur reste le
+        // seul destinataire sensé — mieux qu'un champ « À » vide.
+        to.extend(envelope.sender_address.clone());
+    }
+    if to.is_empty() {
+        return Err("adresse de l'expéditeur inconnue — resynchronisez la boîte".to_string());
+    }
+    let body = match raw_body(&app, &state, account_id, &mailbox, uid).await {
+        Ok(html) => mail_core::quote_reply(
+            envelope.sender.as_deref(),
+            quote_date(&envelope).as_deref(),
+            &mail_render::body_text(&html),
+        ),
+        Err(_) => String::new(),
+    };
+    Ok(ComposeContext {
+        account_id,
+        mailbox,
+        uid,
+        to: to.join(", "),
+        subject: mail_core::reply_subject(envelope.subject.as_deref()),
+        body,
+        reply: true,
+    })
+}
+
+fn fetch_recipients_remote(
+    session: &AccountSession,
+    mailbox: &str,
+    uid: u32,
+) -> Result<mail_core::MessageRecipients, String> {
+    let (mut server, _refreshed) = connect_imap(session)?;
+    let recipients = server
+        .fetch_recipients(mailbox, uid)
+        .map_err(|err| err.to_string());
+    server.logout();
+    recipients?.ok_or_else(|| "message introuvable sur le serveur".to_string())
+}
+
 /// Pré-remplissage d'un transfert : sans corps, un transfert ne
 /// transmettrait rien — ici l'échec est bloquant. Nouveau fil : pas
 /// d'In-Reply-To. Les pièces jointes ne suivent pas encore (Phase 3).

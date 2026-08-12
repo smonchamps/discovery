@@ -468,6 +468,9 @@
   function repondre(ligne) {
     composition.ouvrir('reply', ligne);
   }
+  function repondreTous(ligne) {
+    composition.ouvrir('reply_all', ligne);
+  }
   function transferer(ligne) {
     composition.ouvrir('forward', ligne);
   }
@@ -579,7 +582,8 @@
              onresultats={(n) => (nResultats = n)} />
       <Lecture bind:this={lecture} onarchiver={archiver} onsupprimer={supprimer}
                onconversation={ouvrirConversation}
-               onrepondre={repondre} ontransferer={transferer} onflash={flash} />
+               onrepondre={repondre} onrepondretous={repondreTous}
+               ontransferer={transferer} onflash={flash} />
     </div>
 
     <div class="statut" data-testid="statut">
@@ -590,7 +594,8 @@
     <Conversation bind:this={conversation} onretour={retourBoite}
                   onarchiver={async (l) => { await archiver(l); retourBoite(); }}
                   onsupprimer={async (l) => { await supprimer(l); retourBoite(); }}
-                  onrepondre={repondre} ontransferer={transferer} onecrire={ecrire}
+                  onrepondre={repondre} onrepondretous={repondreTous}
+                  ontransferer={transferer} onecrire={ecrire}
                   onflash={flash} />
 
     {#if navPrete && comptes.length === 0}
