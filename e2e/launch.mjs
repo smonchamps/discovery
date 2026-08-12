@@ -106,6 +106,11 @@ async function attacher(db, emails) {
   else delete env.DISCOVERY_E2E_ACCOUNT;
   delete env.GOOGLE_CLIENT_ID;
   delete env.GOOGLE_CLIENT_SECRET;
+  // Même isolation pour Microsoft : sans elle, un test qui touche la
+  // route OAuth ouvrirait le VRAI consentement navigateur sur un poste
+  // où la variable est posée — et resterait suspendu dessus.
+  delete env.MICROSOFT_CLIENT_ID;
+  delete env.MICROSOFT_CLIENT_SECRET;
 
   const app = spawn(path.join(root, 'target', 'debug', 'discovery-desktop.exe'), [], {
     env,

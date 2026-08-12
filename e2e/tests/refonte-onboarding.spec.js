@@ -29,12 +29,37 @@ test("à zéro compte, l'écran 01 accueille", async () => {
   );
 });
 
+test("au repos, la ligne de progression dit que tout est à jour", async () => {
+  // La base vierge est le SEUL décor au repos réel : zéro compte, donc
+  // ni synchro en échec (comptes factices des autres décors), ni envoi
+  // en attente, ni rattrapage. C'est l'état que gardait le test v1
+  // « aucun bandeau quand tous les corps sont là ».
+  await expect(page.locator('[data-testid="progression"]')).toHaveText(
+    'Tous les messages sont à jour',
+  );
+});
+
 test('une saisie invalide est refusée sur place', async () => {
   await page.locator('[data-testid="onboarding-adresse"]').fill('pas-une-adresse');
   await page.locator('[data-testid="onboarding-continuer"]').click();
   await expect(page.locator('[data-testid="onboarding-erreur"]')).toContainText(
     'adresse e-mail complète',
   );
+});
+
+// AVANT le parcours « domaine inconnu » : le guichet est stateful en
+// mode serial — une fois les champs IMAP révélés, ils le restent.
+test('une adresse Microsoft prend la route OAuth, jamais le guichet IMAP (D4)', async () => {
+  await page.locator('[data-testid="onboarding-adresse"]').fill('paul@outlook.com');
+  await page.locator('[data-testid="onboarding-continuer"]').click();
+  // La route est le test : l'échec vient de la configuration OAuth
+  // (MICROSOFT_CLIENT_ID retiré par le harnais — échec rapide, sans
+  // navigateur), PAS d'un guichet générique qui se serait révélé.
+  await expect(page.locator('[data-testid="onboarding-erreur"]')).toContainText(
+    'Connexion impossible',
+  );
+  await expect(page.locator('#ob-imap')).toHaveCount(0);
+  await page.locator('[data-testid="onboarding-adresse"]').fill('');
 });
 
 test('un domaine inconnu révèle le guichet IMAP/SMTP, serveurs proposés', async () => {
