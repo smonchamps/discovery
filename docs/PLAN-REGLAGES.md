@@ -95,3 +95,33 @@ coder).
 ---
 
 Le GO du Chef Ingénieur sur ce plan (avec R-D1 à R-D4) ouvre E1.
+
+## 6. Journal de livraison (2026-08-12)
+
+GO du Chef Ingénieur, R-D1 à R-D4 tranchées selon les recommandations.
+Amendement **A13** inscrit au journal du Système.
+
+- **E1 livré** : rail 220 px + volet, carte 800 px (hauteur posée
+  640 px, bornée à l'écran — le rail ne respire pas au gré du groupe),
+  Comptes/Thèmes déménagés tels quels, Raccourcis (table D3 en
+  référence), À propos (version réelle via la commande neuve
+  `app_version`, `update_check`/`update_install`, licence des icônes).
+  Gate : e2e 25/25, contraste A8 sans jeton neuf.
+- **Police régénérée en une passe** (R-D4) : +`display_settings`,
+  +`notifications`, +`keyboard`, +`info` (À propos, absent du plan,
+  tranché au même critère « une icône, un sens »), −`arrow_forward`
+  (dû A12) — 35 glyphes, 16 828 octets, inventaire et preuve à jour.
+- **E2 livré** (R-D1 : les deux ; R-D2 : oui) : Affichage porte
+  « Sombre automatique » (D6, booléen `discovery-theme-auto` ; la
+  moitié « thèmes Le vent/Tournesol » de D6 reste après bascule) ; les
+  dates D-3 sont soldées DANS `quand()`, sans réglage — la forme du
+  prototype ne s'opte pas, le groupe n'affiche que le réglage réel.
+  Notifications : « Bulles d'arrivée », spéc courte appliquée — table
+  `prefs` (clé/valeur) au SCHEMA idempotent de mail-core,
+  `notif_pref_get/set`, garde à l'ÉMISSION dans le shell ; défaut
+  activées. Gate : e2e 61/61 (aller-retour réel des deux réglages,
+  rechargement compris), contraste inchangé.
+- **Refus tenus** : pas de re-mappage, pas de réglage inventé, pas de
+  groupe vide ; thème immédiat, guichet, Terminé, Échap inchangés.
+- Reste dû hors plan : terrain CE (gate E1) — à jouer sur le poste du
+  Chef Ingénieur.

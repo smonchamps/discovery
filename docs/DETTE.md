@@ -28,13 +28,6 @@ motivée.)
 - **Piste** : éviction LRU des pages hors fenêtre.
 - **Rouvre si** : la RAM dépasse le budget (200 Mo) en usage réel.
 
-### D-3 · Dates en jour de semaine (2 à 6 jours)
-
-- **Fait (P3)** : le prototype affiche « Lundi, 18:20 » pour les
-  messages de la semaine ; `quand()` affiche « 8 août ». Écart visuel
-  mineur, dit à la livraison P3.
-- **Piste** : étendre `quand()` (2–6 jours → jour de semaine).
-
 ### D-4 · Piège de focus des surimpressions
 
 - **Fait (A8)** : Tab peut sortir d'une surimpression (composition,
@@ -43,6 +36,16 @@ motivée.)
 - **Rouvre si** : le terrain au lecteur d'écran le réclame.
 
 ## Soldée
+
+### ~~D-3 · Dates en jour de semaine (2 à 6 jours)~~ — soldée le 2026-08-12
+
+- **Fait (P3)** : le prototype affiche « Lundi, 18:20 » pour les
+  messages de la semaine ; `quand()` affichait « 8 août ». Écart visuel
+  mineur, dit à la livraison P3.
+- **Soldée à E2 des Réglages** (R-D1, PLAN-REGLAGES) : `quand()` étendu
+  — 2 à 6 jours → jour de semaine, `quandLong()` compose « Lundi,
+  18:20 » sans retouche. Sans réglage : la forme du prototype ne
+  s'opte pas.
 
 ### ~~D-5 · Charset amont (U+FFFD dans les corps stockés)~~ — soldée le 2026-08-11
 
