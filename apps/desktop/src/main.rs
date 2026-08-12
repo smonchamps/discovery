@@ -104,6 +104,8 @@ fn main() {
             commands::update_check,
             commands::update_install,
             commands::app_version,
+            commands::notif_pref_get,
+            commands::notif_pref_set,
             telemetry::telemetry_consent_get,
             telemetry::telemetry_consent_set,
             telemetry::telemetry_pending,

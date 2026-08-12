@@ -142,6 +142,13 @@ CREATE TABLE IF NOT EXISTS drafts_remote (
     account_id   INTEGER PRIMARY KEY,
     uid_validity INTEGER NOT NULL
 );
+-- Préférences de l'application persistées EN BASE (pas localStorage) :
+-- elles doivent être lisibles par le shell Rust — la garde des bulles
+-- d'arrivée se joue à l'émission, côté Rust (PLAN-REGLAGES, R-D2).
+CREATE TABLE IF NOT EXISTS prefs (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS outbox (
     id           INTEGER PRIMARY KEY,
     account_id   INTEGER NOT NULL DEFAULT 1,
@@ -413,6 +420,30 @@ impl Store {
             let _ = on_progress(AdoptionProgress { done: total, total });
         }
         Ok(Self(conn))
+    }
+
+    /// Préférence booléenne persistée en base. Absente = `default` : une
+    /// préférence jamais touchée n'écrit rien — la base ne porte que les
+    /// choix explicites.
+    pub fn bool_pref(&self, key: &str, default: bool) -> Result<bool, Error> {
+        let value: Option<String> = self
+            .0
+            .query_row(
+                "SELECT value FROM prefs WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(value.map_or(default, |v| v == "1"))
+    }
+
+    pub fn set_bool_pref(&self, key: &str, value: bool) -> Result<(), Error> {
+        self.0.execute(
+            "INSERT INTO prefs (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, if value { "1" } else { "0" }],
+        )?;
+        Ok(())
     }
 
     pub fn sync_state(&self, account_id: i64, mailbox: &str) -> Result<Option<SyncState>, Error> {
@@ -1896,6 +1927,19 @@ mod tests {
         store
             .recent(test_account(store), "INBOX", offset, limit)
             .unwrap()
+    }
+
+    /// Une préférence jamais posée répond le défaut demandé ; posée, elle
+    /// se relit telle quelle et s'écrase sans doublon.
+    #[test]
+    fn bool_pref_default_then_roundtrip() {
+        let store = Store::open_in_memory().unwrap();
+        assert!(store.bool_pref("arrival_bubbles", true).unwrap());
+        assert!(!store.bool_pref("arrival_bubbles", false).unwrap());
+        store.set_bool_pref("arrival_bubbles", false).unwrap();
+        assert!(!store.bool_pref("arrival_bubbles", true).unwrap());
+        store.set_bool_pref("arrival_bubbles", true).unwrap();
+        assert!(store.bool_pref("arrival_bubbles", false).unwrap());
     }
 
     #[test]

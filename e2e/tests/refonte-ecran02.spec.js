@@ -315,8 +315,8 @@ test('les réglages appliquent et persistent le thème', async () => {
 
 test("les réglages en deux volets se parcourent au clic ET au clavier (A13)", async () => {
   await page.locator('[data-testid="reglages"]').click();
-  // Le rail porte les groupes ; Comptes est le groupe d'ouverture.
-  await expect(page.locator('[data-testid="reglages-groupe"]')).toHaveCount(4);
+  // Le rail porte les six groupes ; Comptes est le groupe d'ouverture.
+  await expect(page.locator('[data-testid="reglages-groupe"]')).toHaveCount(6);
   await expect(page.locator('[data-testid="reglages-comptes"]')).toBeVisible();
   // Au clic : Raccourcis — la table D3 en référence, lecture seule.
   await page.locator('[data-testid="reglages-groupe"][data-groupe="raccourcis"]').click();
@@ -352,4 +352,48 @@ test("la section Comptes liste les comptes réels et ouvre le guichet d'ajout (A
   // Rien n'est parti ; Terminé referme, le guichet se démonte propre.
   await page.locator('[data-testid="reglages-termine"]').click();
   await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
+});
+
+// ——— E2 des Réglages : les groupes à décision (R-D1, R-D2) —————————————
+
+test("Affichage : le suivi de l'OS sombre affiche « La nuit » sans toucher au choix (D6)", async () => {
+  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
+  const bascule = page.locator('[data-testid="affichage-auto"]');
+  await expect(bascule).toHaveAttribute('aria-checked', 'false');
+  await bascule.click();
+  // OS sombre : « La nuit » s'affiche ; le thème CHOISI reste `nature`.
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nuit');
+  expect(await page.evaluate(() => localStorage.getItem('discovery-theme'))).not.toBe('nuit');
+  // OS clair : le choix revient tel quel.
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'nuit');
+  // Persistance : le booléen survit comme le thème.
+  expect(await page.evaluate(() => localStorage.getItem('discovery-theme-auto'))).toBe('1');
+  await bascule.click();
+  await page.emulateMedia({ colorScheme: null });
+  await page.locator('[data-testid="reglages-termine"]').click();
+});
+
+test("Notifications : les bulles d'arrivée se coupent et la préférence tient en base (R-D2)", async () => {
+  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="notifications"]').click();
+  const bascule = page.locator('[data-testid="notif-bulles"]');
+  // Le défaut protège l'annonce : activées tant que rien n'est posé.
+  await expect(bascule).toHaveAttribute('aria-checked', 'true');
+  await bascule.click();
+  await expect(bascule).toHaveAttribute('aria-checked', 'false');
+  await page.locator('[data-testid="reglages-termine"]').click();
+  // L'aller-retour RÉEL : recharger l'application relit la préférence
+  // depuis la base — pas depuis un état de composant.
+  await page.reload();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="notifications"]').click();
+  await expect(bascule).toHaveAttribute('aria-checked', 'false');
+  // Retour au défaut pour ne pas teinter d'autres parcours.
+  await bascule.click();
+  await expect(bascule).toHaveAttribute('aria-checked', 'true');
+  await page.locator('[data-testid="reglages-termine"]').click();
 });

@@ -764,6 +764,9 @@ fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Resul
 /// Windows refusait le toast, le symptôme était « rien ne se passe » :
 /// indiagnosticable. Absorber un échec est une chose, en effacer la
 /// trace en est une autre.
+/// Clé de la préférence « bulles d'arrivée » (Réglages > Notifications).
+const PREF_ARRIVAL_BUBBLES: &str = "arrival_bubbles";
+
 fn arrival_notification_problem(
     app: &AppHandle,
     arrivals: &[mail_core::Envelope],
@@ -771,6 +774,18 @@ fn arrival_notification_problem(
     use tauri_plugin_notification::NotificationExt;
 
     let notification = mail_core::notification_for(arrivals)?;
+    // R-D2 (PLAN-REGLAGES) : la préférence vit EN BASE et se lit ICI, à
+    // l'émission — le réglage coupe la bulle, jamais la synchro. Base
+    // illisible = activées : le défaut protège l'annonce, et la synchro
+    // qui vient d'écrire ces arrivées rend ce cas théorique.
+    let actives = db_path(app)
+        .ok()
+        .and_then(|path| Store::open(&path).ok())
+        .and_then(|store| store.bool_pref(PREF_ARRIVAL_BUBBLES, true).ok())
+        .unwrap_or(true);
+    if !actives {
+        return None;
+    }
     app.notification()
         .builder()
         .title(notification.title)
@@ -2414,6 +2429,26 @@ pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
 #[tauri::command]
 pub fn app_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
+}
+
+/// Bulles d'arrivee : la preference se LIT pour l'afficher…
+#[tauri::command]
+pub fn notif_pref_get(app: AppHandle) -> Result<bool, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store
+        .bool_pref(PREF_ARRIVAL_BUBBLES, true)
+        .map_err(|err| err.to_string())
+}
+
+/// …et se POSE depuis le groupe Notifications des Reglages. Persistee en
+/// base (PLAN-REGLAGES, R-D2) : c'est le shell Rust qui emet les bulles,
+/// localStorage lui serait invisible.
+#[tauri::command]
+pub fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store
+        .set_bool_pref(PREF_ARRIVAL_BUBBLES, enabled)
+        .map_err(|err| err.to_string())
 }
 
 /// Telecharge, verifie la signature, installe, puis redemarre.

@@ -1,10 +1,13 @@
 // Thèmes Clarity — comportement du prototype, exactement : défaut
 // `nature`, choix persisté sous localStorage['discovery-theme'],
-// restauré au montage. (L'OS sombre automatique est en D6, après
-// bascule.)
+// restauré au montage. D6 (livré à E2 des Réglages) : le suivi de l'OS
+// sombre est un second booléen — quand il est actif et que l'OS est en
+// sombre, « La nuit » s'AFFICHE sans toucher au thème choisi, qui
+// revient tel quel dès que l'OS repasse en clair.
 
 export const THEMES = ['air', 'feu', 'eau', 'astres', 'terre', 'nature', 'nuit'];
 const CLE = 'discovery-theme';
+const CLE_AUTO = 'discovery-theme-auto';
 
 // Les fiches du dialogue Réglages — libellés, descriptions et pastilles
 // VERBATIM du prototype (objet `themes` du template ; pastilles dans
@@ -34,17 +37,41 @@ export function themeActuel() {
   return THEMES.includes(nom) ? nom : 'nature';
 }
 
-export function appliquerTheme(nom) {
-  if (!THEMES.includes(nom)) return;
+function osSombre() {
+  return globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+}
+
+function poser(nom) {
   if (nom === 'nature') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = nom;
+}
+
+// L'unique endroit qui décide du thème AFFICHÉ : le suivi de l'OS gagne
+// quand il est actif et que l'OS est sombre, le choix persiste sinon.
+function refleter() {
+  poser(suiviOs() && osSombre() ? 'nuit' : themeActuel());
+}
+
+export function suiviOs() {
+  try { return localStorage.getItem(CLE_AUTO) === '1'; } catch { return false; }
+}
+
+export function appliquerSuiviOs(actif) {
+  try { localStorage.setItem(CLE_AUTO, actif ? '1' : '0'); } catch { /* le choix ne survivra pas, rien d'autre à faire */ }
+  refleter();
+}
+
+export function appliquerTheme(nom) {
+  if (!THEMES.includes(nom)) return;
   try { localStorage.setItem(CLE, nom); } catch { /* stockage indisponible : le choix ne survivra pas, rien d'autre à faire */ }
+  refleter();
 }
 
 export function restaurerTheme() {
-  let nom = 'nature';
-  try { nom = localStorage.getItem(CLE) || 'nature'; } catch { /* idem */ }
-  if (!THEMES.includes(nom)) nom = 'nature';
-  if (nom !== 'nature') document.documentElement.dataset.theme = nom;
-  return nom;
+  refleter();
+  // L'OS peut basculer en cours de session (mode nuit planifié) : le
+  // reflet suit sans redémarrage.
+  globalThis.matchMedia?.('(prefers-color-scheme: dark)')
+    .addEventListener?.('change', refleter);
+  return themeActuel();
 }

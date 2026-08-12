@@ -8,7 +8,9 @@
   //
   // Règle : un groupe ne s'expédie qu'avec du contenu RÉEL — aucun
   // réglage inventé pour meubler, aucun groupe vide.
-  import { FICHES, appliquerTheme, themeActuel } from './lib/theme.js';
+  import {
+    FICHES, appliquerTheme, themeActuel, suiviOs, appliquerSuiviOs,
+  } from './lib/theme.js';
   import { activation } from './lib/clavier.js';
   import { appel } from './lib/transport.js';
   import GuichetCompte from './GuichetCompte.svelte';
@@ -20,6 +22,8 @@
   const GROUPES = [
     { id: 'comptes', icone: 'person', libelle: 'Comptes' },
     { id: 'themes', icone: 'bookmark', libelle: 'Thèmes' },
+    { id: 'affichage', icone: 'display_settings', libelle: 'Affichage' },
+    { id: 'notifications', icone: 'notifications', libelle: 'Notifications' },
     { id: 'raccourcis', icone: 'keyboard', libelle: 'Raccourcis' },
     { id: 'apropos', icone: 'info', libelle: 'À propos' },
   ];
@@ -47,8 +51,15 @@
   // null (repos) | 'controle' | 'ajour' | {version} | {erreur}
   let maj = $state(null);
 
+  // Affichage (D6) : le suivi de l'OS sombre, un booléen localStorage
+  // comme le thème. Notifications (R-D2) : les bulles d'arrivée, une
+  // préférence EN BASE — c'est le shell Rust qui émet.
+  let auto = $state(suiviOs());
+  let bulles = $state(true);
+
   export function ouvrir() {
     actif = themeActuel();
+    auto = suiviOs();
     ajoutOuvert = false;
     groupe = 'comptes';
     maj = null;
@@ -58,6 +69,9 @@
         .then((v) => (version = v))
         .catch(() => (version = '—'));
     }
+    appel('notif_pref_get')
+      .then((v) => (bulles = v))
+      .catch(() => { /* hors Tauri : le défaut (activées) reste affiché */ });
   }
   export function fermer() {
     visible = false;
@@ -72,6 +86,19 @@
   function choisir(id) {
     appliquerTheme(id);
     actif = id;
+  }
+  function basculerAuto() {
+    auto = !auto;
+    appliquerSuiviOs(auto);
+  }
+  function basculerBulles() {
+    bulles = !bulles;
+    const voulu = bulles;
+    appel('notif_pref_set', { enabled: voulu }).catch(() => {
+      // La base n'a pas pris le choix : l'interrupteur ne doit pas
+      // mentir — il revient à l'état réellement persisté.
+      if (bulles === voulu) bulles = !voulu;
+    });
   }
 
   // Le même flux que la fente d'avis (ADR 0013) : update_check en
@@ -168,6 +195,40 @@
                   {/if}
                 </div>
               {/each}
+            </div>
+          {:else if groupe === 'affichage'}
+            <p class="section">Affichage</p>
+            <div class="rangees" data-testid="reglages-affichage">
+              <div class="reglage">
+                <span class="libelles">
+                  <span class="nom">Sombre automatique</span>
+                  <span class="desc">Suivre le réglage sombre du système :
+                    « La nuit » s'affiche quand il est actif, le thème choisi
+                    revient dès qu'il s'éteint.</span>
+                </span>
+                <button type="button" class="bascule" role="switch"
+                        aria-checked={auto} aria-label="Sombre automatique"
+                        data-testid="affichage-auto" onclick={basculerAuto}>
+                  <span class="bille"></span>
+                </button>
+              </div>
+            </div>
+          {:else if groupe === 'notifications'}
+            <p class="section">Notifications</p>
+            <div class="rangees" data-testid="reglages-notifications">
+              <div class="reglage">
+                <span class="libelles">
+                  <span class="nom">Bulles d'arrivée</span>
+                  <span class="desc">Une bulle système annonce les nouveaux
+                    messages à la synchronisation. La couper n'arrête jamais
+                    la synchronisation elle-même.</span>
+                </span>
+                <button type="button" class="bascule" role="switch"
+                        aria-checked={bulles} aria-label="Bulles d'arrivée"
+                        data-testid="notif-bulles" onclick={basculerBulles}>
+                  <span class="bille"></span>
+                </button>
+              </div>
             </div>
           {:else if groupe === 'raccourcis'}
             <p class="section">Raccourcis clavier</p>
@@ -336,6 +397,31 @@
   }
   .tete-ajout { display:flex; align-items:center; gap:14px; }
   .titre-ajout { flex:1; font-size:14px; font-weight:600; color:var(--ink); }
+
+  /* Une rangée de réglage : libellé + description, interrupteur à
+     droite. L'interrupteur reste aux jetons — piste `--panel`/filet au
+     repos, accent quand il est armé ; focus visible hérité (A8). */
+  .reglage {
+    display:flex; align-items:center; gap:16px; padding:14px 16px;
+    border-radius:10px;
+  }
+  .bascule {
+    width:38px; height:22px; flex:none; padding:2px; cursor:pointer;
+    display:inline-flex; align-items:center;
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:11px; transition:background .12s ease;
+  }
+  .bille {
+    width:16px; height:16px; border-radius:50%;
+    background:var(--surface); border:1px solid var(--border);
+    transition:transform .12s ease;
+  }
+  .bascule[aria-checked="true"] {
+    background:var(--accent); border-color:var(--accent);
+  }
+  .bascule[aria-checked="true"] .bille {
+    transform:translateX(16px); border-color:var(--accent);
+  }
 
   /* Raccourcis : référence en lecture seule, aux jetons. */
   .raccourci {
