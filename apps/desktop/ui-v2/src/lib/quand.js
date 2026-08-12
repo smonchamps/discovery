@@ -1,16 +1,12 @@
-// L'heure de la ligne, aux formes exactes du prototype : « 09:12 »
+// L'heure de la ligne, aux formes exactes du prototype — désormais par
+// langue (PLAN-LANGUES, A15) : mois, jours et gabarits viennent du
+// catalogue, la grammaire ne bouge pas. En français : « 09:12 »
 // aujourd'hui, « Hier », « Lundi » de 2 à 6 jours (dette D-3, soldée à
 // E2 des Réglages), « 5 août » dans l'année, « 5 août 2024 » au-delà.
+// En anglais, la transposition d'A15 : "Yesterday", "Monday", "Aug 5",
+// "Aug 5, 2024" — l'heure reste sur 24 h dans les deux langues.
 // Epoch 0 = date inconnue -> vide.
-
-const MOIS = [
-  'janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin',
-  'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.',
-];
-
-const JOURS = [
-  'Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi',
-];
+import { t } from './texte.svelte.js';
 
 // La forme longue du volet de lecture : « Aujourd'hui, 09:12 »,
 // « Hier, 16:30 », « 5 août, 10:12 » — celle du prototype.
@@ -19,8 +15,8 @@ export function quandLong(epoch) {
   const date = new Date(epoch * 1000);
   const heure = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   const court = quand(epoch);
-  if (court === heure) return `Aujourd'hui, ${heure}`;
-  if (court === 'Hier') return `Hier, ${heure}`;
+  if (court === heure) return `${t('quand.aujourdhui')}, ${heure}`;
+  if (court === t('quand.hier')) return `${t('quand.hier')}, ${heure}`;
   return `${court}, ${heure}`;
 }
 
@@ -33,13 +29,14 @@ export function quand(epoch) {
   if (ecartJours === 0) {
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   }
-  if (ecartJours === 1) return 'Hier';
+  if (ecartJours === 1) return t('quand.hier');
   // La semaine glissante du prototype : « Lundi, 18:20 » — le jour nu
   // ici, quandLong ajoute l'heure.
-  if (ecartJours >= 2 && ecartJours <= 6) return JOURS[date.getDay()];
-  const quantieme = date.getDate() === 1 ? '1ᵉʳ' : String(date.getDate());
+  if (ecartJours >= 2 && ecartJours <= 6) return t('quand.jours')[date.getDay()];
+  const quantieme = date.getDate() === 1 ? t('quand.premier') : String(date.getDate());
+  const mois = t('quand.mois')[date.getMonth()];
   if (date.getFullYear() === maintenant.getFullYear()) {
-    return `${quantieme} ${MOIS[date.getMonth()]}`;
+    return t('quand.dansAnnee', { jour: quantieme, mois });
   }
-  return `${quantieme} ${MOIS[date.getMonth()]} ${date.getFullYear()}`;
+  return t('quand.auDela', { jour: quantieme, mois, annee: date.getFullYear() });
 }

@@ -6,6 +6,7 @@
   // raccourcis (D3).
   import { onMount } from 'svelte';
   import { appel } from './lib/transport.js';
+  import { t } from './lib/texte.svelte.js';
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
   import Lecture from './Lecture.svelte';
@@ -70,39 +71,39 @@
   let synchroEchec = $state(false);
 
   const LIBELLES = {
-    reception: 'Boîte de réception',
-    envoyes: 'Envoyés',
-    brouillons: 'Brouillons',
-    indesirables: 'Indésirables',
-    archives: 'Archives',
-    corbeille: 'Corbeille',
+    reception: 'boite.reception',
+    envoyes: 'boite.envoyes',
+    brouillons: 'boite.brouillons',
+    indesirables: 'boite.indesirables',
+    archives: 'boite.archives',
+    corbeille: 'boite.corbeille',
   };
 
   const statut = $derived.by(() => {
     if (nResultats !== null) {
-      return `Recherche · ${nResultats} résultat${nResultats > 1 ? 's' : ''}`;
+      return t('statut.recherche', { n: nResultats });
     }
     if (categorie !== 'reception') {
-      return `${LIBELLES[categorie]} · ${totalListe} élément${totalListe > 1 ? 's' : ''}`;
+      return t('statut.categorie', { boite: t(LIBELLES[categorie]), n: totalListe });
     }
     // La ligne de progression : au plus UNE — synchro OU rattrapage,
     // puis l'attente non fautive de la boîte d'envoi.
     if (synchro && synchro.percent !== null && synchro.percent < 100) {
-      return `Synchronisation · ${synchro.percent} %`;
+      return t('statut.synchro', { p: synchro.percent });
     }
     if (rattrapageCorps !== null && rattrapageCorps > 0) {
-      return `Rattrapage des messages · ${rattrapageCorps} restants`;
+      return t('statut.rattrapageCorps', { n: rattrapageCorps });
     }
     if (rattrapageApercus) {
-      return 'Rattrapage des aperçus…';
+      return t('statut.rattrapageApercus');
     }
     if (envoisEnAttente > 0) {
-      return `Boîte d'envoi · ${envoisEnAttente} envoi${envoisEnAttente > 1 ? 's' : ''} en attente`;
+      return t('statut.envois', { n: envoisEnAttente });
     }
     if (synchroEchec) {
-      return 'Synchronisation impossible — nouvelle tentative automatique';
+      return t('statut.synchroImpossible');
     }
-    return 'Tous les messages sont à jour';
+    return t('statut.ajour');
   });
 
   function flash(message) {
@@ -182,20 +183,22 @@
         avisEnvoi = null;
         return;
       }
-      const sort = probleme.state === 'rejected' ? 'a été refusé' : 'a été interrompu';
+      const sort = probleme.state === 'rejected' ? 'avis.envoiRefuse' : 'avis.envoiInterrompu';
       avisEnvoi = {
         alerte: true,
         icone: 'error',
-        texte: `L'envoi « ${probleme.subject} » ${sort}`
-          + (probleme.error ? ` — ${probleme.error}` : '') + '.',
+        texte: t(sort, {
+          sujet: probleme.subject,
+          erreur: probleme.error ? ` — ${probleme.error}` : '',
+        }),
         actions: [
-          { libelle: 'Renvoyer', principale: true, faire: async () => {
-            await appel('outbox_requeue', { id: probleme.id }).catch((err) => flash(`Renvoi impossible : ${err}`));
+          { libelle: t('action.renvoyer'), principale: true, faire: async () => {
+            await appel('outbox_requeue', { id: probleme.id }).catch((err) => flash(t('erreur.renvoi', { err })));
             await appel('flush_outbox').catch(() => {});
             sonderEnvois();
           } },
-          { libelle: 'Abandonner', faire: async () => {
-            await appel('outbox_delete', { id: probleme.id }).catch((err) => flash(`Abandon impossible : ${err}`));
+          { libelle: t('action.abandonner'), faire: async () => {
+            await appel('outbox_delete', { id: probleme.id }).catch((err) => flash(t('erreur.abandon', { err })));
             sonderEnvois();
           } },
         ],
@@ -213,10 +216,10 @@
     if (!maj) return;
     avisMaj = {
       icone: 'system_update_alt',
-      texte: `Une mise à jour est disponible (version ${maj.version}).`,
+      texte: t('avis.maj', { version: maj.version }),
       actions: [
-        { libelle: 'Installer', principale: true, faire: async () => {
-          avisMaj.texte = 'Téléchargement et installation…';
+        { libelle: t('action.installer'), principale: true, faire: async () => {
+          avisMaj.texte = t('reglages.installation');
           avisMaj.actions = [];
           try {
             // L'application redémarre sur la version neuve : cet appel
@@ -224,10 +227,10 @@
             await appel('update_install');
           } catch (err) {
             verifierMaj();
-            flash(`Mise à jour impossible : ${err}`);
+            flash(t('erreur.maj', { err }));
           }
         } },
-        { libelle: 'Plus tard', faire: () => { avisMaj = null; } },
+        { libelle: t('action.plusTard'), faire: () => { avisMaj = null; } },
       ],
     };
   }
@@ -240,13 +243,12 @@
       if (rapports > 0) {
         avisCrash = {
           icone: 'report',
-          texte: `Discovery a rencontré un problème lors d'une session précédente `
-            + `(${rapports} rapport(s) en attente). Rien n'est envoyé sans vous.`,
+          texte: t('avis.crash', { n: rapports }),
           actions: [
-            { libelle: 'Ouvrir le dossier des rapports', principale: true, faire: async () => {
-              await appel('telemetry_open_folder').catch((err) => flash(`Ouverture impossible : ${err}`));
+            { libelle: t('action.ouvrirRapports'), principale: true, faire: async () => {
+              await appel('telemetry_open_folder').catch((err) => flash(t('erreur.ouverture', { err })));
             } },
-            { libelle: 'Ignorer', faire: () => { avisCrash = null; } },
+            { libelle: t('action.ignorer'), faire: () => { avisCrash = null; } },
           ],
         };
       }
@@ -255,16 +257,14 @@
         const trancher = async (enabled) => {
           avisTelemetrie = null;
           await appel('telemetry_consent_set', { enabled })
-            .catch((err) => flash(`Préférence non enregistrée : ${err}`));
+            .catch((err) => flash(t('erreur.preference', { err })));
         };
         avisTelemetrie = {
           icone: 'volunteer_activism',
-          texte: 'Aider à améliorer Discovery ? En cas de plantage, un rapport '
-            + 'technique serait enregistré sur votre machine — jamais le contenu '
-            + "de vos mails. Vous choisissez ensuite de l'envoyer.",
+          texte: t('avis.telemetrie'),
           actions: [
-            { libelle: 'Activer', principale: true, faire: () => trancher(true) },
-            { libelle: 'Non merci', faire: () => trancher(false) },
+            { libelle: t('action.activer'), principale: true, faire: () => trancher(true) },
+            { libelle: t('action.nonMerci'), faire: () => trancher(false) },
           ],
         };
       }
@@ -286,14 +286,14 @@
       avisBrouillons = {
         icone: 'edit_note',
         texte: brouillons.length > 1
-          ? `${brouillons.length} brouillons en cours.`
-          : `Un brouillon en cours : « ${brouillons[0].subject || 'sans objet'} ».`,
+          ? t('avis.brouillons', { n: brouillons.length })
+          : t('avis.brouillon', { sujet: brouillons[0].subject || t('compo.sansObjet') }),
         actions: [
-          { libelle: 'Reprendre', principale: true, faire: () => {
+          { libelle: t('action.reprendre'), principale: true, faire: () => {
             avisBrouillons = null;
             composition.ouvrirBrouillon(brouillons[0]);
           } },
-          { libelle: 'Plus tard', faire: () => {
+          { libelle: t('action.plusTard'), faire: () => {
             brouillonsIgnores = true;
             avisBrouillons = null;
           } },
@@ -317,14 +317,14 @@
         avisConnexion = {
           alerte: true,
           icone: 'link_off',
-          texte: `Compte non reconnecté — ${bilan.problems.join(' ; ')}`,
+          texte: t('avis.connexion', { details: bilan.problems.join(' ; ') }),
           actions: [
-            { libelle: 'Réessayer', principale: true, faire: async () => {
+            { libelle: t('action.reessayer'), principale: true, faire: async () => {
               avisConnexion = null;
               await connecter();
               synchroniser();
             } },
-            { libelle: 'Ignorer', faire: () => { avisConnexion = null; } },
+            { libelle: t('action.ignorer'), faire: () => { avisConnexion = null; } },
           ],
         };
       } else {
@@ -482,7 +482,7 @@
   // l'écran 01 s'efface de lui-même — et la première synchro part
   // aussitôt (la session vient d'être posée par l'ajout).
   function compteAjoute() {
-    flash('Compte ajouté.');
+    flash(t('toast.compteAjoute'));
     chargerNav();
     synchroniser();
   }
@@ -512,7 +512,7 @@
         mailbox: ligne.mailbox,
         uid: ligne.uid,
       });
-      flash('Conversation archivée.');
+      flash(t('toast.archivee'));
       lecture.fermer();
       liste.recharger();
       chargerNav();
@@ -527,7 +527,7 @@
         mailbox: ligne.mailbox,
         uid: ligne.uid,
       });
-      flash('Conversation supprimée.');
+      flash(t('toast.supprimee'));
       lecture.fermer();
       liste.recharger();
       chargerNav();
@@ -541,10 +541,10 @@
   }
   export function marquerDemarrage() {
     const l = liste.etat();
-    perf = `${l.total} conversations — première page servie+rendue en ${l.premierePageMs.toFixed(1)} ms`;
+    perf = t('statut.perf', { total: l.total, ms: l.premierePageMs.toFixed(1) });
     startup = String(Math.round(performance.now()));
   }
-  let perf = $state('démarrage…');
+  let perf = $state(t('statut.demarrage'));
   let startup = $state('');
 </script>
 
@@ -556,19 +556,19 @@
     <span class="recherche" data-testid="recherche">
       <span class="ms" aria-hidden="true">search</span>
       <input type="text" bind:this={champRecherche} bind:value={recherche}
-             data-testid="champ-recherche" aria-label="Recherche"
-             placeholder="Chercher un message, une personne, un fichier">
+             data-testid="champ-recherche" aria-label={t('entete.recherche')}
+             placeholder={t('entete.chercher')}>
       {#if recherche}
         <!-- Verdict terrain (Annexe A) : vider la recherche en UN clic. -->
         <button type="button" class="vider" data-testid="vider-recherche"
-                aria-label="Effacer la recherche"
+                aria-label={t('entete.effacerRecherche')}
                 onclick={() => { recherche = ''; champRecherche?.focus(); }}>
           <span class="ms" aria-hidden="true">close</span></button>
       {/if}</span>
     <button type="button" class="principal" data-testid="ecrire" onclick={ecrire}>
-      <span class="ms" aria-hidden="true">edit_square</span>Écrire</button>
+      <span class="ms" aria-hidden="true">edit_square</span>{t('entete.ecrire')}</button>
     <button type="button" data-testid="reglages" onclick={() => reglages.ouvrir()}>
-      <span class="ms" aria-hidden="true">settings</span>Réglages</button>
+      <span class="ms" aria-hidden="true">settings</span>{t('entete.reglages')}</button>
   </header>
 
   <FenteAvis {avis} />

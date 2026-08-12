@@ -99,7 +99,11 @@ async function attacher(db, emails) {
   const env = {
     ...process.env,
     DISCOVERY_DB_PATH: db,
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT}`,
+    // `--lang=fr` : la détection de langue au premier lancement
+    // (navigator.language, PLAN-LANGUES) lit la locale du WebView — sans
+    // cette épingle, la suite dépendrait de la langue de la machine.
+    // Le français reste la langue canonique des parcours (L-6).
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT} --lang=fr`,
     WEBVIEW2_USER_DATA_FOLDER: profile,
   };
   if (emails.length > 0) env.DISCOVERY_E2E_ACCOUNT = emails.join(',');

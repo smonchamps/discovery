@@ -5,6 +5,7 @@
   // fiction « Travail / Personnel » n'existe pas ; icône `person` par
   // défaut (décision D7), libellé = adresse du compte.
   import { activation } from './lib/clavier.js';
+  import { t } from './lib/texte.svelte.js';
 
   let { comptes = [], categorie, compte, onchoisir = () => {} } = $props();
 
@@ -19,22 +20,22 @@
 
   const dossiers = $derived([
     {
-      id: 'reception', icone: 'inbox', libelle: 'Boîte de réception',
+      id: 'reception', icone: 'inbox', libelle: t('boite.reception'),
       heros: de('reception_non_lues'), total: de('reception_total'),
     },
-    { id: 'envoyes', icone: 'send', libelle: 'Envoyés', simple: de('envoyes') },
-    { id: 'brouillons', icone: 'edit_note', libelle: 'Brouillons', simple: de('brouillons') },
+    { id: 'envoyes', icone: 'send', libelle: t('boite.envoyes'), simple: de('envoyes') },
+    { id: 'brouillons', icone: 'edit_note', libelle: t('boite.brouillons'), simple: de('brouillons') },
     {
-      id: 'indesirables', icone: 'report', libelle: 'Indésirables',
+      id: 'indesirables', icone: 'report', libelle: t('boite.indesirables'),
       heros: de('indesirables_non_lus'), total: de('indesirables_total'),
     },
-    { id: 'archives', icone: 'archive', libelle: 'Archives', simple: de('archives') },
-    { id: 'corbeille', icone: 'delete', libelle: 'Corbeille', simple: de('corbeille') },
+    { id: 'archives', icone: 'archive', libelle: t('boite.archives'), simple: de('archives') },
+    { id: 'corbeille', icone: 'delete', libelle: t('boite.corbeille'), simple: de('corbeille') },
   ]);
 
   const boites = $derived([
     {
-      id: null, icone: 'all_inbox', libelle: 'Toutes les boîtes',
+      id: null, icone: 'all_inbox', libelle: t('nav.toutes'),
       nonLues: somme('reception_non_lues'),
     },
     ...comptes.map((c) => ({
@@ -44,7 +45,7 @@
   ]);
 </script>
 
-<nav aria-label="Dossiers et comptes" data-testid="nav">
+<nav aria-label={t('nav.aria')} data-testid="nav">
   {#each dossiers as d (d.id)}
     <div class="rang" class:actif={categorie === d.id}
          data-testid="nav-dossier" data-categorie={d.id}
@@ -63,7 +64,7 @@
   {/each}
 
   <div class="boites">
-    <p class="titre">Boîtes</p>
+    <p class="titre">{t('nav.boites')}</p>
     {#each boites as b (b.id)}
       <div class="rang" class:actif={compte === b.id}
            data-testid="nav-boite"

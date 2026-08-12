@@ -1,11 +1,14 @@
-// Montage v2 — thème restauré AVANT le premier rendu (pas de flash),
+// Montage v2 — thème ET langue restaurés AVANT le premier rendu (pas
+// de flash ; la langue est une lecture de base locale, sub-milliseconde),
 // crochets de mesure exposés pour le banc P1 (mesure-v2.mjs) et les e2e.
 import './systeme.css';
 import { mount } from 'svelte';
 import { appliquerTheme, restaurerTheme, THEMES } from './lib/theme.js';
+import { restaurerLangue } from './lib/texte.svelte.js';
 import App from './App.svelte';
 
 restaurerTheme();
+await restaurerLangue();
 
 const app = mount(App, { target: document.getElementById('app') });
 

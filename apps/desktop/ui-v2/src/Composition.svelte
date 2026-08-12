@@ -22,6 +22,7 @@
   // prototype. Écart dit : la ligne « De » montre l'adresse seule — le
   // cœur ne stocke ni nom d'affichage ni étiquette de compte.
   import { appel } from './lib/transport.js';
+  import { t } from './lib/texte.svelte.js';
 
   let {
     comptes = [],
@@ -49,10 +50,10 @@
   let champCorps = $state(null);
 
   const KICKERS = {
-    new: 'Nouveau message',
-    reply: 'Répondre',
-    reply_all: 'Répondre à tous',
-    forward: 'Transférer',
+    new: 'compo.nouveau',
+    reply: 'action.repondre',
+    reply_all: 'action.repondreTous',
+    forward: 'action.transferer',
   };
   const COMMANDES = {
     reply: 'reply_context',
@@ -61,9 +62,10 @@
   };
 
   // Formes du prototype, à la lettre — le cœur produit « Re: » / « Fwd: »,
-  // la surface parle français.
-  const sujetRe = (s) => (/^re\s*:/i.test(s ?? '') ? s : `Re : ${s ?? ''}`);
-  const sujetTr = (s) => (/^(tr|fwd|fw)\s*:/i.test(s ?? '') ? s : `Tr : ${s ?? ''}`);
+  // la surface parle la langue de l'interface (« Re : » / « Tr : » en
+  // français, "Re:" / "Fwd:" en anglais — A15, décision L-4).
+  const sujetRe = (s) => (/^re\s*:/i.test(s ?? '') ? s : t('compo.re', { sujet: s ?? '' }));
+  const sujetTr = (s) => (/^(tr|fwd|fw)\s*:/i.test(s ?? '') ? s : t('compo.tr', { sujet: s ?? '' }));
 
   function compteDe(accountId) {
     const connu = comptes.find((c) => c.account_id === accountId);
@@ -103,7 +105,7 @@
           // v1) ; l'amorce du prototype les apporte déjà — sans cette taille,
           // quatre lignes vides sépareraient l'amorce de la citation.
           const citation = contexte.body.replace(/^\n+/, '');
-          corps = prenom ? `Bonjour ${prenom},\n\n${citation}` : contexte.body;
+          corps = prenom ? `${t('compo.bonjour', { prenom })}\n\n${citation}` : contexte.body;
           replyToMailbox = source.mailbox;
           replyToUid = source.uid;
         } else {
@@ -118,8 +120,8 @@
           visible = false;
           onflash(
             nouveauMode === 'forward'
-              ? `Transfert impossible : ${err}`
-              : `Répondre à tous impossible : ${err}`,
+              ? t('erreur.transfert', { err })
+              : t('erreur.repondreTous', { err }),
           );
           return;
         }
@@ -205,7 +207,7 @@
       if (bilan.forked) {
         // Ne JAMAIS taire ce cas : deux textes existent désormais, seul
         // l'utilisateur peut trancher.
-        onflash('Ce brouillon avait changé ailleurs — votre version a été conservée à part.');
+        onflash(t('toast.brouillonFork'));
       }
       return bilan;
     } catch {
@@ -233,7 +235,7 @@
     }
     const bilan = await sauverMaintenant();
     visible = false;
-    if (!(bilan && bilan.forked)) onflash('Brouillon enregistré.');
+    if (!(bilan && bilan.forked)) onflash(t('toast.brouillonEnregistre'));
     // Le reflet part TOUT DE SUITE, en silence (R1, séquence v1) : hors
     // ligne, le cycle suivant retentera — rien à dire.
     appel('sync_drafts').catch(() => {});
@@ -247,7 +249,7 @@
   async function envoyer() {
     if (envoiEnCours) return; // double-clic = un seul envoi
     if (!expediteur) {
-      onflash('Aucun compte émetteur — ajoutez un compte.');
+      onflash(t('erreur.aucunCompte'));
       return;
     }
     envoiEnCours = true;
@@ -261,7 +263,7 @@
         replyToUid,
       });
     } catch (err) {
-      onflash(`Envoi impossible : ${err}`);
+      onflash(t('erreur.envoi', { err }));
       return;
     } finally {
       envoiEnCours = false;
@@ -270,7 +272,7 @@
     const regle = brouillonId;
     clearTimeout(minuterie);
     visible = false;
-    onflash('Message envoyé.');
+    onflash(t('toast.envoye'));
     if (regle !== null) {
       await appel('delete_draft', { id: regle }).catch(() => {});
     }
@@ -284,27 +286,27 @@
   }
 
   function joindre() {
-    onflash('Sélecteur de fichiers — à venir.');
+    onflash(t('toast.joindre'));
   }
 </script>
 
 {#if visible}
   <div class="scrim" data-testid="composition">
-    <div class="carte" role="dialog" aria-modal="true" aria-label={KICKERS[mode]}>
+    <div class="carte" role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
       <div class="tete">
-        <span class="kicker" data-testid="composition-kicker">{KICKERS[mode]}</span>
+        <span class="kicker" data-testid="composition-kicker">{t(KICKERS[mode])}</span>
         <span class="rappel">{objet}</span>
-        <span class="puce"><span class="ms" aria-hidden="true">open_in_new</span>Rendre indépendante</span>
-        <button type="button" class="fermer" aria-label="Fermer" onclick={fermer}>
+        <span class="puce"><span class="ms" aria-hidden="true">open_in_new</span>{t('compo.independante')}</span>
+        <button type="button" class="fermer" aria-label={t('action.fermer')} onclick={fermer}>
           <span class="ms" aria-hidden="true">close</span></button>
       </div>
       <div class="champs">
         <div class="rang">
-          <span class="etiquette">De</span>
+          <span class="etiquette">{t('conv.de')}</span>
           {#if comptes.length > 1}
             <!-- A10 : le compte émetteur SE CHOISIT (verdict terrain) —
                  le prototype figeait la ligne, v1 avait le sélecteur. -->
-            <select class="valeur" data-testid="composition-de" aria-label="Compte émetteur"
+            <select class="valeur" data-testid="composition-de" aria-label={t('compo.compteEmetteur')}
                     value={expediteur?.email ?? ''}
                     onchange={(e) => {
                       const choisi = comptes.find((c) => c.email === e.target.value);
@@ -320,21 +322,21 @@
           {/if}
         </div>
         <div class="rang">
-          <span class="etiquette">À</span>
+          <span class="etiquette">{t('conv.a')}</span>
           <input type="text" bind:this={champA} bind:value={a} oninput={programmerSauvegarde}
-                 placeholder="Destinataire" data-testid="composition-a">
-          <span class="puce"><span class="ms" aria-hidden="true">group_add</span>Cc</span>
-          <span class="puce"><span class="ms" aria-hidden="true">visibility_off</span>Cci</span>
+                 placeholder={t('compo.destinataire')} data-testid="composition-a">
+          <span class="puce"><span class="ms" aria-hidden="true">group_add</span>{t('compo.cc')}</span>
+          <span class="puce"><span class="ms" aria-hidden="true">visibility_off</span>{t('compo.cci')}</span>
         </div>
         <div class="rang">
-          <span class="etiquette">Objet</span>
+          <span class="etiquette">{t('conv.objet')}</span>
           <input type="text" bind:value={objet} oninput={programmerSauvegarde}
-                 placeholder="Objet du message" data-testid="composition-objet">
+                 placeholder={t('compo.objetPlaceholder')} data-testid="composition-objet">
         </div>
       </div>
       <div class="zone-corps">
         <textarea bind:this={champCorps} bind:value={corps} oninput={programmerSauvegarde}
-                  placeholder="Votre message…" data-testid="composition-corps"></textarea>
+                  placeholder={t('compo.corpsPlaceholder')} data-testid="composition-corps"></textarea>
       </div>
       {#if fichiers.length > 0}
         <div class="fichiers">
@@ -345,23 +347,23 @@
         </div>
       {/if}
       <div class="format">
-        <span class="bouton-format gras">G</span>
-        <span class="bouton-format italique">I</span>
-        <span class="bouton-format souligne">S</span>
-        <span class="puce"><span class="ms" aria-hidden="true">format_list_bulleted</span>Liste</span>
-        <span class="puce"><span class="ms" aria-hidden="true">link</span>Lien</span>
-        <span class="puce"><span class="ms" aria-hidden="true">format_quote</span>Citation</span>
+        <span class="bouton-format gras">{t('compo.gras')}</span>
+        <span class="bouton-format italique">{t('compo.italique')}</span>
+        <span class="bouton-format souligne">{t('compo.souligne')}</span>
+        <span class="puce"><span class="ms" aria-hidden="true">format_list_bulleted</span>{t('compo.liste')}</span>
+        <span class="puce"><span class="ms" aria-hidden="true">link</span>{t('compo.lien')}</span>
+        <span class="puce"><span class="ms" aria-hidden="true">format_quote</span>{t('compo.citation')}</span>
       </div>
       <div class="pied">
         <button type="button" class="principal" data-testid="composition-envoyer"
                 disabled={envoiEnCours} onclick={envoyer}>
-          <span class="ms" aria-hidden="true">send</span>Envoyer</button>
+          <span class="ms" aria-hidden="true">send</span>{t('action.envoyer')}</button>
         <button type="button" onclick={joindre} data-testid="composition-joindre">
-          <span class="ms" aria-hidden="true">attach_file</span>Joindre</button>
+          <span class="ms" aria-hidden="true">attach_file</span>{t('compo.joindre')}</button>
         <button type="button" onclick={enregistrerBrouillon} data-testid="composition-brouillon">
-          <span class="ms" aria-hidden="true">drafts</span>Enregistrer le brouillon</button>
+          <span class="ms" aria-hidden="true">drafts</span>{t('compo.enregistrerBrouillon')}</button>
         <button type="button" class="annuler" data-testid="composition-annuler"
-                onclick={fermer}>Annuler</button>
+                onclick={fermer}>{t('action.annuler')}</button>
       </div>
     </div>
   </div>

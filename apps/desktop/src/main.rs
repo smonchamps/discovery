@@ -107,6 +107,8 @@ fn main() {
             commands::app_version,
             commands::notif_pref_get,
             commands::notif_pref_set,
+            commands::lang_get,
+            commands::lang_set,
             telemetry::telemetry_consent_get,
             telemetry::telemetry_consent_set,
             telemetry::telemetry_pending,

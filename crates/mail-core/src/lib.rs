@@ -44,7 +44,7 @@ pub use drafts::{DraftContent, DraftPull, DraftSaved, SavedDraft, plan_draft_pul
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use nav::{CanonicalFolders, NavCounts};
-pub use notify::{Notification, arrivals_to_notify, notification_for};
+pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{
     FetchedBody, Folder, MailServer, MailboxSnapshot, MessageRecipients, RemoteDraft, ThreadHeaders,

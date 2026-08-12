@@ -18,6 +18,7 @@
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
   import { activation } from './lib/clavier.js';
+  import { t } from './lib/texte.svelte.js';
 
   let {
     onretour = () => {},
@@ -120,9 +121,9 @@
         uid: m.uid,
         index: piece.index,
       });
-      onflash(`Pièce enregistrée : ${chemin}`);
+      onflash(t('toast.pieceEnregistree', { chemin }));
     } catch (err) {
-      onflash(`Enregistrement impossible : ${err}`);
+      onflash(t('erreur.enregistrement', { err }));
     } finally {
       enregistrements[k] = false;
     }
@@ -149,10 +150,10 @@
   <div class="ecran03" data-testid="conversation">
     <header class="entete">
       <button type="button" class="retour" data-testid="retour-boite" onclick={onretour}>
-        <span class="ms" aria-hidden="true">arrow_back</span>Boîte de réception</button>
+        <span class="ms" aria-hidden="true">arrow_back</span>{t('boite.reception')}</button>
       <span class="espace"></span>
       <button type="button" class="principal" onclick={onecrire}>
-        <span class="ms" aria-hidden="true">edit_square</span>Écrire</button>
+        <span class="ms" aria-hidden="true">edit_square</span>{t('entete.ecrire')}</button>
     </header>
 
     <div class="scene">
@@ -161,15 +162,15 @@
           <h3 class="titre" data-testid="conversation-sujet">{ligne.subject}</h3>
           <div class="puces">
             {#if ligne.thread_size > 1}
-              <span class="puce"><span class="ms" aria-hidden="true">forum</span>{ligne.thread_size} messages</span>
+              <span class="puce"><span class="ms" aria-hidden="true">forum</span>{t('puce.messages', { n: ligne.thread_size })}</span>
             {/if}
             {#if ligne.attachment_count > 0}
-              <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{ligne.attachment_count} fichier{ligne.attachment_count > 1 ? 's' : ''}</span>
+              <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: ligne.attachment_count })}</span>
             {/if}
             <span class="puce bouton" data-testid="tout-deplier"
                   role="button" tabindex="0"
                   onclick={toutDeplier} onkeydown={activation(toutDeplier)}>
-              <span class="ms" aria-hidden="true">unfold_more</span>Tout déplier</span>
+              <span class="ms" aria-hidden="true">unfold_more</span>{t('conv.toutDeplier')}</span>
           </div>
         </div>
 
@@ -182,27 +183,27 @@
                      onclick={() => basculer(m)} onkeydown={activation(() => basculer(m))}>
                   <span class="auteur">{m.sender}</span>
                   {#if m.attachment_count > 0}
-                    <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{m.attachment_count} fichier{m.attachment_count > 1 ? 's' : ''}</span>
+                    <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: m.attachment_count })}</span>
                   {/if}
                   <span class="heure">{quand(m.epoch)}</span>
                 </div>
                 <div class="contenu">
                   <dl class="adresses">
-                    <dt>De</dt><dd>{ligneDe(m)}</dd>
-                    <dt>À</dt><dd>{ligneA(m)}</dd>
-                    <dt>Objet</dt><dd>{m.subject}</dd>
+                    <dt>{t('conv.de')}</dt><dd>{ligneDe(m)}</dd>
+                    <dt>{t('conv.a')}</dt><dd>{ligneA(m)}</dd>
+                    <dt>{t('conv.objet')}</dt><dd>{m.subject}</dd>
                   </dl>
                   <iframe class="corps" sandbox srcdoc={corps[cle(m)] ?? ''}
-                          title="Contenu du message"></iframe>
+                          title={t('lecture.corps')}></iframe>
                   {#if m.attachment_count > 0}
                     <div class="fichiers">
-                      <p class="titre-fichiers">Fichiers joints</p>
+                      <p class="titre-fichiers">{t('conv.fichiersJoints')}</p>
                       <div class="puces">
                         {#each pieces[cle(m)] ?? [] as piece (piece.index)}
                           <button type="button" class="puce bouton" data-testid="piece-jointe"
                                   disabled={enregistrements[`${cle(m)}#${piece.index}`]}
                                   onclick={() => enregistrer(m, piece)}
-                                  title="Enregistrer dans Téléchargements">
+                                  title={t('lecture.enregistrer')}>
                             <span class="ms" aria-hidden="true">description</span>{piece.name}</button>
                           <span class="puce"><span class="ms" aria-hidden="true">storage</span>{piece.size}</span>
                         {/each}
@@ -226,17 +227,17 @@
         <div class="actions">
           <button type="button" class="principal" data-testid="conv-repondre"
                   onclick={() => onrepondre(dernier())}>
-            <span class="ms" aria-hidden="true">reply</span>Répondre</button>
+            <span class="ms" aria-hidden="true">reply</span>{t('action.repondre')}</button>
           <button type="button" data-testid="conv-repondre-tous"
                   onclick={() => onrepondretous(dernier())}>
-            <span class="ms" aria-hidden="true">reply_all</span>Répondre à tous</button>
+            <span class="ms" aria-hidden="true">reply_all</span>{t('action.repondreTous')}</button>
           <button type="button" data-testid="conv-transferer"
                   onclick={() => ontransferer(dernier())}>
-            <span class="ms miroir" aria-hidden="true">reply</span>Transférer</button>
+            <span class="ms miroir" aria-hidden="true">reply</span>{t('action.transferer')}</button>
           <button type="button" data-testid="conv-archiver" onclick={() => onarchiver(ligne)}>
-            <span class="ms" aria-hidden="true">archive</span>Archiver</button>
+            <span class="ms" aria-hidden="true">archive</span>{t('action.archiver')}</button>
           <button type="button" data-testid="conv-supprimer" onclick={() => onsupprimer(ligne)}>
-            <span class="ms" aria-hidden="true">delete</span>Supprimer</button>
+            <span class="ms" aria-hidden="true">delete</span>{t('action.supprimer')}</button>
         </div>
       </div>
     </div>

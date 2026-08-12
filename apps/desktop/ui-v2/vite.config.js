@@ -6,5 +6,8 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 export default defineConfig({
   base: './',
   plugins: [svelte()],
-  build: { outDir: 'dist', emptyOutDir: true },
+  // `esnext` : le seul navigateur est le WebView2 embarqué (Chromium
+  // courant) — l'await de module de main.js (restauration de la langue
+  // avant montage) passe sans transformation.
+  build: { outDir: 'dist', emptyOutDir: true, target: 'esnext' },
 });

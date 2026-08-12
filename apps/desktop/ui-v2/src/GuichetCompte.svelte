@@ -8,6 +8,7 @@
   // `compact` resserre la géométrie pour vivre dans la surimpression
   // Réglages (entrées 40 px) ; l'écran 01 garde ses 52 px du prototype.
   import { appel } from './lib/transport.js';
+  import { t } from './lib/texte.svelte.js';
 
   let { onajoute = () => {}, compact = false } = $props();
 
@@ -31,19 +32,19 @@
     erreur = '';
     const saisie = adresse.trim();
     if (!saisie.includes('@')) {
-      erreur = 'Saisissez votre adresse e-mail complète.';
+      erreur = t('guichet.adresseInvalide');
       return;
     }
     if (estGoogle() || estMicrosoft()) {
       occupe = true;
-      attente = 'Autorisation en cours dans votre navigateur…';
+      attente = t('guichet.autorisation');
       try {
         await (estGoogle()
           ? appel('add_account')
           : appel('add_microsoft_account', { email: saisie }));
         onajoute();
       } catch (err) {
-        erreur = `Connexion impossible : ${err}`;
+        erreur = t('erreur.connexion', { err });
       } finally {
         occupe = false;
         attente = '';
@@ -58,7 +59,7 @@
       return;
     }
     occupe = true;
-    attente = 'Vérification de la connexion au serveur…';
+    attente = t('guichet.verification');
     try {
       await appel('add_generic_account', {
         input: {
@@ -73,7 +74,7 @@
       });
       onajoute();
     } catch (err) {
-      erreur = `Connexion impossible : ${err}`;
+      erreur = t('erreur.connexion', { err });
     } finally {
       occupe = false;
       attente = '';
@@ -83,45 +84,45 @@
 
 <div class="guichet" class:compact>
   <div class="formulaire">
-    <label for="ob-adresse">Adresse e-mail</label>
+    <label for="ob-adresse">{t('guichet.adresse')}</label>
     <input id="ob-adresse" type="email" bind:value={adresse}
            data-testid="onboarding-adresse"
            onkeydown={(e) => e.key === 'Enter' && !occupe && continuer()}>
     {#if generique}
-      <label for="ob-mdp">Mot de passe</label>
+      <label for="ob-mdp">{t('guichet.mdp')}</label>
       <input id="ob-mdp" type="password" bind:value={motDePasse}>
       <div class="serveurs">
         <span>
-          <label for="ob-imap">Serveur IMAP</label>
+          <label for="ob-imap">{t('guichet.imap')}</label>
           <input id="ob-imap" type="text" bind:value={imapHote}>
         </span>
         <span class="port">
-          <label for="ob-imap-port">Port</label>
+          <label for="ob-imap-port">{t('guichet.port')}</label>
           <input id="ob-imap-port" type="text" bind:value={imapPort}>
         </span>
       </div>
       <div class="serveurs">
         <span>
-          <label for="ob-smtp">Serveur SMTP</label>
+          <label for="ob-smtp">{t('guichet.smtp')}</label>
           <input id="ob-smtp" type="text" bind:value={smtpHote}>
         </span>
         <span class="port">
-          <label for="ob-smtp-port">Port</label>
+          <label for="ob-smtp-port">{t('guichet.port')}</label>
           <input id="ob-smtp-port" type="text" bind:value={smtpPort}>
         </span>
       </div>
     {/if}
     <button type="button" class="principal" data-testid="onboarding-continuer"
-            disabled={occupe} onclick={continuer}>Continuer</button>
+            disabled={occupe} onclick={continuer}>{t('action.continuer')}</button>
   </div>
   {#if erreur}
     <p class="erreur" data-testid="onboarding-erreur">{erreur}</p>
   {:else if attente}
     <p class="note">{attente}</p>
   {:else if generique}
-    <p class="note">Renseignez les serveurs de votre fournisseur — le mot de passe rejoint le coffre du système, jamais un fichier.</p>
+    <p class="note">{t('guichet.noteGenerique')}</p>
   {:else}
-    <p class="note">Le serveur est détecté automatiquement. Rien d'autre à régler.</p>
+    <p class="note">{t('guichet.noteAuto')}</p>
   {/if}
 </div>
 

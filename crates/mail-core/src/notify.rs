@@ -19,6 +19,27 @@ pub struct Notification {
     pub body: String,
 }
 
+/// La langue des textes de notification (PLAN-LANGUES, E2). Le shell lit
+/// `prefs.lang` et la passe ICI, en paramètre — pas de global : les
+/// fonctions restent pures, testables par langue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Lang {
+    #[default]
+    Fr,
+    En,
+}
+
+impl Lang {
+    /// Le code posé par l'UI (`prefs.lang`). Absent ou inconnu = français
+    /// — le même repli que l'interface.
+    pub fn from_pref(code: Option<&str>) -> Self {
+        match code {
+            Some("en") => Self::En,
+            _ => Self::Fr,
+        }
+    }
+}
+
 /// Les arrivées d'une synchro qui peuvent donner lieu à notification.
 ///
 /// Une synchro **initiale** n'en donne aucune : elle rapatrie la boîte
@@ -36,26 +57,29 @@ pub fn arrivals_to_notify(mode: SyncMode, new_unread: Vec<Envelope>) -> Vec<Enve
 ///
 /// Trois messages qui arrivent ensemble produisent une bulle, pas trois :
 /// l'empilement de bulles est le défaut qui fait couper les notifications.
-pub fn notification_for(arrivals: &[Envelope]) -> Option<Notification> {
+pub fn notification_for(arrivals: &[Envelope], lang: Lang) -> Option<Notification> {
     match arrivals {
         [] => None,
         [single] => Some(Notification {
-            title: sender_of(single),
-            body: subject_of(single),
+            title: sender_of(single, lang),
+            body: subject_of(single, lang),
         }),
         many => Some(Notification {
-            title: format!("{} nouveaux messages", many.len()),
-            body: summarize_senders(many),
+            title: match lang {
+                Lang::Fr => format!("{} nouveaux messages", many.len()),
+                Lang::En => format!("{} new messages", many.len()),
+            },
+            body: summarize_senders(many, lang),
         }),
     }
 }
 
 /// Expéditeurs distincts, dans l'ordre d'arrivée, coupés à
 /// [`MAX_SENDERS_LISTED`].
-fn summarize_senders(arrivals: &[Envelope]) -> String {
+fn summarize_senders(arrivals: &[Envelope], lang: Lang) -> String {
     let mut seen: Vec<String> = Vec::new();
     for arrival in arrivals {
-        let sender = sender_of(arrival);
+        let sender = sender_of(arrival, lang);
         if !seen.contains(&sender) {
             seen.push(sender);
         }
@@ -73,19 +97,28 @@ fn summarize_senders(arrivals: &[Envelope]) -> String {
 
 /// Un expéditeur absent ne doit pas produire une bulle vide : le repli
 /// est explicite, comme dans la liste.
-fn sender_of(envelope: &Envelope) -> String {
+fn sender_of(envelope: &Envelope, lang: Lang) -> String {
     envelope
         .sender
         .clone()
         .or_else(|| envelope.sender_address.clone())
-        .unwrap_or_else(|| "(expéditeur inconnu)".to_string())
+        .unwrap_or_else(|| {
+            match lang {
+                Lang::Fr => "(expéditeur inconnu)",
+                Lang::En => "(unknown sender)",
+            }
+            .to_string()
+        })
 }
 
-fn subject_of(envelope: &Envelope) -> String {
-    envelope
-        .subject
-        .clone()
-        .unwrap_or_else(|| "(sans sujet)".to_string())
+fn subject_of(envelope: &Envelope, lang: Lang) -> String {
+    envelope.subject.clone().unwrap_or_else(|| {
+        match lang {
+            Lang::Fr => "(sans sujet)",
+            Lang::En => "(no subject)",
+        }
+        .to_string()
+    })
 }
 
 #[cfg(test)]
@@ -124,13 +157,13 @@ mod tests {
 
     #[test]
     fn nothing_new_shows_nothing() {
-        assert_eq!(notification_for(&[]), None);
+        assert_eq!(notification_for(&[], Lang::Fr), None);
     }
 
     #[test]
     fn a_single_message_shows_its_sender_and_subject() {
         let notification =
-            notification_for(&[arrival(1, Some("Alice"), Some("Facture mars"))]).unwrap();
+            notification_for(&[arrival(1, Some("Alice"), Some("Facture mars"))], Lang::Fr).unwrap();
         assert_eq!(notification.title, "Alice");
         assert_eq!(notification.body, "Facture mars");
     }
@@ -139,10 +172,13 @@ mod tests {
     /// L'empilement est ce qui pousse à couper les notifications.
     #[test]
     fn several_messages_are_summarized_in_a_single_notification() {
-        let notification = notification_for(&[
-            arrival(1, Some("Alice"), Some("a")),
-            arrival(2, Some("Bob"), Some("b")),
-        ])
+        let notification = notification_for(
+            &[
+                arrival(1, Some("Alice"), Some("a")),
+                arrival(2, Some("Bob"), Some("b")),
+            ],
+            Lang::Fr,
+        )
         .unwrap();
         assert_eq!(notification.title, "2 nouveaux messages");
         assert_eq!(notification.body, "Alice, Bob");
@@ -152,11 +188,14 @@ mod tests {
     /// répéter son nom gaspille la seule ligne disponible.
     #[test]
     fn a_repeated_sender_is_listed_once() {
-        let notification = notification_for(&[
-            arrival(1, Some("Alice"), Some("a")),
-            arrival(2, Some("Alice"), Some("b")),
-            arrival(3, Some("Bob"), Some("c")),
-        ])
+        let notification = notification_for(
+            &[
+                arrival(1, Some("Alice"), Some("a")),
+                arrival(2, Some("Alice"), Some("b")),
+                arrival(3, Some("Bob"), Some("c")),
+            ],
+            Lang::Fr,
+        )
         .unwrap();
         assert_eq!(notification.title, "3 nouveaux messages");
         assert_eq!(notification.body, "Alice, Bob");
@@ -164,12 +203,15 @@ mod tests {
 
     #[test]
     fn beyond_three_senders_the_list_is_cut() {
-        let notification = notification_for(&[
-            arrival(1, Some("Alice"), None),
-            arrival(2, Some("Bob"), None),
-            arrival(3, Some("Carole"), None),
-            arrival(4, Some("David"), None),
-        ])
+        let notification = notification_for(
+            &[
+                arrival(1, Some("Alice"), None),
+                arrival(2, Some("Bob"), None),
+                arrival(3, Some("Carole"), None),
+                arrival(4, Some("David"), None),
+            ],
+            Lang::Fr,
+        )
         .unwrap();
         assert_eq!(notification.title, "4 nouveaux messages");
         assert_eq!(notification.body, "Alice, Bob, Carole…");
@@ -178,8 +220,37 @@ mod tests {
     /// Une bulle vide serait pire qu'une absence de bulle.
     #[test]
     fn a_message_without_sender_or_subject_still_reads() {
-        let notification = notification_for(&[arrival(1, None, None)]).unwrap();
+        let notification = notification_for(&[arrival(1, None, None)], Lang::Fr).unwrap();
         assert_eq!(notification.title, "(expéditeur inconnu)");
         assert_eq!(notification.body, "(sans sujet)");
+    }
+
+    /// La transposition anglaise (PLAN-LANGUES, E2) : les mêmes règles,
+    /// les textes de la langue posée — y compris les replis.
+    #[test]
+    fn english_notifications_carry_english_texts() {
+        let notification = notification_for(
+            &[
+                arrival(1, Some("Alice"), Some("a")),
+                arrival(2, Some("Bob"), Some("b")),
+            ],
+            Lang::En,
+        )
+        .unwrap();
+        assert_eq!(notification.title, "2 new messages");
+        assert_eq!(notification.body, "Alice, Bob");
+
+        let repli = notification_for(&[arrival(1, None, None)], Lang::En).unwrap();
+        assert_eq!(repli.title, "(unknown sender)");
+        assert_eq!(repli.body, "(no subject)");
+    }
+
+    /// `prefs.lang` absente ou inconnue = français — le repli de l'UI.
+    #[test]
+    fn the_lang_pref_falls_back_to_french() {
+        assert_eq!(Lang::from_pref(None), Lang::Fr);
+        assert_eq!(Lang::from_pref(Some("fr")), Lang::Fr);
+        assert_eq!(Lang::from_pref(Some("en")), Lang::En);
+        assert_eq!(Lang::from_pref(Some("de")), Lang::Fr);
     }
 }

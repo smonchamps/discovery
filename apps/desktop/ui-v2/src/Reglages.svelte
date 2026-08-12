@@ -11,6 +11,7 @@
   import {
     FICHES, appliquerTheme, themeActuel, suiviOs, appliquerSuiviOs,
   } from './lib/theme.js';
+  import { t, LANGUES, langueActuelle, appliquerLangue } from './lib/texte.svelte.js';
   import { activation } from './lib/clavier.js';
   import { appel } from './lib/transport.js';
   import GuichetCompte from './GuichetCompte.svelte';
@@ -20,24 +21,20 @@
   let { comptes = [], onajoute = () => {} } = $props();
 
   const GROUPES = [
-    { id: 'comptes', icone: 'person', libelle: 'Comptes' },
-    { id: 'themes', icone: 'bookmark', libelle: 'Thèmes' },
-    { id: 'affichage', icone: 'display_settings', libelle: 'Affichage' },
-    { id: 'notifications', icone: 'notifications', libelle: 'Notifications' },
-    { id: 'raccourcis', icone: 'keyboard', libelle: 'Raccourcis' },
-    { id: 'apropos', icone: 'info', libelle: 'À propos' },
+    { id: 'comptes', icone: 'person', libelle: 'groupe.comptes' },
+    { id: 'themes', icone: 'bookmark', libelle: 'groupe.themes' },
+    { id: 'affichage', icone: 'display_settings', libelle: 'groupe.affichage' },
+    { id: 'notifications', icone: 'notifications', libelle: 'groupe.notifications' },
+    { id: 'raccourcis', icone: 'keyboard', libelle: 'groupe.raccourcis' },
+    { id: 'apropos', icone: 'info', libelle: 'groupe.apropos' },
   ];
 
-  // La table D3, en RÉFÉRENCE seulement — pas de re-mappage.
-  const RACCOURCIS = [
-    { touche: 'c', geste: 'Écrire un nouveau message' },
-    { touche: 'r', geste: 'Répondre à la conversation sélectionnée' },
-    { touche: 'f', geste: 'Transférer la conversation sélectionnée' },
-    { touche: 'e', geste: 'Archiver la conversation sélectionnée' },
-    { touche: 'Suppr', geste: 'Supprimer la conversation sélectionnée' },
-    { touche: '/', geste: 'Aller à la recherche' },
-    { touche: 'Échap', geste: 'Fermer la surimpression, sortir du champ, revenir à la boîte' },
-  ];
+  // La table D3, en RÉFÉRENCE seulement — pas de re-mappage. Touches et
+  // gestes au catalogue (`raccourci.touche.*` / `raccourci.geste.*`) :
+  // « Suppr » / « Échap » deviennent "Del" / "Esc", les GESTES seuls se
+  // traduisent — les touches c/r/f/e ne bougent pas d'une langue à
+  // l'autre (A15).
+  const RACCOURCIS = ['c', 'r', 'f', 'e', 'suppr', 'slash', 'echap'];
 
   let visible = $state(false);
   let groupe = $state('comptes');
@@ -53,13 +50,17 @@
 
   // Affichage (D6) : le suivi de l'OS sombre, un booléen localStorage
   // comme le thème. Notifications (R-D2) : les bulles d'arrivée, une
-  // préférence EN BASE — c'est le shell Rust qui émet.
+  // préférence EN BASE — c'est le shell Rust qui émet. Langue (A15) :
+  // en base aussi, même raison — le shell compose les bulles dans
+  // cette langue.
   let auto = $state(suiviOs());
   let bulles = $state(true);
+  let langue = $state(langueActuelle());
 
   export function ouvrir() {
     actif = themeActuel();
     auto = suiviOs();
+    langue = langueActuelle();
     ajoutOuvert = false;
     groupe = 'comptes';
     maj = null;
@@ -100,6 +101,19 @@
       if (bulles === voulu) bulles = !voulu;
     });
   }
+  function changerLangue(code) {
+    const avant = langueActuelle();
+    if (code === avant) return;
+    // Application immédiate (le geste du thème), persistance en base ;
+    // si la base n'a pas pris le choix, l'interface ne ment pas — elle
+    // revient à la langue réellement persistée.
+    appliquerLangue(code);
+    langue = code;
+    appel('lang_set', { lang: code }).catch(() => {
+      appliquerLangue(avant);
+      langue = avant;
+    });
+  }
 
   // Le même flux que la fente d'avis (ADR 0013) : update_check en
   // silence, update_install ne rend pas la main en cas de succès.
@@ -124,14 +138,14 @@
 
 {#if visible}
   <div class="scrim" data-testid="reglages-modal">
-    <div class="carte" role="dialog" aria-modal="true" aria-label="Réglages">
+    <div class="carte" role="dialog" aria-modal="true" aria-label={t('entete.reglages')}>
       <div class="tete">
-        <span class="titre">Réglages</span>
-        <button type="button" class="fermer" aria-label="Fermer" onclick={fermer}>
+        <span class="titre">{t('entete.reglages')}</span>
+        <button type="button" class="fermer" aria-label={t('action.fermer')} onclick={fermer}>
           <span class="ms" aria-hidden="true">close</span></button>
       </div>
       <div class="milieu">
-        <div class="rail" role="group" aria-label="Groupes de réglages">
+        <div class="rail" role="group" aria-label={t('reglages.groupesAria')}>
           {#each GROUPES as g (g.id)}
             <div class="rang" class:actif={groupe === g.id}
                  data-testid="reglages-groupe" data-groupe={g.id}
@@ -139,13 +153,13 @@
                  onclick={() => choisirGroupe(g.id)}
                  onkeydown={activation(() => choisirGroupe(g.id))}>
               <span class="ms icone" aria-hidden="true">{g.icone}</span>
-              <span class="libelle">{g.libelle}</span>
+              <span class="libelle">{t(g.libelle)}</span>
             </div>
           {/each}
         </div>
         <div class="volet" data-testid="reglages-volet">
           {#if groupe === 'comptes'}
-            <p class="section">Comptes</p>
+            <p class="section">{t('groupe.comptes')}</p>
             <div class="rangees" data-testid="reglages-comptes">
               {#each comptes as c (c.account_id)}
                 <div class="compte">
@@ -159,8 +173,8 @@
                      ou au succès : il repart toujours propre. -->
                 <div class="carte-ajout" data-testid="reglages-guichet">
                   <div class="tete-ajout">
-                    <span class="titre-ajout">Ajouter un compte</span>
-                    <button type="button" class="fermer" aria-label="Replier"
+                    <span class="titre-ajout">{t('reglages.ajouterCompte')}</span>
+                    <button type="button" class="fermer" aria-label={t('action.replier')}
                             onclick={() => (ajoutOuvert = false)}>
                       <span class="ms" aria-hidden="true">close</span></button>
                   </div>
@@ -169,11 +183,11 @@
               {:else}
                 <button type="button" class="ajouter" data-testid="reglages-ajouter"
                         onclick={() => (ajoutOuvert = true)}>
-                  <span class="ms" aria-hidden="true">person_add</span>Ajouter un compte</button>
+                  <span class="ms" aria-hidden="true">person_add</span>{t('reglages.ajouterCompte')}</button>
               {/if}
             </div>
           {:else if groupe === 'themes'}
-            <p class="section">Thème de couleur</p>
+            <p class="section">{t('reglages.sectionThemes')}</p>
             <div class="rangees">
               {#each FICHES as fiche (fiche.id)}
                 <div class="rangee" class:active={actif === fiche.id}
@@ -187,8 +201,8 @@
                     {/each}
                   </span>
                   <span class="libelles">
-                    <span class="nom">{fiche.label}</span>
-                    <span class="desc">{fiche.desc}</span>
+                    <span class="nom">{t(`theme.${fiche.id}.nom`)}</span>
+                    <span class="desc">{t(`theme.${fiche.id}.desc`)}</span>
                   </span>
                   {#if actif === fiche.id}
                     <span class="ms coche" aria-hidden="true">check_circle</span>
@@ -197,83 +211,90 @@
               {/each}
             </div>
           {:else if groupe === 'affichage'}
-            <p class="section">Affichage</p>
+            <p class="section">{t('groupe.affichage')}</p>
             <div class="rangees" data-testid="reglages-affichage">
               <div class="reglage">
                 <span class="libelles">
-                  <span class="nom">Sombre automatique</span>
-                  <span class="desc">Suivre le réglage sombre du système :
-                    « La nuit » s'affiche quand il est actif, le thème choisi
-                    revient dès qu'il s'éteint.</span>
+                  <span class="nom">{t('reglages.sombreAuto')}</span>
+                  <span class="desc">{t('reglages.sombreAutoDesc')}</span>
                 </span>
                 <button type="button" class="bascule" role="switch"
-                        aria-checked={auto} aria-label="Sombre automatique"
+                        aria-checked={auto} aria-label={t('reglages.sombreAuto')}
                         data-testid="affichage-auto" onclick={basculerAuto}>
                   <span class="bille"></span>
                 </button>
               </div>
+              <div class="reglage">
+                <span class="libelles">
+                  <span class="nom">{t('reglages.langue')}</span>
+                  <span class="desc">{t('reglages.langueDesc')}</span>
+                </span>
+                <select class="langue" data-testid="affichage-langue"
+                        aria-label={t('reglages.langue')} value={langue}
+                        onchange={(e) => changerLangue(e.target.value)}>
+                  {#each LANGUES as code (code)}
+                    <option value={code}>{t(`langue.${code}`)}</option>
+                  {/each}
+                </select>
+              </div>
             </div>
           {:else if groupe === 'notifications'}
-            <p class="section">Notifications</p>
+            <p class="section">{t('groupe.notifications')}</p>
             <div class="rangees" data-testid="reglages-notifications">
               <div class="reglage">
                 <span class="libelles">
-                  <span class="nom">Bulles d'arrivée</span>
-                  <span class="desc">Une bulle système annonce les nouveaux
-                    messages à la synchronisation. La couper n'arrête jamais
-                    la synchronisation elle-même.</span>
+                  <span class="nom">{t('reglages.bulles')}</span>
+                  <span class="desc">{t('reglages.bullesDesc')}</span>
                 </span>
                 <button type="button" class="bascule" role="switch"
-                        aria-checked={bulles} aria-label="Bulles d'arrivée"
+                        aria-checked={bulles} aria-label={t('reglages.bulles')}
                         data-testid="notif-bulles" onclick={basculerBulles}>
                   <span class="bille"></span>
                 </button>
               </div>
             </div>
           {:else if groupe === 'raccourcis'}
-            <p class="section">Raccourcis clavier</p>
+            <p class="section">{t('reglages.sectionRaccourcis')}</p>
             <div class="rangees" data-testid="reglages-raccourcis">
-              {#each RACCOURCIS as r (r.touche)}
+              {#each RACCOURCIS as r (r)}
                 <div class="raccourci">
-                  <kbd>{r.touche}</kbd>
-                  <span class="geste">{r.geste}</span>
+                  <kbd>{t(`raccourci.touche.${r}`)}</kbd>
+                  <span class="geste">{t(`raccourci.geste.${r}`)}</span>
                 </div>
               {/each}
-              <p class="note">Dans un champ de saisie, les lettres redeviennent
-                des lettres — seul Échap garde un sens.</p>
+              <p class="note">{t('reglages.noteRaccourcis')}</p>
             </div>
           {:else if groupe === 'apropos'}
-            <p class="section">À propos</p>
+            <p class="section">{t('groupe.apropos')}</p>
             <div class="rangees" data-testid="reglages-apropos">
               <div class="ligne-apropos">
-                <span class="cle">Version</span>
+                <span class="cle">{t('reglages.version')}</span>
                 <span class="valeur" data-testid="apropos-version">{version || '…'}</span>
               </div>
               <div class="ligne-apropos">
-                <span class="cle">Mises à jour</span>
+                <span class="cle">{t('reglages.maj')}</span>
                 <span class="valeur">
                   {#if maj === null}
                     <button type="button" class="ajouter" data-testid="apropos-verifier"
-                            onclick={verifierMaj}>Vérifier les mises à jour</button>
+                            onclick={verifierMaj}>{t('reglages.verifierMaj')}</button>
                   {:else if maj === 'controle'}
-                    Vérification…
+                    {t('reglages.verification')}
                   {:else if maj === 'ajour'}
-                    Vous êtes à jour.
+                    {t('reglages.ajour')}
                   {:else if maj === 'installation'}
-                    Téléchargement et installation…
+                    {t('reglages.installation')}
                   {:else if maj.version}
-                    Version {maj.version} disponible.
+                    {t('reglages.majDisponible', { version: maj.version })}
                     <button type="button" class="ajouter" onclick={installerMaj}>
-                      Installer</button>
+                      {t('action.installer')}</button>
                   {:else}
-                    Vérification impossible — {maj.erreur}
+                    {t('reglages.majImpossible', { err: maj.erreur })}
                   {/if}
                 </span>
               </div>
               <div class="ligne-apropos">
-                <span class="cle">Icônes</span>
-                <span class="valeur">Material Symbols Rounded (Google),
-                  licence Apache 2.0 — police embarquée, aucun réseau.</span>
+                <span class="cle">{t('reglages.icones')}</span>
+                <span class="valeur">{t('reglages.iconesValeur')}</span>
               </div>
             </div>
           {/if}
@@ -281,7 +302,7 @@
       </div>
       <div class="pied">
         <button type="button" class="principal" data-testid="reglages-termine" onclick={fermer}>
-          Terminé</button>
+          {t('action.termine')}</button>
       </div>
     </div>
   </div>
@@ -422,6 +443,15 @@
   .bascule[aria-checked="true"] .bille {
     transform:translateX(16px); border-color:var(--accent);
   }
+
+  /* Le sélecteur de langue : la grammaire des boutons (32 px, jetons) —
+     un <select> natif, clavier et lecteur d'écran compris. */
+  .langue {
+    height:32px; padding:0 10px; flex:none; font:inherit; font-size:13px;
+    color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+  }
+  .langue option { background:var(--surface); color:var(--ink); }
 
   /* Raccourcis : référence en lecture seule, aux jetons. */
   .raccourci {

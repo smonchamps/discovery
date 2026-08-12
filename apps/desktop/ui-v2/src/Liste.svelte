@@ -10,6 +10,7 @@
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
   import { activation } from './lib/clavier.js';
+  import { t } from './lib/texte.svelte.js';
 
   let {
     categorie = 'reception',
@@ -223,9 +224,9 @@
   const estChoisie = (l) => selection === cle(l);
 
   const ONGLETS = [
-    { id: 'tous', icone: 'inbox', libelle: 'Tous' },
-    { id: 'nonlus', icone: 'mark_email_unread', libelle: 'Non lus' },
-    { id: 'brouillons', icone: 'edit_note', libelle: 'Brouillons' },
+    { id: 'tous', icone: 'inbox', libelle: 'onglet.tous' },
+    { id: 'nonlus', icone: 'mark_email_unread', libelle: 'onglet.nonlus' },
+    { id: 'brouillons', icone: 'edit_note', libelle: 'boite.brouillons' },
   ];
   const ongletActif = $derived(categorie === 'brouillons' ? 'brouillons' : onglet);
 
@@ -279,7 +280,7 @@
   }
 </script>
 
-<section class="colonne" aria-label="Liste des messages" data-testid="liste">
+<section class="colonne" aria-label={t('liste.aria')} data-testid="liste">
   <div class="cadre" bind:this={cadre} onscroll={surDefilement}>
     {#if !sondees}
       <div class="sondes" aria-hidden="true">
@@ -313,10 +314,10 @@
         {#if aPuces(ligne)}
           <span class="puces">
             {#if ligne.thread_size > 1}
-              <span class="puce"><span class="ms" aria-hidden="true">forum</span>{ligne.thread_size} messages</span>
+              <span class="puce"><span class="ms" aria-hidden="true">forum</span>{t('puce.messages', { n: ligne.thread_size })}</span>
             {/if}
             {#if ligne.attachment_count > 0}
-              <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{ligne.attachment_count} fichier{ligne.attachment_count > 1 ? 's' : ''}</span>
+              <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: ligne.attachment_count })}</span>
             {/if}
           </span>
         {/if}
@@ -325,7 +326,7 @@
     {#if resultats !== null}
       <div class="fenetre-recherche" data-testid="resultats">
         {#if resultats.length === 0}
-          <div class="vide-recherche"><p>Aucun résultat.</p></div>
+          <div class="vide-recherche"><p>{t('liste.aucunResultat')}</p></div>
         {/if}
         {#each resultats as ligne (`${ligne.account_id}/${ligne.mailbox}/${ligne.uid}`)}
           {@render rangee(ligne)}
@@ -333,7 +334,7 @@
       </div>
     {:else}
       {#if total === 0 && premierePageMs !== null}
-        <div class="vide"><p>Aucun message ici.</p></div>
+        <div class="vide"><p>{t('liste.vide')}</p></div>
       {/if}
       <div class="espace" style="height:{hauteurEspace}px">
         <div class="fenetre" style="transform:translateY({decalage(debut)}px)">
@@ -359,7 +360,7 @@
             role="button" tabindex="0" aria-pressed={ongletActif === o.id}
             onclick={() => ononglet(o.id)}
             onkeydown={activation(() => ononglet(o.id))}>
-        <span class="ms" aria-hidden="true">{o.icone}</span>{o.libelle}
+        <span class="ms" aria-hidden="true">{o.icone}</span>{t(o.libelle)}
       </span>
     {/each}
   </div>

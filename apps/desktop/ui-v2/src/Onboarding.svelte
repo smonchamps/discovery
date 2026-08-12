@@ -5,6 +5,7 @@
   // GuichetCompte porte le routage par domaine (D4) et le formulaire
   // générique.
   import GuichetCompte from './GuichetCompte.svelte';
+  import { t } from './lib/texte.svelte.js';
 
   let { onajoute = () => {} } = $props();
 </script>
@@ -12,7 +13,7 @@
 <div class="ecran01" data-testid="onboarding">
   <div class="colonne">
     <p class="kicker">Discovery</p>
-    <h3 class="titre">Votre adresse.<br>C'est tout.</h3>
+    <h3 class="titre">{t('onboarding.titre1')}<br>{t('onboarding.titre2')}</h3>
     <GuichetCompte {onajoute} />
   </div>
 </div>

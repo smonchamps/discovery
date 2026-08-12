@@ -10,6 +10,7 @@
   import { appel } from './lib/transport.js';
   import { quandLong } from './lib/quand.js';
   import { activation } from './lib/clavier.js';
+  import { t } from './lib/texte.svelte.js';
 
   let {
     onarchiver = () => {},
@@ -42,9 +43,9 @@
 
   const meta = $derived.by(() => {
     if (!ligne) return '';
-    const messages = ligne.thread_size > 1 ? `${ligne.thread_size} messages` : '1 message';
+    const messages = t('puce.messages', { n: ligne.thread_size > 1 ? ligne.thread_size : 1 });
     const n = ligne.attachment_count;
-    return n > 0 ? `${messages} · ${n} fichier${n > 1 ? 's' : ''}` : messages;
+    return n > 0 ? `${messages} · ${t('puce.fichiers', { n })}` : messages;
   });
 
   export async function ouvrir(nouvelle) {
@@ -79,9 +80,9 @@
         uid: ligne.uid,
         index: piece.index,
       });
-      onflash(`Pièce enregistrée : ${chemin}`);
+      onflash(t('toast.pieceEnregistree', { chemin }));
     } catch (err) {
-      onflash(`Enregistrement impossible : ${err}`);
+      onflash(t('erreur.enregistrement', { err }));
     } finally {
       enregistrements[piece.index] = false;
     }
@@ -127,47 +128,45 @@
   }
 </script>
 
-<main aria-label="Message" data-testid="volet-lecture">
+<main aria-label={t('lecture.aria')} data-testid="volet-lecture">
   {#if !ligne}
-    <p class="vide">Sélectionnez un message pour le lire.</p>
+    <p class="vide">{t('lecture.vide')}</p>
   {:else}
     <div class="carte">
       <div class="entete">
         <h3 class="titre" data-testid="lecture-sujet">{ligne.subject}</h3>
         <div class="metas">
           <span class="puce">{meta}</span>
-          <span class="dernier">Dernier message · {quandLong(ligne.epoch)}</span>
+          <span class="dernier">{t('lecture.dernier', { quand: quandLong(ligne.epoch) })}</span>
           <span class="puce" class:cliquable={ligne.thread_id != null}
                 data-testid="voir-conversation"
                 role="button" tabindex={ligne.thread_id != null ? 0 : -1}
                 aria-disabled={ligne.thread_id == null}
                 onclick={() => ligne.thread_id != null && onconversation(ligne)}
                 onkeydown={activation(() => ligne.thread_id != null && onconversation(ligne))}>
-            <span class="ms" aria-hidden="true">unfold_more</span>Voir la conversation</span>
+            <span class="ms" aria-hidden="true">unfold_more</span>{t('lecture.voirConversation')}</span>
         </div>
       </div>
       <div class="auteur">
         <span class="nom">{ligne.sender}</span>
-        <span class="adresse">à {ligne.account_email}</span>
+        <span class="adresse">{t('lecture.a', { adresse: ligne.account_email })}</span>
       </div>
       {#if imagesBloquees > 0}
         <div class="garde-images" data-testid="garde-images">
           <span class="ms" aria-hidden="true">visibility_off</span>
-          <span class="garde-texte">{imagesBloquees} image{imagesBloquees > 1 ? 's' : ''}
-            distante{imagesBloquees > 1 ? 's' : ''} bloquée{imagesBloquees > 1 ? 's' : ''}
-            pour protéger votre vie privée.</span>
+          <span class="garde-texte">{t('lecture.imagesBloquees', { n: imagesBloquees })}</span>
           <button type="button" data-testid="afficher-images" onclick={afficherImages}>
-            Afficher les images</button>
+            {t('lecture.afficherImages')}</button>
         </div>
       {/if}
-      <iframe class="corps" sandbox srcdoc={corps} title="Contenu du message"></iframe>
+      <iframe class="corps" sandbox srcdoc={corps} title={t('lecture.corps')}></iframe>
       {#if pieces.length > 0}
         <div class="fichiers" data-testid="lecture-fichiers">
           {#each pieces as piece (piece.index)}
             <button type="button" class="puce cliquable" data-testid="piece-jointe"
                     disabled={enregistrements[piece.index]}
                     onclick={() => enregistrer(piece)}
-                    title="Enregistrer dans Téléchargements">
+                    title={t('lecture.enregistrer')}>
               <span class="ms" aria-hidden="true">description</span>{piece.name}</button>
             <span class="puce">{piece.size}</span>
           {/each}
@@ -175,15 +174,15 @@
       {/if}
       <div class="actions">
         <button type="button" class="principal" data-testid="repondre" onclick={() => onrepondre(ligne)}>
-          <span class="ms" aria-hidden="true">reply</span>Répondre</button>
+          <span class="ms" aria-hidden="true">reply</span>{t('action.repondre')}</button>
         <button type="button" data-testid="repondre-tous" onclick={() => onrepondretous(ligne)}>
-          <span class="ms" aria-hidden="true">reply_all</span>Répondre à tous</button>
+          <span class="ms" aria-hidden="true">reply_all</span>{t('action.repondreTous')}</button>
         <button type="button" data-testid="transferer" onclick={() => ontransferer(ligne)}>
-          <span class="ms miroir" aria-hidden="true">reply</span>Transférer</button>
+          <span class="ms miroir" aria-hidden="true">reply</span>{t('action.transferer')}</button>
         <button type="button" data-testid="archiver" onclick={() => onarchiver(ligne)}>
-          <span class="ms" aria-hidden="true">archive</span>Archiver</button>
+          <span class="ms" aria-hidden="true">archive</span>{t('action.archiver')}</button>
         <button type="button" data-testid="supprimer" onclick={() => onsupprimer(ligne)}>
-          <span class="ms" aria-hidden="true">delete</span>Supprimer</button>
+          <span class="ms" aria-hidden="true">delete</span>{t('action.supprimer')}</button>
       </div>
     </div>
   {/if}

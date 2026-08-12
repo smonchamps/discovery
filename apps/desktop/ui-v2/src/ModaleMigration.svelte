@@ -8,6 +8,7 @@
   // `assurer()` ne rend la main qu'une fois la base migrée (ou s'il n'y
   // avait rien à faire) : l'App n'ouvre rien avant.
   import { appel } from './lib/transport.js';
+  import { t } from './lib/texte.svelte.js';
 
   let visible = $state(false);
   let note = $state('');
@@ -27,8 +28,7 @@
       return;
     }
     if (sonde.pending === null || sonde.pending === undefined) return;
-    note = `Environ ${sonde.pending} messages vont être réorganisés en conversations. `
-      + 'Cette mise à jour ne se fait qu’une fois et n’efface rien.';
+    note = t('migration.note', { n: sonde.pending });
     visible = true;
     while (!(await unePasse())) {
       reprise = true;
@@ -51,10 +51,9 @@
     try {
       const migree = await appel('migration_run');
       if (migree) return true;
-      bilan = 'Mise à jour annulée — tout est revenu comme avant. '
-        + 'Elle reprendra au prochain lancement, ou tout de suite :';
+      bilan = t('migration.annulee');
     } catch (err) {
-      bilan = `La mise à jour a échoué (${err}). Rien n’est perdu : elle peut être relancée.`;
+      bilan = t('migration.echec', { err });
     } finally {
       clearInterval(sondage);
     }
@@ -71,22 +70,22 @@
 {#if visible}
   <div class="scrim" data-testid="migration-modale">
     <div class="carte" role="dialog" aria-modal="true"
-         aria-label="Mise à jour de la base de messages">
+         aria-label={t('migration.aria')}>
       <p class="kicker">Discovery</p>
-      <h3 class="titre">Vos messages deviennent des conversations.</h3>
+      <h3 class="titre">{t('migration.titre')}</h3>
       <p class="note">{note}</p>
       {#if !bilan}
         <div class="jauge" class:indeterminee={pourcent === null}>
           <div class="remplie" style="width:{pourcent ?? 0}%"></div>
         </div>
         <p class="etat" data-testid="migration-etat">
-          {pourcent === null ? 'Préparation…' : `${pourcent} %`}</p>
-        <button type="button" disabled={!annulable} onclick={annuler}>Annuler</button>
+          {pourcent === null ? t('migration.preparation') : t('migration.pourcent', { p: pourcent })}</p>
+        <button type="button" disabled={!annulable} onclick={annuler}>{t('action.annuler')}</button>
       {:else}
         <p class="etat">{bilan}</p>
         {#if reprise}
           <button type="button" class="principal"
-                  onclick={() => resoudreReprise?.()}>Reprendre</button>
+                  onclick={() => resoudreReprise?.()}>{t('action.reprendre')}</button>
         {/if}
       {/if}
     </div>

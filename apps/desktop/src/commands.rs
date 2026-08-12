@@ -766,6 +766,7 @@ fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Resul
 /// trace en est une autre.
 /// Clé de la préférence « bulles d'arrivée » (Réglages > Notifications).
 const PREF_ARRIVAL_BUBBLES: &str = "arrival_bubbles";
+const PREF_LANG: &str = "lang";
 
 fn arrival_notification_problem(
     app: &AppHandle,
@@ -773,19 +774,28 @@ fn arrival_notification_problem(
 ) -> Option<String> {
     use tauri_plugin_notification::NotificationExt;
 
-    let notification = mail_core::notification_for(arrivals)?;
     // R-D2 (PLAN-REGLAGES) : la préférence vit EN BASE et se lit ICI, à
     // l'émission — le réglage coupe la bulle, jamais la synchro. Base
     // illisible = activées : le défaut protège l'annonce, et la synchro
-    // qui vient d'écrire ces arrivées rend ce cas théorique.
-    let actives = db_path(app)
-        .ok()
-        .and_then(|path| Store::open(&path).ok())
+    // qui vient d'écrire ces arrivées rend ce cas théorique. La même
+    // lecture porte la langue des textes (PLAN-LANGUES, E2) :
+    // `prefs.lang`, posée par l'UI — absente ou inconnue, français.
+    let store = db_path(app).ok().and_then(|path| Store::open(&path).ok());
+    let actives = store
+        .as_ref()
         .and_then(|store| store.bool_pref(PREF_ARRIVAL_BUBBLES, true).ok())
         .unwrap_or(true);
     if !actives {
         return None;
     }
+    let lang = mail_core::Lang::from_pref(
+        store
+            .as_ref()
+            .and_then(|store| store.text_pref(PREF_LANG).ok())
+            .flatten()
+            .as_deref(),
+    );
+    let notification = mail_core::notification_for(arrivals, lang)?;
     app.notification()
         .builder()
         .title(notification.title)
@@ -2521,6 +2531,26 @@ pub fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     store
         .set_bool_pref(PREF_ARRIVAL_BUBBLES, enabled)
+        .map_err(|err| err.to_string())
+}
+
+/// Langue de l'interface (PLAN-LANGUES, A15) : la preference se LIT au
+/// demarrage — `None` tant qu'elle n'a jamais ete posee, l'UI detecte
+/// alors la langue du systeme et la pose aussitot…
+#[tauri::command]
+pub fn lang_get(app: AppHandle) -> Result<Option<String>, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store.text_pref(PREF_LANG).map_err(|err| err.to_string())
+}
+
+/// …et se POSE depuis Reglages > Affichage. En base (pas localStorage),
+/// meme raison que les bulles : le shell composera les notifications
+/// dans cette langue (E2).
+#[tauri::command]
+pub fn lang_set(app: AppHandle, lang: String) -> Result<(), String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store
+        .set_text_pref(PREF_LANG, &lang)
         .map_err(|err| err.to_string())
 }
 

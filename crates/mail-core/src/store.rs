@@ -446,6 +446,31 @@ impl Store {
         Ok(())
     }
 
+    /// Préférence texte persistée en base — le pendant de `bool_pref`
+    /// pour les valeurs nommées (la langue de l'interface, PLAN-LANGUES).
+    /// Absente = `None` : une préférence jamais touchée n'écrit rien,
+    /// c'est l'appelant qui connaît son défaut.
+    pub fn text_pref(&self, key: &str) -> Result<Option<String>, Error> {
+        let value = self
+            .0
+            .query_row(
+                "SELECT value FROM prefs WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(value)
+    }
+
+    pub fn set_text_pref(&self, key: &str, value: &str) -> Result<(), Error> {
+        self.0.execute(
+            "INSERT INTO prefs (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
     pub fn sync_state(&self, account_id: i64, mailbox: &str) -> Result<Option<SyncState>, Error> {
         let state = self
             .0
@@ -1940,6 +1965,18 @@ mod tests {
         assert!(!store.bool_pref("arrival_bubbles", true).unwrap());
         store.set_bool_pref("arrival_bubbles", true).unwrap();
         assert!(store.bool_pref("arrival_bubbles", false).unwrap());
+    }
+
+    /// Le pendant texte : jamais posée -> `None` (le défaut appartient à
+    /// l'appelant), posée -> relue telle quelle, écrasée sans doublon.
+    #[test]
+    fn text_pref_none_then_roundtrip() {
+        let store = Store::open_in_memory().unwrap();
+        assert_eq!(store.text_pref("lang").unwrap(), None);
+        store.set_text_pref("lang", "en").unwrap();
+        assert_eq!(store.text_pref("lang").unwrap(), Some("en".to_string()));
+        store.set_text_pref("lang", "fr").unwrap();
+        assert_eq!(store.text_pref("lang").unwrap(), Some("fr".to_string()));
     }
 
     #[test]
