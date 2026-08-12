@@ -17,10 +17,18 @@
     onconversation = () => {},
     onrepondre = () => {},
     ontransferer = () => {},
+    onflash = () => {},
   } = $props();
 
   let ligne = $state(null);
   let corps = $state('');
+  // Fichiers joints du message affiché — verdict terrain (Annexe A) :
+  // un message SEUL n'a pas de conversation à ouvrir, ses fichiers
+  // doivent se prendre ICI. Puces cliquables -> Téléchargements, comme
+  // dans la conversation (ADR 0007 : octets à la demande, jamais de
+  // cache).
+  let pieces = $state([]);
+  let enregistrements = $state({});
   // Images distantes : bloquées par DÉFAUT (invariant), comptées par le
   // coeur ; l'opt-in est PAR MESSAGE et ne survit pas à la sélection.
   let imagesBloquees = $state(0);
@@ -41,8 +49,41 @@
   export async function ouvrir(nouvelle) {
     const t0 = performance.now();
     imagesVoulues = false;
+    pieces = [];
     const duree = await servir(nouvelle, false, t0);
+    // Hors du chemin d'ouverture mesuré : les métadonnées de pièces
+    // arrivent après le corps, jamais avant.
+    if (nouvelle.attachment_count > 0) {
+      const mien = jeton;
+      appel('message_attachments', {
+        accountId: nouvelle.account_id,
+        mailbox: nouvelle.mailbox,
+        uid: nouvelle.uid,
+      })
+        .then((lues) => {
+          if (mien === jeton) pieces = lues;
+        })
+        .catch((err) => console.error('message_attachments :', err));
+    }
     return duree;
+  }
+
+  async function enregistrer(piece) {
+    if (!ligne || enregistrements[piece.index]) return;
+    enregistrements[piece.index] = true;
+    try {
+      const chemin = await appel('save_attachment', {
+        accountId: ligne.account_id,
+        mailbox: ligne.mailbox,
+        uid: ligne.uid,
+        index: piece.index,
+      });
+      onflash(`Pièce enregistrée : ${chemin}`);
+    } catch (err) {
+      onflash(`Enregistrement impossible : ${err}`);
+    } finally {
+      enregistrements[piece.index] = false;
+    }
   }
 
   async function servir(nouvelle, avecImages, t0 = null) {
@@ -74,9 +115,11 @@
   }
 
   export function fermer() {
+    jeton += 1;
     ligne = null;
     corps = '';
     imagesBloquees = 0;
+    pieces = [];
   }
   export function etat() {
     return { derniereOuvertureMs };
@@ -117,6 +160,18 @@
         </div>
       {/if}
       <iframe class="corps" sandbox srcdoc={corps} title="Contenu du message"></iframe>
+      {#if pieces.length > 0}
+        <div class="fichiers" data-testid="lecture-fichiers">
+          {#each pieces as piece (piece.index)}
+            <button type="button" class="puce cliquable" data-testid="piece-jointe"
+                    disabled={enregistrements[piece.index]}
+                    onclick={() => enregistrer(piece)}
+                    title="Enregistrer dans Téléchargements">
+              <span class="ms" aria-hidden="true">description</span>{piece.name}</button>
+            <span class="puce">{piece.size}</span>
+          {/each}
+        </div>
+      {/if}
       <div class="actions">
         <button type="button" class="principal" data-testid="repondre" onclick={() => onrepondre(ligne)}>
           <span class="ms" aria-hidden="true">reply</span>Répondre</button>
@@ -177,6 +232,10 @@
   }
   .garde-images .ms { color:var(--muted); }
   .garde-texte { flex:1; }
+  .fichiers {
+    margin:14px 30px 0; display:flex; gap:10px; flex-wrap:wrap;
+    flex:none;
+  }
   .corps {
     flex:1; border:none; background:#ffffff; margin:18px 30px 0;
     min-height:0;

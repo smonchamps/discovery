@@ -554,7 +554,14 @@
       <span class="ms" aria-hidden="true">search</span>
       <input type="text" bind:this={champRecherche} bind:value={recherche}
              data-testid="champ-recherche" aria-label="Recherche"
-             placeholder="Chercher un message, une personne, un fichier"></span>
+             placeholder="Chercher un message, une personne, un fichier">
+      {#if recherche}
+        <!-- Verdict terrain (Annexe A) : vider la recherche en UN clic. -->
+        <button type="button" class="vider" data-testid="vider-recherche"
+                aria-label="Effacer la recherche"
+                onclick={() => { recherche = ''; champRecherche?.focus(); }}>
+          <span class="ms" aria-hidden="true">close</span></button>
+      {/if}</span>
     <button type="button" class="principal" data-testid="ecrire" onclick={ecrire}>
       <span class="ms" aria-hidden="true">edit_square</span>Écrire</button>
     <button type="button" data-testid="reglages" onclick={() => reglages.ouvrir()}>
@@ -572,7 +579,7 @@
              onresultats={(n) => (nResultats = n)} />
       <Lecture bind:this={lecture} onarchiver={archiver} onsupprimer={supprimer}
                onconversation={ouvrirConversation}
-               onrepondre={repondre} ontransferer={transferer} />
+               onrepondre={repondre} ontransferer={transferer} onflash={flash} />
     </div>
 
     <div class="statut" data-testid="statut">
@@ -622,6 +629,12 @@
     background:transparent; min-width:0;
   }
   .recherche input::placeholder { color:var(--muted); }
+  .vider {
+    height:22px; width:22px; padding:0; display:inline-flex; flex:none;
+    align-items:center; justify-content:center; color:var(--muted);
+    background:transparent; border:none; border-radius:6px; cursor:pointer;
+  }
+  .vider:hover { color:var(--ink); background:var(--sel); }
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);

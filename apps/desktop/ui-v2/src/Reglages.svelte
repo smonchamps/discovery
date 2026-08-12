@@ -75,9 +75,18 @@
             </div>
           {/each}
           {#if ajoutOuvert}
-            <!-- Démonté à la fermeture ou au succès : le guichet repart
-                 toujours propre. -->
-            <GuichetCompte compact onajoute={() => { ajoutOuvert = false; onajoute(); }} />
+            <!-- Carte signature : le guichet est un BLOC voulu, pas un
+                 formulaire qui flotte (verdict terrain). Démonté au repli
+                 ou au succès : il repart toujours propre. -->
+            <div class="carte-ajout" data-testid="reglages-guichet">
+              <div class="tete-ajout">
+                <span class="titre-ajout">Ajouter un compte</span>
+                <button type="button" class="fermer" aria-label="Replier"
+                        onclick={() => (ajoutOuvert = false)}>
+                  <span class="ms" aria-hidden="true">close</span></button>
+              </div>
+              <GuichetCompte compact onajoute={() => { ajoutOuvert = false; onajoute(); }} />
+            </div>
           {:else}
             <button type="button" class="ajouter" data-testid="reglages-ajouter"
                     onclick={() => (ajoutOuvert = true)}>
@@ -163,6 +172,13 @@
     border-radius:6px; cursor:pointer;
   }
   .ajouter:hover { background:var(--sel); }
+  .carte-ajout {
+    border:1px solid var(--border); border-left:2px solid var(--accent);
+    border-radius:10px; padding:14px 16px 16px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .tete-ajout { display:flex; align-items:center; gap:14px; }
+  .titre-ajout { flex:1; font-size:14px; font-weight:600; color:var(--ink); }
   .pied {
     flex:none; padding:14px 22px 18px; border-top:1px solid var(--border);
     display:flex; align-items:center;

@@ -202,6 +202,23 @@ test("l'aperçu décode les entités HTML — jamais de résidu &eacute;", async
   await expect(ligne).not.toContainText('&');
 });
 
+test('les fichiers joints se prennent AU VOLET — un message seul n\'a pas de conversation (Annexe A)', async () => {
+  // « Compte rendu du 4 août » : message SEUL, une pièce jointe.
+  await page.locator('[data-testid="ligne"]', { hasText: 'Compte rendu du 4 août' }).click();
+  await expect(page.locator('[data-testid="lecture-fichiers"]')).toContainText('CR_04-08.pdf');
+  await expect(
+    page.locator('[data-testid="lecture-fichiers"] [data-testid="piece-jointe"]'),
+  ).toBeEnabled();
+});
+
+test('la croix vide la recherche en un clic (verdict terrain)', async () => {
+  await page.locator('[data-testid="champ-recherche"]').fill('Vantis');
+  await expect(page.locator('[data-testid="resultats"]')).toBeVisible();
+  await page.locator('[data-testid="vider-recherche"]').click();
+  await expect(page.locator('[data-testid="champ-recherche"]')).toHaveValue('');
+  await expect(page.locator('[data-testid="resultats"]')).toHaveCount(0);
+});
+
 test("les images distantes restent bloquées, l'opt-in est par message", async () => {
   await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
   await expect(page.locator('[data-testid="garde-images"]')).toContainText(
