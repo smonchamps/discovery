@@ -72,6 +72,9 @@
   font-family:'Material Symbols Rounded'; font-weight:300; font-size:16px;
   line-height:1; flex:none; font-variation-settings:'opsz' 20;
 }
+/* A12 — « Transférer » porte la flèche de « Répondre » en symétrie
+   verticale (verdict terrain) : le glyphe `reply`, retourné. */
+.ms.miroir { transform:scaleX(-1); }
 
 /* A8 — le focus est VISIBLE, partout, au clavier seulement : anneau
    accent 2 px décalé de 2 px. Jamais supprimé sans remplacement. */

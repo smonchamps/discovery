@@ -7,10 +7,11 @@ jamais.
 ## Inventaire (la source : le Système « Clarity »)
 
 Relevé du handoff (classe `ms` et `icon:'…'`), amendé par le journal :
-A11 ajoute `person_add` (section Comptes des Réglages) ; A12 remplace
-`forward` par `arrow_forward` (Transférer, flèche simple — verdict
-terrain du 2026-08-12, le glyphe à double trait du prototype est
-récusé) :
+A11 ajoute `person_add` (section Comptes des Réglages) ; A12 retire
+`forward` (verdict terrain du 2026-08-12 — « Transférer » porte
+désormais `reply` en symétrie verticale, `.ms.miroir`, aucun glyphe
+neuf requis). `arrow_forward` est présent mais INUTILISÉ (première
+lecture du verdict) : à purger à la prochaine régénération.
 
 `all_inbox` `archive` `arrow_back` `arrow_forward` `attach_file`
 `bookmark` `check_circle` `close` `delete` `description` `drafts`
