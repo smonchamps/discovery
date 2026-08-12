@@ -947,6 +947,10 @@ pub fn list_category(
             .collect(),
     };
     let mut boites = Vec::new();
+    // Les Archives d'une INTÉGRALE Gmail (« Tous les messages ») privent
+    // la catégorie des messages vivant dans une autre canonique — sinon
+    // elle montre toute la boîte (défaut terrain, 2026-08-12).
+    let mut exclure = Vec::new();
     for compte in comptes {
         let dossiers = store
             .canonical_folders(compte)
@@ -957,14 +961,21 @@ pub fn list_category(
                 .map_err(|err| err.to_string())?
         {
             boites.push(state.mailbox_id);
+            if category == "archives" && dossiers.archives_integrale {
+                exclure.extend(
+                    store
+                        .canoniques_hors_archives(compte, &dossiers)
+                        .map_err(|err| err.to_string())?,
+                );
+            }
         }
     }
     let (tous, jamais_lus) = store
-        .category_totals(&boites)
+        .category_totals(&boites, &exclure)
         .map_err(|err| err.to_string())?;
     let total = if non_lus { jamais_lus } else { tous };
     let rows = store
-        .category_page(&boites, non_lus, offset, limit)
+        .category_page(&boites, non_lus, &exclure, offset, limit)
         .map_err(|err| err.to_string())?
         .into_iter()
         .map(to_message_row)

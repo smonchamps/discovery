@@ -1627,6 +1627,13 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
         "CREATE INDEX IF NOT EXISTS idx_bodies_apercu_manquant
              ON bodies(mailbox_id, uid) WHERE preview IS NULL;",
     )?;
+    // La sonde d'exclusion des intégrales (nav, catégorie Archives sur
+    // Gmail) cherche par message_id : sans cet index, chaque ligne de
+    // « Tous les messages » paierait un parcours de table.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_envelopes_message
+             ON envelopes(message_id) WHERE message_id IS NOT NULL;",
+    )?;
     // Réparation des aperçus extraits par le premier décodeur, qui
     // laissait passer les entités numériques (&#233;) et nommées
     // (&eacute;, &zwnj;…) — défaut vu au terrain. Remettre à NULL suffit :

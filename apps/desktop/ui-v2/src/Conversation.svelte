@@ -326,7 +326,11 @@
   .adresses dt { color:var(--muted); }
   .adresses dd { margin:0; color:var(--ink2); }
   .corps {
-    border:none; background:#ffffff; width:100%;
+    /* Déborde de 12 px à gauche et à droite : la gouttière interne du
+       document assaini (mail-render) ramène le texte au fil des
+       De/À/Objet (verdict terrain — alignement). */
+    border:none; background:#ffffff;
+    margin-left:-12px; width:calc(100% + 24px);
     height:clamp(220px, 45vh, 520px);
   }
   .titre-fichiers {

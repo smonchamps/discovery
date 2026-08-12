@@ -237,7 +237,10 @@
     flex:none;
   }
   .corps {
-    flex:1; border:none; background:#ffffff; margin:18px 30px 0;
+    /* 18 px et non 30 : le document assaini porte sa propre gouttière
+       de 12 px (mail-render, body margin) — 18 + 12 = 30, le texte du
+       corps s'aligne sur l'objet et l'auteur (verdict terrain). */
+    flex:1; border:none; background:#ffffff; margin:18px 18px 0;
     min-height:0;
   }
   .actions {

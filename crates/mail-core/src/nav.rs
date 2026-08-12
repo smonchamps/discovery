@@ -33,6 +33,10 @@ pub struct CanonicalFolders {
     pub brouillons: Option<String>,
     pub indesirables: Option<String>,
     pub archives: Option<String>,
+    /// Vrai quand `archives` est une INTÉGRALE (« Tous les messages ») :
+    /// la catégorie doit alors exclure les messages des autres
+    /// canoniques, sinon elle montre toute la boîte.
+    pub archives_integrale: bool,
     pub corbeille: Option<String>,
 }
 
@@ -83,7 +87,12 @@ const CORBEILLE: &[&str] = &[
     "deleted items",
     "éléments supprimés",
 ];
-const ARCHIVES: &[&str] = &["archive", "archives", "all mail", "tous les messages"];
+const ARCHIVES: &[&str] = &["archive", "archives"];
+// Les INTÉGRALES : « Tous les messages » de Gmail contient TOUT — boîte
+// de réception comprise. Servir ça tel quel dans Archives montrerait
+// toute la boîte (défaut vu au terrain, 2026-08-12) : l'intégrale n'est
+// une archive QUE privée des messages vivant dans une autre canonique.
+const INTEGRALES: &[&str] = &["all mail", "tous les messages"];
 
 /// Racine, ou exactement un niveau sous `[Gmail]` — rien de plus profond.
 fn feuille_canonique(display: &str) -> Option<(bool, String)> {
@@ -95,6 +104,28 @@ fn feuille_canonique(display: &str) -> Option<(bool, String)> {
         }
         _ => None,
     }
+}
+
+/// La clause d'exclusion d'une intégrale : un message dont le
+/// `message_id` vit AUSSI dans l'une des boîtes données n'est pas
+/// archivé. Les identifiants viennent de NOTRE base (i64) : inclusion
+/// littérale, l'index partiel `idx_envelopes_message` porte la sonde.
+/// Un message sans `message_id` reste : on ne peut pas prouver qu'il
+/// vit ailleurs.
+fn clause_exclusion(exclure: &[i64]) -> String {
+    if exclure.is_empty() {
+        return String::new();
+    }
+    let liste = exclure
+        .iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        " AND (e.message_id IS NULL OR NOT EXISTS (
+             SELECT 1 FROM envelopes x
+             WHERE x.message_id = e.message_id AND x.mailbox_id IN ({liste})))"
+    )
 }
 
 fn retenir(dossiers: &[(String, String)], motifs: &[&str]) -> Option<String> {
@@ -132,30 +163,75 @@ impl Store {
             )?
             .query_map(params![account_id], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<Result<_, _>>()?;
+        // Un dossier d'archives PUR d'abord ; l'intégrale Gmail en repli,
+        // marquée comme telle.
+        let (archives, archives_integrale) = match retenir(&dossiers, ARCHIVES) {
+            Some(pur) => (Some(pur), false),
+            None => match retenir(&dossiers, INTEGRALES) {
+                Some(integrale) => (Some(integrale), true),
+                None => (None, false),
+            },
+        };
         Ok(CanonicalFolders {
             reception: RECEIVED_MAILBOX.to_string(),
             envoyes,
             brouillons: retenir(&dossiers, BROUILLONS),
             indesirables: retenir(&dossiers, INDESIRABLES),
-            archives: retenir(&dossiers, ARCHIVES),
+            archives,
+            archives_integrale,
             corbeille: retenir(&dossiers, CORBEILLE),
         })
     }
 
+    /// Les `mailbox_id` des canoniques AUTRES que les archives — la
+    /// clause d'exclusion d'une intégrale : un message présent dans
+    /// l'une d'elles n'est pas archivé.
+    pub fn canoniques_hors_archives(
+        &self,
+        account_id: i64,
+        dossiers: &CanonicalFolders,
+    ) -> Result<Vec<i64>, Error> {
+        let mut ids = Vec::new();
+        let noms = [
+            Some(dossiers.reception.as_str()),
+            dossiers.envoyes.as_deref(),
+            dossiers.brouillons.as_deref(),
+            dossiers.indesirables.as_deref(),
+            dossiers.corbeille.as_deref(),
+        ];
+        for nom in noms.into_iter().flatten() {
+            if let Some(state) = self.sync_state(account_id, nom)? {
+                ids.push(state.mailbox_id);
+            }
+        }
+        Ok(ids)
+    }
+
     /// `(total, non lus)` des messages d'une boîte désignée par son nom
     /// réseau. Une boîte jamais synchronisée compte zéro — pas d'erreur :
-    /// la nav s'affiche avant la première synchro.
-    fn compte_boite(&self, account_id: i64, name: Option<&str>) -> Result<(u64, u64), Error> {
+    /// la nav s'affiche avant la première synchro. `exclure` : les
+    /// boîtes dont la présence d'un même `message_id` disqualifie
+    /// (l'intégrale privée des autres canoniques).
+    fn compte_boite(
+        &self,
+        account_id: i64,
+        name: Option<&str>,
+        exclure: &[i64],
+    ) -> Result<(u64, u64), Error> {
         let Some(name) = name else { return Ok((0, 0)) };
         let Some(state) = self.sync_state(account_id, name)? else {
             return Ok((0, 0));
         };
-        let (total, non_lus): (i64, i64) = self.conn().query_row(
-            "SELECT COUNT(*), COALESCE(SUM(NOT seen), 0)
-             FROM envelopes WHERE mailbox_id = ?1",
-            params![state.mailbox_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
+        let sql = format!(
+            "SELECT COUNT(*), COALESCE(SUM(NOT e.seen), 0)
+             FROM envelopes e WHERE e.mailbox_id = ?1{}",
+            clause_exclusion(exclure)
+        );
+        let (total, non_lus): (i64, i64) =
+            self.conn()
+                .query_row(&sql, params![state.mailbox_id], |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                })?;
         Ok((total as u64, non_lus as u64))
     }
 
@@ -171,12 +247,21 @@ impl Store {
             params![account_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
-        let (envoyes, _) = self.compte_boite(account_id, dossiers.envoyes.as_deref())?;
-        let (brouillons, _) = self.compte_boite(account_id, dossiers.brouillons.as_deref())?;
+        let (envoyes, _) = self.compte_boite(account_id, dossiers.envoyes.as_deref(), &[])?;
+        let (brouillons, _) = self.compte_boite(account_id, dossiers.brouillons.as_deref(), &[])?;
         let (indesirables_total, indesirables_non_lus) =
-            self.compte_boite(account_id, dossiers.indesirables.as_deref())?;
-        let (archives, _) = self.compte_boite(account_id, dossiers.archives.as_deref())?;
-        let (corbeille, _) = self.compte_boite(account_id, dossiers.corbeille.as_deref())?;
+            self.compte_boite(account_id, dossiers.indesirables.as_deref(), &[])?;
+        let exclusion_archives = if dossiers.archives_integrale {
+            self.canoniques_hors_archives(account_id, dossiers)?
+        } else {
+            Vec::new()
+        };
+        let (archives, _) = self.compte_boite(
+            account_id,
+            dossiers.archives.as_deref(),
+            &exclusion_archives,
+        )?;
+        let (corbeille, _) = self.compte_boite(account_id, dossiers.corbeille.as_deref(), &[])?;
         Ok(NavCounts {
             reception_total: reception_total as u64,
             reception_non_lues: reception_non_lues as u64,
@@ -237,16 +322,22 @@ impl Store {
 
     /// `(total, non lus)` cumulés des boîtes données — le total de la
     /// pagination d'une catégorie, et le héros non-lu des indésirables.
-    pub fn category_totals(&self, mailbox_ids: &[i64]) -> Result<(u64, u64), Error> {
+    pub fn category_totals(
+        &self,
+        mailbox_ids: &[i64],
+        exclure: &[i64],
+    ) -> Result<(u64, u64), Error> {
         let mut total = 0u64;
         let mut non_lus = 0u64;
+        let sql = format!(
+            "SELECT COUNT(*), COALESCE(SUM(NOT e.seen), 0)
+             FROM envelopes e WHERE e.mailbox_id = ?1{}",
+            clause_exclusion(exclure)
+        );
         for id in mailbox_ids {
-            let (t, n): (i64, i64) = self.conn().query_row(
-                "SELECT COUNT(*), COALESCE(SUM(NOT seen), 0)
-                 FROM envelopes WHERE mailbox_id = ?1",
-                params![id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )?;
+            let (t, n): (i64, i64) = self
+                .conn()
+                .query_row(&sql, params![id], |row| Ok((row.get(0)?, row.get(1)?)))?;
             total += t as u64;
             non_lus += n as u64;
         }
@@ -266,6 +357,7 @@ impl Store {
         &self,
         mailbox_ids: &[i64],
         non_lus: bool,
+        exclure: &[i64],
         offset: usize,
         limit: usize,
     ) -> Result<Vec<UnifiedRow>, Error> {
@@ -273,13 +365,16 @@ impl Store {
             return Ok(Vec::new());
         }
         let n = mailbox_ids.len();
-        let filtre = if non_lus { " AND NOT seen" } else { "" };
+        let filtre = if non_lus { " AND NOT e.seen" } else { "" };
+        // L'exclusion s'applique DANS chaque tranche : appliquée après,
+        // la pagination compterait des lignes qu'elle ne sert pas.
+        let exclusion = clause_exclusion(exclure);
         let tranches: Vec<String> = (1..=n)
             .map(|i| {
                 format!(
-                    "SELECT * FROM (SELECT mailbox_id, uid, date_epoch FROM envelopes
-                      WHERE mailbox_id = ?{i}{filtre}
-                      ORDER BY date_epoch DESC, uid DESC LIMIT ?{})",
+                    "SELECT * FROM (SELECT e.mailbox_id, e.uid, e.date_epoch FROM envelopes e
+                      WHERE e.mailbox_id = ?{i}{filtre}{exclusion}
+                      ORDER BY e.date_epoch DESC, e.uid DESC LIMIT ?{})",
                     n + 1
                 )
             })
@@ -439,7 +534,7 @@ mod tests {
                 &[envelope(1, "b2", 200, true), envelope(2, "b4", 400, true)],
             )
             .unwrap();
-        let page = store.category_page(&[gauche, droite], false, 0, 3).unwrap();
+        let page = store.category_page(&[gauche, droite], false, &[], 0, 3).unwrap();
         let sujets: Vec<&str> = page
             .iter()
             .map(|row| row.envelope.subject.as_deref().unwrap())
@@ -450,14 +545,14 @@ mod tests {
         assert_eq!(page[1].thread_unseen, 1);
         assert_eq!(page[0].thread_unseen, 0);
         // L'OFFSET traverse la fusion sans perdre ni dupliquer.
-        let suite = store.category_page(&[gauche, droite], false, 3, 3).unwrap();
+        let suite = store.category_page(&[gauche, droite], false, &[], 3, 3).unwrap();
         let sujets: Vec<&str> = suite
             .iter()
             .map(|row| row.envelope.subject.as_deref().unwrap())
             .collect();
         assert_eq!(sujets, ["a1"]);
         // L'onglet « Non lus » filtre côté coeur, dans les tranches mêmes.
-        let non_lus = store.category_page(&[gauche, droite], true, 0, 10).unwrap();
+        let non_lus = store.category_page(&[gauche, droite], true, &[], 0, 10).unwrap();
         let sujets: Vec<&str> = non_lus
             .iter()
             .map(|row| row.envelope.subject.as_deref().unwrap())
@@ -486,7 +581,7 @@ mod tests {
             )
             .unwrap();
         let page = store
-            .category_page(&[gauche, droite], false, 0, 10)
+            .category_page(&[gauche, droite], false, &[], 0, 10)
             .unwrap();
         let a3 = page
             .iter()
@@ -495,6 +590,76 @@ mod tests {
         assert_eq!(a3.preview.as_deref(), Some("Aperçu de a3"));
         assert_eq!(a3.attachment_count, 2);
         assert!(a3.has_attachment);
+    }
+
+    #[test]
+    fn l_integrale_gmail_privee_des_canoniques_fait_les_archives() {
+        // Le défaut du terrain (2026-08-12) : « Tous les messages »
+        // contient TOUT — la catégorie Archives montrait la boîte
+        // entière. L'intégrale doit se priver des autres canoniques.
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("a@exemple.fr", "gmail")
+            .unwrap();
+        store
+            .replace_folders(
+                account,
+                &[dossier("INBOX"), dossier("[Gmail]/Tous les messages")],
+            )
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        let integrale = store
+            .create_mailbox(account, "[Gmail]/Tous les messages", 1)
+            .unwrap();
+        // <m1> vit dans INBOX ET l'intégrale (reçu, non archivé) ;
+        // <m2> seulement dans l'intégrale (réellement archivé).
+        store
+            .upsert_envelopes(inbox, &[envelope(1, "recu", 100, true)])
+            .unwrap();
+        store
+            .upsert_envelopes(
+                integrale,
+                &[
+                    envelope(1, "recu", 100, true),
+                    envelope(2, "archive", 200, true),
+                ],
+            )
+            .unwrap();
+
+        let canon = store.canonical_folders(account).unwrap();
+        assert!(canon.archives_integrale, "l'intégrale est marquée");
+        assert_eq!(
+            canon.archives.as_deref(),
+            Some("[Gmail]/Tous les messages")
+        );
+        let compteurs = store.nav_counts(account, &canon).unwrap();
+        assert_eq!(
+            compteurs.archives, 1,
+            "seul le message hors des autres canoniques est archivé"
+        );
+        let exclure = store.canoniques_hors_archives(account, &canon).unwrap();
+        assert_eq!(exclure, vec![inbox]);
+        let page = store
+            .category_page(&[integrale], false, &exclure, 0, 10)
+            .unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].envelope.subject.as_deref(), Some("archive"));
+        let (total, _) = store.category_totals(&[integrale], &exclure).unwrap();
+        assert_eq!(total, 1);
+        // Un dossier d'archives PUR n'est jamais privé de rien.
+        store
+            .replace_folders(
+                account,
+                &[
+                    dossier("INBOX"),
+                    dossier("Archives"),
+                    dossier("[Gmail]/Tous les messages"),
+                ],
+            )
+            .unwrap();
+        let canon = store.canonical_folders(account).unwrap();
+        assert!(!canon.archives_integrale);
+        assert_eq!(canon.archives.as_deref(), Some("Archives"));
     }
 
     #[test]
@@ -521,7 +686,7 @@ mod tests {
             0,
             "plus de retardataires"
         );
-        let page = store.category_page(&[inbox], false, 0, 10).unwrap();
+        let page = store.category_page(&[inbox], false, &[], 0, 10).unwrap();
         assert_eq!(page[0].preview.as_deref(), Some("Vieux corps"));
     }
 
