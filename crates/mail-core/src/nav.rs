@@ -534,7 +534,9 @@ mod tests {
                 &[envelope(1, "b2", 200, true), envelope(2, "b4", 400, true)],
             )
             .unwrap();
-        let page = store.category_page(&[gauche, droite], false, &[], 0, 3).unwrap();
+        let page = store
+            .category_page(&[gauche, droite], false, &[], 0, 3)
+            .unwrap();
         let sujets: Vec<&str> = page
             .iter()
             .map(|row| row.envelope.subject.as_deref().unwrap())
@@ -545,14 +547,18 @@ mod tests {
         assert_eq!(page[1].thread_unseen, 1);
         assert_eq!(page[0].thread_unseen, 0);
         // L'OFFSET traverse la fusion sans perdre ni dupliquer.
-        let suite = store.category_page(&[gauche, droite], false, &[], 3, 3).unwrap();
+        let suite = store
+            .category_page(&[gauche, droite], false, &[], 3, 3)
+            .unwrap();
         let sujets: Vec<&str> = suite
             .iter()
             .map(|row| row.envelope.subject.as_deref().unwrap())
             .collect();
         assert_eq!(sujets, ["a1"]);
         // L'onglet « Non lus » filtre côté coeur, dans les tranches mêmes.
-        let non_lus = store.category_page(&[gauche, droite], true, &[], 0, 10).unwrap();
+        let non_lus = store
+            .category_page(&[gauche, droite], true, &[], 0, 10)
+            .unwrap();
         let sujets: Vec<&str> = non_lus
             .iter()
             .map(|row| row.envelope.subject.as_deref().unwrap())
@@ -628,10 +634,7 @@ mod tests {
 
         let canon = store.canonical_folders(account).unwrap();
         assert!(canon.archives_integrale, "l'intégrale est marquée");
-        assert_eq!(
-            canon.archives.as_deref(),
-            Some("[Gmail]/Tous les messages")
-        );
+        assert_eq!(canon.archives.as_deref(), Some("[Gmail]/Tous les messages"));
         let compteurs = store.nav_counts(account, &canon).unwrap();
         assert_eq!(
             compteurs.archives, 1,
