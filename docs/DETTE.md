@@ -42,13 +42,14 @@ motivée.)
   l'essentiel.
 - **Rouvre si** : le terrain au lecteur d'écran le réclame.
 
-### D-5 · Charset amont (U+FFFD dans les corps stockés)
-
-- **Fait (2026-08-11)** : 15 corps de la base réelle portent U+FFFD dès
-  le HTML stocké — décodage du charset MIME à la synchronisation.
-- **État** : chantier EN COURS dans une session séparée (fiche posée le
-  2026-08-11). Cette entrée se raye à sa livraison.
-
 ## Soldée
 
-(rien encore — une entrée soldée reste ici, rayée, avec son commit)
+### ~~D-5 · Charset amont (U+FFFD dans les corps stockés)~~ — soldée le 2026-08-11
+
+- **Fait** : des corps de la base réelle portaient U+FFFD dès le HTML
+  stocké — décodage du charset MIME à la synchronisation.
+- **Soldée par `0f7f059`** (session séparée, PR #1 fusionnée) : feature
+  `full_encoding` de mail-parser (gb2312…), repli windows-1252 quand
+  les octets ne sont pas de l'UTF-8 valide, et réparation une-fois des
+  corps mutilés (purge marquée, retéléchargement au rattrapage, aperçu
+  et index refaits au passage).
