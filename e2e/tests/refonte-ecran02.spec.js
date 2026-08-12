@@ -295,6 +295,8 @@ test("le clavier active ce que le clic active (A8) : nav, rangée, onglet", asyn
 
 test('les réglages appliquent et persistent le thème', async () => {
   await page.locator('[data-testid="reglages"]').click();
+  // A13 : les thèmes vivent dans leur groupe, choisi au rail.
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
   await expect(page.locator('[data-testid="theme"]')).toHaveCount(7);
   await page.locator('[data-theme-id="nuit"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'nuit');
@@ -305,9 +307,35 @@ test('les réglages appliquent et persistent le thème', async () => {
   // La coche suit le choix à la réouverture ; retour à `nature` pour ne
   // pas teinter d'autres parcours.
   await page.locator('[data-testid="reglages"]').click();
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
   await expect(page.locator('[data-theme-id="nuit"] .coche')).toBeVisible();
   await page.locator('[data-theme-id="nature"]').click();
   await page.locator('[data-testid="reglages-termine"]').click();
+});
+
+test("les réglages en deux volets se parcourent au clic ET au clavier (A13)", async () => {
+  await page.locator('[data-testid="reglages"]').click();
+  // Le rail porte les groupes ; Comptes est le groupe d'ouverture.
+  await expect(page.locator('[data-testid="reglages-groupe"]')).toHaveCount(4);
+  await expect(page.locator('[data-testid="reglages-comptes"]')).toBeVisible();
+  // Au clic : Raccourcis — la table D3 en référence, lecture seule.
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="raccourcis"]').click();
+  await expect(page.locator('[data-testid="reglages-raccourcis"]')).toContainText('Suppr');
+  await expect(page.locator('[data-testid="reglages-raccourcis"] kbd')).toHaveCount(7);
+  // Au clavier (A8) : Entrée active le groupe comme le clic.
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="apropos"]').focus();
+  await page.keyboard.press('Enter');
+  // À propos : la version RÉELLE de l'application, pas un texte posé.
+  await expect(page.locator('[data-testid="apropos-version"]')).toHaveText(/^\d+\.\d+\.\d+/);
+  await expect(page.locator('[data-testid="reglages-apropos"]')).toContainText('Apache 2.0');
+  // « Vérifier les mises à jour » traverse update_check pour de vrai ;
+  // en E2E la commande répond « à jour » (aucun réseau, passation §7.5).
+  await page.locator('[data-testid="apropos-verifier"]').click();
+  await expect(page.locator('[data-testid="reglages-apropos"]')).toContainText(
+    'Vous êtes à jour.',
+  );
+  await page.locator('[data-testid="reglages-termine"]').click();
+  await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
 });
 
 test("la section Comptes liste les comptes réels et ouvre le guichet d'ajout (A11)", async () => {

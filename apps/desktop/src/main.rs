@@ -103,6 +103,7 @@ fn main() {
             commands::migration_cancel,
             commands::update_check,
             commands::update_install,
+            commands::app_version,
             telemetry::telemetry_consent_get,
             telemetry::telemetry_consent_set,
             telemetry::telemetry_pending,

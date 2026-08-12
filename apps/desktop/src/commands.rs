@@ -2409,6 +2409,13 @@ pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
     }
 }
 
+/// La version installee, pour la section « A propos » des Reglages.
+/// Une lecture du manifeste — aucun reseau, aucune base.
+#[tauri::command]
+pub fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 /// Telecharge, verifie la signature, installe, puis redemarre.
 ///
 /// `download_and_install` remplace le binaire en place ; `restart` rend
