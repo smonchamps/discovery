@@ -4,7 +4,7 @@
   "version": "0.1.2",
   "identifier": "dev.discovery.app",
   "build": {
-    "frontendDist": "ui"
+    "frontendDist": "ui-v2/dist"
   },
   "app": {
     "withGlobalTauri": true,

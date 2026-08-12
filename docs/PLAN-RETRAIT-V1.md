@@ -127,6 +127,17 @@ suites coexistent jusqu'à B2).
 
 ## B1 — bascule de défaut (réversible en UNE ligne)
 
+**État : basculé le 2026-08-12** (GO du Chef Ingénieur, Annexe A signée
+le même jour — D2 « OK = accord » sur la coupe). `frontendDist` →
+`ui-v2/dist` ; l'échange de conf change de main (`construireV1` pour
+les parcours d'observation v1, `construireV2` ne garde que la taille de
+fenêtre du banc) ; le job CI `quality` construit ui-v2 avant tout cargo
+(`generate_context!` exige le dossier). Budgets de clôture : ceux de la
+gate R1 (même binaire, cycle actif — voir R1). Le banc v1 `mesure.mjs`
+est gelé (il embarquerait v2) : `mesure-v2.mjs` est l'outil, `mesure.mjs`
+tombe à B2. **Le compteur des deux semaines sans défaut critique court
+depuis le 2026-08-12.**
+
 1. `tauri.conf.json` : `frontendDist` → `../ui-v2/dist` définitivement ;
    le build embarque le `npm run build` de ui-v2 (étape déjà dans le
    hook [2/6] et la CI).

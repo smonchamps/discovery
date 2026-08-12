@@ -24,6 +24,17 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      # B1 : la conf expédiée pointe sur ui-v2/dist — `generate_context!`
+      # exige que le dossier EXISTE à la compilation. Le build Vite
+      # précède donc tout cargo qui compile le desktop.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/desktop/ui-v2/package-lock.json
+      - name: Build ui-v2 (requis par generate_context)
+        run: npm ci && npm run build
+        working-directory: apps/desktop/ui-v2
       - name: Format
         run: cargo fmt --all -- --check
       - name: Lints (warnings = erreurs)

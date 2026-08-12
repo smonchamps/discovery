@@ -1,15 +1,16 @@
-// Reconstruire l'application avec ui-v2 embarquée — le point UNIQUE qui
-// connaît les trois pièges MESURÉS du banc de la refonte. Chaque piège a
-// coûté une session de fantômes ; ils vivent ici, une fois.
+// Reconstruire l'application — le point UNIQUE qui connaît les trois
+// pièges MESURÉS du banc de la refonte. Chaque piège a coûté une
+// session de fantômes ; ils vivent ici, une fois.
+//
+// Depuis B1 (PLAN-RETRAIT-V1), la config expédiée pointe sur ui-v2 :
+// `construireV2` n'échange plus rien (sauf la taille de fenêtre du banc
+// de parité) ; c'est `construireV1` — les parcours d'observation de la
+// vieille interface, jusqu'à B2 — qui porte l'échange désormais.
 import { execSync } from 'node:child_process';
 import { readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-export function construireV2(root, { release = true, fenetre = null } = {}) {
-  execSync('npm run build', {
-    cwd: path.join(root, 'apps', 'desktop', 'ui-v2'),
-    stdio: 'inherit',
-  });
+function construire(root, { release, fenetre, dist }) {
   // 1. `generate_context!` n'embarque le dist qu'à la COMPILATION de
   //    main.rs : un changement d'assets SEULS ne recompile rien, et le
   //    binaire garderait un dist périmé (constaté : règle CSS présente
@@ -27,22 +28,38 @@ export function construireV2(root, { release = true, fenetre = null } = {}) {
   } catch {
     /* rien à tuer */
   }
-  // 3. La config expédiée pointe sur `ui` (v1) : échangée le temps du
-  //    build, RESTAURÉE même sur échec — le dépôt ne reste jamais sale.
+  // 3. Échange de conf éventuel (dist v1, taille de fenêtre du banc) :
+  //    RESTAURÉ même sur échec — le dépôt ne reste jamais sale.
   const conf = path.join(root, 'apps', 'desktop', 'tauri.conf.json');
+  const commande = `cargo build -p discovery-desktop${release ? ' --release' : ''}`;
+  if (!dist && !fenetre) {
+    execSync(commande, { cwd: root, stdio: 'inherit' });
+    return;
+  }
   const origine = readFileSync(conf, 'utf8');
-  const v2 = JSON.parse(origine);
-  v2.build.frontendDist = 'ui-v2/dist';
-  if (fenetre) Object.assign(v2.app.windows[0], fenetre);
+  const modifiee = JSON.parse(origine);
+  if (dist) modifiee.build.frontendDist = dist;
+  if (fenetre) Object.assign(modifiee.app.windows[0], fenetre);
   try {
-    writeFileSync(conf, JSON.stringify(v2, null, 2));
-    execSync(`cargo build -p discovery-desktop${release ? ' --release' : ''}`, {
-      cwd: root,
-      stdio: 'inherit',
-    });
+    writeFileSync(conf, JSON.stringify(modifiee, null, 2));
+    execSync(commande, { cwd: root, stdio: 'inherit' });
   } finally {
     writeFileSync(conf, origine);
   }
+}
+
+export function construireV2(root, { release = true, fenetre = null } = {}) {
+  execSync('npm run build', {
+    cwd: path.join(root, 'apps', 'desktop', 'ui-v2'),
+    stdio: 'inherit',
+  });
+  construire(root, { release, fenetre, dist: null });
+}
+
+// L'interface v1, dormante jusqu'à B2 : ses parcours d'observation la
+// réembarquent le temps d'un build.
+export function construireV1(root, { release = false } = {}) {
+  construire(root, { release, fenetre: null, dist: 'ui' });
 }
 
 // Le cache HTTP du profil WebView2 survit aux rebuilds et peut servir un

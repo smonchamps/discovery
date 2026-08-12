@@ -20,7 +20,7 @@ import { spawn, execSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
-import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
+import { construireV1, construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const CDP_PORT = 9222;
@@ -32,7 +32,10 @@ const POLL_MS = 500;
 export async function launchApp({
   accounts = [{ email: 'e2e@exemple.fr', messages: 200 }],
 } = {}) {
-  execSync('cargo build -p discovery-desktop', { cwd: root, stdio: 'inherit' });
+  // Depuis B1, la conf expédiée embarque ui-v2 : les parcours v1
+  // (observation jusqu'à B2) réembarquent la vieille interface le temps
+  // du build.
+  construireV1(root, { release: false });
 
   const db = path.join(root, 'target', 'e2e', 'parcours.db');
   rmSync(db, { force: true });

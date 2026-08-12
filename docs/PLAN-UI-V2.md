@@ -398,8 +398,10 @@ Aucune ne bloque P1. Chacune se pose à l'ouverture de sa phase.
 La liste opposable pour la parité poste à poste de P5. « Appui » = ce qui
 existe déjà (commandes du port, UI v1).
 
-État à la livraison P5 — chaque ligne attend la signature du Chef
-Ingénieur (« câblée », « due plus tard » ou « coupée en connaissance ») :
+**Annexe signée par le Chef Ingénieur le 2026-08-12** après passe
+terrain ligne à ligne (D2 : « OK = accord » sur la coupe) ; les trois
+retours terrain — fichiers joints au volet, croix de recherche, carte
+du guichet — sont corrigés et commis le même jour :
 
 | Capacité v1 | Appui existant | Destin |
 |---|---|---|
