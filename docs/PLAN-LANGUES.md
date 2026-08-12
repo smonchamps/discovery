@@ -180,3 +180,6 @@ Amendement **A15** inscrit au journal du Système ; ADR **0016** posée
 - Au passage : deux écarts `cargo fmt` préexistants du chantier A14
   (« Répondre à tous », non commité) ont été réglés mécaniquement —
   aucun changement de fond.
+- **Terrain CE passé le 2026-08-13** : « test ok » — bascule constatée
+  dans les deux langues. Les gates E1 et E2 sont closes ; le plan est
+  SOLDÉ.
