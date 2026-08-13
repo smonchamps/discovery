@@ -509,14 +509,16 @@
   // souvent POUR ça qu'on clique). Réponse en secondes, tenue par la
   // gate d'E2a ; chaque commande est bornée par les timeouts P0, la
   // passe se termine toujours — pas de watchdog dédié.
-  async function relever() {
+  // `force` : le clic est un ORDRE — il traverse le recul par compte
+  // (anti-martèlement, shell) ; le réveil de veille, lui, le respecte.
+  async function relever(force) {
     if (enSynchro) return; // le cycle travaille déjà — bouton inhibé
     enSynchro = true;
     const jeton = ++jetonCycle;
     sonderActivite();
     const sonde = setInterval(sonderActivite, 1000);
     try {
-      const bilan = await appel('sync_inbox_light');
+      const bilan = await appel('sync_inbox_light', { force: force === true });
       if (jeton !== jetonCycle) return;
       majEchecs(bilan);
       await appel('flush_outbox').catch((err) => console.error('flush_outbox :', err));
@@ -576,7 +578,7 @@
       const tic = Date.now();
       const retard = tic - dernierTic;
       dernierTic = tic;
-      if (retard > 120000) relever();
+      if (retard > 120000) relever(false);
     }, 15000);
   });
 
@@ -812,7 +814,7 @@
            la machine travaille déjà) ; sur échec, il devient le levier
            au plus près de la panne. -->
       <button type="button" class="btn-statut" data-testid="btn-releve"
-              disabled={enSynchro} onclick={relever}>
+              disabled={enSynchro} onclick={() => relever(true)}>
         <span class="ms" class:tourne={enSynchro} aria-hidden="true">sync</span>
         {#if enSynchro}{t('action.synchronisation')}{:else if synchroEchec || synchroPartiel}{t('action.reessayer')}{:else}{t('action.synchroniser')}{/if}
       </button>

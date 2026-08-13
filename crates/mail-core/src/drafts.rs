@@ -258,11 +258,9 @@ impl Store {
     /// Tous les brouillons d'UN compte — ce que le tirage compare à la
     /// liste distante.
     pub fn drafts_of(&self, account_id: i64) -> Result<Vec<SavedDraft>, Error> {
-        let mut stmt = self
-            .conn()
-            .prepare(&format!(
-                "{DRAFT_SELECT} WHERE d.account_id = ?1 ORDER BY d.id"
-            ))?;
+        let mut stmt = self.conn().prepare(&format!(
+            "{DRAFT_SELECT} WHERE d.account_id = ?1 ORDER BY d.id"
+        ))?;
         let rows = stmt
             .query_map([account_id], row_to_draft)?
             .collect::<Result<Vec<_>, _>>()?;

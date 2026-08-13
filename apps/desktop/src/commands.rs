@@ -11,7 +11,7 @@ use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use mail_auth::{AccountSession, Authenticated, Authenticator, GenericCredentials};
 use mail_core::AccountConfig;
@@ -601,6 +601,48 @@ fn relever_inbox(
     Ok((report, statut_inbox))
 }
 
+/// Combien attendre après `echecs` échecs CONSÉCUTIFS d'un compte —
+/// décision pure (complément P0, anti-martèlement). 0 ou 1 échec :
+/// rien, la cadence de 5 min est déjà une politesse ; ensuite le délai
+/// DOUBLE (10, 20, 40 min), plafonné à 60 — un serveur qui bride a
+/// besoin d'air, pas d'un client qui insiste.
+fn attente_apres_echecs(echecs: u32) -> Duration {
+    if echecs <= 1 {
+        return Duration::ZERO;
+    }
+    let facteur = 1u64 << (echecs - 1).min(4);
+    Duration::from_secs((300 * facteur).min(3600))
+}
+
+/// Le temps restant du recul de ce compte, s'il court encore. Un
+/// verrou illisible vaut « pas de recul » : la protection cède le pas
+/// à la relève, jamais l'inverse.
+fn recul_en_cours(reculs: &Mutex<HashMap<String, crate::Recul>>, email: &str) -> Option<Duration> {
+    let reculs = reculs.lock().ok()?;
+    let recul = reculs.get(email)?;
+    attente_apres_echecs(recul.echecs)
+        .checked_sub(recul.depuis.elapsed())
+        .filter(|reste| !reste.is_zero())
+}
+
+/// Solde l'issue d'une tentative : le succès efface le recul, l'échec
+/// l'aggrave et repart de maintenant.
+fn noter_issue(reculs: &Mutex<HashMap<String, crate::Recul>>, email: &str, succes: bool) {
+    let Ok(mut reculs) = reculs.lock() else {
+        return;
+    };
+    if succes {
+        reculs.remove(email);
+        return;
+    }
+    let recul = reculs.entry(email.to_string()).or_insert(crate::Recul {
+        echecs: 0,
+        depuis: Instant::now(),
+    });
+    recul.echecs = recul.echecs.saturating_add(1);
+    recul.depuis = Instant::now();
+}
+
 /// À la sortie du cycle — normale ou par panique — l'activité s'éteint :
 /// une barre d'état qui annoncerait un cycle fantôme serait le mensonge
 /// exact que E1 corrige.
@@ -624,6 +666,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     // la relève INBOX soldée (P1) — plus d'agrégat de fin de cycle, qui
     // faisait toujours perdre la course contre le téléphone.
     let app_bulles = app.clone();
+    let reculs = state.sync_reculs.clone();
 
     let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
         tauri::async_runtime::spawn_blocking(move || {
@@ -645,12 +688,27 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             let mut refreshed = Vec::new();
             for (account_id, session) in jobs {
                 let email = session.email().to_string();
+                // Le recul (complément P0) : un compte en échecs répétés
+                // est SAUTÉ tant que son délai court — aucune connexion,
+                // aucun refresh OAuth. Sans être TU : il reste compté
+                // injoignable, sinon l'alerte de la barre s'éteindrait
+                // sur un compte toujours mort.
+                if let Some(reste) = recul_en_cours(&reculs, &email) {
+                    accounts_failed += 1;
+                    errors.push(format!(
+                        "{email} : en recul après échecs répétés — nouvelle tentative dans {} min",
+                        reste.as_secs().div_ceil(60).max(1)
+                    ));
+                    cycle.fait.fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
                 if let Ok(mut compte) = cycle.compte.lock() {
                     compte.clone_from(&email);
                 }
                 poser_boite(&cycle, "");
                 match run_sync(&session, account_id, &path, &cycle, &app_bulles) {
                     Ok(outcome) => {
+                        noter_issue(&reculs, &email, true);
                         accounts += 1;
                         fetched += outcome.report.fetched;
                         deleted += outcome.report.deleted;
@@ -663,6 +721,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                         }
                     }
                     Err(err) => {
+                        noter_issue(&reculs, &email, false);
                         accounts_failed += 1;
                         errors.push(format!("{email} : {err}"));
                     }
@@ -718,12 +777,14 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
 pub async fn sync_inbox_light(
     app: AppHandle,
     state: State<'_, AppState>,
+    force: bool,
 ) -> Result<SyncSummary, String> {
     let path = db_path(&app)?;
     let jobs = connected_jobs(&path, &state)?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
     let app_bulles = app.clone();
+    let reculs = state.sync_reculs.clone();
 
     let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
         tauri::async_runtime::spawn_blocking(move || {
@@ -744,6 +805,18 @@ pub async fn sync_inbox_light(
             let mut refreshed = Vec::new();
             for (account_id, session) in jobs {
                 let email = session.email().to_string();
+                // Le recul vaut aussi pour la passe légère (réveil de
+                // veille, futur IDLE) — SAUF sur le geste manuel : le
+                // clic est un ordre, il force toujours une tentative.
+                if !force && let Some(reste) = recul_en_cours(&reculs, &email) {
+                    accounts_failed += 1;
+                    errors.push(format!(
+                        "{email} : en recul après échecs répétés — nouvelle tentative dans {} min",
+                        reste.as_secs().div_ceil(60).max(1)
+                    ));
+                    cycle.fait.fetch_add(1, Ordering::Relaxed);
+                    continue;
+                }
                 if let Ok(mut compte) = cycle.compte.lock() {
                     compte.clone_from(&email);
                 }
@@ -765,6 +838,7 @@ pub async fn sync_inbox_light(
                 })();
                 match releve {
                     Ok((report, problems, fresh)) => {
+                        noter_issue(&reculs, &email, true);
                         accounts += 1;
                         fetched += report.fetched;
                         deleted += report.deleted;
@@ -777,6 +851,7 @@ pub async fn sync_inbox_light(
                         }
                     }
                     Err(err) => {
+                        noter_issue(&reculs, &email, false);
                         accounts_failed += 1;
                         errors.push(format!("{email} : {err}"));
                     }
@@ -2513,6 +2588,12 @@ fn connect_imap(session: &AccountSession) -> Result<(ImapServer, Option<AccountS
             match ImapServer::connect_xoauth2(imap.host, imap.port, &auth.email, &auth.access_token)
             {
                 Ok(server) => Ok((server, None)),
+                // Une panne de CONNEXION n'est pas un jeton mort : pas de
+                // rafraîchissement — marteler l'endpoint OAuth à chaque
+                // cycle en panne réseau est le meilleur moyen de
+                // transformer un bridage IMAP en gel du compte
+                // (complément P0, anti-martèlement).
+                Err(err) if mail_imap::is_connection_error(&err) => Err(err.to_string()),
                 Err(_) => {
                     let fresh = Authenticator::from_env(auth.provider)
                         .map_err(|err| err.to_string())?
@@ -3075,6 +3156,47 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La table du recul (complément P0) : rien avant deux échecs — la
+    /// cadence de 5 min est déjà une politesse —, puis le délai double,
+    /// plafonné à l'heure. Un débordement d'échecs (compteur fou) ne
+    /// doit jamais faire paniquer le décalage de bits.
+    #[test]
+    fn le_recul_double_puis_plafonne() {
+        assert_eq!(attente_apres_echecs(0), Duration::ZERO);
+        assert_eq!(attente_apres_echecs(1), Duration::ZERO);
+        assert_eq!(attente_apres_echecs(2), Duration::from_secs(600));
+        assert_eq!(attente_apres_echecs(3), Duration::from_secs(1200));
+        assert_eq!(attente_apres_echecs(4), Duration::from_secs(2400));
+        assert_eq!(attente_apres_echecs(5), Duration::from_secs(3600));
+        assert_eq!(attente_apres_echecs(u32::MAX), Duration::from_secs(3600));
+    }
+
+    /// Le cycle de vie complet : deux échecs posent un recul qui court,
+    /// un succès l'efface entièrement — le compte repart confiant.
+    #[test]
+    fn un_succes_efface_le_recul() {
+        let reculs = Mutex::new(HashMap::new());
+        assert_eq!(recul_en_cours(&reculs, "a@exemple.fr"), None);
+
+        noter_issue(&reculs, "a@exemple.fr", false);
+        assert_eq!(
+            recul_en_cours(&reculs, "a@exemple.fr"),
+            None,
+            "un seul échec ne recule pas : la cadence normale suffit"
+        );
+
+        noter_issue(&reculs, "a@exemple.fr", false);
+        assert!(
+            recul_en_cours(&reculs, "a@exemple.fr").is_some(),
+            "deux échecs consécutifs posent le recul"
+        );
+        // L'autre compte n'est pas touché : le recul est PAR compte.
+        assert_eq!(recul_en_cours(&reculs, "b@exemple.fr"), None);
+
+        noter_issue(&reculs, "a@exemple.fr", true);
+        assert_eq!(recul_en_cours(&reculs, "a@exemple.fr"), None);
+    }
 
     /// Un nom de pièce jointe est une chaîne choisie par l'EXPÉDITEUR.
     /// Écrit tel quel, il permet une écriture arbitraire de fichier

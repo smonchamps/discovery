@@ -53,6 +53,16 @@ pub(crate) struct SyncShared {
     pub courrier: AtomicU64,
 }
 
+/// Le recul d'un compte en échec (complément P0, anti-martèlement) :
+/// combien d'échecs CONSÉCUTIFS, et depuis quand. En mémoire seulement —
+/// un redémarrage repart confiant, et c'est voulu : le recul protège le
+/// serveur d'une boucle, pas d'un utilisateur qui relance son
+/// application.
+pub(crate) struct Recul {
+    pub echecs: u32,
+    pub depuis: Instant,
+}
+
 pub(crate) struct AppState {
     pub started_at: Instant,
     /// Sessions des comptes connectés, par email (multi-comptes).
@@ -70,6 +80,10 @@ pub(crate) struct AppState {
     pub migration: Arc<MigrationShared>,
     /// Activité du cycle de synchronisation, pour la barre d'état (E1).
     pub sync_cycle: Arc<SyncShared>,
+    /// Reculs par compte (email → échecs consécutifs) : le cycle et la
+    /// passe légère SAUTENT un compte en recul — sans le taire, il reste
+    /// compté injoignable. Le geste manuel force toujours la tentative.
+    pub sync_reculs: Arc<Mutex<HashMap<String, Recul>>>,
 }
 
 fn main() {
@@ -81,6 +95,7 @@ fn main() {
         bodies_backfill: Arc::new(Mutex::new(())),
         migration: Arc::new(MigrationShared::default()),
         sync_cycle: Arc::new(SyncShared::default()),
+        sync_reculs: Arc::new(Mutex::new(HashMap::new())),
     };
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())

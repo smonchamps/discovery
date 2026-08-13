@@ -239,6 +239,20 @@ là : il n'y a pas encore d'IDLE à casser.
 - Gate : réseau coupé en plein cycle → échec visible en < 3 min, cycle
   suivant reparti seul, sans redémarrage.
 
+**Complément (2026-08-13, revue anti-martèlement — livré le jour
+même)** : le bridage Gmail du jour a montré le risque symétrique du
+gel — insister. Trois protections : (1) **recul par compte** — deux
+échecs consécutifs et le compte est sauté par le cycle ET la passe
+légère, délai doublé 10 → 20 → 40 → 60 min plafonné (décision pure
+`attente_apres_echecs`, table de tests), sans être tu (il reste compté
+injoignable — l'alerte E3 tient) ; le **geste manuel force toujours**
+(le clic est un ordre) et un succès efface tout ; (2) le
+**rafraîchissement OAuth ne se tente plus sur une panne de connexion**
+(`is_connection_error`, contrat testé dans `mail-imap`) — un câble
+coupé n'est pas un jeton mort, l'endpoint de jetons n'est plus martelé
+en panne réseau ; (3) le spike IDLE avait déjà son délai doublé. En
+mémoire seulement : un redémarrage repart confiant.
+
 ### P1 — La visibilité par compte (avec ou avant E2b)
 
 **État : livrée le 2026-08-13 (gate locale verte), terrain CE dû —

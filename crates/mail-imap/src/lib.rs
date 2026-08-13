@@ -776,6 +776,21 @@ fn server_err(err: imap::Error) -> Error {
     Error::Server(err.to_string())
 }
 
+/// L'échec vient-il de la CONNEXION (résolution, TCP, TLS, délais P0)
+/// plutôt que de la suite (authentification, protocole) ?
+///
+/// Le shell s'en sert pour ne PAS rafraîchir un jeton OAuth sur une
+/// panne réseau : un câble coupé n'est pas un jeton mort, et marteler
+/// l'endpoint de jetons à chaque cycle en panne est le meilleur moyen
+/// de transformer un bridage IMAP en gel du compte.
+///
+/// Le contrat vit ICI, à côté du format qu'il inspecte : toute erreur
+/// de [`connect_client`] est préfixée « connexion hôte:port : … » —
+/// c'est ce préfixe qui fait foi.
+pub fn is_connection_error(err: &Error) -> bool {
+    matches!(err, Error::Server(msg) if msg.starts_with("connexion "))
+}
+
 /// Un message brut devient un corps affichable ET la description de ses
 /// pièces jointes — les deux se lisent dans les mêmes octets, il serait
 /// absurde de les redemander séparément.
@@ -855,5 +870,26 @@ mod connect_timeout_tests {
             .expect_err("un refus de STARTTLS doit être une erreur")
             .to_string();
         assert!(erreur.contains("STARTTLS refusé"), "erreur : {erreur}");
+    }
+
+    /// Le contrat du discriminant : une erreur de CONNEXION se reconnaît
+    /// (le shell ne rafraîchit pas un jeton OAuth sur une panne réseau),
+    /// une erreur d'authentification ou de protocole, non.
+    #[test]
+    fn une_panne_reseau_se_distingue_d_un_refus_d_authentification() {
+        let silencieux = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = silencieux.local_addr().unwrap().port();
+        let panne = connect_client(
+            "127.0.0.1",
+            port,
+            Duration::from_secs(5),
+            Duration::from_millis(200),
+        )
+        .expect_err("serveur muet");
+        assert!(super::is_connection_error(&panne), "panne : {panne}");
+
+        let refus =
+            mail_core::Error::Server("AUTHENTICATIONFAILED Invalid credentials".to_string());
+        assert!(!super::is_connection_error(&refus));
     }
 }
