@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Fenêtre principale : accès aux commandes du noyau uniquement.",
+  "description": "Fenêtre principale : commandes du noyau, plus le seul sélecteur de fichiers (pièces jointes, PJ-D5).",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }

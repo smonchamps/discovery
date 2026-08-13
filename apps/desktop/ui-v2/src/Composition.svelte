@@ -18,10 +18,17 @@
   // (un contenu vidé par l'utilisateur est le seul cas où fermer jette).
   //
   // Inertes comme au prototype : barre G/I/S/Liste/Lien/Citation,
-  // « Rendre indépendante », Cc/Cci ; « Joindre » répond par le toast du
-  // prototype. Écart dit : la ligne « De » montre l'adresse seule — le
-  // cœur ne stocke ni nom d'affichage ni étiquette de compte.
-  import { appel } from './lib/transport.js';
+  // « Rendre indépendante », Cc/Cci. Écart dit : la ligne « De » montre
+  // l'adresse seule — le cœur ne stocke ni nom d'affichage ni étiquette
+  // de compte.
+  //
+  // « Joindre » est RÉEL (PLAN-PIECES-JOINTES E2) : sélecteur natif,
+  // octets copiés au brouillon dès le geste (PJ-D1 — le brouillon-ancre
+  // naît au premier fichier), refus au plafond dit sous la rangée
+  // (PJ-D3), retrait par puce, poids total. Chaque geste rend l'epoch
+  // du brouillon et on L'ADOPTE : sans cela, l'autosave suivant verrait
+  // un conflit fantôme et bifurquerait le brouillon.
+  import { appel, choisirFichiers } from './lib/transport.js';
   import { t } from './lib/texte.svelte.js';
 
   let {
@@ -41,6 +48,13 @@
   let objet = $state('');
   let corps = $state('');
   let fichiers = $state([]);
+  // Les pièces RÉELLES du brouillon (métadonnées) — à distinguer de
+  // `fichiers`, l'écho des pièces du message source (réponse/transfert,
+  // décoratif jusqu'à E3).
+  let pieces = $state([]);
+  // Le refus au plafond, affiché sous la rangée ; effacé au geste
+  // suivant qui aboutit (ajout accepté ou retrait).
+  let refus = $state(null);
   let envoiEnCours = $state(false);
   let replyToMailbox = null;
   let replyToUid = null;
@@ -82,6 +96,8 @@
     objet = '';
     corps = '';
     fichiers = [];
+    pieces = [];
+    refus = null;
     replyToMailbox = null;
     replyToUid = null;
     brouillonId = null;
@@ -166,12 +182,22 @@
   // d'édition reste couvert.
   export function ouvrirBrouillon(brouillon) {
     jeton += 1;
+    const mien = jeton;
     mode = 'new';
     expediteur = compteDe(brouillon.account_id);
     a = brouillon.to;
     objet = brouillon.subject;
     corps = brouillon.body;
     fichiers = [];
+    pieces = [];
+    refus = null;
+    // Les puces reviennent avec le texte (PJ-D1) : les octets vivaient
+    // au brouillon, pas dans la session du composeur.
+    appel('draft_attachments', { draftId: brouillon.id })
+      .then((lues) => {
+        if (mien === jeton) pieces = lues;
+      })
+      .catch((err) => console.error('draft_attachments :', err));
     // La boîte revient AVEC l'UID : la chaîne réponse → brouillon →
     // reprise → sauvegarde ne doit pas perdre le lien au fil (B-D2).
     replyToMailbox = brouillon.reply_to_mailbox ?? null;
@@ -182,7 +208,9 @@
     setTimeout(() => champCorps?.focus(), 0);
   }
 
-  const vide = () => !a.trim() && !objet.trim() && !corps.trim();
+  // Un brouillon sans texte mais avec pièce n'est PAS vide : fermer le
+  // conserve, le contrat des brouillons couvre les octets.
+  const vide = () => !a.trim() && !objet.trim() && !corps.trim() && pieces.length === 0;
 
   function programmerSauvegarde() {
     clearTimeout(minuterie);
@@ -269,6 +297,9 @@
         body: corps,
         replyToMailbox,
         replyToUid,
+        // Le brouillon-ancre : ses pièces rejoignent le journal dans la
+        // même transaction (PJ-D2).
+        draftId: brouillonId,
       });
     } catch (err) {
       onflash(t('erreur.envoi', { err }));
@@ -294,8 +325,70 @@
       .finally(() => onenvoye());
   }
 
-  function joindre() {
-    onflash(t('toast.joindre'));
+  // Même forme que `human_size` du cœur (point décimal compris) : le
+  // poids total doit parler comme les puces qu'il somme.
+  const KO = 1024;
+  const MO = KO * 1024;
+  function poidsHumain(octets) {
+    if (octets < KO) return `${octets} o`;
+    if (octets < MO) return `${Math.round(octets / KO)} Ko`;
+    return `${(octets / MO).toFixed(1)} Mo`;
+  }
+  const poidsTotal = $derived(pieces.reduce((somme, piece) => somme + piece.size, 0));
+
+  async function joindre() {
+    if (!expediteur) {
+      onflash(t('erreur.aucunCompte'));
+      return;
+    }
+    const chemins = await choisirFichiers().catch((err) => {
+      onflash(t('erreur.piece', { err }));
+      return [];
+    });
+    if (chemins.length === 0) return;
+    try {
+      const bilan = await appel('attach_files', {
+        accountId: expediteur.account_id,
+        draftId: brouillonId,
+        paths: chemins,
+      });
+      // `null` : tout refusé sans brouillon préexistant — rien à adopter.
+      brouillonId = bilan.draft_id ?? brouillonId;
+      // L'epoch du geste, sinon l'autosave verrait un conflit fantôme.
+      if (bilan.updated_epoch != null) brouillonEpoch = bilan.updated_epoch;
+      pieces = bilan.pieces;
+      refus =
+        bilan.refused.length > 0
+          ? t('compo.pieceRefusee', {
+              nom: bilan.refused[0].name,
+              reste: bilan.refused[0].remaining,
+            })
+          : null;
+      onbrouillon();
+    } catch (err) {
+      onflash(t('erreur.piece', { err }));
+      // Un échec en cours de route a pu laisser des pièces entrées :
+      // relire plutôt que deviner.
+      if (brouillonId !== null) {
+        appel('draft_attachments', { draftId: brouillonId })
+          .then((lues) => {
+            pieces = lues;
+          })
+          .catch(() => {});
+      }
+    }
+  }
+
+  async function retirer(piece) {
+    try {
+      const epoch = await appel('detach_file', { attachmentId: piece.id });
+      pieces = pieces.filter((p) => p.id !== piece.id);
+      if (epoch != null) brouillonEpoch = epoch;
+      refus = null;
+      onbrouillon();
+    } catch (err) {
+      onflash(t('erreur.piece', { err }));
+    }
   }
 </script>
 
@@ -347,6 +440,28 @@
         <textarea bind:this={champCorps} bind:value={corps} oninput={programmerSauvegarde}
                   placeholder={t('compo.corpsPlaceholder')} data-testid="composition-corps"></textarea>
       </div>
+      {#if pieces.length > 0}
+        <div class="fichiers" data-testid="composition-pieces">
+          {#each pieces as piece (piece.id)}
+            <span class="piece" data-testid="piece-compo">
+              <span class="ms" aria-hidden="true">description</span>
+              <span class="nom">{piece.name}</span><span class="taille">{piece.human}</span>
+              <button type="button" class="retrait" data-testid="piece-retrait"
+                      aria-label={t('compo.retirerPiece', { nom: piece.name })}
+                      onclick={() => retirer(piece)}>
+                <span class="ms" aria-hidden="true">close</span></button>
+            </span>
+          {/each}
+          <span class="poids" data-testid="composition-poids">
+            {t('compo.poidsTotal', { poids: poidsHumain(poidsTotal) })}</span>
+        </div>
+      {/if}
+      <!-- Sans glyphe : `warning` n'est pas dans la police vendorisée
+           (l'inventaire est le contrat, A3) — le texte --alert porte
+           seul le refus ; glyphe à la régénération groupée d'E3. -->
+      {#if refus}
+        <div class="refus" data-testid="composition-refus">{refus}</div>
+      {/if}
       {#if fichiers.length > 0}
         <div class="fichiers">
           {#each fichiers as fichier (fichier.index)}
@@ -443,7 +558,26 @@
     background:transparent; font-family:inherit;
   }
 
-  .fichiers { padding:0 22px 14px; display:flex; gap:10px; flex-wrap:wrap; }
+  .fichiers { padding:0 22px 14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+
+  /* La puce d'une pièce à joindre (maquette §1) : nom + taille + retrait
+     dans la MÊME puce — un objet manipulable, pas deux lectures. */
+  .piece {
+    height:32px; padding:0 6px 0 12px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; white-space:nowrap;
+  }
+  .piece .nom { color:var(--ink); }
+  .piece .taille { font-size:12px; color:var(--muted); }
+  .retrait {
+    height:22px; width:22px; padding:0; display:inline-flex; align-items:center;
+    justify-content:center; color:var(--muted); background:transparent;
+    border:none; border-radius:4px; cursor:pointer;
+  }
+  .retrait:hover { background:var(--sel); color:var(--ink); }
+  .retrait .ms { font-size:13px; }
+  .poids { margin-left:auto; font-size:12.5px; color:var(--muted); white-space:nowrap; }
+  .refus { padding:0 22px 14px; font-size:13px; color:var(--alert); }
 
   .format {
     flex:none; padding:8px 18px; border-top:1px solid var(--border);

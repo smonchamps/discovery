@@ -91,7 +91,6 @@ export const EN = {
   'toast.brouillonEnregistre': 'Draft saved.',
   'toast.brouillonFork': 'This draft had changed elsewhere — your version was kept separately.',
   'toast.envoye': 'Message sent.',
-  'toast.joindre': 'File picker — coming soon.',
 
   // --- Enveloppes d'erreur (le détail du cœur reste verbatim, L-3) -----
   'erreur.renvoi': 'Could not resend: {err}',
@@ -103,6 +102,7 @@ export const EN = {
   'erreur.transfert': 'Could not forward: {err}',
   'erreur.repondreTous': 'Could not reply all: {err}',
   'erreur.envoi': 'Could not send: {err}',
+  'erreur.piece': 'Could not attach: {err}',
   'erreur.aucunCompte': 'No sending account — add an account.',
   'erreur.connexion': 'Could not connect: {err}',
 
@@ -158,6 +158,9 @@ export const EN = {
   'compo.lien': 'Link',
   'compo.citation': 'Quote',
   'compo.joindre': 'Attach',
+  'compo.retirerPiece': 'Remove {nom}',
+  'compo.poidsTotal': '{poids} / 25 MB',
+  'compo.pieceRefusee': '"{nom}" exceeds the remaining space ({reste}).',
   'compo.enregistrerBrouillon': 'Save draft',
 
   // --- Écran 01 et guichet de compte ------------------------------------

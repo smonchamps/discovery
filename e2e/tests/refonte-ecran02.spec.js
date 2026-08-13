@@ -2,6 +2,8 @@
 // nav réelle, onglets filtrés côté coeur, volet de lecture, action
 // réelle. Le fichier est nommé pour passer APRÈS les parcours v1
 // (ordre alphabétique) : une seule reconstruction d'assets par gate.
+import { mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchAppV2, closeApp } from '../launch.mjs';
 
@@ -509,4 +511,89 @@ test("Notifications : les bulles d'arrivée se coupent et la préférence tient 
   await bascule.click();
   await expect(bascule).toHaveAttribute('aria-checked', 'true');
   await page.locator('[data-testid="reglages-termine"]').click();
+});
+
+// ——— Pièces jointes (PLAN-PIECES-JOINTES E2) ——————————————————————————
+// La boîte de dialogue native n'est pas pilotable : la couture
+// `window.__e2ePieces` (transport.js) injecte les chemins de fixtures —
+// le sélecteur ne s'ouvre jamais, tout le reste du chemin est le vrai.
+
+const fixtures = path.resolve(import.meta.dirname, '..', '..', 'target', 'e2e', 'fixtures');
+
+test('joindre est réel : puces nom + taille, poids total, retrait par puce', async () => {
+  mkdirSync(fixtures, { recursive: true });
+  const devis = path.join(fixtures, 'devis.pdf');
+  const photo = path.join(fixtures, 'photo.jpg');
+  writeFileSync(devis, Buffer.alloc(812 * 1024, 1));
+  writeFileSync(photo, Buffer.alloc(2 * 1024 * 1024, 2));
+
+  await page.locator('[data-testid="ecrire"]').click();
+  await page.evaluate((chemins) => {
+    window.__e2ePieces = chemins;
+  }, [devis, photo]);
+  await page.locator('[data-testid="composition-joindre"]').click();
+
+  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(2);
+  await expect(page.locator('[data-testid="composition-pieces"]')).toContainText('devis.pdf');
+  await expect(page.locator('[data-testid="composition-pieces"]')).toContainText('photo.jpg');
+  // 812 Ko + 2 Mo — la même forme que les puces (point décimal du cœur).
+  await expect(page.locator('[data-testid="composition-poids"]')).toContainText('2.8 Mo / 25 Mo');
+
+  await page.locator('[data-testid="piece-retrait"]').first().click();
+  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="composition-poids"]')).toContainText('2.0 Mo / 25 Mo');
+});
+
+test('fermer conserve les pièces, la reprise les restitue (PJ-D1)', async () => {
+  await page.locator('[data-testid="composition-corps"]').fill('Corps avec pièce E2');
+  await page.locator('[data-testid="composition-annuler"]').click();
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
+
+  await dossier('brouillons').click();
+  await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
+  await page
+    .locator('[data-testid="ligne-brouillon"]', { hasText: 'Corps avec pièce E2' })
+    .click();
+  await expect(page.locator('[data-testid="composition"]')).toBeVisible();
+  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="composition-pieces"]')).toContainText('photo.jpg');
+});
+
+test("envoyer emporte la pièce : le journal la porte (PJ-D2)", async () => {
+  await page.locator('[data-testid="composition-a"]').fill('dest@exemple.fr');
+  await page.locator('[data-testid="composition-objet"]').fill('Envoi avec pièce E2');
+  await page.locator('[data-testid="composition-envoyer"]').click();
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
+
+  // Les comptes du décor n'ont pas de serveur : l'envoi reste journalisé
+  // en file — et le journal doit porter la pièce (assertion PJ-D2).
+  const statut = await page.evaluate(() => window.__TAURI__.core.invoke('outbox_status'));
+  const entree = statut.entries.find((e) => e.subject === 'Envoi avec pièce E2');
+  expect(entree).toBeTruthy();
+  expect(entree.pieces).toBe(1);
+});
+
+test('au-delà du plafond : le refus est dit, rien ne se joint (PJ-D3)', async () => {
+  const enorme = path.join(fixtures, 'enorme.bin');
+  writeFileSync(enorme, Buffer.alloc(26 * 1024 * 1024));
+
+  await page.locator('[data-testid="ecrire"]').click();
+  await page.evaluate((chemin) => {
+    window.__e2ePieces = [chemin];
+  }, enorme);
+  await page.locator('[data-testid="composition-joindre"]').click();
+
+  await expect(page.locator('[data-testid="composition-refus"]')).toContainText('enorme.bin');
+  await expect(page.locator('[data-testid="composition-refus"]')).toContainText(
+    'dépasse la place restante',
+  );
+  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(0);
+
+  await page.evaluate(() => {
+    delete window.__e2ePieces;
+  });
+  await page.locator('[data-testid="composition-annuler"]').click();
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
 });

@@ -1959,6 +1959,9 @@ pub struct OutboxEntry {
     pub state: String,
     pub attempts: u32,
     pub error: Option<String>,
+    /// Combien de pièces le journal porte pour cet envoi (PJ-D2) — la
+    /// quarantaine et le refus doivent pouvoir dire ce qui repartirait.
+    pub pieces: usize,
 }
 
 #[derive(Serialize)]
@@ -2130,6 +2133,9 @@ fn quote_date(envelope: &mail_core::Envelope) -> Option<String> {
 /// Journalise l'envoi dans la boîte d'envoi du compte émetteur — AVANT
 /// toute tentative réseau (règle « jamais d'envoi perdu »).
 #[tauri::command]
+// Les arguments d'une commande Tauri sont NOMMÉS à l'appel (objet JS) :
+// l'interversion silencieuse que vise le lint ne peut pas s'y produire.
+#[allow(clippy::too_many_arguments)]
 pub fn queue_send(
     app: AppHandle,
     account_id: i64,
@@ -2138,6 +2144,7 @@ pub fn queue_send(
     body: String,
     reply_to_mailbox: Option<String>,
     reply_to_uid: Option<u32>,
+    draft_id: Option<i64>,
 ) -> Result<(), String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let from = account_email(&store, account_id)?;
@@ -2156,9 +2163,17 @@ pub fn queue_send(
         .and_then(|envelope| envelope.message_id);
     let draft = mail_core::compose(&from, &to, &subject, &body, in_reply_to.as_deref())
         .map_err(|err| err.to_string())?;
-    store
-        .enqueue_outbox(account_id, &draft)
-        .map_err(|err| err.to_string())?;
+    // Avec un brouillon-ancre, ses pièces rejoignent le journal dans la
+    // MÊME transaction (PJ-D2) ; sans lui (composition jamais sauvée,
+    // donc sans pièce possible), le chemin historique suffit.
+    match draft_id {
+        Some(draft_id) => store
+            .enqueue_outbox_from_draft(account_id, &draft, draft_id)
+            .map_err(|err| err.to_string())?,
+        None => store
+            .enqueue_outbox(account_id, &draft)
+            .map_err(|err| err.to_string())?,
+    };
     Ok(())
 }
 
@@ -2260,6 +2275,7 @@ pub fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
             state: message.state.as_str().to_string(),
             attempts: message.attempts,
             error: message.last_error,
+            pieces: message.attachments.len(),
         });
     }
     Ok(status)
@@ -2388,6 +2404,191 @@ pub fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
 pub fn delete_draft(app: AppHandle, id: i64) -> Result<(), String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     store.delete_draft(id).map_err(|err| err.to_string())
+}
+
+// ---------------------------------------------------------------------
+// Pièces jointes du composeur (PLAN-PIECES-JOINTES E2).
+// ---------------------------------------------------------------------
+
+/// Une pièce d'un brouillon, pour les puces du composeur. Métadonnées
+/// seules — les octets ne quittent la base qu'à la construction MIME.
+#[derive(Serialize)]
+pub struct DraftPieceRow {
+    pub id: i64,
+    pub name: String,
+    pub mime: String,
+    /// Octets décodés, bruts — le poids total se somme côté UI.
+    pub size: u64,
+    /// Taille lisible, même forme que la Lecture (« 2.4 Mo »).
+    pub human: String,
+}
+
+/// Une pièce refusée au plafond (PJ-D3) — la surface dit le nom et la
+/// place restante, lisible.
+#[derive(Serialize)]
+pub struct RefusedPiece {
+    pub name: String,
+    pub remaining: String,
+}
+
+/// Bilan du geste « Joindre ».
+#[derive(Serialize)]
+pub struct AttachReport {
+    /// Le brouillon-ancre (créé au premier fichier si besoin, PJ-D1).
+    /// `None` : rien n'est entré ET aucun brouillon n'existait — l'ancre
+    /// créée pour rien a été reprise, pas de brouillon vide qui traîne.
+    pub draft_id: Option<i64>,
+    /// `None` si aucun fichier n'est entré (tout refusé) : le brouillon
+    /// n'a pas bougé, l'éditeur garde son repère.
+    pub updated_epoch: Option<i64>,
+    /// TOUTES les pièces du brouillon après le geste, dans l'ordre.
+    pub pieces: Vec<DraftPieceRow>,
+    pub refused: Vec<RefusedPiece>,
+}
+
+fn piece_row(meta: mail_core::DraftAttachmentMeta) -> DraftPieceRow {
+    DraftPieceRow {
+        id: meta.id,
+        name: meta.name,
+        mime: meta.mime,
+        size: meta.size,
+        human: mail_core::human_size(meta.size),
+    }
+}
+
+/// Type MIME déduit de l'extension — pour l'en-tête de la pièce, jamais
+/// pour une décision : un inconnu part en `application/octet-stream`,
+/// honnête et universellement accepté.
+fn mime_for_name(name: &str) -> &'static str {
+    let extension = name.rsplit('.').next().unwrap_or_default().to_lowercase();
+    match extension.as_str() {
+        "pdf" => "application/pdf",
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "txt" | "md" | "log" => "text/plain",
+        "html" | "htm" => "text/html",
+        "csv" => "text/csv",
+        "zip" => "application/zip",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "mp3" => "audio/mpeg",
+        "mp4" => "video/mp4",
+        "eml" => "message/rfc822",
+        "ics" => "text/calendar",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Joint des fichiers au brouillon : lit chaque chemin, copie les octets
+/// en base au geste (PJ-D1 — le sélecteur a rendu des chemins, ils ne
+/// survivent pas à ce appel), refuse au plafond sans punir l'acquis.
+///
+/// `draft_id: None` : le brouillon-ancre est créé, vide de texte —
+/// l'autosave du composeur le remplira avec l'id et l'epoch rendus ici.
+#[tauri::command]
+pub fn attach_files(
+    app: AppHandle,
+    account_id: i64,
+    draft_id: Option<i64>,
+    paths: Vec<String>,
+) -> Result<AttachReport, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let cree = draft_id.is_none();
+    let draft_id = match draft_id {
+        Some(id) => id,
+        None => {
+            store
+                .save_draft(
+                    account_id,
+                    None,
+                    None,
+                    mail_core::DraftContent {
+                        to_raw: "",
+                        subject: "",
+                        body: "",
+                        reply_to_uid: None,
+                        reply_to_mailbox: None,
+                    },
+                )
+                .map_err(|err| err.to_string())?
+                .id
+        }
+    };
+    let mut updated_epoch = None;
+    let mut refused = Vec::new();
+    for path in &paths {
+        // Échec de lecture = échec franc du geste : les fichiers déjà
+        // entrés restent (l'UI relit les puces), celui-ci a un problème
+        // que l'utilisateur doit voir, pas un silence.
+        let bytes = std::fs::read(path).map_err(|err| format!("lecture de {path:?} : {err}"))?;
+        let name = std::path::Path::new(path)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| path.clone());
+        match store.add_draft_attachment(draft_id, &name, mime_for_name(&name), &bytes) {
+            Ok(saved) => updated_epoch = Some(saved.updated_epoch),
+            Err(mail_core::Error::AttachmentOverBudget {
+                name, remaining, ..
+            }) => refused.push(RefusedPiece {
+                name,
+                remaining: mail_core::human_size(remaining),
+            }),
+            Err(err) => return Err(err.to_string()),
+        }
+    }
+    // L'ancre créée pour rien (tout refusé) est reprise sur-le-champ :
+    // pas de brouillon vide fantôme au dossier.
+    if cree && updated_epoch.is_none() {
+        store
+            .delete_draft(draft_id)
+            .map_err(|err| err.to_string())?;
+        return Ok(AttachReport {
+            draft_id: None,
+            updated_epoch: None,
+            pieces: Vec::new(),
+            refused,
+        });
+    }
+    Ok(AttachReport {
+        draft_id: Some(draft_id),
+        updated_epoch,
+        pieces: store
+            .draft_attachments_meta(draft_id)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(piece_row)
+            .collect(),
+        refused,
+    })
+}
+
+/// Retire une pièce. Rend le nouvel `updated_epoch` du brouillon, ou
+/// `None` si la pièce n'existait plus (double-clic) — rien n'a bougé.
+#[tauri::command]
+pub fn detach_file(app: AppHandle, attachment_id: i64) -> Result<Option<i64>, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    store
+        .remove_draft_attachment(attachment_id)
+        .map_err(|err| err.to_string())
+}
+
+/// Les pièces d'un brouillon — la reprise redessine ses puces.
+#[tauri::command]
+pub fn draft_attachments(app: AppHandle, draft_id: i64) -> Result<Vec<DraftPieceRow>, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    Ok(store
+        .draft_attachments_meta(draft_id)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .map(piece_row)
+        .collect())
 }
 
 #[derive(Serialize)]
@@ -3215,6 +3416,19 @@ mod tests {
 
         noter_issue(&reculs, "a@exemple.fr", true);
         assert_eq!(recul_en_cours(&reculs, "a@exemple.fr"), None);
+    }
+
+    /// Le type d'une pièce à joindre se déduit de l'extension, sans
+    /// sensibilité à la casse ; l'inconnu part en flux d'octets — un
+    /// en-tête honnête, jamais une décision.
+    #[test]
+    fn mime_for_name_follows_the_extension_and_falls_back_generic() {
+        assert_eq!(mime_for_name("devis.pdf"), "application/pdf");
+        assert_eq!(mime_for_name("PHOTO.JPG"), "image/jpeg");
+        assert_eq!(mime_for_name("archive.tar.gz"), "application/octet-stream");
+        assert_eq!(mime_for_name("notes.txt"), "text/plain");
+        assert_eq!(mime_for_name("sans-extension"), "application/octet-stream");
+        assert_eq!(mime_for_name(""), "application/octet-stream");
     }
 
     /// Un nom de pièce jointe est une chaîne choisie par l'EXPÉDITEUR.

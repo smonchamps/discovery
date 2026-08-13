@@ -26,6 +26,10 @@ tauri-plugin-notification = "2"
 # raison que les notifications : la webview n'appelle jamais l'API
 # updater, seulement nos commandes — capabilities au strict minimum.
 tauri-plugin-updater = "2"
+# Selecteur de fichiers natif du composeur (PLAN-PIECES-JOINTES, PJ-D5).
+# Seule exception au « pilote depuis Rust » : la boite de dialogue est
+# un geste de la webview — capability limitee a dialog:allow-open.
+tauri-plugin-dialog = "2"
 # Espace disque disponible (garde de l'ADR 0010 §4). Dans l'app et non
 # dans mail-core : interroger le systeme de fichiers est de l'I/O de
 # plateforme, la DECISION (disk_shortfall) reste pure dans le coeur.

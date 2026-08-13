@@ -30,13 +30,19 @@ pub struct Attachment {
 impl Attachment {
     /// Taille lisible, à l'usage de l'UI.
     pub fn human_size(&self) -> String {
-        const KO: u64 = 1024;
-        const MO: u64 = KO * 1024;
-        match self.size {
-            0..=1023 => format!("{} o", self.size),
-            n if n < MO => format!("{:.0} Ko", n as f64 / KO as f64),
-            n => format!("{:.1} Mo", n as f64 / MO as f64),
-        }
+        human_size(self.size)
+    }
+}
+
+/// Taille lisible — la même forme pour la Lecture et le composeur
+/// (puces des pièces à joindre, place restante d'un refus au plafond).
+pub fn human_size(bytes: u64) -> String {
+    const KO: u64 = 1024;
+    const MO: u64 = KO * 1024;
+    match bytes {
+        0..=1023 => format!("{bytes} o"),
+        n if n < MO => format!("{:.0} Ko", n as f64 / KO as f64),
+        n => format!("{:.1} Mo", n as f64 / MO as f64),
     }
 }
 

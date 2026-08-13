@@ -93,7 +93,6 @@ export const FR = {
   'toast.brouillonEnregistre': 'Brouillon enregistré.',
   'toast.brouillonFork': 'Ce brouillon avait changé ailleurs — votre version a été conservée à part.',
   'toast.envoye': 'Message envoyé.',
-  'toast.joindre': 'Sélecteur de fichiers — à venir.',
 
   // --- Enveloppes d'erreur (le détail du cœur reste verbatim, L-3) -----
   'erreur.renvoi': 'Renvoi impossible : {err}',
@@ -105,6 +104,7 @@ export const FR = {
   'erreur.transfert': 'Transfert impossible : {err}',
   'erreur.repondreTous': 'Répondre à tous impossible : {err}',
   'erreur.envoi': 'Envoi impossible : {err}',
+  'erreur.piece': 'Pièce jointe impossible : {err}',
   'erreur.aucunCompte': 'Aucun compte émetteur — ajoutez un compte.',
   'erreur.connexion': 'Connexion impossible : {err}',
 
@@ -160,6 +160,9 @@ export const FR = {
   'compo.lien': 'Lien',
   'compo.citation': 'Citation',
   'compo.joindre': 'Joindre',
+  'compo.retirerPiece': 'Retirer {nom}',
+  'compo.poidsTotal': '{poids} / 25 Mo',
+  'compo.pieceRefusee': '« {nom} » dépasse la place restante ({reste}).',
   'compo.enregistrerBrouillon': 'Enregistrer le brouillon',
 
   // --- Écran 01 et guichet de compte ------------------------------------

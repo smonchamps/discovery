@@ -196,11 +196,21 @@ plafond, le transfert réel, la reprise d'un brouillon avec pièces).
   noms RFC 2231, repli octet-stream, refus franc sur journal purgé).
   Rien ne change à l'écran, tout est testé — gates : 400 Rust (20
   neufs : `tests_pieces` × 2 + fil SMTP), clippy muet.
-- **E2 — le composeur** : plugin dialog + capacité, commandes
-  `attach_files`/`detach_file`/`draft_attachments`, puces réelles,
-  `vide()` élargi, reprise avec pièces, catalogues, e2e par la couture.
+- **E2 — le composeur** *(livré le 2026-08-14)* : plugin dialog +
+  capacité `dialog:allow-open`, commandes `attach_files` (brouillon-ancre
+  au premier fichier, repris si tout est refusé) / `detach_file` /
+  `draft_attachments`, `queue_send` porte `draftId`, puces réelles
+  (nom + taille + retrait), poids total, refus au plafond sous la rangée,
+  `vide()` compte les pièces, reprise avec puces, epoch des gestes
+  adopté (pas de fork fantôme), `OutboxEntry.pieces`, catalogues
+  (`toast.joindre` morte), e2e par la couture `window.__e2ePieces`
+  (4 parcours). Écart dit : le refus est sans glyphe (`warning` absent
+  de la police — régénération groupée à E3 avec `hourglass_empty`).
   C'est le commit qui tient la commande : « Joindre » joint, l'envoi
-  emporte.
+  emporte. Au passage, régression rattrapée : la conf expédiée pointait
+  de nouveau sur la v1 dormante (`frontendDist: "ui"`, échange de banc
+  resté sale au commit 4dbf06f) — invisible de la CI, la gate e2e vivant
+  hors CI hébergée (ADR 0005).
 - **E3 — le transfert réel et la réponse honnête** : rapatriement par
   pièce avec états, retrait de la fiction en réponse, reflet IMAP
   multipart (`sync_drafts`, PJ-D6). Le plan se solde ici.

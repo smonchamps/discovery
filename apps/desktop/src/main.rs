@@ -100,6 +100,7 @@ fn main() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(state)
         // Installe le hook de panic et charge le consentement AVANT tout
         // le reste : un plantage precoce doit pouvoir etre capture (si
@@ -143,6 +144,9 @@ fn main() {
             commands::save_draft,
             commands::list_drafts,
             commands::delete_draft,
+            commands::attach_files,
+            commands::detach_file,
+            commands::draft_attachments,
             commands::sync_drafts,
             commands::sync_progress,
             commands::sync_activity,

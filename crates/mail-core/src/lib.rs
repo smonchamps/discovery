@@ -29,7 +29,7 @@ mod transport;
 
 pub use action::{Action, PendingAction};
 pub use address::EmailAddress;
-pub use attachment::Attachment;
+pub use attachment::{Attachment, human_size};
 pub use backfill::{
     BACKFILL_BATCH, BackfillReport, NO_HORIZON, THREAD_HEADER_BATCH, backfill_bodies,
     backfill_thread_headers,
