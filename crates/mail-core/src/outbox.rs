@@ -72,6 +72,20 @@ impl OutboxState {
     }
 }
 
+/// Une pièce du journal d'envoi.
+///
+/// `bytes` est `None` une fois le message parti (purge PJ-D7) :
+/// l'historique garde le nom et le poids, jamais les octets. Tant que le
+/// message peut repartir — file, quarantaine, refus — les octets sont là.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutboxAttachment {
+    pub name: String,
+    pub mime: String,
+    /// Octets DÉCODÉS — la taille que l'utilisateur reconnaît.
+    pub size: u64,
+    pub bytes: Option<Vec<u8>>,
+}
+
 /// Un message journalisé dans la boîte d'envoi.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutboxMessage {
@@ -86,6 +100,8 @@ pub struct OutboxMessage {
     pub subject: String,
     pub body_text: String,
     pub in_reply_to: Option<String>,
+    /// Les pièces, dans l'ordre du geste (PJ-D2).
+    pub attachments: Vec<OutboxAttachment>,
     pub state: OutboxState,
     pub attempts: u32,
     pub last_error: Option<String>,
@@ -120,6 +136,28 @@ impl Store {
         Ok(self.conn().last_insert_rowid())
     }
 
+    /// Journalise l'intention d'envoi ET copie les pièces du brouillon
+    /// dans la MÊME transaction (PJ-D2) : « jamais d'envoi perdu » couvre
+    /// les octets — le brouillon peut ensuite disparaître (il a rempli
+    /// son office), le journal se suffit.
+    pub fn enqueue_outbox_from_draft(
+        &self,
+        account_id: i64,
+        draft: &Draft,
+        draft_id: i64,
+    ) -> Result<i64, Error> {
+        let tx = self.conn().unchecked_transaction()?;
+        let outbox_id = self.enqueue_outbox(account_id, draft)?;
+        tx.execute(
+            "INSERT INTO outbox_attachments (outbox_id, name, mime, size, bytes)
+             SELECT ?1, name, mime, size, bytes FROM draft_attachments
+             WHERE draft_id = ?2 ORDER BY id",
+            params![outbox_id, draft_id],
+        )?;
+        tx.commit()?;
+        Ok(outbox_id)
+    }
+
     /// La file d'envoi d'UN compte, dans l'ordre d'émission — chaque
     /// vidange passe par la connexion SMTP de son compte.
     pub fn outbox_to_send(&self, account_id: i64) -> Result<Vec<OutboxMessage>, Error> {
@@ -129,7 +167,7 @@ impl Store {
         let rows = stmt
             .query_map([account_id], row_to_outbox)?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
+        self.load_outbox_attachments(rows)
     }
 
     /// Toute la boîte d'envoi, dans l'ordre d'émission.
@@ -140,7 +178,7 @@ impl Store {
         let rows = stmt
             .query_map([], row_to_outbox)?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
+        self.load_outbox_attachments(rows)
     }
 
     /// Les messages dans un état donné, dans l'ordre d'émission.
@@ -151,7 +189,44 @@ impl Store {
         let rows = stmt
             .query_map([state.as_str()], row_to_outbox)?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
+        self.load_outbox_attachments(rows)
+    }
+
+    /// Attache leurs pièces aux messages relus. La boîte d'envoi se
+    /// compte en unités — une requête par message est sans enjeu, et le
+    /// chemin de lecture reste unique pour les trois entrées.
+    fn load_outbox_attachments(
+        &self,
+        mut messages: Vec<OutboxMessage>,
+    ) -> Result<Vec<OutboxMessage>, Error> {
+        let mut stmt = self.conn().prepare(
+            "SELECT name, mime, size, bytes FROM outbox_attachments
+             WHERE outbox_id = ?1 ORDER BY id",
+        )?;
+        for message in &mut messages {
+            message.attachments = stmt
+                .query_map([message.id], |row| {
+                    Ok(OutboxAttachment {
+                        name: row.get(0)?,
+                        mime: row.get(1)?,
+                        size: row.get(2)?,
+                        bytes: row.get(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+        }
+        Ok(messages)
+    }
+
+    /// PJ-D7 : le message est parti, ses octets quittent le journal — les
+    /// métadonnées restent (l'historique se lit encore). Seul `sent` purge :
+    /// quarantaine et refus gardent tout, le renvoi doit rester entier.
+    pub(crate) fn purge_sent_attachment_bytes(&self, id: i64) -> Result<(), Error> {
+        self.conn().execute(
+            "UPDATE outbox_attachments SET bytes = NULL WHERE outbox_id = ?1",
+            [id],
+        )?;
+        Ok(())
     }
 
     pub(crate) fn set_outbox_state(&self, id: i64, state: OutboxState) -> Result<(), Error> {
@@ -238,6 +313,9 @@ fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
         subject: row.get(5)?,
         body_text: row.get(6)?,
         in_reply_to: row.get(7)?,
+        // Chargées par `load_outbox_attachments`, jamais ici : une ligne
+        // ne connaît pas ses pièces.
+        attachments: Vec::new(),
         state,
         attempts: row.get(9)?,
         last_error: row.get(10)?,
@@ -281,6 +359,7 @@ pub fn flush_outbox(
         match transport.send(&message) {
             Ok(()) => {
                 store.set_outbox_state(message.id, OutboxState::Sent)?;
+                store.purge_sent_attachment_bytes(message.id)?;
                 report.sent += 1;
             }
             Err(SendError::Transient(reason)) => {
@@ -588,5 +667,213 @@ mod tests {
             assert_eq!(OutboxState::parse(state.as_str()), Some(state));
         }
         assert_eq!(OutboxState::parse("inconnu"), None);
+    }
+}
+
+#[cfg(test)]
+mod tests_pieces {
+    use super::*;
+    use crate::compose::compose;
+    use crate::drafts::DraftContent;
+
+    /// Transport simulé, réduit à ce que ce module vérifie : les pièces
+    /// vues à la remise — ce que le transport reçoit est ce qui part.
+    #[derive(Default)]
+    struct FakeTransport {
+        attachments_seen: Vec<(String, bool)>,
+    }
+
+    impl MailTransport for FakeTransport {
+        fn send(&mut self, message: &OutboxMessage) -> Result<(), SendError> {
+            for piece in &message.attachments {
+                self.attachments_seen
+                    .push((piece.name.clone(), piece.bytes.is_some()));
+            }
+            Ok(())
+        }
+    }
+
+    fn store() -> (Store, i64) {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap();
+        (store, account)
+    }
+
+    fn draft_with_pieces(store: &Store, account: i64) -> i64 {
+        let id = store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "vous@exemple.fr",
+                    subject: "Photos",
+                    body: "corps",
+                    reply_to_uid: None,
+                    reply_to_mailbox: None,
+                },
+            )
+            .unwrap()
+            .id;
+        store
+            .add_draft_attachment(id, "facade.jpg", "image/jpeg", &[1, 2, 3])
+            .unwrap();
+        store
+            .add_draft_attachment(id, "devis.pdf", "application/pdf", &[4, 5])
+            .unwrap();
+        id
+    }
+
+    fn composed() -> Draft {
+        compose("moi@exemple.fr", "vous@exemple.fr", "Photos", "corps", None).unwrap()
+    }
+
+    /// PJ-D2 : le geste copie les pièces au journal — le brouillon peut
+    /// ensuite disparaître (envoi = il a rempli son office), le journal
+    /// se suffit à lui-même.
+    #[test]
+    fn enqueue_copies_pieces_and_survives_draft_deletion() {
+        let (store, account) = store();
+        let draft_id = draft_with_pieces(&store, account);
+        store
+            .enqueue_outbox_from_draft(account, &composed(), draft_id)
+            .unwrap();
+
+        store.delete_draft(draft_id).unwrap();
+
+        let queued = store.outbox_in_state(OutboxState::Queued).unwrap();
+        assert_eq!(queued.len(), 1);
+        let pieces = &queued[0].attachments;
+        assert_eq!(pieces.len(), 2);
+        assert_eq!(pieces[0].name, "facade.jpg");
+        assert_eq!(pieces[0].mime, "image/jpeg");
+        assert_eq!(pieces[0].size, 3);
+        assert_eq!(pieces[0].bytes.as_deref(), Some(&[1u8, 2, 3][..]));
+        assert_eq!(pieces[1].name, "devis.pdf");
+        assert_eq!(pieces[1].bytes.as_deref(), Some(&[4u8, 5][..]));
+    }
+
+    /// Règle d'or n°1, étendue : un crash entre le geste et la vidange ne
+    /// perd aucun octet — les pièces survivent à l'arrêt du processus.
+    #[test]
+    fn queued_pieces_survive_process_restart() {
+        let path = std::env::temp_dir().join(format!(
+            "discovery-test-outbox-pieces-{}.db",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&path);
+        {
+            let store = Store::open(&path).unwrap();
+            let account = store
+                .adopt_or_create_account("test@exemple.fr", "gmail")
+                .unwrap();
+            let draft_id = draft_with_pieces(&store, account);
+            store
+                .enqueue_outbox_from_draft(account, &composed(), draft_id)
+                .unwrap();
+        } // « crash » : le processus s'arrête avant toute vidange.
+
+        let reopened = Store::open(&path).unwrap();
+        let queued = reopened.outbox_in_state(OutboxState::Queued).unwrap();
+        assert_eq!(queued[0].attachments.len(), 2);
+        assert!(queued[0].attachments.iter().all(|p| p.bytes.is_some()));
+
+        drop(reopened);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// La remise reçoit les octets ; PJ-D7 : sitôt parti, le journal les
+    /// purge — les métadonnées restent, l'historique se lit encore.
+    #[test]
+    fn sent_pieces_are_purged_to_metadata_only() {
+        let (mut store, account) = store();
+        let draft_id = draft_with_pieces(&store, account);
+        store
+            .enqueue_outbox_from_draft(account, &composed(), draft_id)
+            .unwrap();
+        let mut transport = FakeTransport::default();
+
+        let report = flush_outbox(&mut transport, &mut store, account).unwrap();
+
+        assert_eq!(report.sent, 1);
+        assert_eq!(
+            transport.attachments_seen,
+            vec![
+                ("facade.jpg".to_string(), true),
+                ("devis.pdf".to_string(), true)
+            ],
+            "la remise part avec les octets"
+        );
+        let sent = store.outbox_in_state(OutboxState::Sent).unwrap();
+        let pieces = &sent[0].attachments;
+        assert_eq!(pieces.len(), 2, "les métadonnées restent");
+        assert_eq!(pieces[0].name, "facade.jpg");
+        assert_eq!(pieces[0].size, 3);
+        assert!(
+            pieces.iter().all(|p| p.bytes.is_none()),
+            "les octets ont quitté le journal"
+        );
+    }
+
+    /// PJ-D7, l'autre moitié : la quarantaine GARDE ses octets — le
+    /// renvoi sur décision de l'utilisateur doit rester entier.
+    #[test]
+    fn quarantined_pieces_keep_their_bytes_and_requeue_sends_them() {
+        let (mut store, account) = store();
+        let draft_id = draft_with_pieces(&store, account);
+        let id = store
+            .enqueue_outbox_from_draft(account, &composed(), draft_id)
+            .unwrap();
+        // Crash simulé pendant la remise : l'état « sending » persiste.
+        store.set_outbox_state(id, OutboxState::Sending).unwrap();
+
+        let mut transport = FakeTransport::default();
+        flush_outbox(&mut transport, &mut store, account).unwrap();
+        let interrupted = store.outbox_in_state(OutboxState::Interrupted).unwrap();
+        assert!(
+            interrupted[0].attachments.iter().all(|p| p.bytes.is_some()),
+            "la quarantaine garde tout"
+        );
+
+        store.requeue_outbox(id).unwrap();
+        let report = flush_outbox(&mut transport, &mut store, account).unwrap();
+        assert_eq!(report.sent, 1);
+        assert!(
+            transport.attachments_seen.iter().all(|(_, bytes)| *bytes),
+            "le renvoi part entier"
+        );
+    }
+
+    /// L'abandon d'un envoi en file emporte ses blobs (cascade) — pas
+    /// d'octets orphelins dans le journal.
+    #[test]
+    fn deleting_a_pending_send_cascades_to_its_pieces() {
+        let (store, account) = store();
+        let draft_id = draft_with_pieces(&store, account);
+        let id = store
+            .enqueue_outbox_from_draft(account, &composed(), draft_id)
+            .unwrap();
+
+        store.delete_outbox(id).unwrap();
+
+        let orphans: i64 = store
+            .conn()
+            .query_row("SELECT COUNT(*) FROM outbox_attachments", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(orphans, 0);
+    }
+
+    /// Un envoi sans brouillon (composition jamais sauvée) reste
+    /// possible : le chemin historique n'exige aucune pièce.
+    #[test]
+    fn plain_enqueue_still_carries_no_pieces() {
+        let (store, account) = store();
+        store.enqueue_outbox(account, &composed()).unwrap();
+        let queued = store.outbox_in_state(OutboxState::Queued).unwrap();
+        assert!(queued[0].attachments.is_empty());
     }
 }

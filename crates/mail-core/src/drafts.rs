@@ -91,6 +91,38 @@ pub struct SavedDraft {
     pub pushed_epoch: Option<i64>,
 }
 
+/// Plafond des pièces d'UN message : 25 Mo de tailles décodées — la
+/// limite Gmail, la plus répandue (PJ-D3). Refusé au geste, jamais à
+/// l'envoi : la pièce de trop n'entre pas en base. L'encodage base64
+/// (+33 %) peut encore heurter un serveur plus strict : ce refus-là est
+/// un 5xx classé `Permanent`, porté par la fente d'avis existante.
+pub const MAX_ATTACHMENTS_BYTES: u64 = 25 * 1024 * 1024;
+
+/// Une pièce d'un brouillon, SANS ses octets : la liste des puces se
+/// dessine sans jamais charger les blobs — ils ne se lisent qu'à la
+/// construction MIME.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraftAttachmentMeta {
+    pub id: i64,
+    pub draft_id: i64,
+    pub name: String,
+    pub mime: String,
+    /// Octets DÉCODÉS — la taille que l'utilisateur reconnaît.
+    pub size: u64,
+}
+
+/// Bilan d'un geste sur les pièces (ajout ou retrait).
+///
+/// `updated_epoch` est à reprendre comme `base_epoch` par l'éditeur :
+/// le geste a modifié le brouillon (il se re-poussera au prochain
+/// cycle), et une sauvegarde qui garderait l'ancien repère se verrait
+/// accuser d'un conflit qui n'existe pas.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraftAttachmentSaved {
+    pub attachment: DraftAttachmentMeta,
+    pub updated_epoch: i64,
+}
+
 impl Store {
     /// Enregistre (`id: None`) ou met à jour un brouillon.
     ///
@@ -323,6 +355,100 @@ impl Store {
         Ok(())
     }
 
+    /// Joint une pièce au brouillon : les octets sont copiés en base AU
+    /// GESTE (PJ-D1) — jamais de chemin nu, un fichier déplacé ensuite ne
+    /// casse rien. Refuse au-delà du plafond (PJ-D3) sans rien joindre :
+    /// les pièces déjà acquises restent.
+    ///
+    /// Le brouillon est marqué modifié dans la même transaction : c'est
+    /// le geste qui porte la modification, pas l'autosave (PJ-D6).
+    pub fn add_draft_attachment(
+        &self,
+        draft_id: i64,
+        name: &str,
+        mime: &str,
+        bytes: &[u8],
+    ) -> Result<DraftAttachmentSaved, Error> {
+        let size = bytes.len() as u64;
+        let tx = self.conn().unchecked_transaction()?;
+        let used: u64 = tx.query_row(
+            "SELECT COALESCE(SUM(size), 0) FROM draft_attachments WHERE draft_id = ?1",
+            [draft_id],
+            |row| row.get(0),
+        )?;
+        let remaining = MAX_ATTACHMENTS_BYTES.saturating_sub(used);
+        if size > remaining {
+            return Err(Error::AttachmentOverBudget {
+                name: name.to_string(),
+                size,
+                remaining,
+            });
+        }
+        tx.execute(
+            "INSERT INTO draft_attachments (draft_id, name, mime, size, bytes)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![draft_id, name, mime, size, bytes],
+        )?;
+        let attachment_id = tx.last_insert_rowid();
+        let updated_epoch = touch_draft(&tx, draft_id)?;
+        tx.commit()?;
+        Ok(DraftAttachmentSaved {
+            attachment: DraftAttachmentMeta {
+                id: attachment_id,
+                draft_id,
+                name: name.to_string(),
+                mime: mime.to_string(),
+                size,
+            },
+            updated_epoch,
+        })
+    }
+
+    /// Retire une pièce d'un brouillon. Rend le nouvel `updated_epoch` du
+    /// brouillon (le retrait est une modification), ou `None` si la pièce
+    /// n'existait plus — un double-clic sur le retrait ne modifie rien.
+    pub fn remove_draft_attachment(&self, attachment_id: i64) -> Result<Option<i64>, Error> {
+        let tx = self.conn().unchecked_transaction()?;
+        let draft_id: Option<i64> = tx
+            .query_row(
+                "SELECT draft_id FROM draft_attachments WHERE id = ?1",
+                [attachment_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(draft_id) = draft_id else {
+            return Ok(None);
+        };
+        tx.execute(
+            "DELETE FROM draft_attachments WHERE id = ?1",
+            [attachment_id],
+        )?;
+        let updated_epoch = touch_draft(&tx, draft_id)?;
+        tx.commit()?;
+        Ok(Some(updated_epoch))
+    }
+
+    /// Les pièces d'un brouillon, métadonnées seules, dans l'ordre du
+    /// geste — les blobs ne quittent la base qu'à la construction MIME.
+    pub fn draft_attachments_meta(&self, draft_id: i64) -> Result<Vec<DraftAttachmentMeta>, Error> {
+        let mut stmt = self.conn().prepare(
+            "SELECT id, draft_id, name, mime, size FROM draft_attachments
+             WHERE draft_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt
+            .query_map([draft_id], |row| {
+                Ok(DraftAttachmentMeta {
+                    id: row.get(0)?,
+                    draft_id: row.get(1)?,
+                    name: row.get(2)?,
+                    mime: row.get(3)?,
+                    size: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Enregistre un brouillon rapatrié du serveur.
     ///
     /// Il naît **propre** : `pushed_epoch` égale `updated_epoch`, donc le
@@ -496,6 +622,23 @@ impl SavedDraft {
             _ => false,
         }
     }
+}
+
+/// Marque un brouillon modifié par un geste sur ses pièces, et rend le
+/// nouvel horodatage. MAX(…, +1) : la même mécanique que `save_draft` —
+/// l'horodatage avance STRICTEMENT, sinon un geste dans la milliseconde
+/// de la photo d'une poussée resterait invisible au cycle suivant.
+fn touch_draft(conn: &rusqlite::Connection, draft_id: i64) -> Result<i64, Error> {
+    let now = Utc::now().timestamp_millis();
+    conn.execute(
+        "UPDATE drafts SET updated_epoch = MAX(?2, updated_epoch + 1) WHERE id = ?1",
+        params![draft_id, now],
+    )?;
+    Ok(conn.query_row(
+        "SELECT updated_epoch FROM drafts WHERE id = ?1",
+        [draft_id],
+        |row| row.get(0),
+    )?)
 }
 
 // Le fil se résout à la lecture — LEFT JOIN : un brouillon dont la
@@ -1544,5 +1687,185 @@ mod tests_fil {
             )
             .unwrap();
         assert_eq!(store.drafts_to_push(account).unwrap().len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod tests_pieces {
+    use super::*;
+
+    const MO: u64 = 1024 * 1024;
+
+    fn store_with_draft() -> (Store, i64) {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap();
+        let id = store
+            .save_draft(
+                account,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "vous@exemple.fr",
+                    subject: "Photos",
+                    body: "corps",
+                    reply_to_uid: None,
+                    reply_to_mailbox: None,
+                },
+            )
+            .unwrap()
+            .id;
+        (store, id)
+    }
+
+    fn table_rows(store: &Store, draft_id: i64) -> i64 {
+        store
+            .conn()
+            .query_row(
+                "SELECT COUNT(*) FROM draft_attachments WHERE draft_id = ?1",
+                [draft_id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn attach_stores_bytes_and_meta_lists_them_in_gesture_order() {
+        let (store, draft) = store_with_draft();
+        store
+            .add_draft_attachment(draft, "facade.jpg", "image/jpeg", &[1, 2, 3])
+            .unwrap();
+        store
+            .add_draft_attachment(draft, "devis.pdf", "application/pdf", &[4, 5])
+            .unwrap();
+
+        let meta = store.draft_attachments_meta(draft).unwrap();
+        assert_eq!(meta.len(), 2);
+        assert_eq!(meta[0].name, "facade.jpg");
+        assert_eq!(meta[0].mime, "image/jpeg");
+        assert_eq!(meta[0].size, 3);
+        assert_eq!(meta[1].name, "devis.pdf");
+        assert_eq!(meta[1].size, 2);
+    }
+
+    /// PJ-D3 : le refus se joue au geste — la pièce de trop n'entre pas,
+    /// les pièces déjà acquises restent, et l'erreur dit la place restante.
+    #[test]
+    fn over_budget_attachment_is_refused_and_earlier_pieces_stay() {
+        let (store, draft) = store_with_draft();
+        store
+            .add_draft_attachment(
+                draft,
+                "a.zip",
+                "application/zip",
+                &vec![0u8; (13 * MO) as usize],
+            )
+            .unwrap();
+
+        let refused = store.add_draft_attachment(
+            draft,
+            "b.zip",
+            "application/zip",
+            &vec![0u8; (13 * MO) as usize],
+        );
+
+        match refused {
+            Err(Error::AttachmentOverBudget {
+                name,
+                size,
+                remaining,
+            }) => {
+                assert_eq!(name, "b.zip");
+                assert_eq!(size, 13 * MO);
+                assert_eq!(remaining, MAX_ATTACHMENTS_BYTES - 13 * MO);
+            }
+            other => panic!("attendu un refus au plafond, obtenu {other:?}"),
+        }
+        let meta = store.draft_attachments_meta(draft).unwrap();
+        assert_eq!(meta.len(), 1, "l'acquis n'est pas puni");
+        assert_eq!(meta[0].name, "a.zip");
+    }
+
+    /// La borne est INCLUSIVE : exactement 25 Mo passe, un octet de plus non.
+    #[test]
+    fn budget_boundary_is_inclusive() {
+        let (store, draft) = store_with_draft();
+        store
+            .add_draft_attachment(
+                draft,
+                "pile.bin",
+                "application/octet-stream",
+                &vec![0u8; MAX_ATTACHMENTS_BYTES as usize],
+            )
+            .unwrap();
+        let refused = store.add_draft_attachment(draft, "goutte.txt", "text/plain", &[0u8]);
+        assert!(matches!(
+            refused,
+            Err(Error::AttachmentOverBudget { remaining: 0, .. })
+        ));
+    }
+
+    /// PJ-D1 : jeter le brouillon emporte ses octets (cascade).
+    #[test]
+    fn deleting_the_draft_cascades_to_its_attachments() {
+        let (store, draft) = store_with_draft();
+        store
+            .add_draft_attachment(draft, "f.pdf", "application/pdf", &[1])
+            .unwrap();
+        assert_eq!(table_rows(&store, draft), 1);
+
+        store.delete_draft(draft).unwrap();
+
+        assert_eq!(table_rows(&store, draft), 0, "aucun blob orphelin");
+    }
+
+    /// Le geste marque le brouillon modifié (PJ-D6) et rend le nouvel
+    /// horodatage — l'éditeur le reprend comme `base_epoch`, sinon sa
+    /// prochaine sauvegarde se verrait accuser d'un conflit fantôme.
+    #[test]
+    fn attach_and_detach_advance_the_draft_epoch_strictly() {
+        let (store, draft) = store_with_draft();
+        let before = store.drafts().unwrap()[0].updated_epoch;
+
+        let saved = store
+            .add_draft_attachment(draft, "f.pdf", "application/pdf", &[1])
+            .unwrap();
+        assert!(saved.updated_epoch > before, "l'ajout est une modification");
+        let stored = store.drafts().unwrap()[0].updated_epoch;
+        assert_eq!(
+            saved.updated_epoch, stored,
+            "le bilan dit ce qui est en base"
+        );
+
+        let after_removal = store
+            .remove_draft_attachment(saved.attachment.id)
+            .unwrap()
+            .expect("la pièce existait");
+        assert!(after_removal > saved.updated_epoch);
+        assert!(store.draft_attachments_meta(draft).unwrap().is_empty());
+    }
+
+    /// Un double-clic sur le retrait ne modifie rien la seconde fois.
+    #[test]
+    fn removing_a_gone_attachment_is_a_silent_noop() {
+        let (store, draft) = store_with_draft();
+        let saved = store
+            .add_draft_attachment(draft, "f.pdf", "application/pdf", &[1])
+            .unwrap();
+        let epoch = store
+            .remove_draft_attachment(saved.attachment.id)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            store.remove_draft_attachment(saved.attachment.id).unwrap(),
+            None
+        );
+        assert_eq!(
+            store.drafts().unwrap()[0].updated_epoch,
+            epoch,
+            "pas de modification fantôme"
+        );
     }
 }

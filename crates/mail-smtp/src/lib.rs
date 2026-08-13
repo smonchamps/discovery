@@ -15,7 +15,8 @@
 //! au dossier « Envoyés » — aucun APPEND IMAP à faire. D'autres
 //! fournisseurs l'exigeront (Phase 3, multi-comptes).
 
-use lettre::message::Mailbox;
+use lettre::message::header::ContentType;
+use lettre::message::{Attachment as FilePart, Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::SmtpTransportBuilder;
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
 use lettre::{Message, SmtpTransport, Transport};
@@ -133,8 +134,35 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
             .in_reply_to(parent.clone())
             .references(parent.clone());
     }
+    if message.attachments.is_empty() {
+        return builder
+            .body(message.body_text.clone())
+            .map_err(|err| SendError::Permanent(format!("construction du message : {err}")));
+    }
+    // multipart/mixed : le texte d'abord, puis chaque pièce telle que le
+    // journal la porte (PJ-D2) — les octets viennent du journal, jamais
+    // d'un fichier relu à l'envoi.
+    let mut parts = MultiPart::mixed().singlepart(SinglePart::plain(message.body_text.clone()));
+    for piece in &message.attachments {
+        // Des octets absents signent un journal purgé (PJ-D7) : par
+        // construction, un message purgé est `sent`, donc jamais revenu
+        // en file. Si l'invariant casse, refus franc — renvoyer un
+        // message amputé de ses pièces serait pire.
+        let bytes = piece.bytes.clone().ok_or_else(|| {
+            SendError::Permanent(format!(
+                "pièce {:?} sans octets : journal purgé, envoi refusé",
+                piece.name
+            ))
+        })?;
+        // Un type inconnu ne bloque pas l'envoi : le flux d'octets
+        // générique dit honnêtement « je ne sais pas ».
+        let mime = ContentType::parse(&piece.mime)
+            .or_else(|_| ContentType::parse("application/octet-stream"))
+            .map_err(|err| SendError::Permanent(format!("type de pièce : {err}")))?;
+        parts = parts.singlepart(FilePart::new(piece.name.clone()).body(bytes, mime));
+    }
     builder
-        .body(message.body_text.clone())
+        .multipart(parts)
         .map_err(|err| SendError::Permanent(format!("construction du message : {err}")))
 }
 
@@ -175,7 +203,7 @@ fn parse_mailbox(address: &str) -> Result<Mailbox, SendError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mail_core::OutboxState;
+    use mail_core::{OutboxAttachment, OutboxState};
     use std::net::TcpListener;
     use std::sync::mpsc;
     use std::thread;
@@ -191,6 +219,7 @@ mod tests {
             subject: "Bonjour".to_string(),
             body_text: "Premier essai.\nDeuxième ligne.".to_string(),
             in_reply_to: in_reply_to.map(str::to_string),
+            attachments: vec![],
             state: OutboxState::Queued,
             attempts: 0,
             last_error: None,
@@ -239,6 +268,99 @@ mod tests {
         let raw = formatted(&outbox_message(None));
         assert!(raw.contains("Premier essai."));
         assert!(raw.contains("Deuxi=C3=A8me ligne.") || raw.contains("Deuxième ligne."));
+    }
+
+    /// Un message sans pièce reste mono-partie : le chemin historique ne
+    /// paie pas le multipart.
+    #[test]
+    fn message_without_pieces_stays_single_part() {
+        let raw = formatted(&outbox_message(None));
+        assert!(!raw.contains("multipart/mixed"));
+    }
+
+    fn piece(name: &str, bytes: Option<Vec<u8>>) -> OutboxAttachment {
+        OutboxAttachment {
+            name: name.to_string(),
+            mime: "application/pdf".to_string(),
+            size: bytes.as_ref().map_or(0, |b| b.len() as u64),
+            bytes,
+        }
+    }
+
+    /// PJ-D2 côté fil : le message part en multipart/mixed — le texte
+    /// d'abord, puis chaque pièce en `attachment` avec son nom et ses
+    /// octets. Des octets binaires (haut bit posé) forcent le base64 :
+    /// FF D8 FF E0 s'encode « /9j/4A== ».
+    #[test]
+    fn pieces_travel_as_multipart_mixed_attachments() {
+        let mut message = outbox_message(None);
+        message.attachments = vec![piece("rapport.pdf", Some(vec![0xFF, 0xD8, 0xFF, 0xE0]))];
+        let raw = formatted(&message);
+
+        assert!(raw.contains("multipart/mixed"), "{raw}");
+        assert!(raw.contains("Content-Disposition: attachment"), "{raw}");
+        assert!(raw.contains("rapport.pdf"), "{raw}");
+        assert!(
+            raw.contains("/9j/4A=="),
+            "les octets doivent partir : {raw}"
+        );
+        assert!(
+            raw.contains("Premier essai."),
+            "le texte reste la première partie : {raw}"
+        );
+    }
+
+    /// Un nom non-ASCII ne part jamais cru dans les en-têtes : `lettre`
+    /// l'encode RFC 2231 (`filename*0*=utf-8''…`) — encodé, pas perdu.
+    #[test]
+    fn non_ascii_piece_names_are_encoded_in_headers() {
+        let mut message = outbox_message(None);
+        message.attachments = vec![piece("résumé années.pdf", Some(vec![1]))];
+        let email = build_message(&message).expect("message construisible");
+        let raw = String::from_utf8_lossy(&email.formatted()).to_string();
+
+        assert!(
+            !raw.contains("résumé"),
+            "le nom ne part pas cru dans les en-têtes : {raw}"
+        );
+        assert!(
+            raw.contains("filename*") || raw.contains("=?utf-8?"),
+            "le nom doit être encodé, pas perdu : {raw}"
+        );
+        assert!(
+            raw.contains("r%C3%A9sum%C3%A9") || raw.contains("=?utf-8?"),
+            "les octets UTF-8 du nom doivent se retrouver : {raw}"
+        );
+    }
+
+    /// L'invariant PJ-D7 tient au fil aussi : des octets purgés (message
+    /// déjà parti) ne construisent JAMAIS un message amputé — refus franc.
+    #[test]
+    fn purged_piece_is_a_permanent_refusal_never_an_amputated_message() {
+        let mut message = outbox_message(None);
+        message.attachments = vec![piece("parti.pdf", None)];
+        match build_message(&message) {
+            Err(SendError::Permanent(reason)) => {
+                assert!(reason.contains("parti.pdf"), "{reason}");
+            }
+            Err(other) => panic!("attendu un refus permanent, obtenu {other:?}"),
+            Ok(_) => panic!("attendu un refus permanent, obtenu un message construit"),
+        }
+    }
+
+    /// Un type MIME illisible ne bloque pas l'envoi : flux d'octets
+    /// générique — le refus au geste ne vit pas ici.
+    #[test]
+    fn unparseable_mime_falls_back_to_octet_stream() {
+        let mut message = outbox_message(None);
+        message.attachments = vec![OutboxAttachment {
+            name: "brut.bin".to_string(),
+            mime: "pas un type".to_string(),
+            size: 1,
+            bytes: Some(vec![7]),
+        }];
+        let raw = formatted(&message);
+        assert!(raw.contains("application/octet-stream"), "{raw}");
     }
 
     #[test]

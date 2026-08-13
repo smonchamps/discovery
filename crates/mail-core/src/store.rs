@@ -137,6 +137,20 @@ CREATE TABLE IF NOT EXISTS drafts (
     remote_uid    INTEGER,
     pushed_epoch  INTEGER
 );
+-- Les octets des pièces d'un brouillon, copiés AU GESTE (PLAN-PIECES-JOINTES,
+-- PJ-D1) : jamais de chemin nu en base — un fichier déplacé ou supprimé
+-- après le geste ne peut plus rien casser. À l'inverse de `attachments`
+-- (réception, métadonnées seules), ici les octets sont à NOUS : c'est le
+-- message qu'on promet d'envoyer.
+CREATE TABLE IF NOT EXISTS draft_attachments (
+    id       INTEGER PRIMARY KEY,
+    draft_id INTEGER NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
+    name     TEXT NOT NULL,
+    mime     TEXT NOT NULL,
+    size     INTEGER NOT NULL,
+    bytes    BLOB NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_draft_attachments_draft ON draft_attachments(draft_id);
 CREATE TABLE IF NOT EXISTS draft_tombstones (
     account_id INTEGER NOT NULL,
     remote_uid INTEGER NOT NULL,
@@ -167,6 +181,20 @@ CREATE TABLE IF NOT EXISTS outbox (
     last_error   TEXT,
     queued_epoch INTEGER NOT NULL
 );
+-- Les pièces du journal d'envoi, copiées de `draft_attachments` dans la
+-- transaction du geste d'envoi (PJ-D2 : « jamais d'envoi perdu » couvre
+-- les octets). `bytes` passe à NULL au passage à `sent` (PJ-D7) : les
+-- métadonnées restent lisibles, la quarantaine et le refus gardent leurs
+-- octets — le renvoi sur décision de l'utilisateur doit rester entier.
+CREATE TABLE IF NOT EXISTS outbox_attachments (
+    id        INTEGER PRIMARY KEY,
+    outbox_id INTEGER NOT NULL REFERENCES outbox(id) ON DELETE CASCADE,
+    name      TEXT NOT NULL,
+    mime      TEXT NOT NULL,
+    size      INTEGER NOT NULL,
+    bytes     BLOB
+);
+CREATE INDEX IF NOT EXISTS idx_outbox_attachments_outbox ON outbox_attachments(outbox_id);
 ";
 
 /// Avancement de l'adoption d'une base héritée, pour l'affichage.

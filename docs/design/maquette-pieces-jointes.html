@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquettes — Pièces jointes (PLAN-PIECES-JOINTES)</title>
+<style>
+  /* Jetons du Système Clarity — valeurs exactes de systeme.css (nature, nuit). */
+  :root {
+    --bg:#f0f2ef; --panel:#eaece9; --surface:#ffffff;
+    --ink:#232725; --ink2:#4d534f; --muted:#5c625e;
+    --border:#dadfda; --accent:#2f6e5b; --accentH:#26594a;
+    --sel:#e6ede9; --alert:#8c2f22; --onAccent:#ffffff;
+    --shadow:0 2px 8px rgba(35,39,37,0.08);
+  }
+  :root[data-theme="nuit"] {
+    --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+    --ink:#edefed; --ink2:#b7bebb; --muted:#929a96;
+    --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+    --sel:#313f39; --alert:#ea9a90; --onAccent:#11201b;
+    --shadow:0 2px 12px rgba(0,0,0,0.40);
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); }
+  body {
+    font-family:"Segoe UI", system-ui, -apple-system, sans-serif;
+    color:var(--ink); padding:48px 32px 96px;
+  }
+  .page { max-width:1080px; margin:0 auto; display:flex; flex-direction:column; gap:44px; }
+  h1 { margin:0; font-size:26px; font-weight:600; letter-spacing:-.01em; }
+  h2 { margin:0; font-size:19px; font-weight:600; letter-spacing:-.01em; }
+  p.intro { margin:0; font-size:14px; line-height:1.65; color:var(--ink2); max-width:80ch; }
+  .section { display:flex; flex-direction:column; gap:18px; }
+  .carte {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; overflow:hidden; box-shadow:var(--shadow);
+  }
+  .legende { font-size:12.5px; line-height:1.6; color:var(--muted); margin:8px 2px 0; max-width:86ch; }
+  .legende b { color:var(--ink2); font-weight:600; }
+  .etiquette-sec {
+    display:inline-block; font-size:11px; font-weight:600; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:6px;
+  }
+  .bascule {
+    position:fixed; top:20px; right:20px; height:32px; padding:0 14px;
+    font-size:13px; font-family:inherit; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; cursor:pointer; z-index:3;
+  }
+  .bascule:hover { background:var(--sel); }
+  .ic { width:14px; height:14px; flex:none; fill:currentColor; }
+  .retiree { opacity:.45; }
+  .tampon {
+    display:inline-block; font-size:11px; font-weight:600; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--alert); border:1px solid var(--alert);
+    border-radius:4px; padding:2px 8px; margin-bottom:6px;
+  }
+  .rangee-maquettes { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
+  .rangee-maquettes > div { max-width:520px; }
+  .rangee-maquettes .carte { width:fit-content; max-width:100%; }
+
+  /* ——— La surimpression de composition : géométrie VERBATIM de Composition.svelte ——— */
+  .compo {
+    width:860px; max-width:100%; background:var(--surface);
+    border:1px solid var(--border); border-left:2px solid var(--accent);
+    border-radius:10px; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .tete {
+    height:48px; flex:none; padding:0 16px 0 22px; display:flex;
+    align-items:center; gap:14px; border-bottom:1px solid var(--border);
+  }
+  .kicker {
+    font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); font-weight:600; white-space:nowrap;
+  }
+  .rappel {
+    font-size:13px; color:var(--muted); flex:1; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap;
+  }
+  .puce {
+    height:32px; padding:0 12px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; white-space:nowrap;
+    flex:none;
+  }
+  .fermer {
+    height:32px; width:32px; padding:0; display:inline-flex; flex:none;
+    align-items:center; justify-content:center; color:var(--ink2);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; cursor:pointer;
+  }
+  .fermer:hover { background:var(--sel); }
+  .champs { padding:18px 22px 0; display:flex; flex-direction:column; }
+  .rang {
+    height:44px; display:flex; align-items:center; gap:14px;
+    border-bottom:1px solid var(--border);
+  }
+  .rang .etiquette { width:52px; font-size:13px; color:var(--muted); flex:none; }
+  .rang .valeur { flex:1; font-size:13px; color:var(--ink); }
+  .rang .saisie { flex:1; font-size:13px; color:var(--ink); }
+  .zone-corps { padding:20px 22px; display:flex; flex-direction:column; min-height:150px; flex:1; }
+  .corps-texte { font-size:15px; line-height:1.65; color:var(--ink); white-space:pre-wrap; }
+  .format {
+    flex:none; padding:8px 18px; border-top:1px solid var(--border);
+    background:var(--panel); display:flex; align-items:center; gap:8px;
+  }
+  .bouton-format {
+    height:32px; min-width:32px; padding:0 10px; display:inline-flex;
+    align-items:center; justify-content:center; font-size:13px;
+    color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px;
+  }
+  .gras { font-weight:600; }
+  .italique { font-style:italic; }
+  .souligne { text-decoration:underline; }
+  .pied {
+    flex:none; padding:14px 22px 18px; border-top:1px solid var(--border);
+    display:flex; align-items:center; gap:12px;
+  }
+  .btn {
+    height:32px; padding:0 16px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; font-family:inherit; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+  }
+  .btn:hover { background:var(--sel); }
+  .principal {
+    font-weight:600; color:var(--onAccent); background:var(--accent);
+    border-color:var(--accent);
+  }
+  .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+  .annuler {
+    margin-left:auto; height:auto; padding:0; border:none;
+    background:transparent; font-size:13px; color:var(--muted);
+    text-decoration:underline; cursor:pointer;
+  }
+  .annuler:hover { background:transparent; color:var(--ink2); }
+
+  /* ——— La rangée des pièces : rangée `fichiers` existante, puces neuves ——— */
+  .fichiers {
+    padding:0 22px 14px; display:flex; gap:10px; flex-wrap:wrap;
+    align-items:center;
+  }
+  .piece {
+    height:32px; padding:0 6px 0 12px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; white-space:nowrap;
+  }
+  .piece .nom { color:var(--ink); }
+  .piece .taille { font-size:12px; color:var(--muted); }
+  .piece .retrait {
+    height:22px; width:22px; padding:0; display:inline-flex; align-items:center;
+    justify-content:center; color:var(--muted); background:transparent;
+    border:none; border-radius:4px; cursor:pointer;
+  }
+  .piece .retrait:hover { background:var(--sel); color:var(--ink); }
+  .piece .retrait .ic { width:13px; height:13px; }
+  .piece.attente { color:var(--muted); font-style:italic; }
+  .piece.attente .ic { opacity:.7; }
+  .piece.echec { border-color:var(--alert); }
+  .piece.echec .nom { color:var(--alert); font-weight:600; }
+  .reessayer {
+    height:22px; padding:0 8px; display:inline-flex; align-items:center; gap:5px;
+    font-size:12px; font-family:inherit; font-weight:600; color:var(--ink2);
+    background:var(--surface); border:1px solid var(--border); border-radius:4px;
+    cursor:pointer;
+  }
+  .reessayer:hover { background:var(--sel); color:var(--ink); }
+  .reessayer .ic { width:12px; height:12px; }
+  .poids { margin-left:auto; font-size:12.5px; color:var(--muted); white-space:nowrap; }
+  .refus {
+    padding:0 22px 14px; font-size:13px; color:var(--alert);
+    display:flex; align-items:center; gap:8px;
+  }
+  .refus .ic { width:14px; height:14px; }
+</style>
+</head>
+<body>
+<button type="button" class="bascule" onclick="
+  document.documentElement.dataset.theme =
+    document.documentElement.dataset.theme === 'nuit' ? '' : 'nuit'
+">Thème : nature / nuit</button>
+
+<div class="page">
+
+  <div class="section">
+    <h1>Pièces jointes — maquettes (à valider)</h1>
+    <p class="intro">
+      PLAN-PIECES-JOINTES. Le bouton <b>« Joindre »</b> devient vivant : les fichiers choisis
+      apparaissent en puces dans la rangée <code>fichiers</code> existante, leurs octets
+      rejoignent le brouillon local dès le geste (PJ-D1), et l'envoi les emporte (PJ-D2).
+      Aucune géométrie neuve : la surimpression de 860 px, la rangée, le gabarit
+      <code>puce</code> et le texte <code>--alert</code> sont repris tels quels — s'ajoutent
+      seulement le retrait <code>close</code> dans la puce, le poids total en fin de rangée et
+      les trois états du rapatriement en transfert. Plafond : <b>25 Mo</b> par message,
+      refusé au geste (PJ-D3).
+    </p>
+  </div>
+
+  <!-- ================= 1. LE COMPOSEUR AVEC PIÈCES ================= -->
+  <div class="section">
+    <h2>1 — Le composeur : des puces réelles, retirables, pesées</h2>
+    <div class="compo">
+      <div class="tete">
+        <span class="kicker">Nouveau message</span>
+        <span class="rappel">Photos du chantier</span>
+        <span class="puce"><svg class="ic" viewBox="0 0 24 24"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>Rendre indépendante</span>
+        <button type="button" class="fermer" aria-label="Fermer"><svg class="ic" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+      </div>
+      <div class="champs">
+        <div class="rang">
+          <span class="etiquette">De</span>
+          <span class="valeur">moi@exemple.fr</span>
+        </div>
+        <div class="rang">
+          <span class="etiquette">À</span>
+          <span class="saisie">paul.lefebvre@exemple.fr</span>
+          <span class="puce">Cc</span>
+          <span class="puce">Cci</span>
+        </div>
+        <div class="rang">
+          <span class="etiquette">Objet</span>
+          <span class="saisie">Photos du chantier</span>
+        </div>
+      </div>
+      <div class="zone-corps">
+        <p class="corps-texte" style="margin:0">Bonjour Paul,
+
+Voici les photos prises ce matin, ainsi que le devis signé.</p>
+      </div>
+      <div class="fichiers">
+        <span class="piece">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+          <span class="nom">facade-nord.jpg</span><span class="taille">2,4 Mo</span>
+          <button type="button" class="retrait" aria-label="Retirer facade-nord.jpg"><svg class="ic" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+        </span>
+        <span class="piece">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+          <span class="nom">devis-signe.pdf</span><span class="taille">812 Ko</span>
+          <button type="button" class="retrait" aria-label="Retirer devis-signe.pdf"><svg class="ic" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+        </span>
+        <span class="poids">3,2 Mo / 25 Mo</span>
+      </div>
+      <div class="format">
+        <span class="bouton-format gras">G</span>
+        <span class="bouton-format italique">I</span>
+        <span class="bouton-format souligne">S</span>
+        <span class="puce">Liste</span>
+        <span class="puce">Lien</span>
+        <span class="puce">Citation</span>
+      </div>
+      <div class="pied">
+        <button type="button" class="btn principal"><svg class="ic" viewBox="0 0 24 24"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>Envoyer</button>
+        <button type="button" class="btn"><svg class="ic" viewBox="0 0 24 24"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>Joindre</button>
+        <button type="button" class="btn"><svg class="ic" viewBox="0 0 24 24"><path d="M21.99 8c0-.72-.37-1.35-.94-1.7L12 1 2.95 6.3C2.38 6.65 2 7.28 2 8v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2l-.01-10zM12 13 3.74 7.84 12 3l8.26 4.84L12 13z"/></svg>Enregistrer le brouillon</button>
+        <button type="button" class="annuler">Annuler</button>
+      </div>
+    </div>
+    <p class="legende">
+      <b>Une puce par fichier</b> : glyphe <code>description</code>, nom (<code>--ink</code>),
+      taille (12 px, <code>--muted</code>) et retrait <code>close</code> — la Lecture sépare
+      nom et taille en deux puces de consultation ; ici la puce est un <b>objet manipulable</b>,
+      tout tient ensemble. Le <b>poids total</b> (12,5 px, <code>--muted</code>) se tient en fin
+      de rangée dès la première pièce, jamais avant. « Joindre » ouvre le sélecteur natif
+      (sélection multiple, PJ-D5) ; les octets sont copiés au brouillon local dès le geste
+      (PJ-D1) — fermer conserve les pièces, le contrat des brouillons tient.
+    </p>
+  </div>
+
+  <!-- ================= 2. LE REFUS AU PLAFOND ================= -->
+  <div class="section">
+    <h2>2 — Le refus au plafond : rien ne s'ajoute, le composeur dit pourquoi</h2>
+    <div class="compo" style="border-left-color:var(--border)">
+      <div class="fichiers" style="padding-top:14px">
+        <span class="piece">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+          <span class="nom">releve-topographique.zip</span><span class="taille">21,8 Mo</span>
+          <button type="button" class="retrait" aria-label="Retirer releve-topographique.zip"><svg class="ic" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+        </span>
+        <span class="poids">21,8 Mo / 25 Mo</span>
+      </div>
+      <div class="refus">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+        <span>« video-visite.mp4 » dépasse la place restante (3,2 Mo).</span>
+      </div>
+    </div>
+    <p class="legende">
+      Extrait de la rangée (le reste du composeur ne bouge pas). Le fichier trop lourd
+      <b>n'apparaît jamais en puce</b> : le refus se joue au geste, pas à l'envoi (PJ-D3) —
+      un message 13 px <code>--alert</code> sous la rangée nomme le fichier et la place
+      restante. Il s'efface à la pièce suivante acceptée ou au retrait d'une puce. Les pièces
+      déjà jointes <b>restent</b> : refuser l'excès ne punit pas l'acquis. Le 5xx d'un serveur
+      plus strict que 25 Mo reste couvert par la fente d'avis existante (échec d'envoi).
+    </p>
+  </div>
+
+  <!-- ================= 3. LE TRANSFERT RÉEL ================= -->
+  <div class="section">
+    <h2>3 — Le transfert : les pièces d'origine, rapatriées pour de vrai</h2>
+
+    <div class="rangee-maquettes">
+      <div>
+        <span class="etiquette-sec">Les trois états du rapatriement</span>
+        <div class="compo" style="width:520px; border-left-color:var(--border)">
+          <div class="fichiers" style="padding-top:14px">
+            <span class="piece">
+              <svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+              <span class="nom">compte-rendu.pdf</span><span class="taille">1,1 Mo</span>
+              <button type="button" class="retrait" aria-label="Retirer compte-rendu.pdf"><svg class="ic" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+            </span>
+            <span class="piece attente">
+              <svg class="ic" viewBox="0 0 24 24"><path d="M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6zm10 14.5V20H8v-3.5l4-4 4 4zm-4-5-4-4V4h8v3.5l-4 4z"/></svg>
+              <span>annexes.xlsx — rapatriement…</span>
+            </span>
+            <span class="piece echec">
+              <svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+              <span class="nom">plans.dwg</span>
+              <button type="button" class="reessayer"><svg class="ic" viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-8 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>Réessayer</button>
+            </span>
+            <span class="poids">1,1 Mo / 25 Mo</span>
+          </div>
+        </div>
+        <p class="legende">
+          À l'ouverture d'un transfert, chaque pièce du message d'origine est rapatriée
+          (<code>fetch_attachment</code>, le chemin de la Lecture) et versée au brouillon
+          (PJ-D4). Trois états : <b>rapatriement</b> (glyphe <code>hourglass_empty</code>,
+          atténué italique, pas encore retirable), <b>arrivée</b> (puce pleine, identique au
+          §1), <b>échec</b> (nom 600 <code>--alert</code>, bord <code>--alert</code>,
+          « Réessayer ») — jamais de pièce silencieusement absente du message parti. Le poids
+          total ne compte que les octets réellement acquis.
+        </p>
+      </div>
+
+      <div>
+        <span class="etiquette-sec">La réponse : la fiction tombe</span>
+        <span class="tampon" style="display:inline-block; margin-left:10px">Supprimé</span>
+        <div class="compo retiree" style="width:420px; border-left-color:var(--border)">
+          <div class="fichiers" style="padding-top:14px">
+            <span class="puce"><svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>compte-rendu.pdf</span>
+            <span class="puce">1,1 Mo</span>
+          </div>
+        </div>
+        <p class="legende">
+          L'état actuel, pour mémoire : en <b>réponse</b>, le composeur affichait les pièces du
+          message d'origine en puces décoratives — elles ne partaient jamais, et l'usage du
+          courrier ne les a jamais transmises en réponse. Ces puces <b>disparaissent</b>
+          (PJ-D4) : ce que le composeur montre est ce que le message emporte, sans exception.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 4. LA REPRISE D'UN BROUILLON ================= -->
+  <div class="section">
+    <h2>4 — La reprise : les pièces reviennent avec le texte</h2>
+    <div class="compo">
+      <div class="tete">
+        <span class="kicker">Nouveau message</span>
+        <span class="rappel">Photos du chantier</span>
+        <button type="button" class="fermer" aria-label="Fermer"><svg class="ic" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+      </div>
+      <div class="champs">
+        <div class="rang">
+          <span class="etiquette">À</span>
+          <span class="saisie">paul.lefebvre@exemple.fr</span>
+        </div>
+        <div class="rang">
+          <span class="etiquette">Objet</span>
+          <span class="saisie">Photos du chantier</span>
+        </div>
+      </div>
+      <div class="zone-corps" style="min-height:90px">
+        <p class="corps-texte" style="margin:0">Bonjour Paul,
+
+Voici les photos prises ce matin, ainsi que le devis signé.</p>
+      </div>
+      <div class="fichiers">
+        <span class="piece">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+          <span class="nom">facade-nord.jpg</span><span class="taille">2,4 Mo</span>
+          <button type="button" class="retrait" aria-label="Retirer facade-nord.jpg"><svg class="ic" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+        </span>
+        <span class="piece">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+          <span class="nom">devis-signe.pdf</span><span class="taille">812 Ko</span>
+          <button type="button" class="retrait" aria-label="Retirer devis-signe.pdf"><svg class="ic" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></button>
+        </span>
+        <span class="poids">3,2 Mo / 25 Mo</span>
+      </div>
+      <div class="pied">
+        <button type="button" class="btn principal"><svg class="ic" viewBox="0 0 24 24"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>Envoyer</button>
+        <button type="button" class="btn"><svg class="ic" viewBox="0 0 24 24"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5c0-1.38 1.12-2.5 2.5-2.5s2.5 1.12 2.5 2.5v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5c0 1.38 1.12 2.5 2.5 2.5s2.5-1.12 2.5-2.5V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>Joindre</button>
+        <button type="button" class="annuler">Annuler</button>
+      </div>
+    </div>
+    <p class="legende">
+      Reprise depuis le dossier Brouillons ou le bloc de conversation (mécanique
+      PLAN-BROUILLONS, inchangée) : <b>les puces reviennent identiques au moment de la
+      fermeture</b> — les octets vivaient au brouillon (PJ-D1), pas dans la session du
+      composeur. Un brouillon sans texte mais avec pièce n'est pas vide : fermer le conserve.
+      Le dossier Brouillons et la mention en Réception ne changent pas en v1 (pas de trombone
+      en liste — extension possible si le terrain la réclame).
+    </p>
+  </div>
+
+</div>
+</body>
+</html>
