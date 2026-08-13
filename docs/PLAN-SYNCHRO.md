@@ -185,7 +185,14 @@ différentiel qui coûte 34 s (INBOX seule) serait livrer un bouton cassé.
 - Gate chiffrée (trace existante, sa boîte) : **cycle au repos < 60 s
   sur le compte Gmail** (contre 38 min), INBOX inchangée < 5 s.
 
-**E2b — CONDSTORE réel** (le report Phase 1 arrive à échéance) :
+**E2b — CONDSTORE réel** (le report Phase 1 arrive à échéance) —
+**État : livrée le 2026-08-13 (gate locale verte), terrain CE dû —
+drapeau posé au téléphone, reflété au cycle suivant, cycle au repos
+inchangé.** HIGHESTMODSEQ au SELECT et au STATUS, `faut_relever` étendu
+(serveur muet = sobriété conservée ; base héritée = une relève de
+convergence) ; l'inventaire d'UIDs ne se paye plus que si le décompte
+l'exige — même quand le dossier bouge, un drapeau seul ne coûte que le
+delta :
 - `changes_since` implémenté (`UID FETCH … CHANGEDSINCE`), HIGHESTMODSEQ
   relevé au STATUS : les dossiers qui ont bougé payent le delta, plus
   l'inventaire ; **et les drapeaux se resynchronisent enfin** (mail lu

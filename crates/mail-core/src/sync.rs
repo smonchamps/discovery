@@ -99,7 +99,7 @@ impl SyncEngine {
         let mut report = if state.last_uid == 0 {
             self.initial_sync(server, store, mailbox, state.mailbox_id)?
         } else {
-            self.incremental_sync(server, store, mailbox, &state)?
+            self.incremental_sync(server, store, mailbox, &state, snapshot.exists)?
         };
         report.replayed = replayed;
 
@@ -144,9 +144,10 @@ impl SyncEngine {
         store: &mut Store,
         mailbox: &str,
         state: &SyncState,
+        exists: u32,
     ) -> Result<SyncReport, Error> {
-        let server_uids = server.list_uids(mailbox)?;
         let mut fetched = 0;
+        let mut deleted = 0;
 
         let condstore_changes = match state.highest_modseq {
             Some(modseq) => server.changes_since(mailbox, modseq)?,
@@ -156,10 +157,23 @@ impl SyncEngine {
             Some(changed) => {
                 fetched += changed.len();
                 store.upsert_envelopes(state.mailbox_id, &changed)?;
+                // CONDSTORE ne signale pas les suppressions (il faudrait
+                // QRESYNC, absent chez Gmail) : le différentiel d'UIDs
+                // reste leur seule détection — mais il ne se paye QUE si
+                // le décompte l'exige (E2b). Delta appliqué, base et
+                // annonce d'accord : rien n'a disparu, et l'inventaire
+                // complet (`UID SEARCH ALL`, 34 s sur l'INBOX du terrain)
+                // n'aurait rien à dire.
+                let local = store.envelope_count(state.mailbox_id)?;
+                if local != u64::from(exists) {
+                    let present: HashSet<Uid> = server.list_uids(mailbox)?.into_iter().collect();
+                    deleted = store.remove_absent(state.mailbox_id, &present)?;
+                }
             }
             None => {
                 // Sans CONDSTORE : seuls les nouveaux messages sont détectés ;
                 // les changements de flags attendront une resynchro complète.
+                let server_uids = server.list_uids(mailbox)?;
                 let mut new_uids: Vec<Uid> = server_uids
                     .iter()
                     .copied()
@@ -171,13 +185,12 @@ impl SyncEngine {
                     fetched += envelopes.len();
                     store.upsert_envelopes(state.mailbox_id, &envelopes)?;
                 }
+                // Ici l'inventaire est déjà payé (il a servi aux nouveaux) :
+                // le différentiel des suppressions est gratuit.
+                let present: HashSet<Uid> = server_uids.into_iter().collect();
+                deleted = store.remove_absent(state.mailbox_id, &present)?;
             }
         }
-
-        // CONDSTORE ne signale pas les suppressions (il faudrait QRESYNC,
-        // absent chez Gmail) : le différentiel d'UIDs reste la référence.
-        let present: HashSet<Uid> = server_uids.into_iter().collect();
-        let deleted = store.remove_absent(state.mailbox_id, &present)?;
 
         Ok(SyncReport {
             mode: SyncMode::Incremental,
@@ -360,6 +373,10 @@ pub struct RepereLocal {
     pub messages_locaux: u64,
     /// Des actions locales attendent leur rejeu : sauter les abandonnerait.
     pub actions_en_attente: bool,
+    /// Le HIGHESTMODSEQ vu au SELECT de la dernière relève soldée
+    /// (`sync_state`) — `None` sans CONDSTORE, ou tant qu'aucune relève
+    /// n'a eu lieu depuis E2b.
+    pub modseq_vu: Option<u64>,
 }
 
 /// Faut-il relever ce dossier, ou rien n'a bougé (ADR 0017) ?
@@ -390,7 +407,20 @@ pub fn faut_relever(distant: &crate::remote::FolderStatus, local: Option<&Repere
     if uid_next != uidnext_vu {
         return true;
     }
-    u64::from(distant.messages) != local.messages_locaux
+    if u64::from(distant.messages) != local.messages_locaux {
+        return true;
+    }
+    // E2b : un changement de drapeaux SEUL ne bouge ni UIDNEXT ni
+    // MESSAGES — seul HIGHESTMODSEQ le trahit. Signal exigé des deux
+    // côtés : un serveur muet (pas de CONDSTORE) garde le comportement
+    // d'avant (ADR 0017 : rien n'est perdu qui était servi) ; un repère
+    // local jamais posé (base d'avant E2b) relève UNE fois — le SELECT
+    // de cette relève pose le modseq, et le dossier redevient sobre.
+    match (distant.highest_modseq, local.modseq_vu) {
+        (Some(distant), Some(vu)) => distant != vu,
+        (Some(_), None) => true,
+        (None, _) => false,
+    }
 }
 
 #[cfg(test)]
@@ -403,6 +433,7 @@ mod faut_relever_tests {
             messages: 40,
             uid_next: Some(101),
             uid_validity: Some(7),
+            highest_modseq: Some(900),
         }
     }
     fn local() -> RepereLocal {
@@ -411,6 +442,7 @@ mod faut_relever_tests {
             uidnext_vu: Some(101),
             messages_locaux: 40,
             actions_en_attente: false,
+            modseq_vu: Some(900),
         }
     }
 
@@ -468,6 +500,43 @@ mod faut_relever_tests {
             ..local()
         };
         assert!(faut_relever(&distant(), Some(&charge)));
+    }
+
+    /// LE cas d'E2b : un mail lu au téléphone ne bouge ni UIDNEXT ni
+    /// MESSAGES — seul HIGHESTMODSEQ glisse, et le dossier DOIT se
+    /// relever pour refléter le drapeau.
+    #[test]
+    fn un_changement_de_drapeaux_seul_reveille_le_dossier() {
+        let drapeaux = FolderStatus {
+            highest_modseq: Some(901),
+            ..distant()
+        };
+        assert!(faut_relever(&drapeaux, Some(&local())));
+    }
+
+    /// Un serveur SANS CONDSTORE tait HIGHESTMODSEQ : le comportement
+    /// d'avant E2b est conservé — les drapeaux n'étaient déjà pas
+    /// resynchronisés (ADR 0017 : rien n'est perdu qui était servi), et
+    /// forcer la relève ruinerait la sobriété d'E2a pour rien.
+    #[test]
+    fn un_serveur_sans_condstore_garde_la_sobriete() {
+        let muet = FolderStatus {
+            highest_modseq: None,
+            ..distant()
+        };
+        assert!(!faut_relever(&muet, Some(&local())));
+    }
+
+    /// Base d'avant E2b : le modseq local n'a jamais été posé alors que
+    /// le serveur en annonce un — UNE relève de convergence, qui pose le
+    /// repère, puis le dossier redevient sobre.
+    #[test]
+    fn un_modseq_jamais_vu_releve_une_fois_pour_converger() {
+        let herite = RepereLocal {
+            modseq_vu: None,
+            ..local()
+        };
+        assert!(faut_relever(&distant(), Some(&herite)));
     }
 
     /// Un serveur qui tait UIDNEXT ou UIDVALIDITY rend la décision
@@ -751,6 +820,41 @@ mod tests {
 
         assert_eq!(report.fetched, 1);
         assert_eq!(recent(&store, 0, 10).len(), 2);
+    }
+
+    /// La sobriété d'E2b : quand CONDSTORE porte le delta et que les
+    /// décomptes concordent, l'inventaire complet des UIDs — le
+    /// `UID SEARCH ALL` à 34 s de l'INBOX du terrain — ne se paye PAS.
+    /// Il ne se paye que quand une suppression le rend nécessaire.
+    #[test]
+    fn condstore_ne_paye_l_inventaire_que_si_le_decompte_l_exige() {
+        let mut server = FakeServer::new(true);
+        server.add(1, "a");
+        server.add(2, "b");
+        let mut store = Store::open_in_memory().unwrap();
+        let engine = SyncEngine::default();
+        synced(&mut server, &mut store, &engine);
+        let apres_initiale = server.uid_list_calls;
+
+        // Drapeau seul : delta CONDSTORE, décomptes égaux — zéro inventaire.
+        server.mark_seen(1);
+        let report = synced(&mut server, &mut store, &engine);
+        assert_eq!(report.fetched, 1);
+        assert!(recent(&store, 0, 1)[0].seen || recent(&store, 0, 2)[1].seen);
+        assert_eq!(
+            server.uid_list_calls, apres_initiale,
+            "un drapeau ne justifie pas d'inventaire complet"
+        );
+
+        // Suppression : le décompte diverge, l'inventaire redevient dû.
+        server.expunge(2);
+        let report = synced(&mut server, &mut store, &engine);
+        assert_eq!(report.deleted, 1);
+        assert_eq!(
+            server.uid_list_calls,
+            apres_initiale + 1,
+            "une suppression exige le différentiel d'UIDs"
+        );
     }
 
     /// Limite connue et assumée : sans CONDSTORE, un flag changé côté serveur

@@ -448,6 +448,9 @@ fn doit_relever(
             uidnext_vu: store.remote_uidnext(state.mailbox_id)?,
             messages_locaux: store.envelope_count(state.mailbox_id)?,
             actions_en_attente: store.has_pending_actions(state.mailbox_id)?,
+            // E2b : le modseq du dernier SELECT soldé — c'est lui qui
+            // réveille un dossier dont seuls les drapeaux ont glissé.
+            modseq_vu: state.highest_modseq,
         }))
     })();
     match repere {

@@ -17,6 +17,9 @@ pub(crate) struct FakeServer {
     pub(crate) messages: BTreeMap<Uid, (Envelope, u64)>,
     pub(crate) bodies: BTreeMap<Uid, String>,
     pub(crate) fetch_batches: Vec<Vec<Uid>>,
+    /// Nombre d'inventaires d'UIDs payés (`UID SEARCH ALL` du réel) —
+    /// la preuve qu'E2b ne les demande que si le décompte l'exige.
+    pub(crate) uid_list_calls: usize,
     pub(crate) body_fetches: usize,
     /// Lots de corps demandés, dans l'ordre : c'est ce qui prouve que le
     /// rattrapage groupe au lieu d'enchaîner les allers-retours.
@@ -47,6 +50,7 @@ impl FakeServer {
             messages: BTreeMap::new(),
             bodies: BTreeMap::new(),
             fetch_batches: Vec::new(),
+            uid_list_calls: 0,
             body_fetches: 0,
             body_batches: Vec::new(),
             references: BTreeMap::new(),
@@ -131,6 +135,7 @@ impl MailServer for FakeServer {
     }
 
     fn list_uids(&mut self, _mailbox: &str) -> Result<Vec<Uid>, Error> {
+        self.uid_list_calls += 1;
         Ok(self.messages.keys().copied().collect())
     }
 
@@ -142,6 +147,7 @@ impl MailServer for FakeServer {
             messages: self.messages.len() as u32,
             uid_next: Some(self.messages.keys().max().copied().unwrap_or(0) + 1),
             uid_validity: Some(self.uid_validity),
+            highest_modseq: self.condstore.then_some(self.modseq),
         })
     }
 

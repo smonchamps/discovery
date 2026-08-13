@@ -117,6 +117,10 @@ pub struct FolderStatus {
     pub messages: u32,
     pub uid_next: Option<u32>,
     pub uid_validity: Option<u32>,
+    /// HIGHESTMODSEQ (RFC 7162), tu par les serveurs sans CONDSTORE.
+    /// C'est lui qui trahit un changement de drapeaux SEUL — ni UIDNEXT
+    /// ni MESSAGES ne bougent alors (E2b, PLAN-SYNCHRO).
+    pub highest_modseq: Option<u64>,
 }
 
 pub trait MailServer {

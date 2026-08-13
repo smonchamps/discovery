@@ -5,9 +5,11 @@
 //! en commandes IMAP (crate `imap`) et les réponses serveur en types du
 //! domaine. Un crate par protocole : SMTP et Graph auront les leurs.
 //!
-//! CONDSTORE n'est pas encore câblé (`changes_since` → `None`) : le moteur
-//! bascule sur le différentiel d'UIDs, chemin complet et testé. L'extension
-//! arrivera ici même, sans toucher au moteur — c'est le rôle du trait.
+//! CONDSTORE (RFC 7162) est câblé depuis E2b (PLAN-SYNCHRO) : quand le
+//! serveur l'annonce, `changes_since` sert le delta (drapeaux compris) via
+//! `UID FETCH … CHANGEDSINCE`, et HIGHESTMODSEQ est relevé au SELECT comme
+//! au STATUS. Sans l'annonce, `None` — le moteur bascule sur le
+//! différentiel d'UIDs, chemin complet et testé.
 
 mod convert;
 mod mutf7;
@@ -169,6 +171,8 @@ pub struct ImapServer {
     /// Le serveur annonce-t-il MOVE (RFC 6851) ? Mémorisé : la capacité
     /// ne change pas en cours de session.
     supports_move: Option<bool>,
+    /// Le serveur annonce-t-il CONDSTORE (RFC 7162) ? Même discipline.
+    supports_condstore: Option<bool>,
 }
 
 impl ImapServer {
@@ -197,6 +201,7 @@ impl ImapServer {
             archive: None,
             sent: None,
             supports_move: None,
+            supports_condstore: None,
         })
     }
 
@@ -220,6 +225,7 @@ impl ImapServer {
             archive: None,
             sent: None,
             supports_move: None,
+            supports_condstore: None,
         })
     }
 
@@ -240,7 +246,10 @@ impl ImapServer {
             uid_validity: selected
                 .uid_validity
                 .ok_or_else(|| Error::Server(format!("UIDVALIDITY absent pour {mailbox}")))?,
-            highest_modseq: None,
+            // OK [HIGHESTMODSEQ] accompagne le SELECT sur tout serveur
+            // CONDSTORE (RFC 7162 §3.1.2) ; absent = pas de CONDSTORE,
+            // le moteur garde le différentiel d'UIDs.
+            highest_modseq: selected.highest_mod_seq,
             exists: selected.exists,
         };
         self.selected = Some((mailbox.to_string(), snapshot));
@@ -440,6 +449,19 @@ impl ImapServer {
         Ok(supported)
     }
 
+    /// Le serveur sait-il faire CONDSTORE (RFC 7162) ? Décide du STATUS
+    /// enrichi (HIGHESTMODSEQ) et du delta `changes_since` — demander
+    /// l'un ou l'autre à un serveur qui ne l'annonce pas serait un BAD.
+    fn supports_condstore(&mut self) -> Result<bool, Error> {
+        if let Some(known) = self.supports_condstore {
+            return Ok(known);
+        }
+        let capabilities = self.session.capabilities().map_err(server_err)?;
+        let supported = capabilities.has_str("CONDSTORE");
+        self.supports_condstore = Some(supported);
+        Ok(supported)
+    }
+
     fn expunge_uid(&mut self, uid: Uid) -> Result<(), Error> {
         self.session
             .uid_store(uid.to_string(), "+FLAGS.SILENT (\\Deleted)")
@@ -509,12 +531,32 @@ impl MailServer for ImapServer {
 
     fn changes_since(
         &mut self,
-        _mailbox: &str,
-        _modseq: u64,
+        mailbox: &str,
+        modseq: u64,
     ) -> Result<Option<Vec<Envelope>>, Error> {
-        // CONDSTORE : optimisation à venir (PHASE0.md §2.2). `None` déclenche
-        // le repli par différentiel d'UIDs du moteur.
-        Ok(None)
+        // Sans l'annonce CONDSTORE, `None` : le moteur bascule sur le
+        // différentiel d'UIDs — chemin complet, testé, d'avant E2b.
+        if !self.supports_condstore()? {
+            return Ok(None);
+        }
+        self.ensure_selected(mailbox)?;
+        // Tout ce qui a bougé depuis le repère — nouveaux messages ET
+        // drapeaux (le reflet qui manquait : un mail lu au téléphone
+        // restait non-lu ici). CHANGEDSINCE est lui-même une commande
+        // « CONDSTORE enabling » (RFC 7162 §3.1) : rien à négocier avant.
+        let fetches = self
+            .session
+            .uid_fetch(
+                "1:*",
+                format!("(UID ENVELOPE INTERNALDATE FLAGS) (CHANGEDSINCE {modseq})"),
+            )
+            .map_err(server_err)?;
+        Ok(Some(
+            fetches
+                .iter()
+                .filter_map(convert::fetch_to_envelope)
+                .collect(),
+        ))
     }
 
     fn fetch_body_html(&mut self, mailbox: &str, uid: Uid) -> Result<Option<FetchedBody>, Error> {
@@ -626,14 +668,21 @@ impl MailServer for ImapServer {
         // font payer un SELECT bien plus cher qu'un STATUS. Un seul
         // aller-retour pour la garde d'espace ET la relève gardée
         // (ADR 0017).
-        let status = self
-            .session
-            .status(mailbox, "(MESSAGES UIDNEXT UIDVALIDITY)")
-            .map_err(server_err)?;
+        // HIGHESTMODSEQ rejoint le relevé quand le serveur sait CONDSTORE
+        // (E2b) : c'est lui qui réveille un dossier dont seuls les
+        // drapeaux ont glissé. Le demander à un serveur qui ne l'annonce
+        // pas serait un BAD — d'où la garde.
+        let items = if self.supports_condstore()? {
+            "(MESSAGES UIDNEXT UIDVALIDITY HIGHESTMODSEQ)"
+        } else {
+            "(MESSAGES UIDNEXT UIDVALIDITY)"
+        };
+        let status = self.session.status(mailbox, items).map_err(server_err)?;
         Ok(mail_core::FolderStatus {
             messages: status.exists,
             uid_next: status.uid_next,
             uid_validity: status.uid_validity,
+            highest_modseq: status.highest_mod_seq,
         })
     }
 
