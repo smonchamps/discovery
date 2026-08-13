@@ -696,6 +696,18 @@
     chargerNav();
     synchroniser();
   }
+  // Le pendant du retrait : le courrier du compte a quitté la base, donc
+  // tout ce qui pouvait le montrer se replie — filtre de nav, sélection,
+  // volet de lecture — avant de recharger nav et liste. À zéro compte,
+  // l'écran 01 revient de lui-même (navPrete && comptes.length === 0).
+  function compteRetire(id) {
+    flash(t('toast.compteRetire'));
+    if (compte === id) compte = null;
+    selectionnee = null;
+    lecture.fermer();
+    chargerNav();
+    liste?.recharger();
+  }
 
   function surSelection(ligne) {
     selectionnee = ligne;
@@ -835,7 +847,8 @@
 
     <Composition bind:this={composition} {comptes} {compte}
                  onflash={flash} onenvoye={apresEnvoi} />
-    <Reglages bind:this={reglages} {comptes} onajoute={compteAjoute} />
+    <Reglages bind:this={reglages} {comptes} onajoute={compteAjoute}
+              onsupprime={compteRetire} />
   {/if}
 
   <ModaleMigration bind:this={modaleMigration} />

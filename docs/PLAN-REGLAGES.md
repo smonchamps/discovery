@@ -128,3 +128,24 @@ Amendement **A13** inscrit au journal du Système.
   réglages neufs constaté (OS sombre, bulles coupées à la synchro
   réelle), hauteur 640 px non récusée. Les deux gates sont closes ;
   le plan est SOLDÉ.
+
+## 7. Complément (2026-08-13) — retrait d'un compte
+
+Le groupe Comptes gagne le geste inverse de l'A11 : chaque rangée porte
+un bouton de retrait (glyphe `delete`, déjà dans l'inventaire — « une
+icône, un sens » tenu : c'est bien une suppression). Le geste est
+DESTRUCTEUR localement, donc il se confirme sur place, dans une carte
+sous la rangée qui dit ce qu'il efface — courrier local et connexion —
+et ce qu'il n'efface pas : le serveur, jamais touché.
+
+Côté shell, la commande neuve `remove_account` : coffre de l'OS
+D'ABORD (`mail_auth::forget_credentials`, sans exiger de configuration
+OAuth — un CLIENT_ID absent ne doit pas retenir un compte), base
+ensuite (`Store::delete_account`, une transaction : cascades du schéma
+plus index de recherche, brouillons, pierres tombales et boîte d'envoi,
+qui n'ont pas de clé étrangère), session en mémoire enfin. Les boucles
+qui reposent une session rafraîchie ne ressuscitent plus un compte
+retiré pendant leur cycle (`reposer_sessions`). Gate : 374 tests Rust
+(le retrait ne laisse rien et épargne le voisin), e2e 73/73 dont la
+suite neuve `refonte-retrait-compte` (confirmation, annulation, nav et
+liste repliées).

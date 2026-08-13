@@ -279,6 +279,31 @@ pub fn store_generic_password(email: &str, password: &str) -> Result<(), AuthErr
         .map_err(|err| AuthError::Vault(err.to_string()))
 }
 
+/// Oublie les secrets d'UN compte au coffre, quel que soit son mode
+/// d'authentification (`account_kind` : `"imap"` pour un compte
+/// générique, sinon le fournisseur OAuth).
+///
+/// N'exige AUCUNE configuration OAuth : le nom de l'entrée ne dépend que
+/// du fournisseur et de l'adresse — le retrait d'un compte ne doit
+/// jamais échouer parce qu'un `CLIENT_ID` manque à l'environnement.
+/// Une entrée déjà absente n'est pas une erreur : le retrait est
+/// répétable.
+pub fn forget_credentials(account_kind: &str, email: &str) -> Result<(), AuthError> {
+    let entry = match account_kind {
+        "imap" => generic_vault(email)?,
+        kind => {
+            let provider = provider::for_account_kind(kind)
+                .ok_or_else(|| AuthError::Config(format!("fournisseur inconnu : {kind}")))?;
+            keyring::Entry::new(KEYRING_SERVICE, &vault_key(provider, email))
+                .map_err(|err| AuthError::Vault(err.to_string()))?
+        }
+    };
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(err) => Err(AuthError::Vault(err.to_string())),
+    }
+}
+
 /// Récupère le mot de passe d'un compte IMAP/SMTP générique depuis le coffre.
 pub fn fetch_generic_password(email: &str) -> Result<String, AuthError> {
     generic_vault(email)?

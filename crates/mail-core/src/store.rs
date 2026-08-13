@@ -772,6 +772,41 @@ impl Store {
         })
     }
 
+    /// Supprime un compte et TOUT ce qui s'y rattache, en une transaction.
+    ///
+    /// Les cascades du schéma emportent boîtes, enveloppes, corps, pièces
+    /// jointes, actions en attente, dossiers et fils. Trois familles n'ont
+    /// PAS de clé étrangère et se vident à la main : l'index de recherche
+    /// (boîte par boîte, AVANT que la cascade ne fasse disparaître les
+    /// boîtes), les brouillons (avec pierres tombales et repère distant)
+    /// et la boîte d'envoi. Rien ne doit survivre au compte — un reste
+    /// orphelin ne serait jamais relu, mais continuerait de sortir en
+    /// recherche ou de partir à la prochaine vidange.
+    pub fn delete_account(&mut self, account_id: i64) -> Result<(), Error> {
+        let tx = self.0.transaction()?;
+        let mailboxes: Vec<i64> = {
+            let mut stmt = tx.prepare("SELECT id FROM mailboxes WHERE account_id = ?1")?;
+            stmt.query_map([account_id], |row| row.get(0))?
+                .collect::<Result<Vec<i64>, _>>()?
+        };
+        for mailbox_id in mailboxes {
+            search::deindex_mailbox(&tx, mailbox_id)?;
+        }
+        tx.execute("DELETE FROM drafts WHERE account_id = ?1", [account_id])?;
+        tx.execute(
+            "DELETE FROM draft_tombstones WHERE account_id = ?1",
+            [account_id],
+        )?;
+        tx.execute(
+            "DELETE FROM drafts_remote WHERE account_id = ?1",
+            [account_id],
+        )?;
+        tx.execute("DELETE FROM outbox WHERE account_id = ?1", [account_id])?;
+        tx.execute("DELETE FROM accounts WHERE id = ?1", [account_id])?;
+        tx.commit()?;
+        Ok(())
+    }
+
     /// Repart de zéro pour une boîte dont l'UIDVALIDITY a changé : les UIDs
     /// ne veulent plus rien dire — corps et actions en attente compris (une
     /// intention sur un UID invalidé est irréalisable par construction).
@@ -2097,6 +2132,85 @@ mod tests {
         assert_eq!(
             store.mailbox_names(account).unwrap(),
             vec!["INBOX", "Messages envoyés", "Archive", "Corbeille"]
+        );
+    }
+
+    /// Le retrait d'un compte ne laisse RIEN derrière lui : ni les lignes
+    /// en cascade (boîtes, enveloppes, corps), ni celles sans clé
+    /// étrangère (brouillons, boîte d'envoi, index de recherche) — et le
+    /// compte voisin garde tout, recherche comprise.
+    #[test]
+    fn delete_account_efface_tout_et_ne_touche_pas_le_voisin() {
+        let mut store = Store::open_in_memory().unwrap();
+        let parti = store
+            .adopt_or_create_account("part@exemple.fr", "gmail")
+            .unwrap();
+        let voisin = store
+            .adopt_or_create_account("reste@exemple.fr", "gmail")
+            .unwrap();
+        for (account, sujet) in [(parti, "Facture du départ"), (voisin, "Devis qui reste")] {
+            let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            store
+                .upsert_envelopes(mailbox, &[envelope(1, sujet, 100, false)])
+                .unwrap();
+            store.save_body(mailbox, 1, "<p>corps</p>", &[]).unwrap();
+            store
+                .save_draft(
+                    account,
+                    None,
+                    None,
+                    crate::DraftContent {
+                        to_raw: "a@b.fr",
+                        subject: sujet,
+                        body: "brouillon",
+                        reply_to_uid: None,
+                    },
+                )
+                .unwrap();
+            store
+                .enqueue_outbox(
+                    account,
+                    &crate::compose::Draft {
+                        message_id: format!("<sortant-{account}@exemple.fr>"),
+                        from: "moi@exemple.fr".to_string(),
+                        to: vec!["a@b.fr".to_string()],
+                        subject: sujet.to_string(),
+                        body_text: "corps".to_string(),
+                        in_reply_to: None,
+                    },
+                )
+                .unwrap();
+        }
+
+        store.delete_account(parti).unwrap();
+
+        let comptes = store.accounts().unwrap();
+        assert_eq!(comptes.len(), 1);
+        assert_eq!(comptes[0].email, "reste@exemple.fr");
+        for table in [
+            "mailboxes",
+            "envelopes",
+            "bodies",
+            "drafts",
+            "outbox",
+            "search_docs",
+        ] {
+            let total: i64 = store
+                .0
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(total, 1, "{table} : seule la ligne du voisin doit rester");
+        }
+        assert!(
+            store.search("départ", 10).unwrap().is_empty(),
+            "le courrier du compte parti ne doit plus sortir en recherche"
+        );
+        assert_eq!(
+            store.search("reste", 10).unwrap().len(),
+            1,
+            "la recherche du voisin doit survivre au retrait"
         );
     }
 

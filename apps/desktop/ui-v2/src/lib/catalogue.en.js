@@ -81,10 +81,12 @@ export const EN = {
   'action.continuer': 'Continue',
   'action.fermer': 'Close',
   'action.replier': 'Collapse',
+  'action.retirer': 'Remove',
   'action.termine': 'Done',
 
   // --- Toasts -----------------------------------------------------------
   'toast.compteAjoute': 'Account added.',
+  'toast.compteRetire': 'Account removed.',
   'toast.archivee': 'Conversation archived.',
   'toast.supprimee': 'Conversation deleted.',
   'toast.pieceEnregistree': 'Attachment saved: {chemin}',
@@ -189,6 +191,10 @@ export const EN = {
   'reglages.sectionThemes': 'Color theme',
   'reglages.sectionRaccourcis': 'Keyboard shortcuts',
   'reglages.ajouterCompte': 'Add an account',
+  'reglages.retirerCompte': 'Remove {email}',
+  'reglages.retirerConfirme': 'Remove {email}? Its local mail is erased and its connection forgotten. Nothing is deleted on the server.',
+  'reglages.retraitEnCours': 'Removing…',
+  'reglages.retraitImpossible': 'Removal failed — {err}',
   'reglages.sombreAuto': 'Automatic dark',
   'reglages.sombreAutoDesc': 'Follow the system dark setting: “Night” shows while it is on, your chosen theme returns as soon as it turns off.',
   'reglages.langue': 'Language',

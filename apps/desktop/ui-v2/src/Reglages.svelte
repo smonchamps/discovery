@@ -18,7 +18,9 @@
 
   // A11 — la section « Comptes » : v1 offrait l'ajout à tout moment,
   // l'écran 01 ne vient qu'à zéro compte ; la porte permanente vit ici.
-  let { comptes = [], onajoute = () => {} } = $props();
+  // Le retrait vit sur la même rangée : `onsupprime(id)` remonte à
+  // l'App, qui recharge nav et liste.
+  let { comptes = [], onajoute = () => {}, onsupprime = () => {} } = $props();
 
   const GROUPES = [
     { id: 'comptes', icone: 'person', libelle: 'groupe.comptes' },
@@ -41,6 +43,14 @@
   let actif = $state(themeActuel());
   let ajoutOuvert = $state(false);
 
+  // Retrait d'un compte : le geste est DESTRUCTEUR localement (courrier
+  // local effacé, connexion oubliée — le serveur, lui, n'est jamais
+  // touché), donc il se confirme sur place, dans une carte sous la
+  // rangée. `retrait` porte l'account_id en attente de confirmation.
+  let retrait = $state(null);
+  let retraitOccupe = $state(false);
+  let retraitErreur = $state(null);
+
   // À propos : la version se lit UNE fois (elle ne change pas en cours
   // de session) ; hors Tauri le rejet laisse le tiret — jamais un vide
   // silencieux qui ressemblerait à un oubli.
@@ -62,6 +72,8 @@
     auto = suiviOs();
     langue = langueActuelle();
     ajoutOuvert = false;
+    retrait = null;
+    retraitErreur = null;
     groupe = 'comptes';
     maj = null;
     visible = true;
@@ -83,6 +95,28 @@
   function choisirGroupe(id) {
     groupe = id;
     ajoutOuvert = false;
+    retrait = null;
+    retraitErreur = null;
+  }
+  function demanderRetrait(id) {
+    retrait = retrait === id ? null : id;
+    retraitErreur = null;
+  }
+  async function confirmerRetrait() {
+    const id = retrait;
+    retraitOccupe = true;
+    retraitErreur = null;
+    try {
+      await appel('remove_account', { accountId: id });
+      retrait = null;
+      onsupprime(id);
+    } catch (err) {
+      // Le compte est toujours listé : l'erreur se dit sur place et le
+      // geste se rejoue — le retrait est répétable côté shell.
+      retraitErreur = t('reglages.retraitImpossible', { err });
+    } finally {
+      retraitOccupe = false;
+    }
   }
   function choisir(id) {
     appliquerTheme(id);
@@ -165,7 +199,31 @@
                 <div class="compte">
                   <span class="ms" aria-hidden="true">person</span>
                   <span class="adresse">{c.email}</span>
+                  <button type="button" class="retirer" data-testid="compte-retirer"
+                          aria-label={t('reglages.retirerCompte', { email: c.email })}
+                          onclick={() => demanderRetrait(c.account_id)}>
+                    <span class="ms" aria-hidden="true">delete</span></button>
                 </div>
+                {#if retrait === c.account_id}
+                  <!-- La confirmation vit SOUS la rangée, dans la carte
+                       signature : un geste destructeur ne part jamais du
+                       premier clic, et il dit ce qu'il efface — et ce
+                       qu'il n'efface pas (le serveur). -->
+                  <div class="carte-retrait" data-testid="reglages-retrait">
+                    <p class="avertissement">{t('reglages.retirerConfirme', { email: c.email })}</p>
+                    {#if retraitErreur}
+                      <p class="erreur-retrait" data-testid="retrait-erreur">{retraitErreur}</p>
+                    {/if}
+                    <div class="boutons-retrait">
+                      <button type="button" class="danger" data-testid="retrait-confirmer"
+                              disabled={retraitOccupe} onclick={confirmerRetrait}>
+                        {retraitOccupe ? t('reglages.retraitEnCours') : t('action.retirer')}</button>
+                      <button type="button" class="ajouter" data-testid="retrait-annuler"
+                              onclick={() => demanderRetrait(c.account_id)}>
+                        {t('action.annuler')}</button>
+                    </div>
+                  </div>
+                {/if}
               {/each}
               {#if ajoutOuvert}
                 <!-- Carte signature : le guichet est un BLOC voulu, pas un
@@ -411,6 +469,34 @@
     border-radius:6px; cursor:pointer;
   }
   .ajouter:hover { background:var(--sel); }
+
+  /* Le retrait : discret au repos (la rangée reste une rangée), l'alerte
+     ne se montre qu'au survol — le rouge permanent crierait sur chaque
+     compte sain. */
+  .retirer {
+    height:28px; width:28px; padding:0; margin-left:auto; flex:none;
+    display:inline-flex; align-items:center; justify-content:center;
+    color:var(--muted); background:transparent;
+    border:1px solid transparent; border-radius:6px; cursor:pointer;
+  }
+  .retirer:hover {
+    color:var(--alert); background:var(--sel); border-color:var(--border);
+  }
+  .carte-retrait {
+    border:1px solid var(--border); border-left:2px solid var(--alert);
+    border-radius:10px; padding:14px 16px 16px;
+    display:flex; flex-direction:column; gap:12px;
+  }
+  .avertissement { margin:0; font-size:13px; line-height:1.5; color:var(--ink2); }
+  .erreur-retrait { margin:0; font-size:12px; line-height:1.4; color:var(--alert); }
+  .boutons-retrait { display:flex; align-items:center; gap:10px; }
+  .danger {
+    height:32px; padding:0 16px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; font-weight:600; color:var(--onAccent);
+    background:var(--alert); border:1px solid var(--alert);
+    border-radius:6px; cursor:pointer;
+  }
+  .danger:disabled { opacity:.6; cursor:default; }
   .carte-ajout {
     border:1px solid var(--border); border-left:2px solid var(--accent);
     border-radius:10px; padding:14px 16px 16px;

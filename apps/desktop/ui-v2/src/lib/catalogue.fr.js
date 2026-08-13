@@ -83,10 +83,12 @@ export const FR = {
   'action.continuer': 'Continuer',
   'action.fermer': 'Fermer',
   'action.replier': 'Replier',
+  'action.retirer': 'Retirer',
   'action.termine': 'Terminé',
 
   // --- Toasts -----------------------------------------------------------
   'toast.compteAjoute': 'Compte ajouté.',
+  'toast.compteRetire': 'Compte retiré.',
   'toast.archivee': 'Conversation archivée.',
   'toast.supprimee': 'Conversation supprimée.',
   'toast.pieceEnregistree': 'Pièce enregistrée : {chemin}',
@@ -191,6 +193,10 @@ export const FR = {
   'reglages.sectionThemes': 'Thème de couleur',
   'reglages.sectionRaccourcis': 'Raccourcis clavier',
   'reglages.ajouterCompte': 'Ajouter un compte',
+  'reglages.retirerCompte': 'Retirer {email}',
+  'reglages.retirerConfirme': 'Retirer {email} ? Son courrier local est effacé et sa connexion oubliée. Rien n’est supprimé sur le serveur.',
+  'reglages.retraitEnCours': 'Retrait…',
+  'reglages.retraitImpossible': 'Retrait impossible — {err}',
   'reglages.sombreAuto': 'Sombre automatique',
   'reglages.sombreAutoDesc': "Suivre le réglage sombre du système : « La nuit » s'affiche quand il est actif, le thème choisi revient dès qu'il s'éteint.",
   'reglages.langue': 'Langue',

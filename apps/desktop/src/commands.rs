@@ -386,6 +386,51 @@ pub async fn add_generic_account(
     Ok(AccountInfo { id, email })
 }
 
+/// Retire un compte : ses secrets quittent le coffre de l'OS, ses données
+/// locales la base, sa session la mémoire. Le serveur n'est JAMAIS
+/// touché — le courrier reste chez le fournisseur.
+///
+/// L'ordre est un choix : le coffre D'ABORD, la base ensuite. Si la base
+/// échouait après le coffre, le prochain lancement le DIT (« aucun jeton
+/// pour… ») et le retrait se rejoue ; l'inverse — un jeton orphelin qui
+/// survit au compte — resterait invisible pour toujours.
+#[tauri::command]
+pub async fn remove_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: i64,
+) -> Result<(), String> {
+    let path = db_path(&app)?;
+    let account = {
+        let store = Store::open(&path).map_err(|err| err.to_string())?;
+        store
+            .accounts()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .find(|account| account.id == account_id)
+            .ok_or_else(|| format!("compte inconnu : {account_id}"))?
+    };
+
+    // Le coffre est une API bloquante de l'OS : hors du fil de la fenêtre,
+    // comme tous ses autres accès.
+    {
+        let email = account.email.clone();
+        let provider = account.provider.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            mail_auth::forget_credentials(&provider, &email).map_err(|err| err.to_string())
+        })
+        .await
+        .map_err(|err| err.to_string())??;
+    }
+
+    let mut store = Store::open(&path).map_err(|err| err.to_string())?;
+    store
+        .delete_account(account_id)
+        .map_err(|err| err.to_string())?;
+    lock_accounts(&state)?.remove(&account.email);
+    Ok(())
+}
+
 /// Construit une session générique à partir du mot de passe et de la
 /// configuration stockée. Retourne `None` si la configuration est incomplète.
 fn build_generic_session(
@@ -637,9 +682,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
         .await
         .map_err(|err| err.to_string())?;
 
-    for fresh in refreshed {
-        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
-    }
+    reposer_sessions(&state, refreshed)?;
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let total = store.unified_count().map_err(|err| err.to_string())?;
     // L'horodatage de la dernière relève réussie (E1) : posé seulement
@@ -747,9 +790,7 @@ pub async fn sync_inbox_light(
         .await
         .map_err(|err| err.to_string())?;
 
-    for fresh in refreshed {
-        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
-    }
+    reposer_sessions(&state, refreshed)?;
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let total = store.unified_count().map_err(|err| err.to_string())?;
     // L'horodatage vaut aussi pour la passe légère : chaque INBOX vient
@@ -2044,9 +2085,7 @@ pub async fn flush_outbox(
             .await
             .map_err(|err| err.to_string())??;
 
-    for fresh in refreshed {
-        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
-    }
+    reposer_sessions(&state, refreshed)?;
     Ok(summary)
 }
 
@@ -2273,9 +2312,7 @@ pub async fn sync_drafts(
             .await
             .map_err(|err| err.to_string())??;
 
-    for fresh in refreshed {
-        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
-    }
+    reposer_sessions(&state, refreshed)?;
     Ok(summary)
 }
 
@@ -2546,6 +2583,23 @@ fn lock_accounts<'a>(
         .map_err(|_| "état interne verrouillé".to_string())
 }
 
+/// Repose les sessions rafraîchies par une boucle (jeton OAuth renouvelé)
+/// — SANS ressusciter un compte retiré pendant qu'elle tournait : sa
+/// ligne en base a disparu, une session orpheline en mémoire ferait
+/// échouer chaque cycle suivant jusqu'au redémarrage.
+fn reposer_sessions(
+    state: &State<'_, AppState>,
+    refreshed: Vec<AccountSession>,
+) -> Result<(), String> {
+    let mut accounts = lock_accounts(state)?;
+    for fresh in refreshed {
+        if accounts.contains_key(fresh.email()) {
+            accounts.insert(fresh.email().to_string(), fresh);
+        }
+    }
+    Ok(())
+}
+
 fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     // Crochet E2E : base isolée fournie par le pilote de test — la vraie
     // base de l'utilisateur ne doit jamais être touchée par un test.
@@ -2805,9 +2859,7 @@ pub async fn backfill_bodies(
             .await
             .map_err(|err| err.to_string())??;
 
-    for fresh in refreshed {
-        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
-    }
+    reposer_sessions(&state, refreshed)?;
     Ok(summary)
 }
 
