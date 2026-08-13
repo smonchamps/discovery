@@ -18,7 +18,7 @@
 //! ```
 
 use chrono::{DateTime, Duration, Local, Utc};
-use mail_core::{Attachment, Envelope, Store, Uid};
+use mail_core::{Attachment, DraftContent, Envelope, Store, Uid};
 
 const UIDV: u32 = 424243;
 
@@ -142,6 +142,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // propre réponse, elle doit regrouper (ADR 0009).
         store.set_thread_scope(compte, Some("Envoyés"))?;
         dossiers(&store, compte)?;
+    }
+    // Un re-seed repart à neuf : les brouillons locaux d'une passe
+    // précédente sont retirés SANS tombstone (rien à purger sur un
+    // serveur qui n'existe pas).
+    for brouillon in store.drafts()? {
+        store.drop_stale_draft(brouillon.id)?;
     }
 
     // ——— Compte travail ————————————————————————————————————————————
@@ -274,6 +280,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ],
     )?;
 
+    // Le brouillon du décor vit en LOCAL (PLAN-BROUILLONS, B-D1) —
+    // c'est lui que le dossier montre et que le clic reprend. La copie
+    // IMAP reste : c'est le miroir qu'une poussée aurait laissé, et le
+    // brouillon lui est relié (align + record) pour que le décor soit
+    // l'état d'après reflet. Relié au fil Vantis (B-D2) : il répond au
+    // dernier message de Camille (INBOX, uid 17) — la Réception
+    // mentionne ce fil.
     let brouillons = boite(&mut store, travail, "Brouillons")?;
     store.upsert_envelopes(
         brouillons,
@@ -288,6 +301,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             true,
         )],
     )?;
+    let brouillon_vantis = store.save_draft(
+        travail,
+        None,
+        None,
+        DraftContent {
+            to_raw: "c.rousseau@atelier-nord.fr",
+            subject: "Re : Relecture du contrat Vantis",
+            body: "Bonjour Camille,\n\nMerci pour la v4 — je penche pour la reconduction \
+                   tacite, avec un préavis porté à trois mois. Je te confirme jeudi, \
+                   après un dernier échange avec Sofia.",
+            reply_to_uid: Some(17),
+            reply_to_mailbox: Some("INBOX"),
+        },
+    )?;
+    store.align_drafts_uidvalidity(travail, UIDV)?;
+    store.record_draft_pushed(brouillon_vantis.id, Some(1), brouillon_vantis.updated_epoch)?;
     let spam = boite(&mut store, travail, "Spam")?;
     store.upsert_envelopes(
         spam,
@@ -385,6 +414,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
          <img src=\"https://registrar.exemple/logo.png\" alt=\"Registrar\">",
         &[],
     )?;
+    // Même mécanique que le compte travail — mais composition LIBRE
+    // (pas de fil) : les deux formes du dossier sont au décor.
     let brouillons_p = boite(&mut store, personnel, "Brouillons")?;
     store.upsert_envelopes(
         brouillons_p,
@@ -399,6 +430,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             true,
         )],
     )?;
+    let brouillon_cr = store.save_draft(
+        personnel,
+        None,
+        None,
+        DraftContent {
+            to_raw: "l.fontaine@atelier-nord.fr",
+            subject: "Merci pour le compte rendu",
+            body: "Bonjour Léa,\n\nBien reçu, merci — je relis le calendrier de \
+                   livraison ce week-end et je te réponds lundi.",
+            reply_to_uid: None,
+            reply_to_mailbox: None,
+        },
+    )?;
+    store.align_drafts_uidvalidity(personnel, UIDV)?;
+    store.record_draft_pushed(brouillon_cr.id, Some(1), brouillon_cr.updated_epoch)?;
     let spam_p = boite(&mut store, personnel, "Spam")?;
     store.upsert_envelopes(
         spam_p,

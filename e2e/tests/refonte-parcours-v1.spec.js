@@ -8,10 +8,9 @@
 //   bascule, commandes cœur conservées, réversibles par spéc courte ;
 // - l'auto-avance après archivage (v1 ouvrait le message suivant) ne se
 //   porte pas : le prototype ferme le volet — écart assumé A6 ;
-// - « deux brouillons de même sujet distincts au corps » : le bandeau-
-//   liste v1 des brouillons locaux n'existe plus ; l'équivalent v2 est
-//   le dossier Brouillons après reflet serveur (l'aperçu distingue au
-//   corps) — parcours terrain, pas e2e (le reflet exige le réseau).
+// - « deux brouillons de même sujet distincts au corps » : couvert par
+//   nature depuis PLAN-BROUILLONS — le dossier Brouillons montre les
+//   brouillons LOCAUX et leur aperçu distingue au corps, sans réseau.
 import { test, expect } from '@playwright/test';
 import { launchAppV2, closeApp } from '../launch.mjs';
 
@@ -79,7 +78,7 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     );
   });
 
-  test('brouillon : Échap conserve, Reprendre restitue intact', async () => {
+  test('brouillon : Échap conserve, le dossier Brouillons restitue intact', async () => {
     await page.keyboard.press('c');
     await page.locator('[data-testid="composition-objet"]').fill('Brouillon E2E');
     await page.locator('[data-testid="composition-corps"]').fill('Texte précieux.');
@@ -88,16 +87,25 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
 
-    // La fente d'avis le porte (sonde 10 s), Reprendre le rouvre INTACT.
-    await expect(page.locator('[data-testid="fente-avis"]')).toContainText('Brouillon E2E');
-    await page.locator('[data-testid="fente-avis"] button', { hasText: 'Reprendre' }).click();
+    // Plus de fente (PLAN-BROUILLONS) : le brouillon vit AU DOSSIER —
+    // sans destinataire, l'atténué le dit — et le clic le rouvre INTACT.
+    await expect(page.locator('[data-testid="fente-avis"]')).toHaveCount(0);
+    await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+    const ligne = page.locator('[data-testid="ligne-brouillon"]', { hasText: 'Brouillon E2E' });
+    await expect(ligne).toContainText('(sans destinataire)');
+    await ligne.click();
     await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue('Brouillon E2E');
     await expect(page.locator('[data-testid="composition-corps"]')).toHaveValue('Texte précieux.');
-    // Vider puis fermer : le seul cas où fermer supprime.
+    // Vider puis fermer : le seul cas où fermer supprime — la ligne
+    // quitte le dossier sans attendre la sonde.
     await page.locator('[data-testid="composition-objet"]').fill('');
     await page.locator('[data-testid="composition-corps"]').fill('');
     await page.locator('[data-testid="composition-annuler"]').click();
-    await expect(page.locator('[data-testid="fente-avis"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(0);
+    // Retour en Réception : la suite de la chaîne sérielle joue sur la
+    // boîte.
+    await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+    await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   });
 
   test('pièces jointes : la puce marque les porteurs, et eux seuls', async () => {

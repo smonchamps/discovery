@@ -87,10 +87,11 @@ prendre à la suite).
 - **Conversation (écran 03)** : bloc replié final au trait accent
   **pointillé** — mention `✎ Brouillon`, aperçu, heure, « Reprendre »
   au survol. Clic = composeur par-dessus (la conversation reste montée).
-- `--alert` en texte 13 px passe les seuils A8 sur `--bg` (nature ≈ 7,2:1,
-  nuit ≈ 5,4:1) ; `e2e/contraste.mjs` mesurera les 7 thèmes — si un
-  thème échoue, la mention y est assombrie/éclaircie par jeton, pas de
-  couleur en dur.
+- `--alert` en texte 13 px sur les TROIS fonds de rangée (repos,
+  survol, choisie) : mesuré à E2 — seul le thème nuit échouait
+  (3,58:1 sur `--sel`) ; son `--alert` est éclairci `#d9776b` →
+  `#ea9a90` (même teinte, remède A8), et les deux paires neuves sont
+  au banc `contraste.mjs`. Les 7 thèmes passent.
 - Glyphe `edit_note` déjà dans la police (nav) : pas de régénération.
 
 ## 4. Travaux — cœur (`mail-core`)
@@ -175,9 +176,11 @@ prendre à la suite).
   `reply_to_mailbox` bout en bout (cœur, shell, composeur), `drafts()`
   résout le fil. Rien ne change à l'écran, tout est testé — gates :
   379 Rust (5 neufs, `tests_fil`), clippy muet, 73 e2e.
-- **E2 — les surfaces** : dossier Brouillons servi en local + compteur
-  de nav aligné (§4.3) + reprise au clic + mention en Réception +
-  suppression de la source de la fente + catalogues + seed et e2e
-  réécrits. C'est le commit qui tient la commande : la fente ne tombe
-  qu'une fois la reprise au dossier vivante.
+- **E2 — les surfaces** *(livré le 2026-08-13)* : dossier Brouillons
+  servi en local + compteur de nav aligné (§4.3) + reprise au clic +
+  mention en Réception + suppression de la source de la fente +
+  catalogues + seed et e2e réécrits + `--alert` nuit éclairci (§3).
+  C'est le commit qui tient la commande : la fente n'est tombée
+  qu'avec la reprise au dossier vivante. Gates : 380 Rust, clippy
+  muet, 73 e2e, contraste 7 thèmes.
 - **E3 — la conversation** : le bloc final en écran 03 (B-D4-b).

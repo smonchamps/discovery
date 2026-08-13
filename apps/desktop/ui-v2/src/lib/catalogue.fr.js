@@ -56,8 +56,6 @@ export const FR = {
   'avis.maj': 'Une mise à jour est disponible (version {version}).',
   'avis.crash': "Discovery a rencontré un problème lors d'une session précédente ({n} rapport(s) en attente). Rien n'est envoyé sans vous.",
   'avis.telemetrie': "Aider à améliorer Discovery ? En cas de plantage, un rapport technique serait enregistré sur votre machine — jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
-  'avis.brouillons': '{n} brouillons en cours.',
-  'avis.brouillon': 'Un brouillon en cours : « {sujet} ».',
   'avis.connexion': 'Compte non reconnecté — {details}',
 
   // --- Actions partagées ------------------------------------------------
@@ -114,6 +112,10 @@ export const FR = {
   'liste.aria': 'Liste des messages',
   'liste.aucunResultat': 'Aucun résultat.',
   'liste.vide': 'Aucun message ici.',
+  'liste.prefixeBrouillon': 'Brouillon — ',
+  'brouillons.a': 'À : {a}',
+  'brouillons.sansDestinataire': '(sans destinataire)',
+  'brouillons.sansObjet': '(sans objet)',
   'puce.messages': '{n} message|{n} messages',
   'puce.fichiers': '{n} fichier|{n} fichiers',
   'onglet.tous': 'Tous',

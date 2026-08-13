@@ -17,6 +17,11 @@
     compte = null,
     onglet = 'tous',
     recherche = '',
+    // PLAN-BROUILLONS : les brouillons locaux (rows de `list_drafts`),
+    // sondés par l'App — le dossier Brouillons les affiche, la
+    // Réception mentionne les fils qui en portent un.
+    brouillons = [],
+    onreprendre = () => {},
     onselect = () => {},
     ononglet = () => {},
     ontotal = () => {},
@@ -88,6 +93,9 @@
   }
 
   function servirPage(p) {
+    // Le dossier Brouillons ne se sert pas ici : sa page vient de
+    // `list_drafts` (PLAN-BROUILLONS, B-D1), pas de `list_category`.
+    if (categorie === 'brouillons') return Promise.resolve();
     if (pages.has(p) || pending.has(p)) return pending.get(p) || Promise.resolve();
     const nee = generation;
     const t0 = performance.now();
@@ -205,8 +213,10 @@
   });
 
   $effect(() => {
-    const t = total;
-    untrack(() => ontotal(t));
+    // Le dossier Brouillons compte ses lignes à lui — la barre de
+    // statut dit « Brouillons · N éléments » sur la même mécanique.
+    const n = lignesBrouillons !== null ? lignesBrouillons.length : total;
+    untrack(() => ontotal(n));
   });
 
   function sonder(el, avecPuces) {
@@ -222,6 +232,33 @@
     onselect(l);
   }
   const estChoisie = (l) => selection === cle(l);
+
+  // --- Brouillons (PLAN-BROUILLONS) -----------------------------------
+  // Le fil -> son brouillon le plus récent : la mention de la Réception
+  // (variante B validée) montre le préfixe et le CORPS du brouillon en
+  // aperçu — première ligne et heure intactes (B-D3). Jamais sur une
+  // recherche : un résultat est un message, pas une conversation.
+  const brouillonsParFil = $derived.by(() => {
+    const carte = new Map();
+    for (const b of brouillons) {
+      if (b.thread_id == null) continue;
+      const connu = carte.get(b.thread_id);
+      if (!connu || b.updated_epoch > connu.updated_epoch) carte.set(b.thread_id, b);
+    }
+    return carte;
+  });
+  const brouillonDe = (l) =>
+    categorie === 'reception' && resultats === null
+      ? (brouillonsParFil.get(l.thread_id) ?? null)
+      : null;
+  // Le dossier : les brouillons du compte borné par la nav, déjà du
+  // plus récent au plus ancien (`list_drafts`). Peu nombreux par
+  // construction : le chemin non fenêtré des résultats suffit.
+  const lignesBrouillons = $derived(
+    categorie === 'brouillons'
+      ? brouillons.filter((b) => compte === null || b.account_id === compte)
+      : null,
+  );
 
   const ONGLETS = [
     { id: 'tous', icone: 'inbox', libelle: 'onglet.tous' },
@@ -310,7 +347,14 @@
           <span class="heure">{quand(ligne.epoch)}</span>
         </div>
         <p class="objet">{ligne.subject}</p>
-        <p class="apercu">{ligne.preview ?? ''}</p>
+        {#if brouillonDe(ligne)}
+          <!-- Variante B (PLAN-BROUILLONS §3) : l'aperçu dit le
+               brouillon — préfixe et corps ; le reste de la ligne ne
+               bouge pas. -->
+          <p class="apercu"><span class="prefixe" data-testid="mention-brouillon">{t('liste.prefixeBrouillon')}</span>{brouillonDe(ligne).body}</p>
+        {:else}
+          <p class="apercu">{ligne.preview ?? ''}</p>
+        {/if}
         {#if aPuces(ligne)}
           <span class="puces">
             {#if ligne.thread_size > 1}
@@ -330,6 +374,29 @@
         {/if}
         {#each resultats as ligne (`${ligne.account_id}/${ligne.mailbox}/${ligne.uid}`)}
           {@render rangee(ligne)}
+        {/each}
+      </div>
+    {:else if lignesBrouillons !== null}
+      <!-- Le dossier Brouillons (B-D1) : les brouillons locaux, du plus
+           récent au plus ancien. Le clic REPREND — jamais mark_seen, il
+           n'y a rien à lire ici, seulement à finir. -->
+      <div class="fenetre-recherche" data-testid="dossier-brouillons">
+        {#if lignesBrouillons.length === 0}
+          <div class="vide-recherche"><p>{t('liste.vide')}</p></div>
+        {/if}
+        {#each lignesBrouillons as b (b.id)}
+          <div class="ligne" data-testid="ligne-brouillon"
+               role="button" tabindex="0"
+               onclick={() => onreprendre(b)}
+               onkeydown={activation(() => onreprendre(b))}>
+            <div class="l1">
+              <span class="exp" class:sans={!b.to}>
+                {b.to ? t('brouillons.a', { a: b.to }) : t('brouillons.sansDestinataire')}</span>
+              <span class="heure">{quand(Math.floor(b.updated_epoch / 1000))}</span>
+            </div>
+            <p class="objet" class:sans={!b.subject}>{b.subject || t('brouillons.sansObjet')}</p>
+            <p class="apercu">{b.body}</p>
+          </div>
         {/each}
       </div>
     {:else}
@@ -417,6 +484,13 @@
     min-height:1.45em;
   }
   .nonlu .apercu { color:var(--ink2); }
+  /* La mention « Brouillon — » (variante B, PLAN-BROUILLONS §3) : le
+     jeton d'alerte en texte — mesuré par contraste.mjs sur les trois
+     fonds de rangée (repos, survol, choisie). */
+  .prefixe { color:var(--alert); font-weight:600; }
+  /* Champs vides du dossier : l'atténué italique le dit, jamais un
+     blanc (« (sans objet) », « (sans destinataire) »). */
+  .sans, .objet.sans { font-style:italic; color:var(--muted); font-weight:400; }
   .puces { display:flex; gap:8px; margin-top:2px; }
   .puce {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;

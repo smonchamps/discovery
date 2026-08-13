@@ -58,15 +58,14 @@
   let selectionnee = $state(null);
 
   // --- Fente d'avis (§6) : au plus UN, priorité décroissante ----------
+  // Les brouillons n'y vivent plus (PLAN-BROUILLONS) : ils sont en
+  // liste — dossier Brouillons et mention sur le fil.
   let avisEnvoi = $state(null);
   let avisConnexion = $state(null);
   let avisMaj = $state(null);
   let avisCrash = $state(null);
   let avisTelemetrie = $state(null);
-  let avisBrouillons = $state(null);
-  const avis = $derived(
-    avisEnvoi ?? avisConnexion ?? avisMaj ?? avisCrash ?? avisTelemetrie ?? avisBrouillons,
-  );
+  const avis = $derived(avisEnvoi ?? avisConnexion ?? avisMaj ?? avisCrash ?? avisTelemetrie);
 
   // --- Ligne de progression (§6) : au plus UNE ------------------------
   let envoisEnAttente = $state(0);
@@ -369,35 +368,19 @@
     } catch { /* pas de télémétrie disponible : pas d'avis, pas de bruit */ }
   }
 
-  // 5. Brouillons en cours : reprendre où on s'était arrêté. Re-sondé
-  //    comme le bandeau v1 — l'état persiste tant que le brouillon
-  //    existe ; « Plus tard » l'éteint pour la session.
-  let brouillonsIgnores = false;
-  async function verifierBrouillons() {
-    if (brouillonsIgnores) return;
+  // --- Brouillons en liste (PLAN-BROUILLONS) --------------------------
+  // Sondés comme le reste — le port reste du sondage (R0-S5), aucun
+  // canal neuf. La sonde nourrit le dossier Brouillons ET la mention
+  // sur les fils de la Réception ; le composeur la réveille à chaque
+  // geste local (onbrouillon) pour que la liste ne traîne pas 10 s.
+  let brouillons = $state([]);
+  async function sonderBrouillons() {
     try {
-      const brouillons = await appel('list_drafts');
-      if (brouillons.length === 0) {
-        avisBrouillons = null;
-        return;
-      }
-      avisBrouillons = {
-        icone: 'edit_note',
-        texte: brouillons.length > 1
-          ? t('avis.brouillons', { n: brouillons.length })
-          : t('avis.brouillon', { sujet: brouillons[0].subject || t('compo.sansObjet') }),
-        actions: [
-          { libelle: t('action.reprendre'), principale: true, faire: () => {
-            avisBrouillons = null;
-            composition.ouvrirBrouillon(brouillons[0]);
-          } },
-          { libelle: t('action.plusTard'), faire: () => {
-            brouillonsIgnores = true;
-            avisBrouillons = null;
-          } },
-        ],
-      };
-    } catch { /* les brouillons reviendront à la prochaine session */ }
+      brouillons = await appel('list_drafts');
+    } catch { /* la prochaine sonde suffira */ }
+  }
+  function reprendreBrouillon(brouillon) {
+    composition.ouvrirBrouillon(brouillon);
   }
 
   // --- R1 : la colonne vertébrale de synchro (PLAN-RETRAIT-V1) --------
@@ -500,7 +483,7 @@
       await appel('sync_drafts').catch(() => { /* hors ligne : le cycle suivant retentera */ });
       sonderEnvois();
       chargerNav();
-      verifierBrouillons();
+      sonderBrouillons();
       if (bilan.fetched > 0 || bilan.deleted > 0) {
         liste?.recharger();
         rattraperCorps();
@@ -574,8 +557,8 @@
     setTimeout(rattraperCorps, 3000);
     verifierMaj();
     verifierTelemetrie();
-    verifierBrouillons();
-    setInterval(verifierBrouillons, 10000);
+    sonderBrouillons();
+    setInterval(sonderBrouillons, 10000);
     // R1 — le cycle de synchro : APRÈS les premiers rendus (la liste est
     // utilisable avant, « enveloppes d'abord ») ; jamais bloquant.
     (async () => {
@@ -799,6 +782,7 @@
     <div class="colonnes">
       <Nav {comptes} {categorie} {compte} onchoisir={choisir} />
       <Liste bind:this={liste} {categorie} {compte} {onglet} {recherche}
+             {brouillons} onreprendre={reprendreBrouillon}
              onselect={surSelection} ononglet={surOnglet}
              ontotal={(t) => (totalListe = t)}
              onresultats={(n) => (nResultats = n)} />
@@ -846,7 +830,8 @@
     {/if}
 
     <Composition bind:this={composition} {comptes} {compte}
-                 onflash={flash} onenvoye={apresEnvoi} />
+                 onflash={flash} onenvoye={apresEnvoi}
+                 onbrouillon={sonderBrouillons} />
     <Reglages bind:this={reglages} {comptes} onajoute={compteAjoute}
               onsupprime={compteRetire} />
   {/if}

@@ -288,22 +288,52 @@ test("les images distantes restent bloquées, l'opt-in est par message", async (
   await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
 });
 
-test("la fente d'avis porte le brouillon en cours, Reprendre le rouvre", async () => {
-  // Le brouillon vient du parcours P4 « Enregistrer le brouillon » ;
-  // la sonde passe toutes les 10 s.
-  await expect(page.locator('[data-testid="fente-avis"]')).toContainText('brouillon');
-  await page.locator('[data-testid="fente-avis"] button', { hasText: 'Reprendre' }).click();
+test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente muette', async () => {
+  // PLAN-BROUILLONS : la fente ne porte plus les brouillons — la
+  // mention en Réception (variante B) et le dossier Brouillons, si.
+  // Le brouillon du parcours P4 répond au fil Vantis : c'est LUI le
+  // plus récent du fil, son corps prend l'aperçu.
+  await expect(page.locator('[data-testid="fente-avis"]')).toHaveCount(0);
+  const fil = page
+    .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
+    .first();
+  await expect(fil.locator('[data-testid="mention-brouillon"]')).toHaveText('Brouillon — ');
+  await expect(fil).toContainText('Bonjour Camille,');
+
+  // Le dossier : les brouillons LOCAUX (2 du décor + celui de P4), du
+  // plus récent au plus ancien ; la barre de statut compte comme les
+  // autres catégories ; le clic REPREND — jamais une lecture.
+  await dossier('brouillons').click();
+  await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
+  await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(3);
+  await expect(page.locator('[data-testid="progression"]')).toContainText(
+    'Brouillons · 3 éléments',
+  );
+  await page.locator('[data-testid="ligne-brouillon"]').first().click();
   await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(
     'Re : Relecture du contrat Vantis',
   );
-  // Vider puis fermer : le seul cas où fermer supprime — le brouillon
-  // est réglé, l'avis s'éteint à la sonde suivante.
+  await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(
+    'c.rousseau@atelier-nord.fr',
+  );
+
+  // Vider puis fermer : le seul cas où fermer supprime — la ligne
+  // quitte le dossier SANS attendre la sonde (onbrouillon).
   await page.locator('[data-testid="composition-a"]').fill('');
   await page.locator('[data-testid="composition-objet"]').fill('');
   await page.locator('[data-testid="composition-corps"]').fill('');
   await page.locator('[data-testid="composition-annuler"]').click();
   await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
-  await expect(page.locator('[data-testid="fente-avis"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(2);
+
+  // Retour en Réception : le fil Vantis garde sa mention — le brouillon
+  // du DÉCOR le vise aussi, et c'est son corps qui reprend l'aperçu.
+  await dossier('reception').click();
+  const encore = page
+    .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
+    .first();
+  await expect(encore.locator('[data-testid="mention-brouillon"]')).toBeVisible();
+  await expect(encore).toContainText('Merci pour la v4');
 });
 
 test("la ligne de progression porte l'attente non fautive de la boîte d'envoi", async () => {

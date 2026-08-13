@@ -29,6 +29,9 @@
     compte = null,
     onflash = () => {},
     onenvoye = () => {},
+    // Chaque geste qui change les brouillons le rapporte : la liste
+    // (dossier, mention sur le fil) se ressonde sans attendre les 10 s.
+    onbrouillon = () => {},
   } = $props();
 
   let visible = $state(false);
@@ -202,6 +205,7 @@
         // Le panneau s'est fermé pendant la sauvegarde (envoi parti) :
         // ne pas ressusciter un brouillon déjà réglé.
         await appel('delete_draft', { id: bilan.id }).catch(() => {});
+        onbrouillon();
         return null;
       }
       brouillonId = bilan.id;
@@ -211,6 +215,7 @@
         // l'utilisateur peut trancher.
         onflash(t('toast.brouillonFork'));
       }
+      onbrouillon();
       return bilan;
     } catch {
       // La prochaine frappe retentera — le filet n'alarme pas pour rien.
@@ -231,6 +236,7 @@
     if (vide()) {
       if (brouillonId !== null) {
         await appel('delete_draft', { id: brouillonId }).catch(() => {});
+        onbrouillon();
       }
       visible = false;
       return;
@@ -277,6 +283,7 @@
     onflash(t('toast.envoye'));
     if (regle !== null) {
       await appel('delete_draft', { id: regle }).catch(() => {});
+      onbrouillon();
     }
     // Vidange en arrière-plan ; hors ligne, la file attend — l'incident
     // visible est la fente d'avis (P5). Puis purge du reflet distant du

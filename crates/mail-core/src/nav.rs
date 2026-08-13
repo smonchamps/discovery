@@ -248,7 +248,15 @@ impl Store {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
         let (envoyes, _) = self.compte_boite(account_id, dossiers.envoyes.as_deref(), &[])?;
-        let (brouillons, _) = self.compte_boite(account_id, dossiers.brouillons.as_deref(), &[])?;
+        // PLAN-BROUILLONS (B-D1) : le dossier Brouillons montre les
+        // brouillons LOCAUX — le compteur compte la même chose, jamais
+        // la boîte IMAP miroir : un chiffre qui ne correspond pas à ce
+        // que le clic ouvre serait un mensonge de nav.
+        let brouillons: i64 = self.conn().query_row(
+            "SELECT COUNT(*) FROM drafts WHERE account_id = ?1",
+            params![account_id],
+            |row| row.get(0),
+        )?;
         let (indesirables_total, indesirables_non_lus) =
             self.compte_boite(account_id, dossiers.indesirables.as_deref(), &[])?;
         let exclusion_archives = if dossiers.archives_integrale {
@@ -266,7 +274,7 @@ impl Store {
             reception_total: reception_total as u64,
             reception_non_lues: reception_non_lues as u64,
             envoyes,
-            brouillons,
+            brouillons: brouillons as u64,
             indesirables_total,
             indesirables_non_lus,
             archives,
@@ -510,8 +518,67 @@ mod tests {
         assert_eq!(counts.reception_total, 2);
         assert_eq!(counts.reception_non_lues, 1);
         assert_eq!(counts.archives, 3);
-        // Brouillons : aucun dossier reconnu -> zéro, jamais une erreur.
+        // Brouillons : aucun brouillon local -> zéro, jamais une erreur.
         assert_eq!(counts.brouillons, 0);
+    }
+
+    /// B-D1 (PLAN-BROUILLONS) : le compteur compte la table `drafts` du
+    /// compte — la boîte IMAP miroir, même pleine, ne compte pas, car ce
+    /// n'est pas elle que le clic ouvre.
+    #[test]
+    fn le_compteur_de_brouillons_compte_les_brouillons_locaux() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("a@exemple.fr", "gmail")
+            .unwrap();
+        let autre = store
+            .adopt_or_create_account("b@exemple.fr", "gmail")
+            .unwrap();
+        let miroir = store.create_mailbox(account, "Brouillons", 1).unwrap();
+        store
+            .upsert_envelopes(
+                miroir,
+                &[
+                    envelope(1, "copie poussée", 100, true),
+                    envelope(2, "copie poussée aussi", 200, true),
+                ],
+            )
+            .unwrap();
+        store
+            .replace_folders(account, &[dossier("INBOX"), dossier("Brouillons")])
+            .unwrap();
+        store
+            .save_draft(
+                account,
+                None,
+                None,
+                crate::DraftContent {
+                    to_raw: "",
+                    subject: "local",
+                    body: "texte",
+                    reply_to_uid: None,
+                    reply_to_mailbox: None,
+                },
+            )
+            .unwrap();
+        store
+            .save_draft(
+                autre,
+                None,
+                None,
+                crate::DraftContent {
+                    to_raw: "",
+                    subject: "du voisin",
+                    body: "texte",
+                    reply_to_uid: None,
+                    reply_to_mailbox: None,
+                },
+            )
+            .unwrap();
+
+        let canon = store.canonical_folders(account).unwrap();
+        let counts = store.nav_counts(account, &canon).unwrap();
+        assert_eq!(counts.brouillons, 1, "le local compte, le miroir non");
     }
 
     #[test]

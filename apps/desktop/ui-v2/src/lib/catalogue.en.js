@@ -54,8 +54,6 @@ export const EN = {
   'avis.maj': 'An update is available (version {version}).',
   'avis.crash': 'Discovery ran into a problem during a previous session ({n} report(s) pending). Nothing is sent without you.',
   'avis.telemetrie': 'Help improve Discovery? If it crashes, a technical report would be saved on your machine — never the content of your mail. You then choose whether to send it.',
-  'avis.brouillons': '{n} drafts in progress.',
-  'avis.brouillon': 'A draft in progress: “{sujet}”.',
   'avis.connexion': 'Account not reconnected — {details}',
 
   // --- Actions partagées ------------------------------------------------
@@ -112,6 +110,10 @@ export const EN = {
   'liste.aria': 'Message list',
   'liste.aucunResultat': 'No results.',
   'liste.vide': 'No messages here.',
+  'liste.prefixeBrouillon': 'Draft — ',
+  'brouillons.a': 'To: {a}',
+  'brouillons.sansDestinataire': '(no recipient)',
+  'brouillons.sansObjet': '(no subject)',
   'puce.messages': '{n} message|{n} messages',
   'puce.fichiers': '{n} file|{n} files',
   'onglet.tous': 'All',
