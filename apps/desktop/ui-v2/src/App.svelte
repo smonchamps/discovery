@@ -818,7 +818,8 @@
       </button>
     </div>
 
-    <Conversation bind:this={conversation} onretour={retourBoite}
+    <Conversation bind:this={conversation} {brouillons}
+                  onreprendre={reprendreBrouillon} onretour={retourBoite}
                   onarchiver={async (l) => { await archiver(l); retourBoite(); }}
                   onsupprimer={async (l) => { await supprimer(l); retourBoite(); }}
                   onrepondre={repondre} onrepondretous={repondreTous}

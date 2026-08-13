@@ -336,6 +336,34 @@ test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente 
   await expect(encore).toContainText('Merci pour la v4');
 });
 
+test('la conversation porte le brouillon en dernière position, le clic reprend (E3)', async () => {
+  // La liste promettait un « dernier email » : l'écran 03 le tient
+  // (B-D4-b) — bloc pointillé en fin de fil, corps du brouillon, clic
+  // = reprise, la conversation reste montée sous le composeur.
+  await page
+    .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
+    .first()
+    .click();
+  await page.locator('[data-testid="voir-conversation"]').click();
+  const bloc = page.locator('[data-testid="conv-brouillon"]');
+  await expect(bloc).toContainText('Brouillon');
+  await expect(bloc).toContainText('Merci pour la v4');
+  await expect(bloc).toContainText('Reprendre');
+  await bloc.click();
+  await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(
+    'Re : Relecture du contrat Vantis',
+  );
+  await expect(page.locator('[data-testid="composition-corps"]')).toHaveValue(/Merci pour la v4/);
+  // Fermer conserve : le bloc reste, la conversation n'a pas bougé.
+  await page.locator('[data-testid="composition-annuler"]').click();
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
+  await expect(bloc).toBeVisible();
+  // Retour boîte : la chaîne sérielle repart de la Réception.
+  await page.locator('[data-testid="retour-boite"]').click();
+  await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
+});
+
 test("la ligne de progression porte l'attente non fautive de la boîte d'envoi", async () => {
   // L'envoi du parcours P4 attend toujours (compte hors ligne par
   // construction) : attente NON fautive — la ligne, pas la fente.

@@ -183,4 +183,7 @@ prendre à la suite).
   C'est le commit qui tient la commande : la fente n'est tombée
   qu'avec la reprise au dossier vivante. Gates : 380 Rust, clippy
   muet, 73 e2e, contraste 7 thèmes.
-- **E3 — la conversation** : le bloc final en écran 03 (B-D4-b).
+- **E3 — la conversation** *(livré le 2026-08-13)* : le bloc final en
+  écran 03 (B-D4-b) — pointillé accent, mention ✎, corps, heure,
+  « Reprendre » ; clic = composeur par-dessus, conversation montée
+  dessous. Gates : 380 Rust, 74 e2e. **Le plan est soldé.**

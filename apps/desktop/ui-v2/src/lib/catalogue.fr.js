@@ -134,6 +134,7 @@ export const FR = {
 
   // --- Conversation (écran 03) ------------------------------------------
   'conv.toutDeplier': 'Tout déplier',
+  'conv.brouillon': 'Brouillon',
   'conv.de': 'De',
   'conv.a': 'À',
   'conv.objet': 'Objet',

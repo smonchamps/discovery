@@ -21,6 +21,11 @@
   import { t } from './lib/texte.svelte.js';
 
   let {
+    // Les brouillons locaux (sonde de l'App) : le fil ouvert qui en
+    // porte un le montre en DERNIÈRE position (PLAN-BROUILLONS, B-D4-b)
+    // — la liste promettait un « dernier email », l'écran 03 le tient.
+    brouillons = [],
+    onreprendre = () => {},
     onretour = () => {},
     onarchiver = () => {},
     onsupprimer = () => {},
@@ -134,6 +139,19 @@
   // fichiers, la citation son corps).
   const dernier = () => fil[fil.length - 1] ?? ligne;
 
+  // Le brouillon du fil ouvert — le plus récent s'il y en a plusieurs
+  // (B-D5), même règle que la mention en liste. Le bloc disparaît de
+  // lui-même à la sonde suivante quand le brouillon est réglé.
+  const brouillonDuFil = $derived.by(() => {
+    if (!ligne || ligne.thread_id == null) return null;
+    let retenu = null;
+    for (const b of brouillons) {
+      if (b.thread_id !== ligne.thread_id) continue;
+      if (!retenu || b.updated_epoch > retenu.updated_epoch) retenu = b;
+    }
+    return retenu;
+  });
+
   const propre = (m) => ligne && m.sender_address === ligne.account_email;
   const ligneDe = (m) =>
     m.sender_address ? `${m.sender} <${m.sender_address}>` : m.sender;
@@ -222,6 +240,21 @@
               </div>
             {/if}
           {/each}
+          {#if brouillonDuFil}
+            <!-- Le trait pointillé dit « pas encore parti » ; le bloc
+                 ENTIER reprend, le bouton nomme le geste (maquette §3).
+                 Le composeur se superpose, la conversation reste
+                 montée dessous. -->
+            <div class="replie brouillon" data-testid="conv-brouillon"
+                 role="button" tabindex="0"
+                 onclick={() => onreprendre(brouillonDuFil)}
+                 onkeydown={activation(() => onreprendre(brouillonDuFil))}>
+              <span class="mention"><span class="ms" aria-hidden="true">edit_note</span>{t('conv.brouillon')}</span>
+              <span class="apercu">{brouillonDuFil.body}</span>
+              <span class="heure">{quand(Math.floor(brouillonDuFil.updated_epoch / 1000))}</span>
+              <span class="reprendre">{t('action.reprendre')}</span>
+            </div>
+          {/if}
         </div>
 
         <div class="actions">
@@ -310,6 +343,22 @@
     text-overflow:ellipsis; white-space:nowrap; max-width:40ch;
   }
   .heure { font-size:12px; color:var(--muted); }
+  /* Le bloc brouillon (PLAN-BROUILLONS §3, maquette validée) : la forme
+     d'un message replié, le trait accent POINTILLÉ en plus. */
+  .replie.brouillon { border:1px dashed var(--accent); }
+  .brouillon .mention {
+    display:inline-flex; align-items:center; gap:6px; flex:none;
+    font-size:13px; font-weight:600; color:var(--alert);
+  }
+  .brouillon .mention .ms { font-size:15px; }
+  .brouillon .apercu { flex:1; max-width:none; }
+  .brouillon .reprendre {
+    height:26px; padding:0 12px; display:inline-flex; align-items:center;
+    flex:none; font-size:12px; font-weight:600; color:var(--ink2);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px;
+  }
+  .replie.brouillon:hover .reprendre { background:var(--sel); color:var(--ink); }
 
   .deplie {
     flex:none; border:1px solid var(--border);

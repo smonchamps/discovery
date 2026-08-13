@@ -132,6 +132,7 @@ export const EN = {
 
   // --- Conversation (écran 03) ------------------------------------------
   'conv.toutDeplier': 'Expand all',
+  'conv.brouillon': 'Draft',
   'conv.de': 'From',
   'conv.a': 'To',
   'conv.objet': 'Subject',
