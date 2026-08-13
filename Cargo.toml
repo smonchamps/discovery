@@ -29,6 +29,10 @@ imap-proto = "0.16"
 keyring = { version = "3", features = ["windows-native"] }
 lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "rustls-tls", "builder"] }
 mail-parser = { version = "0.11", features = ["full_encoding"] }
+# Le backend TLS que `imap` embarque déjà (feature par défaut) : exposé en
+# dépendance directe pour poser les timeouts socket AVANT la poignée de
+# main (P0, PLAN-SYNCHRO) — le ClientBuilder de la crate ne borne rien.
+native-tls = "0.2"
 oauth2 = { version = "5", default-features = false, features = ["reqwest-blocking", "rustls-tls"] }
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }

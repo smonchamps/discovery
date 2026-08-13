@@ -12,12 +12,131 @@
 mod convert;
 mod mutf7;
 
+use std::io::{Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
+use std::time::Duration;
+
 use imap_proto::NameAttribute;
 use imap_proto::types::UidSetMember;
 use mail_core::{
     Envelope, Error, FetchedBody, MailServer, MailboxSnapshot, MessageRecipients, RemoteDraft,
     ThreadHeaders, Uid,
 };
+
+/// Les délais du cycle (P0, PLAN-SYNCHRO) : sans eux, un réseau qui cale
+/// en plein FETCH gelait la relève sans fin ni erreur — et la garde de
+/// réentrance de l'UI sautait tous les cycles suivants, jusqu'au
+/// redémarrage. Provisoire assumé : le spike IDLE (E4) re-instruira ces
+/// valeurs, une lecture IDLE étant longue par nature.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// 120 s, le haut de la fourchette du plan (60–120 s), et pas moins : le
+/// délai court par `read()`, pas par commande — il ne tombe que si PLUS
+/// RIEN n'arrive. Un serveur qui rumine un SEARCH sur une grosse boîte
+/// peut se taire des dizaines de secondes avant son premier octet.
+const IO_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// Ouvre la connexion IMAP avec les délais posés AVANT le premier octet :
+/// TCP borné, timeouts de lecture ET d'écriture sur la socket, puis TLS
+/// direct sur 993 et STARTTLS obligatoire ailleurs — le comportement
+/// exact du `ClientBuilder` (mode AutoTls), qui lui ne borne rien : c'est
+/// toute la raison de construire à la main.
+fn connect_client(
+    host: &str,
+    port: u16,
+    connect_timeout: Duration,
+    io_timeout: Duration,
+) -> Result<imap::Client<imap::Connection>, Error> {
+    let contexte = |err: String| Error::Server(format!("connexion {host}:{port} : {err}"));
+    // La résolution peut rendre plusieurs adresses (IPv4/IPv6) : chacune
+    // a droit au même délai, la première qui répond gagne.
+    let mut tcp: Option<TcpStream> = None;
+    let mut dernier: Option<std::io::Error> = None;
+    for addr in (host, port)
+        .to_socket_addrs()
+        .map_err(|err| contexte(err.to_string()))?
+    {
+        match TcpStream::connect_timeout(&addr, connect_timeout) {
+            Ok(stream) => {
+                tcp = Some(stream);
+                break;
+            }
+            Err(err) => dernier = Some(err),
+        }
+    }
+    let mut tcp = match (tcp, dernier) {
+        (Some(tcp), _) => tcp,
+        (None, Some(err)) => return Err(contexte(err.to_string())),
+        (None, None) => return Err(contexte("adresse introuvable".to_string())),
+    };
+    tcp.set_read_timeout(Some(io_timeout))
+        .map_err(|err| contexte(err.to_string()))?;
+    tcp.set_write_timeout(Some(io_timeout))
+        .map_err(|err| contexte(err.to_string()))?;
+
+    let connector = native_tls::TlsConnector::new().map_err(|err| contexte(err.to_string()))?;
+    if port == 993 {
+        let tls = connector
+            .connect(host, tcp)
+            .map_err(|err| contexte(err.to_string()))?;
+        let mut client = imap::Client::new(Box::new(tls) as imap::Connection);
+        client.read_greeting().map_err(server_err)?;
+        Ok(client)
+    } else {
+        // STARTTLS : salutation puis montée en TLS OBLIGATOIRE — un
+        // serveur qui la refuse est refusé, jamais de session en clair
+        // (même exigence que le mode AutoTls remplacé). Négocié À LA
+        // MAIN sur la socket : l'API publique de la crate ne sait pas
+        // émettre STARTTLS avant authentification. Deux lignes de
+        // protocole, bornées par les mêmes délais que tout le reste.
+        lire_ligne(&mut tcp).map_err(|err| contexte(err.to_string()))?; // salutation
+        tcp.write_all(b"a1 STARTTLS\r\n")
+            .map_err(|err| contexte(err.to_string()))?;
+        loop {
+            let ligne = lire_ligne(&mut tcp).map_err(|err| contexte(err.to_string()))?;
+            let Some(reponse) = ligne.strip_prefix("a1 ") else {
+                continue; // ligne non étiquetée (« * … ») : on lit la suite
+            };
+            if reponse.starts_with("OK") {
+                break;
+            }
+            return Err(contexte(format!("STARTTLS refusé : {}", ligne.trim_end())));
+        }
+        let tls = connector
+            .connect(host, tcp)
+            .map_err(|err| contexte(err.to_string()))?;
+        // Pas de salutation à lire : elle a été consommée en clair, le
+        // serveur n'en renvoie pas après STARTTLS (RFC 3501 §6.2.1).
+        Ok(imap::Client::new(Box::new(tls) as imap::Connection))
+    }
+}
+
+/// Lit UNE ligne terminée par `\n` sur la socket, bornée à 8 Kio : le
+/// pré-TLS d'IMAP tient en deux lignes courtes, tout dépassement est
+/// suspect. Octet par octet, et c'est voulu — aucun tampon ne doit
+/// avaler les premiers octets de la poignée de main TLS qui suit.
+fn lire_ligne(tcp: &mut TcpStream) -> std::io::Result<String> {
+    let mut ligne = Vec::new();
+    let mut octet = [0u8; 1];
+    loop {
+        if tcp.read(&mut octet)? == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "connexion fermée avant la fin de ligne",
+            ));
+        }
+        ligne.push(octet[0]);
+        if octet[0] == b'\n' {
+            return Ok(String::from_utf8_lossy(&ligne).into_owned());
+        }
+        if ligne.len() > 8 * 1024 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "ligne de protocole démesurée avant TLS",
+            ));
+        }
+    }
+}
 
 /// Chaîne SASL XOAUTH2 (Gmail, Microsoft) : jamais de mot de passe.
 struct XOAuth2 {
@@ -54,15 +173,15 @@ pub struct ImapServer {
 
 impl ImapServer {
     /// Connexion TLS + authentification XOAUTH2 avec un access token OAuth2.
+    /// Délais posés à la socket (P0) : un réseau qui cale est une erreur,
+    /// jamais un gel.
     pub fn connect_xoauth2(
         host: &str,
         port: u16,
         user: &str,
         access_token: &str,
     ) -> Result<Self, Error> {
-        let client = imap::ClientBuilder::new(host, port)
-            .connect()
-            .map_err(server_err)?;
+        let client = connect_client(host, port, CONNECT_TIMEOUT, IO_TIMEOUT)?;
         let auth = XOAuth2 {
             user: user.to_string(),
             access_token: access_token.to_string(),
@@ -82,15 +201,14 @@ impl ImapServer {
     }
 
     /// Connexion TLS + authentification par mot de passe (IMAP générique).
+    /// Mêmes délais que la voie OAuth (P0).
     pub fn connect_password(
         host: &str,
         port: u16,
         user: &str,
         password: &str,
     ) -> Result<Self, Error> {
-        let client = imap::ClientBuilder::new(host, port)
-            .connect()
-            .map_err(server_err)?;
+        let client = connect_client(host, port, CONNECT_TIMEOUT, IO_TIMEOUT)?;
         let session = client
             .login(user, password)
             .map_err(|(err, _)| server_err(err))?;
@@ -617,4 +735,76 @@ fn body_from_raw(raw: &[u8]) -> Option<FetchedBody> {
         html: convert::extract_html(raw)?,
         attachments: convert::extract_attachments(raw),
     })
+}
+
+#[cfg(test)]
+mod connect_timeout_tests {
+    use super::connect_client;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::time::{Duration, Instant};
+
+    /// LE contrat de P0 (PLAN-SYNCHRO) : un serveur qui accepte la
+    /// connexion puis se tait pour toujours doit devenir une ERREUR
+    /// bornée. Avant P0, `ClientBuilder::connect()` lisait la salutation
+    /// sans délai : le cycle entier gelait, en silence, et la garde de
+    /// réentrance de l'UI interdisait tout cycle suivant — plus aucun
+    /// courrier jusqu'au redémarrage.
+    #[test]
+    fn un_serveur_muet_echoue_au_lieu_de_geler() {
+        // Un vrai listener jamais servi : la poignée de main TCP aboutit
+        // (backlog du noyau), puis plus rien — le réseau qui cale.
+        let silencieux = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = silencieux.local_addr().unwrap().port();
+
+        let depart = Instant::now();
+        let resultat = connect_client(
+            "127.0.0.1",
+            port,
+            Duration::from_secs(5),
+            Duration::from_millis(200),
+        );
+
+        assert!(
+            resultat.is_err(),
+            "un serveur muet ne doit pas rendre de client"
+        );
+        assert!(
+            depart.elapsed() < Duration::from_secs(5),
+            "l'échec doit venir du délai de lecture, pas d'un gel : {:?}",
+            depart.elapsed()
+        );
+    }
+
+    /// La montée en TLS est OBLIGATOIRE : un serveur qui refuse STARTTLS
+    /// est refusé à son tour — jamais de session en clair (l'exigence du
+    /// mode AutoTls que la connexion manuelle remplace). La ligne non
+    /// étiquetée intercalée vérifie que la lecture saute les « * … »
+    /// sans les confondre avec la réponse.
+    #[test]
+    fn starttls_refuse_est_une_erreur_franche() {
+        let ecoute = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = ecoute.local_addr().unwrap().port();
+        let serveur = std::thread::spawn(move || {
+            let (mut sock, _) = ecoute.accept().unwrap();
+            sock.write_all(b"* OK pret\r\n").unwrap();
+            let mut tampon = [0u8; 64];
+            let _ = sock.read(&mut tampon).unwrap();
+            sock.write_all(b"* CAPABILITY IMAP4rev1\r\na1 NO pas ici\r\n")
+                .unwrap();
+        });
+
+        let resultat = connect_client(
+            "127.0.0.1",
+            port,
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+        );
+        serveur.join().unwrap();
+
+        let erreur = resultat
+            .expect_err("un refus de STARTTLS doit être une erreur")
+            .to_string();
+        assert!(erreur.contains("STARTTLS refusé"), "erreur : {erreur}");
+    }
 }

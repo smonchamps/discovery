@@ -421,13 +421,46 @@
       activite = await appel('sync_activity');
     } catch { /* la prochaine sonde suffira */ }
   }
+  // P0 (PLAN-SYNCHRO) : le watchdog du cycle. Les timeouts socket de
+  // mail-imap achèvent un réseau qui cale ; le watchdog couvre ce qu'ils
+  // ne voient pas. 5 min : au-dessus du plus long silence légitime
+  // mesuré — l'intégrale du terrain avançait par lots de ~75 s, et
+  // chaque lot bouge l'avancement (`synchro.local`), donc la signature.
+  const IMMOBILITE_MAX = 5 * 60 * 1000;
+  // Le jeton interdit à la fin TARDIVE d'un cycle déclaré mort de
+  // toucher l'état d'un cycle relancé depuis.
+  let jetonCycle = 0;
   async function synchroniser() {
     if (enSynchro) return; // réentrance interdite : un cycle à la fois
     enSynchro = true;
+    const jeton = ++jetonCycle;
     sonderActivite();
-    const sonde = setInterval(sonderActivite, 1000);
+    // Un cycle dont NI l'activité NI l'avancement ne bougent pendant
+    // 5 min est déclaré mort : garde réarmée, échec affiché. Le watchdog
+    // ne tue rien (une commande en vol ne s'annule pas) — il rend la
+    // main ; c'est le timeout socket qui achève le thread gelé.
+    let signature = '';
+    let dernierMouvement = Date.now();
+    const surveiller = async () => {
+      await sonderActivite();
+      const trace = JSON.stringify([activite, synchro?.local]);
+      if (trace !== signature) {
+        signature = trace;
+        dernierMouvement = Date.now();
+        return;
+      }
+      if (Date.now() - dernierMouvement < IMMOBILITE_MAX) return;
+      clearInterval(sonde);
+      jetonCycle += 1;
+      synchroEchec = true;
+      activite = null;
+      enSynchro = false;
+      console.error('sync_inbox : aucun mouvement depuis 5 min, cycle déclaré mort (P0)');
+    };
+    const sonde = setInterval(surveiller, 1000);
     try {
       const bilan = await appel('sync_inbox');
+      if (jeton !== jetonCycle) return; // déclaré mort entre-temps : trop tard
       synchroEchec = bilan.accounts === 0 && bilan.errors.length > 0;
       // Le réseau est peut-être revenu : la boîte d'envoi retente sa
       // chance, puis les brouillons se reflètent (poussée + purge).
@@ -441,15 +474,17 @@
         rattraperCorps();
       }
     } catch (err) {
-      synchroEchec = true;
+      if (jeton === jetonCycle) synchroEchec = true;
       console.error('sync_inbox :', err);
     } finally {
       clearInterval(sonde);
-      activite = null;
-      enSynchro = false;
-      // L'horodatage vient d'être posé par le shell : le relire tout de
-      // suite, sans attendre la sonde de 5 s.
-      sonderSynchro();
+      if (jeton === jetonCycle) {
+        activite = null;
+        enSynchro = false;
+        // L'horodatage vient d'être posé par le shell : le relire tout de
+        // suite, sans attendre la sonde de 5 s.
+        sonderSynchro();
+      }
     }
   }
 

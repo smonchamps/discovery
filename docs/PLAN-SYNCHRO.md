@@ -195,6 +195,15 @@ différentiel qui coûte 34 s (INBOX seule) serait livrer un bouton cassé.
 
 ### P0 — Le filet de sécurité du cycle (audit 2026-08-13, AVANT E2b)
 
+**État : livrée le 2026-08-13 (gate locale verte), terrain CE dû —
+câble coupé en plein cycle.** Valeurs livrées : TCP 30 s,
+lecture/écriture 120 s. La connexion est construite à la main dans
+`mail-imap` (le `ClientBuilder` de la crate ne borne rien), STARTTLS
+négocié sur la socket avant TLS — jamais de session en clair, tenu par
+tests (serveur muet → erreur en 0,2 s ; STARTTLS refusé → erreur
+franche). Watchdog UI avec jeton de cycle : la fin tardive d'un cycle
+déclaré mort ne peut plus toucher l'état d'un cycle relancé.
+
 **L'audit du 2026-08-13 a nommé la conséquence du défaut consigné au
 1ᵉʳ terrain (« AUCUN timeout de lecture ») : l'arrêt permanent et
 silencieux de la synchronisation.** Un FETCH qui cale — réseau tombé en
