@@ -187,3 +187,6 @@ prendre à la suite).
   écran 03 (B-D4-b) — pointillé accent, mention ✎, corps, heure,
   « Reprendre » ; clic = composeur par-dessus, conversation montée
   dessous. Gates : 380 Rust, 74 e2e. **Le plan est soldé.**
+
+**Validation terrain du Chef Ingénieur, 2026-08-13** : testé sur base
+fictive, « fonctionne parfaitement ». Le plan est clos.
