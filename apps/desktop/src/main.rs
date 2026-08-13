@@ -45,6 +45,12 @@ pub(crate) struct SyncShared {
     /// couvrait quatre phases distinctes, l'observation était aveugle.
     /// Exclusif avec `boite` ; vide sinon.
     pub phase: Mutex<String>,
+    /// Courrier d'INBOX déjà visible en base DANS le cycle courant
+    /// (arrivées + retraits, cumulés compte après compte) — P1
+    /// (PLAN-SYNCHRO) : la sonde le lit et recharge la liste dès la
+    /// relève INBOX d'un compte soldée, sans attendre la fin du cycle.
+    /// Un compteur sondé, pas un canal : le port UI reste R0-S5.
+    pub courrier: AtomicU64,
 }
 
 pub(crate) struct AppState {

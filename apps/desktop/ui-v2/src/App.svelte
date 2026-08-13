@@ -441,8 +441,18 @@
     // main ; c'est le timeout socket qui achève le thread gelé.
     let signature = '';
     let dernierMouvement = Date.now();
+    // P1 : le courrier d'INBOX se montre PAR COMPTE, dès que le
+    // compteur du cycle bouge — la liste n'attend plus la fin du cycle
+    // complet. Lu à la sonde existante : le port reste du sondage
+    // (R0-S5), aucun canal d'événements.
+    let courrierVu = 0;
     const surveiller = async () => {
       await sonderActivite();
+      if (activite && activite.courrier > courrierVu) {
+        courrierVu = activite.courrier;
+        liste?.recharger();
+        chargerNav();
+      }
       const trace = JSON.stringify([activite, synchro?.local]);
       if (trace !== signature) {
         signature = trace;

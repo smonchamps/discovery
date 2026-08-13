@@ -502,8 +502,12 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     let jobs = connected_jobs(&path, &state)?;
     let timer = Instant::now();
     let cycle = state.sync_cycle.clone();
+    // Le manche traverse la boucle : les bulles partent PAR COMPTE, dès
+    // la relève INBOX soldée (P1) — plus d'agrégat de fin de cycle, qui
+    // faisait toujours perdre la course contre le téléphone.
+    let app_bulles = app.clone();
 
-    let (accounts, fetched, deleted, replayed, mut errors, refreshed, arrivals) =
+    let (accounts, fetched, deleted, replayed, mut errors, refreshed) =
         tauri::async_runtime::spawn_blocking(move || {
             // L'activité pour la barre d'état (PLAN-SYNCHRO E1) : posée
             // AVANT le premier compte, éteinte par le garde quoi qu'il
@@ -512,6 +516,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             let _fin = FinDeCycle(cycle.clone());
             cycle.fait.store(0, Ordering::Relaxed);
             cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
+            cycle.courrier.store(0, Ordering::Relaxed);
             cycle.en_cours.store(!jobs.is_empty(), Ordering::Relaxed);
             let mut accounts = 0;
             let mut fetched = 0;
@@ -519,22 +524,18 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             let mut replayed = 0;
             let mut errors = Vec::new();
             let mut refreshed = Vec::new();
-            // Les arrivees de TOUS les comptes sont agregees : une bulle
-            // par compte serait la meme nuisance qu'une bulle par message.
-            let mut arrivals = Vec::new();
             for (account_id, session) in jobs {
                 let email = session.email().to_string();
                 if let Ok(mut compte) = cycle.compte.lock() {
                     compte.clone_from(&email);
                 }
                 poser_boite(&cycle, "");
-                match run_sync(&session, account_id, &path, &cycle) {
-                    Ok(mut outcome) => {
+                match run_sync(&session, account_id, &path, &cycle, &app_bulles) {
+                    Ok(outcome) => {
                         accounts += 1;
                         fetched += outcome.report.fetched;
                         deleted += outcome.report.deleted;
                         replayed += outcome.report.replayed;
-                        arrivals.append(&mut outcome.arrivals);
                         if let Some(fresh) = outcome.refreshed {
                             refreshed.push(fresh);
                         }
@@ -546,18 +547,13 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                 }
                 cycle.fait.fetch_add(1, Ordering::Relaxed);
             }
-            (
-                accounts, fetched, deleted, replayed, errors, refreshed, arrivals,
-            )
+            (accounts, fetched, deleted, replayed, errors, refreshed)
         })
         .await
         .map_err(|err| err.to_string())?;
 
     for fresh in refreshed {
         lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
-    }
-    if let Some(problem) = arrival_notification_problem(&app, &arrivals) {
-        errors.push(problem);
     }
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let total = store.unified_count().map_err(|err| err.to_string())?;
@@ -602,8 +598,6 @@ struct SyncOutcome {
     report: mail_core::SyncReport,
     /// Session dont le jeton vient d'être renouvelé, à remettre en cache.
     refreshed: Option<AccountSession>,
-    /// Arrivées à annoncer, déjà filtrées par les règles du noyau.
-    arrivals: Vec<mail_core::Envelope>,
     /// Incidents non bloquants : la synchronisation a réussi, mais un
     /// travail de fond qui l'accompagne a échoué. Rapportés, jamais
     /// avalés — un symptôme sans trace est indiagnosticable.
@@ -615,6 +609,7 @@ fn run_sync(
     account_id: i64,
     db_path: &Path,
     cycle: &crate::SyncShared,
+    app: &AppHandle,
 ) -> Result<SyncOutcome, String> {
     let (mut server, refreshed) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
@@ -666,6 +661,28 @@ fn run_sync(
         }
     };
     let duree_inbox = chrono.elapsed();
+
+    // P1 (PLAN-SYNCHRO) : le courrier d'INBOX se voit TOUT DE SUITE —
+    // le compteur sondé recharge la liste côté UI, et les bulles du
+    // compte partent ICI, sans attendre l'inventaire, les dossiers ni
+    // les AUTRES comptes (l'agrégat de fin de cycle perdait toujours la
+    // course contre le téléphone). Les arrivées ne viennent que d'INBOX :
+    // rien n'est annoncé en retard. Best effort, comme les passes
+    // voisines : le courrier est là, une annonce qui échoue se consigne.
+    if report.fetched > 0 || report.deleted > 0 {
+        cycle
+            .courrier
+            .fetch_add((report.fetched + report.deleted) as u64, Ordering::Relaxed);
+    }
+    match store.new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS) {
+        Ok(arrivals) => {
+            let arrivals = mail_core::arrivals_to_notify(report.mode, arrivals);
+            if let Some(problem) = arrival_notification_problem(app, &arrivals) {
+                problems.push(problem);
+            }
+        }
+        Err(err) => problems.push(format!("arrivées à annoncer : {err}")),
+    }
 
     // L'inventaire : dossier des envois, portée, liste des dossiers,
     // garde d'espace (STATUS sur chaque dossier) — quatre travaux qui
@@ -891,13 +908,9 @@ fn run_sync(
 
     server.logout();
 
-    let arrivals = store
-        .new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS)
-        .map_err(|err| err.to_string())?;
     Ok(SyncOutcome {
         report,
         refreshed,
-        arrivals: mail_core::arrivals_to_notify(report.mode, arrivals),
         problems,
     })
 }
@@ -2476,6 +2489,10 @@ pub struct SyncActivite {
     /// Étape sans boîte (`inventaire`, `fils`, `brouillons`) — clé de
     /// catalogue, traduite par l'UI. Vide quand une boîte est nommée.
     pub phase: String,
+    /// Courrier d'INBOX déjà en base dans CE cycle (arrivées + retraits,
+    /// cumulés compte après compte) — P1 : la sonde recharge la liste
+    /// dès que ce compteur bouge, sans attendre la fin du cycle.
+    pub courrier: u64,
 }
 
 /// Le cycle en cours, pour la barre d'état (PLAN-SYNCHRO E1).
@@ -2510,6 +2527,7 @@ pub fn sync_activity(state: State<'_, AppState>) -> Option<SyncActivite> {
         compte,
         boite,
         phase,
+        courrier: cycle.courrier.load(Ordering::Relaxed),
     })
 }
 

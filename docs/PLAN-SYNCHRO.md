@@ -50,7 +50,7 @@ rien). Corriger la plainte 2 seule traiterait le symptôme.
 | `App.svelte` — cycle | sondage 300 s, réentrance gardée, recharge en fin de cycle seule, pas de relève au réveil de veille | **P1** (recharge par compte), **E3** (réveil), E4 |
 | `App.svelte` — `statut` dérivé | 8 priorités, pas d'horodatage, cycle courant invisible ; échec partiel muet | **E1**, **E3** (échec partiel) |
 | `store.rs` | aucun horodatage de dernière synchro | **E1** (prefs, patron `lang`) |
-| `commands.rs` — `sync_inbox` | cycle complet séquentiel, aucun état observable pendant | **E1** (activité), **P1** (événement par compte), E3 (passe légère) |
+| `commands.rs` — `sync_inbox` | cycle complet séquentiel, aucun état observable pendant | **E1** (activité), **P1** (courrier par compte), E3 (passe légère) |
 | `sync_percent` | ne raconte que le rattrapage intégral | conservé tel quel |
 | Police maison (32 glyphes) | pas de glyphe `sync` | **E3** (régénération, patron A12/A14) |
 | `mail-imap` | crate `imap` (IDLE supporté), connexions éphémères, aucun timeout de lecture | **P0** (timeout + watchdog), **E4** (spike d'abord) |
@@ -234,6 +234,13 @@ là : il n'y a pas encore d'IDLE à casser.
 
 ### P1 — La visibilité par compte (avec ou avant E2b)
 
+**État : livrée le 2026-08-13 (gate locale verte), terrain CE dû —
+deux comptes, message neuf sur le premier visible avant la fin de la
+relève du second.** Livré en compteur sondé (`SyncShared.courrier`),
+pas en événement — R0-S5 tenu ; bulles émises par compte dans
+`run_sync`, dès la relève INBOX, l'agrégat global de fin de cycle a
+disparu.
+
 **Second constat de l'audit : le courrier relevé n'est visible qu'en
 FIN de cycle complet, tous comptes confondus.** `sync_order` met INBOX
 en tête précisément pour servir l'écran — puis le résultat attend
@@ -244,9 +251,12 @@ cadence de sondage : c'est cadence + durée totale du cycle. E2a
 raccourcit le cycle ; P1 fait qu'une seconde de cycle ne soit plus une
 seconde de latence.
 
-- Dès la relève INBOX d'un compte soldée, le shell émet un **événement
-  Tauri** ; l'UI recharge liste et nav à réception, sans attendre la
-  fin du cycle.
+- Dès la relève INBOX d'un compte soldée, le shell cumule le courrier
+  du cycle dans l'activité partagée (`SyncShared.courrier`) ; la sonde
+  à 1 s le voit bouger et recharge liste et nav, sans attendre la fin
+  du cycle. Un compteur SONDÉ, pas un canal : le port UI reste R0-S5
+  (« la progression se lit par sondage ») — l'« événement Tauri » de
+  l'audit aurait ouvert un second canal pour rien.
 - Les **bulles du compte partent au même moment** (les arrivées ne
   viennent que d'INBOX) : une bulle par compte au plus — l'agrégat
   global de fin de cycle disparaît. Sa raison d'être (limiter la
@@ -255,8 +265,8 @@ seconde de latence.
   les bulles à la passe légère, par compte.
 - C'est la moitié du bénéfice d'IDLE, gratuite : la latence perçue
   tombe de « durée du cycle multi-comptes » à « position d'INBOX dans
-  le cycle » — quelques secondes. E4 branchera son réveil sur le même
-  événement.
+  le cycle » — quelques secondes. E4 réveillera la passe légère, qui
+  alimente le même compteur.
 - Gate : deux comptes, message neuf sur le premier — à l'écran pendant
   que le second se relève encore (à l'œil et à la trace) ; bulle émise
   avant la fin du cycle.
