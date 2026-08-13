@@ -339,8 +339,9 @@ FTS5, résultats aux lignes mêmes du prototype dans la colonne liste) ;
 absents de D3) ; **D2 coupée à la bascule** (étoile et déplacer n'ont
 pas été réclamés au terrain pendant P2–P5 ; la barre reste à 4 actions,
 réversible par spéc courte au Système si l'usage réel les réclame) ;
-**D4 soldée en P4** ; **D5 coupée** (aucun bouton de synchronisation
-manuel — synchro automatique + ligne de progression). Reste au Chef
+**D4 soldée en P4** ; **D5 coupée**, puis **rouverte au terrain
+(2026-08-13)** — les retours bêta ont invalidé l'hypothèse, le bouton
+est câblé en E3 de PLAN-SYNCHRO sur la passe légère. Reste au Chef
 Ingénieur : la signature de l'Annexe A et la gate de bascule.
 
 **Livré :**
@@ -389,7 +390,7 @@ Aucune ne bloque P1. Chacune se pose à l'ouverture de sa phase.
 | D2 | P5 | **Étoile + Déplacer** (v1 les a ; barre = 4 actions max au Système) | Trancher à l'usage réel pendant P2–P5 : coupés si non utilisés, sinon logés « dans le message » (spéc courte au Système) |
 | D3 | P5 | **Raccourcis clavier** (r/f/e/v/s/c/Suppr/`/`) repris ? | Oui — gratuits, v1 les a, zéro pixel |
 | D4 | P4 | **Onboarding** : porte simple vers les 3 dialogues existants, ou vraie auto-détection de serveur ? | Porte simple ; l'auto-détection est une capacité neuve, à instruire séparément |
-| D5 | P5 | **Bouton « Synchroniser »** manuel (v1) | Coupé — synchro automatique + ligne de progression + barre de statut suffisent |
+| D5 | P5 | **Bouton « Synchroniser »** manuel (v1) | Coupé, puis **rouvert au terrain (2026-08-13)** — les retours bêta ont invalidé l'hypothèse ; câblé en E3 (PLAN-SYNCHRO) sur la passe légère, barre d'état (S-D1) |
 | D6 | après bascule | Thèmes « Le vent » et « Tournesol » (Système : 9, prototype : 7) ; OS sombre → `nuit` automatique | Après bascule — deux jeux de jetons et une media query, aucun impact de structure |
 | D7 | P2 | **Icônes des comptes réels** (la fiction `work`/`person` disparaît) | `person` par défaut pour tous, libellé = adresse du compte ; personnalisation plus tard |
 
@@ -414,7 +415,7 @@ du guichet — sont corrigés et commis le même jour :
 | 7 bandeaux (envoi, brouillons, màj, synchro, rattrapage, télémétrie, crash) | v1 + ADR 0012/0013/0014 | **✓ câblés en P5** — refondus en fente d'avis (5 sources, priorité) + ligne de progression |
 | Migration visible et interruptible | modale v1, ADR 0012 | **✓ câblée en P5** (modale bloquante avant tout accès base, Annuler/Reprendre) |
 | Raccourcis clavier | v1 | **D3 — ✓ câblés en P5** (c/r/f/e/Suppr/«/»/Échap ; j-k et s/v non repris) |
-| Synchronisation manuelle (bouton) | v1, `sync_inbox` | **D5 — coupée** (synchro automatique + ligne de progression) |
+| Synchronisation manuelle (bouton) | v1, `sync_inbox` | **D5 — rouverte au terrain (2026-08-13), câblée en E3 (PLAN-SYNCHRO)** : passe légère `sync_inbox_light`, bouton en barre d'état |
 | Autosave brouillon + conflit d'édition | v1, `composeDraftEpoch` | **✓ conservé en P4**, sous le bouton du prototype |
 | Multi-fenêtre composition (« Rendre indépendante ») | n'existe pas en v1 | reporté ; affordance inerte, comme au prototype |
 | Composition HTML riche (barre G/I/S/…) | n'existe pas en v1 | reportée ; barre inerte, comme au prototype — l'activer rouvre l'envoi HTML, décision séparée |

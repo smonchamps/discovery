@@ -37,6 +37,8 @@ export const FR = {
   'statut.ajour': 'Tous les messages sont à jour',
   'statut.ajourDepuis': 'Tous les messages sont à jour · dernière synchronisation {depuis}',
   'statut.cyclePrefixe': 'Synchronisation',
+  'statut.synchroPartielle':
+    '{n} compte sur {m} injoignable — nouvelle tentative automatique|{n} comptes sur {m} injoignables — nouvelle tentative automatique',
   'statut.pourcent': '{p} %',
   'statut.phase.inventaire': 'inventaire des dossiers',
   'statut.phase.fils': 'fils de discussion',
@@ -69,6 +71,8 @@ export const FR = {
   'action.nonMerci': 'Non merci',
   'action.reprendre': 'Reprendre',
   'action.reessayer': 'Réessayer',
+  'action.synchroniser': 'Synchroniser',
+  'action.synchronisation': 'Synchronisation…',
   'action.repondre': 'Répondre',
   'action.repondreTous': 'Répondre à tous',
   'action.transferer': 'Transférer',

@@ -100,6 +100,7 @@ fn main() {
             commands::add_microsoft_account,
             commands::add_generic_account,
             commands::sync_inbox,
+            commands::sync_inbox_light,
             commands::list_messages,
             commands::nav_snapshot,
             commands::list_category,

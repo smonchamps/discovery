@@ -35,6 +35,8 @@ export const EN = {
   'statut.ajour': 'All messages are up to date',
   'statut.ajourDepuis': 'All messages are up to date · last synced {depuis}',
   'statut.cyclePrefixe': 'Syncing',
+  'statut.synchroPartielle':
+    '{n} account of {m} unreachable — will retry automatically|{n} accounts of {m} unreachable — will retry automatically',
   'statut.pourcent': '{p}%',
   'statut.phase.inventaire': 'folder inventory',
   'statut.phase.fils': 'conversation threads',
@@ -67,6 +69,8 @@ export const EN = {
   'action.nonMerci': 'No thanks',
   'action.reprendre': 'Resume',
   'action.reessayer': 'Try again',
+  'action.synchroniser': 'Sync',
+  'action.synchronisation': 'Syncing…',
   'action.repondre': 'Reply',
   'action.repondreTous': 'Reply all',
   'action.transferer': 'Forward',

@@ -50,6 +50,10 @@ pub struct AccountInfo {
 pub struct SyncSummary {
     /// Comptes synchronisés avec succès.
     pub accounts: usize,
+    /// Comptes dont la relève ENTIÈRE a échoué (E3, échec partiel dit) :
+    /// `errors` ne suffit pas à les compter — il porte aussi les
+    /// incidents best-effort des comptes qui ont réussi.
+    pub accounts_failed: usize,
     pub fetched: usize,
     pub deleted: usize,
     pub replayed: usize,
@@ -486,6 +490,72 @@ fn solder_repere(
     }
 }
 
+/// La relève INBOX d'un compte — le cœur partagé du cycle complet et de
+/// la passe légère (E3) : relevé STATUS, relève gardée (E2a), repère
+/// soldé, courrier compté et bulles du compte (P1). Rend le rapport ET
+/// le relevé payé — le cycle complet le réutilise pour la garde
+/// d'espace, il n'est jamais payé deux fois.
+fn relever_inbox(
+    server: &mut ImapServer,
+    store: &mut Store,
+    account_id: i64,
+    cycle: &crate::SyncShared,
+    app: &AppHandle,
+    problems: &mut Vec<String>,
+) -> Result<(mail_core::SyncReport, Option<mail_core::FolderStatus>), String> {
+    poser_boite(cycle, MAILBOX);
+    // L'UID le plus haut AVANT la synchro : c'est lui qui separe
+    // « nouveau » de « deja connu ». Releve avant, sinon la synchro
+    // l'aurait deja deplace.
+    let last_uid_before = store
+        .sync_state(account_id, MAILBOX)
+        .map_err(|err| err.to_string())?
+        .map(|state| state.last_uid)
+        .unwrap_or(0);
+    // INBOX est gardée comme les autres (ADR 0017) : un relevé STATUS,
+    // la relève seulement si quelque chose a bougé.
+    let statut_inbox = server.folder_status(MAILBOX).ok();
+    let report = if doit_relever(store, account_id, MAILBOX, statut_inbox.as_ref(), problems) {
+        let report = SyncEngine::default()
+            .sync(server, store, account_id, MAILBOX)
+            .map_err(|err| err.to_string())?;
+        solder_repere(store, account_id, MAILBOX, statut_inbox.as_ref(), problems);
+        report
+    } else {
+        // Rien n'a bougé : rapport incrémental vide — pas d'arrivées,
+        // pas de bulles, pas de mensonge.
+        mail_core::SyncReport {
+            mode: mail_core::SyncMode::Incremental,
+            fetched: 0,
+            deleted: 0,
+            replayed: 0,
+        }
+    };
+
+    // P1 (PLAN-SYNCHRO) : le courrier d'INBOX se voit TOUT DE SUITE —
+    // le compteur sondé recharge la liste côté UI, et les bulles du
+    // compte partent ICI, sans attendre l'inventaire, les dossiers ni
+    // les AUTRES comptes (l'agrégat de fin de cycle perdait toujours la
+    // course contre le téléphone). Les arrivées ne viennent que d'INBOX :
+    // rien n'est annoncé en retard. Best effort, comme les passes
+    // voisines : le courrier est là, une annonce qui échoue se consigne.
+    if report.fetched > 0 || report.deleted > 0 {
+        cycle
+            .courrier
+            .fetch_add((report.fetched + report.deleted) as u64, Ordering::Relaxed);
+    }
+    match store.new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS) {
+        Ok(arrivals) => {
+            let arrivals = mail_core::arrivals_to_notify(report.mode, arrivals);
+            if let Some(problem) = arrival_notification_problem(app, &arrivals) {
+                problems.push(problem);
+            }
+        }
+        Err(err) => problems.push(format!("arrivées à annoncer : {err}")),
+    }
+    Ok((report, statut_inbox))
+}
+
 /// À la sortie du cycle — normale ou par panique — l'activité s'éteint :
 /// une barre d'état qui annoncerait un cycle fantôme serait le mensonge
 /// exact que E1 corrige.
@@ -510,7 +580,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     // faisait toujours perdre la course contre le téléphone.
     let app_bulles = app.clone();
 
-    let (accounts, fetched, deleted, replayed, mut errors, refreshed) =
+    let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
         tauri::async_runtime::spawn_blocking(move || {
             // L'activité pour la barre d'état (PLAN-SYNCHRO E1) : posée
             // AVANT le premier compte, éteinte par le garde quoi qu'il
@@ -522,6 +592,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             cycle.courrier.store(0, Ordering::Relaxed);
             cycle.en_cours.store(!jobs.is_empty(), Ordering::Relaxed);
             let mut accounts = 0;
+            let mut accounts_failed = 0;
             let mut fetched = 0;
             let mut deleted = 0;
             let mut replayed = 0;
@@ -546,11 +617,22 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                             errors.push(format!("{email} : {problem}"));
                         }
                     }
-                    Err(err) => errors.push(format!("{email} : {err}")),
+                    Err(err) => {
+                        accounts_failed += 1;
+                        errors.push(format!("{email} : {err}"));
+                    }
                 }
                 cycle.fait.fetch_add(1, Ordering::Relaxed);
             }
-            (accounts, fetched, deleted, replayed, errors, refreshed)
+            (
+                accounts,
+                accounts_failed,
+                fetched,
+                deleted,
+                replayed,
+                errors,
+                refreshed,
+            )
         })
         .await
         .map_err(|err| err.to_string())?;
@@ -573,6 +655,117 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
 
     Ok(SyncSummary {
         accounts,
+        accounts_failed,
+        fetched,
+        deleted,
+        replayed,
+        total,
+        elapsed_ms: timer.elapsed().as_millis() as u64,
+        errors,
+    })
+}
+
+/// La passe légère (PLAN-SYNCHRO E3, S-D2) : STATUS INBOX de chaque
+/// compte, relève seulement si ça a bougé (E2a), courrier visible et
+/// bulles par compte (P1) — ni inventaire, ni balayage des dossiers, ni
+/// fils : la réponse se compte en secondes, tenue par la gate d'E2a.
+/// C'est elle que le bouton déclenche, elle que le réveil de veille
+/// déclenche, elle que le veilleur IDLE (E4) réveillera.
+#[tauri::command]
+pub async fn sync_inbox_light(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SyncSummary, String> {
+    let path = db_path(&app)?;
+    let jobs = connected_jobs(&path, &state)?;
+    let timer = Instant::now();
+    let cycle = state.sync_cycle.clone();
+    let app_bulles = app.clone();
+
+    let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
+        tauri::async_runtime::spawn_blocking(move || {
+            // La même activité que le cycle complet : la barre d'état
+            // raconte la passe pendant qu'elle tourne, le bouton tourne
+            // avec elle (réentrance gardée côté UI).
+            let _fin = FinDeCycle(cycle.clone());
+            cycle.fait.store(0, Ordering::Relaxed);
+            cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
+            cycle.courrier.store(0, Ordering::Relaxed);
+            cycle.en_cours.store(!jobs.is_empty(), Ordering::Relaxed);
+            let mut accounts = 0;
+            let mut accounts_failed = 0;
+            let mut fetched = 0;
+            let mut deleted = 0;
+            let mut replayed = 0;
+            let mut errors = Vec::new();
+            let mut refreshed = Vec::new();
+            for (account_id, session) in jobs {
+                let email = session.email().to_string();
+                if let Ok(mut compte) = cycle.compte.lock() {
+                    compte.clone_from(&email);
+                }
+                poser_boite(&cycle, "");
+                let releve = (|| -> Result<(mail_core::SyncReport, Vec<String>, Option<AccountSession>), String> {
+                    let (mut server, fresh) = connect_imap(&session)?;
+                    let mut store = Store::open(&path).map_err(|err| err.to_string())?;
+                    let mut problems = Vec::new();
+                    let (report, _) = relever_inbox(
+                        &mut server,
+                        &mut store,
+                        account_id,
+                        &cycle,
+                        &app_bulles,
+                        &mut problems,
+                    )?;
+                    server.logout();
+                    Ok((report, problems, fresh))
+                })();
+                match releve {
+                    Ok((report, problems, fresh)) => {
+                        accounts += 1;
+                        fetched += report.fetched;
+                        deleted += report.deleted;
+                        replayed += report.replayed;
+                        if let Some(fresh) = fresh {
+                            refreshed.push(fresh);
+                        }
+                        for problem in problems {
+                            errors.push(format!("{email} : {problem}"));
+                        }
+                    }
+                    Err(err) => {
+                        accounts_failed += 1;
+                        errors.push(format!("{email} : {err}"));
+                    }
+                }
+                cycle.fait.fetch_add(1, Ordering::Relaxed);
+            }
+            (
+                accounts, accounts_failed, fetched, deleted, replayed, errors, refreshed,
+            )
+        })
+        .await
+        .map_err(|err| err.to_string())?;
+
+    for fresh in refreshed {
+        lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
+    }
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let total = store.unified_count().map_err(|err| err.to_string())?;
+    // L'horodatage vaut aussi pour la passe légère : chaque INBOX vient
+    // d'être vérifiée — c'est la relève du courrier au sens du prototype,
+    // et un bouton qui laisserait « il y a 12 minutes » après un clic
+    // réussi aurait l'air cassé. Les dossiers, eux, gardent leur cadence.
+    if accounts > 0
+        && let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
+        && let Err(err) = store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string())
+    {
+        errors.push(format!("horodatage de la relève : {err}"));
+    }
+
+    Ok(SyncSummary {
+        accounts,
+        accounts_failed,
         fetched,
         deleted,
         replayed,
@@ -616,76 +809,21 @@ fn run_sync(
 ) -> Result<SyncOutcome, String> {
     let (mut server, refreshed) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
-    poser_boite(cycle, MAILBOX);
     // Chrono par phase (terrain 2026-08-13 : « INBOX » muet 2 min 15 —
     // l'observation doit devenir une mesure). Durées et décomptes
     // SEULS : ni adresse, ni nom de dossier (règle des diagnostics,
     // PASSATION §6.8) — l'identifiant de compte est un entier interne.
     let chrono = Instant::now();
-    // L'UID le plus haut AVANT la synchro : c'est lui qui separe
-    // « nouveau » de « deja connu ». Releve avant, sinon la synchro
-    // l'aurait deja deplace.
-    let last_uid_before = store
-        .sync_state(account_id, MAILBOX)
-        .map_err(|err| err.to_string())?
-        .map(|state| state.last_uid)
-        .unwrap_or(0);
     let mut problems: Vec<String> = Vec::new();
-    // INBOX est gardée comme les autres (ADR 0017) : un relevé STATUS,
-    // la relève seulement si quelque chose a bougé. Le relevé sert plus
-    // bas à la garde d'espace — il n'est jamais payé deux fois.
-    let statut_inbox = server.folder_status(MAILBOX).ok();
-    let report = if doit_relever(
-        &store,
+    let (report, statut_inbox) = relever_inbox(
+        &mut server,
+        &mut store,
         account_id,
-        MAILBOX,
-        statut_inbox.as_ref(),
+        cycle,
+        app,
         &mut problems,
-    ) {
-        let report = SyncEngine::default()
-            .sync(&mut server, &mut store, account_id, MAILBOX)
-            .map_err(|err| err.to_string())?;
-        solder_repere(
-            &store,
-            account_id,
-            MAILBOX,
-            statut_inbox.as_ref(),
-            &mut problems,
-        );
-        report
-    } else {
-        // Rien n'a bougé : rapport incrémental vide — pas d'arrivées,
-        // pas de bulles, pas de mensonge.
-        mail_core::SyncReport {
-            mode: mail_core::SyncMode::Incremental,
-            fetched: 0,
-            deleted: 0,
-            replayed: 0,
-        }
-    };
+    )?;
     let duree_inbox = chrono.elapsed();
-
-    // P1 (PLAN-SYNCHRO) : le courrier d'INBOX se voit TOUT DE SUITE —
-    // le compteur sondé recharge la liste côté UI, et les bulles du
-    // compte partent ICI, sans attendre l'inventaire, les dossiers ni
-    // les AUTRES comptes (l'agrégat de fin de cycle perdait toujours la
-    // course contre le téléphone). Les arrivées ne viennent que d'INBOX :
-    // rien n'est annoncé en retard. Best effort, comme les passes
-    // voisines : le courrier est là, une annonce qui échoue se consigne.
-    if report.fetched > 0 || report.deleted > 0 {
-        cycle
-            .courrier
-            .fetch_add((report.fetched + report.deleted) as u64, Ordering::Relaxed);
-    }
-    match store.new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS) {
-        Ok(arrivals) => {
-            let arrivals = mail_core::arrivals_to_notify(report.mode, arrivals);
-            if let Some(problem) = arrival_notification_problem(app, &arrivals) {
-                problems.push(problem);
-            }
-        }
-        Err(err) => problems.push(format!("arrivées à annoncer : {err}")),
-    }
 
     // L'inventaire : dossier des envois, portée, liste des dossiers,
     // garde d'espace (STATUS sur chaque dossier) — quatre travaux qui

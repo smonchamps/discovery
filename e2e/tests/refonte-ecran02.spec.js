@@ -48,6 +48,22 @@ test("la barre d'état date la dernière relève — même sur échec", async ()
   );
 });
 
+test('le bouton de relève vit dans la barre — « Réessayer » sur échec (E3)', async () => {
+  // Même décor : la relève échoue, et le bouton devient le levier au
+  // plus près de la panne (S-D1, maquette état 6). Le clic déclenche la
+  // passe légère RÉELLE — les comptes du décor n'ont pas de serveur,
+  // l'échec doit rester dit après le geste, et le bouton se réarmer.
+  const bouton = page.locator('[data-testid="btn-releve"]');
+  await expect(bouton).toBeVisible();
+  await expect(bouton).toBeEnabled();
+  await expect(bouton).toContainText('Réessayer');
+  await bouton.click();
+  await expect(page.locator('[data-testid="progression"]')).toContainText(
+    /Synchronisation impossible/,
+  );
+  await expect(bouton).toBeEnabled();
+});
+
 test('sélectionner ouvre le volet, lit le corps, et le non-lu tombe', async () => {
   await page.locator('[data-testid="ligne"]').first().click();
   await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(

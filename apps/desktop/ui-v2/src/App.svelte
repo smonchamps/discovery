@@ -77,6 +77,19 @@
   // Échec TOTAL de la dernière synchro : dans la ligne, pas la fente —
   // §6 n'y met pas la synchro, et « hors ligne » n'est pas un incident.
   let synchroEchec = $state(false);
+  // E3 : l'échec PARTIEL se dit — « 1 compte sur 2 injoignable ».
+  // `synchroEchec` ne couvrait que la panne totale : un compte mort sur
+  // deux était invisible, et l'horodatage rajeuni par le survivant.
+  let synchroPartiel = $state(null);
+  // Le verdict d'un bilan de relève (cycle complet OU passe légère) :
+  // panne totale, panne partielle, ou rien — une seule écriture, les
+  // deux états ne peuvent pas diverger.
+  function majEchecs(bilan) {
+    synchroEchec = bilan.accounts === 0 && bilan.errors.length > 0;
+    synchroPartiel = bilan.accounts_failed > 0 && bilan.accounts > 0
+      ? { n: bilan.accounts_failed, m: bilan.accounts_failed + bilan.accounts }
+      : null;
+  }
 
   const LIBELLES = {
     reception: 'boite.reception',
@@ -167,6 +180,15 @@
         texte: derniere
           ? t('statut.synchroImpossibleDepuis', { depuis: depuis(derniere, maintenant) })
           : t('statut.synchroImpossible'),
+        fil: null,
+        alerte: true,
+      };
+    }
+    // E3 : l'échec partiel — le courrier des comptes vivants est là,
+    // mais un compte au moins est à sec, et ça se dit (alerte).
+    if (synchroPartiel) {
+      return {
+        texte: t('statut.synchroPartielle', { n: synchroPartiel.n, m: synchroPartiel.m }),
         fil: null,
         alerte: true,
       };
@@ -471,7 +493,7 @@
     try {
       const bilan = await appel('sync_inbox');
       if (jeton !== jetonCycle) return; // déclaré mort entre-temps : trop tard
-      synchroEchec = bilan.accounts === 0 && bilan.errors.length > 0;
+      majEchecs(bilan);
       // Le réseau est peut-être revenu : la boîte d'envoi retente sa
       // chance, puis les brouillons se reflètent (poussée + purge).
       await appel('flush_outbox').catch((err) => console.error('flush_outbox :', err));
@@ -493,6 +515,42 @@
         enSynchro = false;
         // L'horodatage vient d'être posé par le shell : le relire tout de
         // suite, sans attendre la sonde de 5 s.
+        sonderSynchro();
+      }
+    }
+  }
+
+  // E3 : le geste manuel (D5 rouverte) — la passe légère : STATUS INBOX
+  // par compte, relève seulement si ça a bougé (E2a), puis la boîte
+  // d'envoi retente sa chance (le réseau est peut-être revenu — c'est
+  // souvent POUR ça qu'on clique). Réponse en secondes, tenue par la
+  // gate d'E2a ; chaque commande est bornée par les timeouts P0, la
+  // passe se termine toujours — pas de watchdog dédié.
+  async function relever() {
+    if (enSynchro) return; // le cycle travaille déjà — bouton inhibé
+    enSynchro = true;
+    const jeton = ++jetonCycle;
+    sonderActivite();
+    const sonde = setInterval(sonderActivite, 1000);
+    try {
+      const bilan = await appel('sync_inbox_light');
+      if (jeton !== jetonCycle) return;
+      majEchecs(bilan);
+      await appel('flush_outbox').catch((err) => console.error('flush_outbox :', err));
+      sonderEnvois();
+      chargerNav();
+      if (bilan.fetched > 0 || bilan.deleted > 0) {
+        liste?.recharger();
+        rattraperCorps();
+      }
+    } catch (err) {
+      if (jeton === jetonCycle) synchroEchec = true;
+      console.error('sync_inbox_light :', err);
+    } finally {
+      clearInterval(sonde);
+      if (jeton === jetonCycle) {
+        activite = null;
+        enSynchro = false;
         sonderSynchro();
       }
     }
@@ -525,6 +583,18 @@
       await synchroniser();
     })();
     setInterval(synchroniser, 300000);
+    // E3 : le réveil de veille — un tick en retard de plusieurs minutes
+    // signe une veille (saut d'horloge : les minuteries dorment avec la
+    // machine), et c'est LE moment où l'utilisateur regarde l'écran. La
+    // passe légère part aussitôt, sans attendre le prochain sondage à
+    // 5 min. Aucune API système : la dérive d'horloge suffit.
+    let dernierTic = Date.now();
+    setInterval(() => {
+      const tic = Date.now();
+      const retard = tic - dernierTic;
+      dernierTic = tic;
+      if (retard > 120000) relever();
+    }, 15000);
   });
 
   function choisir(quoi) {
@@ -741,6 +811,15 @@
         <span data-testid="progression">{ligne.texte}</span>
       </span>
       <span id="perf" data-testid="perf" data-startup={startup}>{perf}</span>
+      <!-- E3 : le geste vit à côté de l'information qu'il rafraîchit
+           (S-D1, variante A). Inhibé pendant un cycle (le glyphe tourne :
+           la machine travaille déjà) ; sur échec, il devient le levier
+           au plus près de la panne. -->
+      <button type="button" class="btn-statut" data-testid="btn-releve"
+              disabled={enSynchro} onclick={relever}>
+        <span class="ms" class:tourne={enSynchro} aria-hidden="true">sync</span>
+        {#if enSynchro}{t('action.synchronisation')}{:else if synchroEchec || synchroPartiel}{t('action.reessayer')}{:else}{t('action.synchroniser')}{/if}
+      </button>
     </div>
 
     <Conversation bind:this={conversation} onretour={retourBoite}
@@ -812,12 +891,27 @@
   .statut {
     position:relative; height:36px; flex:none; background:var(--panel);
     border-top:1px solid var(--border); display:flex; align-items:center;
-    justify-content:space-between; padding:0 24px;
+    gap:14px; padding:0 24px;
     font-size:12px; color:var(--muted);
   }
-  #perf { font-variant-numeric:tabular-nums; }
-  .texte { display:flex; align-items:center; gap:8px; min-width:0; }
+  #perf { font-variant-numeric:tabular-nums; flex:none; }
+  .texte { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
   .texte span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  /* Le bouton de relève (E3, S-D1 variante A) : 26 px, il tient dans
+     les 36 px de la barre sans les forcer — cotes de la maquette
+     validée (docs/design/maquette-synchro.html). */
+  .btn-statut {
+    height:26px; padding:0 12px; display:inline-flex; align-items:center;
+    gap:7px; font-size:12px; font-weight:600; color:var(--ink2);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; cursor:pointer; flex:none;
+  }
+  .btn-statut:hover { background:var(--sel); color:var(--ink); }
+  .btn-statut[disabled] { opacity:.55; cursor:default; }
+  .btn-statut[disabled]:hover { background:var(--surface); color:var(--ink2); }
+  .btn-statut .ms { font-size:14px; }
+  .tourne { animation:tourne 1.2s linear infinite; }
+  @keyframes tourne { from { transform:rotate(0); } to { transform:rotate(360deg); } }
   .point-alerte {
     width:7px; height:7px; border-radius:99px; background:var(--alert);
     flex:none;

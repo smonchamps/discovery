@@ -280,6 +280,14 @@ seconde de latence.
 
 ### E3 — Le geste manuel (D5 rouverte, ex-E2)
 
+**État : livrée le 2026-08-13 (gate locale verte : e2e bouton +
+Réessayer sur le décor, clés fr/en, police 37 glyphes régénérée sans
+régression), terrain CE dû — clic → nouveaux messages en secondes,
+reprise de veille → relève seule.** D5 soldée à l'Annexe A ; A16 du
+journal corrigé (câblé en E3). La passe légère pose l'horodatage
+(chaque INBOX vient d'être vérifiée) ; l'échec partiel s'affiche en
+alerte (« 1 compte sur 2 injoignable ») via `accounts_failed` au bilan.
+
 - **Passe légère** `sync_inbox_light` : STATUS INBOX de chaque compte,
   relève seulement si ça a bougé (E2a), + `flush_outbox` + bulles —
   pas de balayage des dossiers. C'est elle que le bouton déclenche :
