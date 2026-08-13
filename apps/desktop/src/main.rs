@@ -24,6 +24,29 @@ pub(crate) struct MigrationShared {
     pub cancel: AtomicBool,
 }
 
+/// L'activité du cycle de synchronisation (PLAN-SYNCHRO E1), partagée
+/// entre la boucle (qui écrit) et l'UI (qui sonde à la seconde pendant
+/// le cycle). Des atomiques, comme la migration : le sondage ne doit
+/// jamais faire attendre la boucle. Le compte courant — seul texte —
+/// vit sous un Mutex écrit une fois par compte, jamais dans une boucle
+/// chaude.
+#[derive(Default)]
+pub(crate) struct SyncShared {
+    pub en_cours: AtomicBool,
+    pub fait: AtomicU64,
+    pub total: AtomicU64,
+    pub compte: Mutex<String>,
+    /// La boîte en cours de relève DANS le compte — terrain du
+    /// 2026-08-13 : « 2/2 · compte » figé 7 minutes pendant le balayage
+    /// des dossiers, sans aucune information. Vide entre deux boîtes.
+    pub boite: Mutex<String>,
+    /// L'étape sans boîte (clé de catalogue côté UI : `inventaire`,
+    /// `fils`, `brouillons`) — second terrain du 2026-08-13 : « INBOX »
+    /// couvrait quatre phases distinctes, l'observation était aveugle.
+    /// Exclusif avec `boite` ; vide sinon.
+    pub phase: Mutex<String>,
+}
+
 pub(crate) struct AppState {
     pub started_at: Instant,
     /// Sessions des comptes connectés, par email (multi-comptes).
@@ -39,6 +62,8 @@ pub(crate) struct AppState {
     pub bodies_backfill: Arc<Mutex<()>>,
     /// Avancement et annulation de la migration visible (Phase 5).
     pub migration: Arc<MigrationShared>,
+    /// Activité du cycle de synchronisation, pour la barre d'état (E1).
+    pub sync_cycle: Arc<SyncShared>,
 }
 
 fn main() {
@@ -49,6 +74,7 @@ fn main() {
         drafts_push: Arc::new(Mutex::new(())),
         bodies_backfill: Arc::new(Mutex::new(())),
         migration: Arc::new(MigrationShared::default()),
+        sync_cycle: Arc::new(SyncShared::default()),
     };
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -96,6 +122,7 @@ fn main() {
             commands::delete_draft,
             commands::sync_drafts,
             commands::sync_progress,
+            commands::sync_activity,
             commands::backfill_status,
             commands::backfill_bodies,
             commands::migration_check,

@@ -422,6 +422,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // qu'une, portée par le compte travail.
     boite(&mut store, personnel, "Envoyés")?;
 
+    // Une boîte vécue a une dernière relève : le prototype dit « il y a
+    // 2 minutes », le décor la pose (PLAN-SYNCHRO E1). Relative au
+    // lancement, comme les dates.
+    let il_y_a_2_min = Utc::now().timestamp() - 120;
+    store.set_text_pref("derniere_synchro", &il_y_a_2_min.to_string())?;
+
     println!("décor Clarity écrit dans {chemin}");
     Ok(())
 }

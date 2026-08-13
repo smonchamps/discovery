@@ -560,6 +560,48 @@ impl Store {
         Ok(count as u64)
     }
 
+    /// Le UIDNEXT vu au relevé qui a précédé la dernière relève soldée
+    /// (ADR 0017) — `None` tant qu'aucune relève gardée n'a eu lieu.
+    pub fn remote_uidnext(&self, mailbox_id: i64) -> Result<Option<u32>, Error> {
+        Ok(self.0.query_row(
+            "SELECT remote_uidnext FROM mailboxes WHERE id = ?1",
+            params![mailbox_id],
+            |row| row.get(0),
+        )?)
+    }
+
+    /// Pose le UIDNEXT vu — APRÈS que la relève a été soldée, jamais
+    /// avant : un repère posé sur une relève interrompue ferait sauter
+    /// un dossier pas encore rattrapé.
+    pub fn set_remote_uidnext(&self, mailbox_id: i64, uidnext: u32) -> Result<(), Error> {
+        self.0.execute(
+            "UPDATE mailboxes SET remote_uidnext = ?2 WHERE id = ?1",
+            params![mailbox_id, uidnext],
+        )?;
+        Ok(())
+    }
+
+    /// Messages en base pour CE dossier — le pendant local du MESSAGES
+    /// du STATUS, comparés par `faut_relever` (ADR 0017).
+    pub fn envelope_count(&self, mailbox_id: i64) -> Result<u64, Error> {
+        let count: i64 = self.0.query_row(
+            "SELECT COUNT(*) FROM envelopes WHERE mailbox_id = ?1",
+            params![mailbox_id],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
+    /// Des actions locales attendent-elles leur rejeu dans ce dossier ?
+    /// EXISTS et non la liste : la question est fermée, la réponse aussi.
+    pub fn has_pending_actions(&self, mailbox_id: i64) -> Result<bool, Error> {
+        Ok(self.0.query_row(
+            "SELECT EXISTS(SELECT 1 FROM pending_actions WHERE mailbox_id = ?1)",
+            params![mailbox_id],
+            |row| row.get(0),
+        )?)
+    }
+
     /// Releve ce que le serveur annonce dans cette boite (EXISTS).
     pub fn record_remote_total(&self, mailbox_id: i64, exists: u32) -> Result<(), Error> {
         self.0.execute(
@@ -1646,6 +1688,10 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
         "mailboxes",
         &[("remote_total", "INTEGER NOT NULL DEFAULT 0")],
     )?;
+    // ADR 0017 : le UIDNEXT vu au dernier relevé — NULL tant qu'aucune
+    // relève gardée n'a eu lieu, donc une base héritée relève tout à son
+    // premier cycle (conservateur), puis devient sobre.
+    add_missing_columns(conn, "mailboxes", &[("remote_uidnext", "INTEGER")])?;
     add_missing_columns(
         conn,
         "outbox",
@@ -1965,6 +2011,24 @@ mod tests {
         assert!(!store.bool_pref("arrival_bubbles", true).unwrap());
         store.set_bool_pref("arrival_bubbles", true).unwrap();
         assert!(store.bool_pref("arrival_bubbles", false).unwrap());
+    }
+
+    /// Le repère de la relève gardée (ADR 0017) : jamais posé -> `None`
+    /// (une base héritée relève tout à son premier cycle), posé -> relu.
+    #[test]
+    fn remote_uidnext_absent_puis_pose() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("a@exemple.fr", "gmail")
+            .unwrap();
+        let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        // NULL tant qu'aucune relève gardée n'a eu lieu : une base
+        // héritée relève tout à son premier cycle (ADR 0017).
+        assert_eq!(store.remote_uidnext(mailbox).unwrap(), None);
+        store.set_remote_uidnext(mailbox, 101).unwrap();
+        assert_eq!(store.remote_uidnext(mailbox).unwrap(), Some(101));
+        assert_eq!(store.envelope_count(mailbox).unwrap(), 0);
+        assert!(!store.has_pending_actions(mailbox).unwrap());
     }
 
     /// Le pendant texte : jamais posée -> `None` (le défaut appartient à

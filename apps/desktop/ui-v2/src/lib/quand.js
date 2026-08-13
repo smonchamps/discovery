@@ -20,6 +20,20 @@ export function quandLong(epoch) {
   return `${court}, ${heure}`;
 }
 
+// « il y a 2 minutes » — la forme exacte du prototype pour la barre
+// d'état (PLAN-SYNCHRO E1). `maintenant` (ms) vient de l'appelant : un
+// `$state` re-cadencé toutes les 30 s, pour que « il y a N minutes »
+// vieillisse à l'écran sans que personne ne clique.
+export function depuis(epoch, maintenant) {
+  const ecart = Math.max(0, Math.floor(maintenant / 1000) - epoch);
+  if (ecart < 60) return t('depuis.instant');
+  const minutes = Math.floor(ecart / 60);
+  if (minutes < 60) return t('depuis.minutes', { n: minutes });
+  const heures = Math.floor(minutes / 60);
+  if (heures < 24) return t('depuis.heures', { n: heures });
+  return t('depuis.jours', { n: Math.floor(heures / 24) });
+}
+
 export function quand(epoch) {
   if (!epoch) return '';
   const date = new Date(epoch * 1000);

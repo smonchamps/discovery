@@ -47,11 +47,12 @@ pub use nav::{CanonicalFolders, NavCounts};
 pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{
-    FetchedBody, Folder, MailServer, MailboxSnapshot, MessageRecipients, RemoteDraft, ThreadHeaders,
+    FetchedBody, Folder, FolderStatus, MailServer, MailboxSnapshot, MessageRecipients, RemoteDraft,
+    ThreadHeaders,
 };
 pub use store::{Account, AccountConfig, AdoptionProgress, Store, SyncState, UnifiedRow};
 pub use sync::{
-    SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall, sync_order,
-    sync_percent,
+    RepereLocal, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,
+    faut_relever, sync_order, sync_percent,
 };
 pub use transport::{MailTransport, SendError};

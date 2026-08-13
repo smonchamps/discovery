@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
-use std::sync::{Mutex, MutexGuard};
-use std::time::Instant;
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use mail_auth::{AccountSession, Authenticated, Authenticator, GenericCredentials};
 use mail_core::AccountConfig;
@@ -400,6 +400,100 @@ fn build_generic_session(
     }))
 }
 
+/// Nomme la boîte en cours de relève dans l'activité partagée — le
+/// mouvement que le terrain a réclamé (« 2/2 figé 7 minutes »). Chaîne
+/// vide entre deux boîtes.
+fn poser_boite(cycle: &crate::SyncShared, nom: &str) {
+    if let Ok(mut boite) = cycle.boite.lock() {
+        boite.clear();
+        boite.push_str(nom);
+    }
+    if let Ok(mut phase) = cycle.phase.lock() {
+        phase.clear();
+    }
+}
+
+/// Nomme l'étape SANS boîte (inventaire des dossiers, fils, brouillons) :
+/// `nom` est une clé, l'UI la traduit — le shell ne compose pas de texte
+/// d'interface (A15). Exclusif avec la boîte.
+fn poser_phase(cycle: &crate::SyncShared, nom: &str) {
+    if let Ok(mut phase) = cycle.phase.lock() {
+        phase.clear();
+        phase.push_str(nom);
+    }
+    if let Ok(mut boite) = cycle.boite.lock() {
+        boite.clear();
+    }
+}
+
+/// La relève gardée (ADR 0017) : faut-il relever ce dossier ? Toute
+/// incertitude — relevé refusé par le serveur, repère illisible —
+/// relève : la sobriété n'a pas le droit de coûter un message.
+fn doit_relever(
+    store: &Store,
+    account_id: i64,
+    boite: &str,
+    statut: Option<&mail_core::FolderStatus>,
+    problems: &mut Vec<String>,
+) -> bool {
+    let Some(statut) = statut else {
+        return true;
+    };
+    let repere = (|| -> Result<Option<mail_core::RepereLocal>, mail_core::Error> {
+        let Some(state) = store.sync_state(account_id, boite)? else {
+            return Ok(None);
+        };
+        Ok(Some(mail_core::RepereLocal {
+            uid_validity: state.uid_validity,
+            uidnext_vu: store.remote_uidnext(state.mailbox_id)?,
+            messages_locaux: store.envelope_count(state.mailbox_id)?,
+            actions_en_attente: store.has_pending_actions(state.mailbox_id)?,
+        }))
+    })();
+    match repere {
+        Ok(repere) => mail_core::faut_relever(statut, repere.as_ref()),
+        Err(err) => {
+            problems.push(format!("repère de « {boite} » : {err}"));
+            true
+        }
+    }
+}
+
+/// Solde le repère d'une relève ABOUTIE : le UIDNEXT du relevé qui l'a
+/// précédée. Jamais sur une relève échouée — un repère posé sur un
+/// dossier pas rattrapé le ferait sauter à tort au cycle suivant.
+fn solder_repere(
+    store: &Store,
+    account_id: i64,
+    boite: &str,
+    statut: Option<&mail_core::FolderStatus>,
+    problems: &mut Vec<String>,
+) {
+    let Some(uidnext) = statut.and_then(|statut| statut.uid_next) else {
+        return;
+    };
+    let pose = store.sync_state(account_id, boite).and_then(|state| {
+        if let Some(state) = state {
+            store.set_remote_uidnext(state.mailbox_id, uidnext)?;
+        }
+        Ok(())
+    });
+    if let Err(err) = pose {
+        problems.push(format!("repère de « {boite} » : {err}"));
+    }
+}
+
+/// À la sortie du cycle — normale ou par panique — l'activité s'éteint :
+/// une barre d'état qui annoncerait un cycle fantôme serait le mensonge
+/// exact que E1 corrige.
+struct FinDeCycle(Arc<crate::SyncShared>);
+
+impl Drop for FinDeCycle {
+    fn drop(&mut self) {
+        self.0.en_cours.store(false, Ordering::Relaxed);
+    }
+}
+
 /// Synchronise TOUS les comptes connectés — l'échec d'un compte ne
 /// bloque pas les autres (il est consigné dans le bilan).
 #[tauri::command]
@@ -407,9 +501,18 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     let path = db_path(&app)?;
     let jobs = connected_jobs(&path, &state)?;
     let timer = Instant::now();
+    let cycle = state.sync_cycle.clone();
 
     let (accounts, fetched, deleted, replayed, mut errors, refreshed, arrivals) =
         tauri::async_runtime::spawn_blocking(move || {
+            // L'activité pour la barre d'état (PLAN-SYNCHRO E1) : posée
+            // AVANT le premier compte, éteinte par le garde quoi qu'il
+            // arrive. Un cycle à vide (aucun compte connecté) n'annonce
+            // rien.
+            let _fin = FinDeCycle(cycle.clone());
+            cycle.fait.store(0, Ordering::Relaxed);
+            cycle.total.store(jobs.len() as u64, Ordering::Relaxed);
+            cycle.en_cours.store(!jobs.is_empty(), Ordering::Relaxed);
             let mut accounts = 0;
             let mut fetched = 0;
             let mut deleted = 0;
@@ -421,7 +524,11 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
             let mut arrivals = Vec::new();
             for (account_id, session) in jobs {
                 let email = session.email().to_string();
-                match run_sync(&session, account_id, &path) {
+                if let Ok(mut compte) = cycle.compte.lock() {
+                    compte.clone_from(&email);
+                }
+                poser_boite(&cycle, "");
+                match run_sync(&session, account_id, &path, &cycle) {
                     Ok(mut outcome) => {
                         accounts += 1;
                         fetched += outcome.report.fetched;
@@ -437,6 +544,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                     }
                     Err(err) => errors.push(format!("{email} : {err}")),
                 }
+                cycle.fait.fetch_add(1, Ordering::Relaxed);
             }
             (
                 accounts, fetched, deleted, replayed, errors, refreshed, arrivals,
@@ -451,9 +559,18 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     if let Some(problem) = arrival_notification_problem(&app, &arrivals) {
         errors.push(problem);
     }
-    let total = Store::open(&db_path(&app)?)
-        .and_then(|store| store.unified_count())
-        .map_err(|err| err.to_string())?;
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let total = store.unified_count().map_err(|err| err.to_string())?;
+    // L'horodatage de la dernière relève réussie (E1) : posé seulement
+    // quand AU MOINS un compte a répondu — un cycle à vide ne rajeunit
+    // pas « dernière synchronisation ». L'échec d'écriture est rapporté,
+    // jamais avalé ; il ne fait pas échouer la relève, le courrier est là.
+    if accounts > 0
+        && let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH)
+        && let Err(err) = store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string())
+    {
+        errors.push(format!("horodatage de la relève : {err}"));
+    }
 
     Ok(SyncSummary {
         accounts,
@@ -497,9 +614,16 @@ fn run_sync(
     session: &AccountSession,
     account_id: i64,
     db_path: &Path,
+    cycle: &crate::SyncShared,
 ) -> Result<SyncOutcome, String> {
     let (mut server, refreshed) = connect_imap(session)?;
     let mut store = Store::open(db_path).map_err(|err| err.to_string())?;
+    poser_boite(cycle, MAILBOX);
+    // Chrono par phase (terrain 2026-08-13 : « INBOX » muet 2 min 15 —
+    // l'observation doit devenir une mesure). Durées et décomptes
+    // SEULS : ni adresse, ni nom de dossier (règle des diagnostics,
+    // PASSATION §6.8) — l'identifiant de compte est un entier interne.
+    let chrono = Instant::now();
     // L'UID le plus haut AVANT la synchro : c'est lui qui separe
     // « nouveau » de « deja connu ». Releve avant, sinon la synchro
     // l'aurait deja deplace.
@@ -508,11 +632,46 @@ fn run_sync(
         .map_err(|err| err.to_string())?
         .map(|state| state.last_uid)
         .unwrap_or(0);
-    let report = SyncEngine::default()
-        .sync(&mut server, &mut store, account_id, MAILBOX)
-        .map_err(|err| err.to_string())?;
-
     let mut problems: Vec<String> = Vec::new();
+    // INBOX est gardée comme les autres (ADR 0017) : un relevé STATUS,
+    // la relève seulement si quelque chose a bougé. Le relevé sert plus
+    // bas à la garde d'espace — il n'est jamais payé deux fois.
+    let statut_inbox = server.folder_status(MAILBOX).ok();
+    let report = if doit_relever(
+        &store,
+        account_id,
+        MAILBOX,
+        statut_inbox.as_ref(),
+        &mut problems,
+    ) {
+        let report = SyncEngine::default()
+            .sync(&mut server, &mut store, account_id, MAILBOX)
+            .map_err(|err| err.to_string())?;
+        solder_repere(
+            &store,
+            account_id,
+            MAILBOX,
+            statut_inbox.as_ref(),
+            &mut problems,
+        );
+        report
+    } else {
+        // Rien n'a bougé : rapport incrémental vide — pas d'arrivées,
+        // pas de bulles, pas de mensonge.
+        mail_core::SyncReport {
+            mode: mail_core::SyncMode::Incremental,
+            fetched: 0,
+            deleted: 0,
+            replayed: 0,
+        }
+    };
+    let duree_inbox = chrono.elapsed();
+
+    // L'inventaire : dossier des envois, portée, liste des dossiers,
+    // garde d'espace (STATUS sur chaque dossier) — quatre travaux qui
+    // vivaient sous l'étiquette « INBOX », à tort.
+    poser_phase(cycle, "inventaire");
+    let chrono = Instant::now();
 
     // « Envoyés » : sans lui, un fil ne porte que la moitié reçue de
     // l'échange. Mesuré sur la boîte réelle — 15 conversations de plus
@@ -561,7 +720,15 @@ fn run_sync(
     // priverait l'utilisateur de son courrier à cause d'un dossier qu'il ne
     // regarde jamais.
     let folders = match server.folders() {
-        Ok(folders) => folders,
+        Ok(folders) => {
+            // Rafraîchie UNE fois par cycle — hoistée de `SyncEngine::sync`
+            // qui la payait à CHAQUE dossier (~51 LIST par cycle au
+            // terrain, ADR 0017). Déplacer hors ligne garde sa liste.
+            if let Err(reason) = store.replace_folders(account_id, &folders) {
+                problems.push(format!("liste des dossiers : {reason}"));
+            }
+            folders
+        }
         Err(reason) => {
             problems.push(format!("liste des dossiers : {reason}"));
             Vec::new()
@@ -577,14 +744,27 @@ fn run_sync(
     //
     // INBOX est comptée des deux côtés (annonce ET base locale) : la
     // retirer d'un seul ferait sous-estimer le restant.
+    //
+    // Le relevé de chaque dossier est GARDÉ (ADR 0017) : la garde
+    // d'espace et la décision de relève se servent du même aller-retour.
     let mut announced: u64 = 0;
+    let mut statuts: HashMap<String, mail_core::FolderStatus> = HashMap::new();
     for boite in &order {
-        match server.message_count(boite) {
-            Ok(count) => announced += u64::from(count),
-            // Un dossier qui refuse le comptage rend l'estimation basse.
-            // On continue quand même : la garde est une protection, pas
-            // un droit de veto — et l'échec est consigné.
-            Err(reason) => problems.push(format!("comptage « {boite} » : {reason}")),
+        // INBOX a déjà son relevé, payé avant sa relève.
+        let statut = if boite == MAILBOX {
+            statut_inbox.ok_or_else(|| "relevé INBOX absent".to_string())
+        } else {
+            server.folder_status(boite).map_err(|err| err.to_string())
+        };
+        match statut {
+            Ok(statut) => {
+                announced += u64::from(statut.messages);
+                statuts.insert(boite.clone(), statut);
+            }
+            // Un dossier qui refuse le relevé rend l'estimation basse et
+            // sera relevé sans garde. On continue : la garde est une
+            // protection, pas un droit de veto — et l'échec est consigné.
+            Err(reason) => problems.push(format!("relevé « {boite} » : {reason}")),
         }
     }
     let local = store
@@ -604,6 +784,10 @@ fn run_sync(
             None
         }
     };
+    let duree_inventaire = chrono.elapsed();
+    let n_dossiers = order.len().saturating_sub(1);
+    let mut n_sautes = 0usize;
+    let chrono = Instant::now();
     if let Some(missing) = shortfall {
         problems.push(format!(
             "espace disque insuffisant : ~{} nécessaires pour {} message(s) \
@@ -615,13 +799,25 @@ fn run_sync(
         ));
     } else {
         for boite in order.into_iter().skip(1) {
-            if let Err(reason) =
-                SyncEngine::default().sync(&mut server, &mut store, account_id, &boite)
-            {
-                problems.push(format!("dossier « {boite} » : {reason}"));
+            // La relève gardée (ADR 0017) : rien n'a bougé → sauté. Le
+            // terrain a payé 26 min de SELECT + SEARCH ALL par cycle
+            // pour des dossiers immobiles.
+            let statut = statuts.get(&boite);
+            if !doit_relever(&store, account_id, &boite, statut, &mut problems) {
+                n_sautes += 1;
+                continue;
+            }
+            poser_boite(cycle, &boite);
+            match SyncEngine::default().sync(&mut server, &mut store, account_id, &boite) {
+                Ok(_) => solder_repere(&store, account_id, &boite, statut, &mut problems),
+                Err(reason) => problems.push(format!("dossier « {boite} » : {reason}")),
             }
         }
     }
+    let duree_dossiers = chrono.elapsed();
+    // La passe d'en-têtes n'est pas une boîte : l'étape est nommée.
+    poser_phase(cycle, "fils");
+    let chrono = Instant::now();
 
     // La passe d'en-têtes profite de la connexion déjà ouverte : c'est ce
     // qui la rend gratuite en allers-retours. Son échec ne doit PAS faire
@@ -668,14 +864,30 @@ fn run_sync(
         }
     }
 
+    let duree_fils = chrono.elapsed();
     // Le tirage des brouillons profite lui aussi de la connexion ouverte.
     // Il ne peut PAS vivre dans le cycle de poussée : celui-ci s'arrête
     // tôt quand il n'y a rien à pousser — à raison, sinon chaque frappe
     // ouvrirait une connexion. Un brouillon commencé ailleurs n'arriverait
     // donc jamais.
+    poser_phase(cycle, "brouillons");
+    let chrono = Instant::now();
     if let Err(reason) = pull_drafts(&mut server, &store, account_id) {
         problems.push(format!("brouillons distants : {reason}"));
     }
+    let duree_brouillons = chrono.elapsed();
+
+    // La trace qui transforme « c'est bloqué » en mesure — lisible dans
+    // la console d'un `cargo run`. AVANT logout : un logout qui cale ne
+    // doit pas emporter la trace avec lui.
+    eprintln!(
+        "relève compte {account_id} : INBOX {:.1}s · inventaire {:.1}s · {n_dossiers} dossiers ({n_sautes} sautés) {:.1}s · fils {:.1}s · brouillons {:.1}s",
+        duree_inbox.as_secs_f32(),
+        duree_inventaire.as_secs_f32(),
+        duree_dossiers.as_secs_f32(),
+        duree_fils.as_secs_f32(),
+        duree_brouillons.as_secs_f32(),
+    );
 
     server.logout();
 
@@ -767,6 +979,9 @@ fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Resul
 /// Clé de la préférence « bulles d'arrivée » (Réglages > Notifications).
 const PREF_ARRIVAL_BUBBLES: &str = "arrival_bubbles";
 const PREF_LANG: &str = "lang";
+/// Epoch (secondes) de la dernière relève réussie — écrit par
+/// `sync_inbox`, lu par `sync_progress` pour la barre d'état (E1).
+const PREF_DERNIERE_SYNCHRO: &str = "derniere_synchro";
 
 fn arrival_notification_problem(
     app: &AppHandle,
@@ -2220,6 +2435,10 @@ pub struct SyncProgress {
     /// n'affiche alors rien, plutôt qu'un « 0 % » qui ferait croire à une
     /// synchronisation en panne.
     pub percent: Option<u8>,
+    /// Epoch (secondes) de la dernière relève réussie — `None` tant
+    /// qu'aucun cycle n'a abouti : l'interface n'invente pas
+    /// d'horodatage (PLAN-SYNCHRO E1).
+    pub derniere: Option<i64>,
 }
 
 /// Avancement de la synchronisation intégrale (ADR 0010 §5).
@@ -2231,10 +2450,66 @@ pub struct SyncProgress {
 pub fn sync_progress(app: AppHandle) -> Result<SyncProgress, String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
+    // Un horodatage illisible (pref corrompue) vaut « jamais » : la barre
+    // d'état retombe sur le texte sans date plutôt que d'afficher n'importe quoi.
+    let derniere = store
+        .text_pref(PREF_DERNIERE_SYNCHRO)
+        .map_err(|err| err.to_string())?
+        .and_then(|valeur| valeur.parse::<i64>().ok());
     Ok(SyncProgress {
         local,
         remote,
         percent: mail_core::sync_percent(local, remote),
+        derniere,
+    })
+}
+
+#[derive(Serialize)]
+pub struct SyncActivite {
+    /// Comptes déjà soldés dans le cycle en cours.
+    pub fait: u64,
+    pub total: u64,
+    /// Adresse du compte en cours de relève.
+    pub compte: String,
+    /// Boîte en cours DANS le compte — vide entre deux boîtes.
+    pub boite: String,
+    /// Étape sans boîte (`inventaire`, `fils`, `brouillons`) — clé de
+    /// catalogue, traduite par l'UI. Vide quand une boîte est nommée.
+    pub phase: String,
+}
+
+/// Le cycle en cours, pour la barre d'état (PLAN-SYNCHRO E1).
+///
+/// Purement mémoire — aucun réseau, aucune base : l'UI sonde à la
+/// seconde PENDANT le cycle sans rien coûter à la boucle (atomiques,
+/// patron de `migration_progress`). `None` au repos.
+#[tauri::command]
+pub fn sync_activity(state: State<'_, AppState>) -> Option<SyncActivite> {
+    let cycle = &state.sync_cycle;
+    if !cycle.en_cours.load(Ordering::Relaxed) {
+        return None;
+    }
+    let compte = cycle
+        .compte
+        .lock()
+        .map(|nom| nom.clone())
+        .unwrap_or_default();
+    let boite = cycle
+        .boite
+        .lock()
+        .map(|nom| nom.clone())
+        .unwrap_or_default();
+    let phase = cycle
+        .phase
+        .lock()
+        .map(|nom| nom.clone())
+        .unwrap_or_default();
+    Some(SyncActivite {
+        fait: cycle.fait.load(Ordering::Relaxed),
+        total: cycle.total.load(Ordering::Relaxed),
+        compte,
+        boite,
+        phase,
     })
 }
 

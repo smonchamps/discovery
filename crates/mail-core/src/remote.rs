@@ -106,6 +106,19 @@ pub struct Folder {
     pub selectable: bool,
 }
 
+/// Le relevé STATUS d'un dossier, sans sélection (ADR 0017).
+///
+/// `uid_next` et `uid_validity` sont optionnels parce que RFC 3501 ne
+/// force pas un serveur à les servir : leur absence rend `faut_relever`
+/// conservatrice — on relève — jamais fausse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FolderStatus {
+    /// Messages annoncés (EXISTS).
+    pub messages: u32,
+    pub uid_next: Option<u32>,
+    pub uid_validity: Option<u32>,
+}
+
 pub trait MailServer {
     /// Sélectionne une boîte et retourne son état courant.
     fn select(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error>;
@@ -197,15 +210,17 @@ pub trait MailServer {
     /// Les dossiers du compte, tels que l'utilisateur peut les choisir.
     fn folders(&mut self) -> Result<Vec<Folder>, Error>;
 
-    /// Combien de messages ce dossier contient — SANS le sélectionner.
+    /// Le relevé d'un dossier — SANS le sélectionner.
     ///
-    /// C'est ce qui permet à la garde d'espace disque
-    /// ([ADR 0010](../../../docs/adr/0010-synchronisation-integrale.md) §4)
-    /// d'estimer le volume AVANT de s'engager : refuser après avoir
-    /// commencé, c'est s'arrêter au milieu — ce que la garde existe pour
-    /// empêcher. En IMAP c'est la commande STATUS, prévue exactement pour
-    /// interroger une boîte non sélectionnée.
-    fn message_count(&mut self, mailbox: &str) -> Result<u32, Error>;
+    /// Un seul aller-retour (STATUS en IMAP, prévu exactement pour
+    /// interroger une boîte non sélectionnée) qui sert DEUX décisions :
+    /// la garde d'espace disque ([ADR 0010](../../../docs/adr/0010-synchronisation-integrale.md)
+    /// §4) qui somme `messages` AVANT de s'engager, et la relève gardée
+    /// ([ADR 0017](../../../docs/adr/0017-releve-gardee-par-status.md)) —
+    /// `faut_relever` saute les dossiers où rien n'a bougé. `uid_next`
+    /// et `uid_validity` sont optionnels : un serveur qui les tait rend
+    /// la décision conservatrice (on relève), jamais fausse.
+    fn folder_status(&mut self, mailbox: &str) -> Result<FolderStatus, Error>;
 
     /// Déplace le message vers `target`, désigné par son nom RÉSEAU.
     ///

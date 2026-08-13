@@ -106,13 +106,11 @@ impl SyncEngine {
         let last_uid = store.max_uid(state.mailbox_id)?;
         store.update_state(state.mailbox_id, last_uid, snapshot.highest_modseq)?;
 
-        // La liste des dossiers est rafraîchie ICI, pas au moment où
-        // l'utilisateur veut déplacer : choisir une destination doit
-        // marcher hors ligne. Un échec n'invalide pas la synchro — les
-        // messages sont arrivés, l'ancienne liste reste utilisable.
-        if let Ok(folders) = server.folders() {
-            store.replace_folders(account_id, &folders)?;
-        }
+        // La liste des dossiers n'est PLUS rafraîchie ici : chaque relève
+        // payait un LIST identique — ~51 par compte et par cycle sur le
+        // terrain du 2026-08-13 (ADR 0017). L'orchestrateur la rafraîchit
+        // UNE fois par cycle, à l'inventaire, avec la liste qu'il a déjà
+        // en main — déplacer hors ligne reste servi.
         Ok(report)
     }
 
@@ -348,6 +346,152 @@ mod disk_shortfall_tests {
 /// Et il ne rend jamais 100 tant qu'il reste quelque chose : l'arrondi
 /// naturel afficherait « 100 % » à 19 999 messages sur 20 000, et
 /// l'utilisateur verrait une barre pleine qui ne se termine pas.
+/// Ce que le stockage sait d'un dossier au moment de décider (ADR 0017).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RepereLocal {
+    pub uid_validity: u32,
+    /// Le UIDNEXT vu au relevé qui a précédé la DERNIÈRE relève soldée —
+    /// pas `last_uid` : un serveur ne redescend jamais son UIDNEXT, alors
+    /// que `last_uid` retombe quand le message le plus récent est
+    /// supprimé, ce qui condamnerait le dossier à ne plus jamais être
+    /// sauté.
+    pub uidnext_vu: Option<u32>,
+    /// Messages en base pour ce dossier.
+    pub messages_locaux: u64,
+    /// Des actions locales attendent leur rejeu : sauter les abandonnerait.
+    pub actions_en_attente: bool,
+}
+
+/// Faut-il relever ce dossier, ou rien n'a bougé (ADR 0017) ?
+///
+/// La décision pure du « cycle sobre » — terrain du 2026-08-13 : le
+/// cycle récurrent coûtait ~38 min sur une boîte réelle, chaque dossier
+/// payant SELECT + UID SEARCH ALL même quand rien n'avait changé. Un
+/// STATUS par dossier (déjà payé par la garde d'espace) suffit à
+/// trancher. Toute incertitude — jamais relevé, valeurs tues par le
+/// serveur, UIDVALIDITY changée, actions en attente — relève : la
+/// sobriété n'a pas le droit de coûter un message.
+pub fn faut_relever(distant: &crate::remote::FolderStatus, local: Option<&RepereLocal>) -> bool {
+    let Some(local) = local else {
+        return true;
+    };
+    if local.actions_en_attente {
+        return true;
+    }
+    let (Some(uid_validity), Some(uid_next)) = (distant.uid_validity, distant.uid_next) else {
+        return true;
+    };
+    if uid_validity != local.uid_validity {
+        return true;
+    }
+    let Some(uidnext_vu) = local.uidnext_vu else {
+        return true;
+    };
+    if uid_next != uidnext_vu {
+        return true;
+    }
+    u64::from(distant.messages) != local.messages_locaux
+}
+
+#[cfg(test)]
+mod faut_relever_tests {
+    use super::{RepereLocal, faut_relever};
+    use crate::remote::FolderStatus;
+
+    fn distant() -> FolderStatus {
+        FolderStatus {
+            messages: 40,
+            uid_next: Some(101),
+            uid_validity: Some(7),
+        }
+    }
+    fn local() -> RepereLocal {
+        RepereLocal {
+            uid_validity: 7,
+            uidnext_vu: Some(101),
+            messages_locaux: 40,
+            actions_en_attente: false,
+        }
+    }
+
+    /// LE cas qui rend le cycle sobre : rien n'a bougé, on saute.
+    #[test]
+    fn rien_n_a_bouge_on_saute() {
+        assert!(!faut_relever(&distant(), Some(&local())));
+    }
+
+    /// Jamais relevé : aucune base de comparaison, on relève.
+    #[test]
+    fn un_dossier_jamais_releve_se_releve() {
+        assert!(faut_relever(&distant(), None));
+    }
+
+    /// Une arrivée bouge UIDNEXT — même si un départ simultané laisse le
+    /// décompte identique (le glissement qu'un seul des deux tests ne
+    /// verrait pas).
+    #[test]
+    fn une_arrivee_bouge_uidnext_meme_a_decompte_egal() {
+        let bouge = FolderStatus {
+            uid_next: Some(102),
+            ..distant()
+        };
+        assert!(faut_relever(&bouge, Some(&local())));
+    }
+
+    /// Une suppression baisse MESSAGES sans toucher UIDNEXT.
+    #[test]
+    fn une_suppression_baisse_le_decompte() {
+        let ampute = FolderStatus {
+            messages: 39,
+            ..distant()
+        };
+        assert!(faut_relever(&ampute, Some(&local())));
+    }
+
+    /// UIDVALIDITY changée : les UID locaux ne veulent plus rien dire —
+    /// la relève (et son reset) est obligatoire, invariant §6.6.
+    #[test]
+    fn uidvalidity_changee_force_la_releve() {
+        let regenere = FolderStatus {
+            uid_validity: Some(8),
+            ..distant()
+        };
+        assert!(faut_relever(&regenere, Some(&local())));
+    }
+
+    /// Des actions locales attendent leur rejeu : sauter les abandonnerait
+    /// jusqu'à un hypothétique changement distant.
+    #[test]
+    fn des_actions_en_attente_forcent_la_releve() {
+        let charge = RepereLocal {
+            actions_en_attente: true,
+            ..local()
+        };
+        assert!(faut_relever(&distant(), Some(&charge)));
+    }
+
+    /// Un serveur qui tait UIDNEXT ou UIDVALIDITY rend la décision
+    /// conservatrice — on relève, on ne devine pas.
+    #[test]
+    fn un_serveur_muet_impose_la_releve() {
+        let muet = FolderStatus {
+            uid_next: None,
+            ..distant()
+        };
+        assert!(faut_relever(&muet, Some(&local())));
+        let sans_validity = FolderStatus {
+            uid_validity: None,
+            ..distant()
+        };
+        assert!(faut_relever(&sans_validity, Some(&local())));
+        let jamais_vu = RepereLocal {
+            uidnext_vu: None,
+            ..local()
+        };
+        assert!(faut_relever(&distant(), Some(&jamais_vu)));
+    }
+}
+
 pub fn sync_percent(local: u64, remote: u64) -> Option<u8> {
     if remote == 0 {
         return None;
@@ -659,12 +803,14 @@ mod tests {
         assert!(store.pending_actions(id).unwrap().is_empty());
     }
 
-    /// La liste des dossiers doit être en cache AVANT qu'on en ait
-    /// besoin : c'est la synchro qui la remplit, pas l'ouverture du
-    /// sélecteur. Sans cela, déplacer un message exige le réseau — dans
-    /// un produit qui se promet offline-first.
+    /// Depuis l'ADR 0017, la relève d'un dossier ne rafraîchit PLUS la
+    /// liste des dossiers : ce LIST était payé à CHAQUE dossier (~51 par
+    /// cycle au terrain du 2026-08-13). C'est l'orchestrateur qui la met
+    /// en cache, UNE fois par cycle, à l'inventaire — l'offline-first du
+    /// déplacement est tenu là. Ce test tient le nouveau contrat : si le
+    /// moteur se remet à lister, la facture réseau revient en silence.
     #[test]
-    fn syncing_caches_the_folder_list_for_offline_use() {
+    fn syncing_does_not_refetch_the_folder_list() {
         let mut server = FakeServer::new(false);
         server.add(1, "a");
         server.folders = vec![crate::remote::Folder {
@@ -675,9 +821,10 @@ mod tests {
         let mut store = Store::open_in_memory().unwrap();
         synced(&mut server, &mut store, &SyncEngine::default());
 
+        // La relève n'a rien mis en cache : la liste appartient à
+        // l'inventaire du cycle, pas au moteur.
         let cached = store.folders(test_account(&store)).unwrap();
-        assert_eq!(cached.len(), 1);
-        assert_eq!(cached[0].display, "Archivés");
+        assert!(cached.is_empty());
     }
 
     /// Le déplacement suit la même boucle hors-ligne que le reste :

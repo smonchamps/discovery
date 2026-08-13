@@ -501,16 +501,22 @@ impl MailServer for ImapServer {
             .collect())
     }
 
-    fn message_count(&mut self, mailbox: &str) -> Result<u32, Error> {
+    fn folder_status(&mut self, mailbox: &str) -> Result<mail_core::FolderStatus, Error> {
         // STATUS et non SELECT : la commande est faite pour interroger une
         // boîte NON sélectionnée (RFC 3501 §6.3.10) — la sélection
         // courante du moteur n'est pas perturbée, et certains serveurs
-        // font payer un SELECT bien plus cher qu'un STATUS.
+        // font payer un SELECT bien plus cher qu'un STATUS. Un seul
+        // aller-retour pour la garde d'espace ET la relève gardée
+        // (ADR 0017).
         let status = self
             .session
-            .status(mailbox, "(MESSAGES)")
+            .status(mailbox, "(MESSAGES UIDNEXT UIDVALIDITY)")
             .map_err(server_err)?;
-        Ok(status.exists)
+        Ok(mail_core::FolderStatus {
+            messages: status.exists,
+            uid_next: status.uid_next,
+            uid_validity: status.uid_validity,
+        })
     }
 
     /// MOVE si le serveur l'annonce, COPY + EXPUNGE sinon.

@@ -35,6 +35,17 @@ motivée.)
   l'essentiel.
 - **Rouvre si** : le terrain au lecteur d'écran le réclame.
 
+### D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)
+
+- **Fait (2026-08-13, gate E1 de PLAN-SYNCHRO)** : le test v1
+  « étoiler : “s” pose l'étoile » a échoué UNE passe sur trois de la
+  suite complète (la classe `flagged` n'apparaît pas dans les 15 s),
+  puis passé 12/12 en isolation et à la passe suivante. Chemin
+  (`mark_flagged`, UI v1) étranger au chantier synchro.
+- **Décision** : consigné, non instruit — v1 est dormante depuis B1 et
+  le test disparaît avec elle à B2 (PLAN-RETRAIT-V1).
+- **Rouvre si** : il retombe sur un parcours v2, ou si B2 est reporté.
+
 ## Soldée
 
 ### ~~D-3 · Dates en jour de semaine (2 à 6 jours)~~ — soldée le 2026-08-12

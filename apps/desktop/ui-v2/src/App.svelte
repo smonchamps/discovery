@@ -7,6 +7,7 @@
   import { onMount } from 'svelte';
   import { appel } from './lib/transport.js';
   import { t } from './lib/texte.svelte.js';
+  import { depuis } from './lib/quand.js';
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
   import Lecture from './Lecture.svelte';
@@ -45,6 +46,11 @@
   let nResultats = $state(null);
   let totalListe = $state(0);
   let synchro = $state(null);
+  // Le cycle en cours, vu par la sonde d'activité (E1) : null au repos.
+  let activite = $state(null);
+  // L'heure qui fait vieillir « il y a N minutes » : re-cadencée toutes
+  // les 30 s, sans que personne ne clique.
+  let maintenant = $state(Date.now());
   let toast = $state(null);
   let toastMinuterie;
   // La sélection courante, pour les raccourcis (D3) : r/f/e/Suppr
@@ -66,6 +72,8 @@
   let envoisEnAttente = $state(0);
   let rattrapageApercus = $state(false);
   let rattrapageCorps = $state(null); // restant, ou null si rien à faire
+  // Total constaté au départ de la passe : le dénominateur de la barre.
+  let rattrapageTotal = $state(null);
   // Échec TOTAL de la dernière synchro : dans la ligne, pas la fente —
   // §6 n'y met pas la synchro, et « hors ligne » n'est pas un incident.
   let synchroEchec = $state(false);
@@ -79,31 +87,97 @@
     corbeille: 'boite.corbeille',
   };
 
-  const statut = $derived.by(() => {
+  // La ligne de statut ENTIÈRE — texte, barre fine (A16), point
+  // d'alerte — sort d'une seule décision : les trois ne peuvent pas
+  // diverger. Au plus UNE progression (Système A4) ; priorités
+  // re-triées par la sincérité (PLAN-SYNCHRO E1) : le cycle courant
+  // d'abord — c'est lui que l'utilisateur attend — puis l'intégrale,
+  // les rattrapages, l'attente d'envoi, l'échec, le repos horodaté.
+  const ligne = $derived.by(() => {
     if (nResultats !== null) {
-      return t('statut.recherche', { n: nResultats });
+      return { texte: t('statut.recherche', { n: nResultats }), fil: null, alerte: false };
     }
     if (categorie !== 'reception') {
-      return t('statut.categorie', { boite: t(LIBELLES[categorie]), n: totalListe });
+      return {
+        texte: t('statut.categorie', { boite: t(LIBELLES[categorie]), n: totalListe }),
+        fil: null,
+        alerte: false,
+      };
     }
-    // La ligne de progression : au plus UNE — synchro OU rattrapage,
-    // puis l'attente non fautive de la boîte d'envoi.
+    // Le cycle courant : plus jamais « à jour » pendant que la machine
+    // travaille — et TOUT ce qu'on sait s'affiche (terrain 2026-08-13 :
+    // « 2/2 · compte » figé 7 minutes pendant le balayage des dossiers).
+    // Rang, compte, boîte courante ; le % de l'intégrale quand il
+    // existe, car l'intégrale EST le cycle — le masquer était une
+    // régression sur l'affichage d'avant E1. Barre déterminée avec le
+    // %, balayage sinon.
+    if (enSynchro) {
+      const pct =
+        synchro && synchro.percent !== null && synchro.percent < 100 ? synchro.percent : null;
+      const parts = [t('statut.cyclePrefixe')];
+      if (activite) {
+        if (activite.total > 1) {
+          parts.push(`${Math.min(activite.fait + 1, activite.total)}/${activite.total}`);
+        }
+        if (activite.compte) parts.push(activite.compte);
+        // La boîte en clair, ou l'étape traduite (le shell n'envoie
+        // qu'une clé — A15) : l'observation terrain doit pouvoir NOMMER
+        // ce qui est long.
+        if (activite.boite) parts.push(activite.boite);
+        else if (activite.phase) parts.push(t(`statut.phase.${activite.phase}`));
+      }
+      let texte = `${parts.join(' · ')}…`;
+      if (pct !== null) texte += ` · ${t('statut.pourcent', { p: pct })}`;
+      return {
+        texte,
+        fil: pct !== null ? { mode: 'plein', pct } : { mode: 'vague' },
+        alerte: false,
+      };
+    }
     if (synchro && synchro.percent !== null && synchro.percent < 100) {
-      return t('statut.synchro', { p: synchro.percent });
+      return {
+        texte: t('statut.synchro', { p: synchro.percent }),
+        fil: { mode: 'plein', pct: synchro.percent },
+        alerte: false,
+      };
     }
     if (rattrapageCorps !== null && rattrapageCorps > 0) {
-      return t('statut.rattrapageCorps', { n: rattrapageCorps });
+      // Jamais 100 % tant qu'il reste quelque chose — la règle de
+      // sync_percent, tenue aussi ici.
+      const fil = rattrapageTotal > 0
+        ? {
+            mode: 'plein',
+            pct: Math.min(99, Math.max(0,
+              Math.floor(((rattrapageTotal - rattrapageCorps) * 100) / rattrapageTotal))),
+          }
+        : { mode: 'vague' };
+      return { texte: t('statut.rattrapageCorps', { n: rattrapageCorps }), fil, alerte: false };
     }
     if (rattrapageApercus) {
-      return t('statut.rattrapageApercus');
+      return { texte: t('statut.rattrapageApercus'), fil: { mode: 'vague' }, alerte: false };
     }
     if (envoisEnAttente > 0) {
-      return t('statut.envois', { n: envoisEnAttente });
+      return { texte: t('statut.envois', { n: envoisEnAttente }), fil: null, alerte: false };
     }
+    // L'horodatage du prototype, enfin : « dernière synchronisation il
+    // y a N minutes » — et sur échec, depuis quand on vit sur le stock.
+    const derniere = synchro?.derniere ?? null;
     if (synchroEchec) {
-      return t('statut.synchroImpossible');
+      return {
+        texte: derniere
+          ? t('statut.synchroImpossibleDepuis', { depuis: depuis(derniere, maintenant) })
+          : t('statut.synchroImpossible'),
+        fil: null,
+        alerte: true,
+      };
     }
-    return t('statut.ajour');
+    return {
+      texte: derniere
+        ? t('statut.ajourDepuis', { depuis: depuis(derniere, maintenant) })
+        : t('statut.ajour'),
+      fil: null,
+      alerte: false,
+    };
   });
 
   function flash(message) {
@@ -154,6 +228,7 @@
       const etat = await appel('backfill_status');
       if (etat.remaining === 0) return;
       rattrapageCorps = etat.remaining;
+      rattrapageTotal = etat.remaining;
       let restant = etat.remaining;
       while (restant > 0) {
         const bilan = await appel('backfill_bodies');
@@ -165,6 +240,7 @@
       console.error('backfill_bodies :', err);
     } finally {
       rattrapageCorps = null;
+      rattrapageTotal = null;
     }
   }
 
@@ -335,10 +411,21 @@
     }
   }
 
-  let enSynchro = false;
+  // $state : la barre d'état raconte le cycle pendant qu'il tourne (E1).
+  let enSynchro = $state(false);
+  // La sonde d'activité ne vit QUE pendant le cycle : à la seconde,
+  // purement mémoire côté shell (atomiques) — elle ne coûte rien à la
+  // boucle et rien au repos.
+  async function sonderActivite() {
+    try {
+      activite = await appel('sync_activity');
+    } catch { /* la prochaine sonde suffira */ }
+  }
   async function synchroniser() {
     if (enSynchro) return; // réentrance interdite : un cycle à la fois
     enSynchro = true;
+    sonderActivite();
+    const sonde = setInterval(sonderActivite, 1000);
     try {
       const bilan = await appel('sync_inbox');
       synchroEchec = bilan.accounts === 0 && bilan.errors.length > 0;
@@ -357,7 +444,12 @@
       synchroEchec = true;
       console.error('sync_inbox :', err);
     } finally {
+      clearInterval(sonde);
+      activite = null;
       enSynchro = false;
+      // L'horodatage vient d'être posé par le shell : le relire tout de
+      // suite, sans attendre la sonde de 5 s.
+      sonderSynchro();
     }
   }
 
@@ -370,6 +462,9 @@
     setInterval(chargerNav, 10000);
     sonderSynchro();
     setInterval(sonderSynchro, 5000);
+    // « il y a N minutes » vieillit tout seul : 30 s suffisent pour une
+    // granularité à la minute.
+    setInterval(() => (maintenant = Date.now()), 30000);
     sonderEnvois();
     setInterval(sonderEnvois, 10000);
     setTimeout(rattraperApercus, 1500);
@@ -587,7 +682,19 @@
     </div>
 
     <div class="statut" data-testid="statut">
-      <span data-testid="progression">{statut}</span>
+      {#if ligne.fil}
+        <div class="fil" data-testid="fil" aria-hidden="true">
+          {#if ligne.fil.mode === 'plein'}
+            <div class="plein" style:width="{ligne.fil.pct}%"></div>
+          {:else}
+            <div class="vague"></div>
+          {/if}
+        </div>
+      {/if}
+      <span class="texte">
+        {#if ligne.alerte}<span class="point-alerte" aria-hidden="true"></span>{/if}
+        <span data-testid="progression">{ligne.texte}</span>
+      </span>
       <span id="perf" data-testid="perf" data-startup={startup}>{perf}</span>
     </div>
 
@@ -658,10 +765,31 @@
   }
 
   .statut {
-    height:36px; flex:none; background:var(--panel);
+    position:relative; height:36px; flex:none; background:var(--panel);
     border-top:1px solid var(--border); display:flex; align-items:center;
     justify-content:space-between; padding:0 24px;
     font-size:12px; color:var(--muted);
   }
   #perf { font-variant-numeric:tabular-nums; }
+  .texte { display:flex; align-items:center; gap:8px; min-width:0; }
+  .texte span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .point-alerte {
+    width:7px; height:7px; border-radius:99px; background:var(--alert);
+    flex:none;
+  }
+  /* La barre fine (A16) : 2 px au ras supérieur, par-dessus le filet —
+     déterminée quand un % honnête existe, balayage sinon. */
+  .fil {
+    position:absolute; top:-1px; left:0; right:0; height:2px;
+    overflow:hidden; pointer-events:none;
+  }
+  .fil .plein { height:100%; background:var(--accent); transition:width .3s; }
+  .fil .vague {
+    height:100%; width:28%; background:var(--accent); border-radius:2px;
+    animation:vague 1.6s ease-in-out infinite;
+  }
+  @keyframes vague {
+    from { transform:translateX(-110%); }
+    to { transform:translateX(460%); }
+  }
 </style>

@@ -134,11 +134,15 @@ impl MailServer for FakeServer {
         Ok(self.messages.keys().copied().collect())
     }
 
-    fn message_count(&mut self, _mailbox: &str) -> Result<u32, Error> {
-        // Le VRAI décompte du décor, même règle que `exists` dans
-        // `select` : annoncer autre chose que ce qu'on sert ferait passer
-        // des tests de garde disque sur un modèle faux.
-        Ok(self.messages.len() as u32)
+    fn folder_status(&mut self, _mailbox: &str) -> Result<crate::remote::FolderStatus, Error> {
+        // Le VRAI état du décor, même règle que `exists` dans `select` :
+        // annoncer autre chose que ce qu'on sert ferait passer des tests
+        // de garde disque ou de relève gardée sur un modèle faux.
+        Ok(crate::remote::FolderStatus {
+            messages: self.messages.len() as u32,
+            uid_next: Some(self.messages.keys().max().copied().unwrap_or(0) + 1),
+            uid_validity: Some(self.uid_validity),
+        })
     }
 
     fn fetch_envelopes(&mut self, _mailbox: &str, uids: &[Uid]) -> Result<Vec<Envelope>, Error> {

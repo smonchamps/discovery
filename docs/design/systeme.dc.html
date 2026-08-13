@@ -745,7 +745,14 @@ n'apparaît qu'une fois le précédent résolu ou écarté.</p>
       <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">La <b>ligne de progression</b>, en bas contre la barre d'état : au plus
 <b>UNE</b> progression (synchronisation ou rattrapage), en texte atténué,
 qui ne vole jamais la vedette à un avis. L'attente sereine de la boîte
-d'envoi (« N en attente ») vit ici ; seul l'<b>échec</b> monte en avis.</p>
+d'envoi (« N en attente ») vit ici ; seul l'<b>échec</b> monte en avis.
+Depuis <b>A16</b> : l'horodatage du prototype (« dernière synchronisation
+il y a N minutes ») au repos ET sur échec — un point <code>--alert</code>
+discret marque l'anomalie sans monter en avis —, le cycle courant nommé
+(« Synchronisation · 2/4 · compte… »), une <b>barre fine de 2 px</b> au
+ras supérieur de la barre d'état (déterminée quand un % honnête existe,
+règles de <code>sync_percent</code> ; balayage sinon) et le <b>bouton de
+relève</b> à droite. La ligne reste UNE — jamais un empilement.</p>
     </div>
   </section>
 
@@ -906,6 +913,11 @@ et tracé par un commit.</p>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-12</td>
           <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A15</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f">L'interface en plusieurs langues — commande du Chef Ingénieur (<code>docs/PLAN-LANGUES.md</code>, décisions L-1 à L-6). Le prototype parle français : le Système complète (A6). Le français du prototype devient le <b>catalogue <code>fr</code>, mot pour mot</b> — la référence ; l'anglais s'y conforme par <b>transposition</b>, jamais par invention (« » → “ ”, l'heure reste sur 24 h — on livre une langue, pas une locale régionale). La langue est une préférence d'<b>application</b> persistée EN BASE (<code>prefs.lang</code>, le patron des bulles — le shell compose les notifications dans cette langue) ; défaut au premier lancement : la langue du système si couverte, sinon <code>fr</code> ; <b>application immédiate</b>, sans redémarrage (le geste du thème) ; <code>&lt;html lang&gt;</code> suit. Le réglage vit dans <b>Réglages &gt; Affichage</b> : une rangée « Langue », sélecteur natif à la grammaire des boutons (32 px, jetons) — pas de groupe neuf pour une rangée (A13). Formes de dates par langue, transposées : <code>Hier/Yesterday</code>, <code>Lundi/Monday</code>, <code>5 août/Aug 5</code>, <code>1ᵉʳ août/Aug 1</code>, <code>5 août 2024/Aug 5, 2024</code>, <code>Aujourd'hui, 09:12/Today, 09:12</code>. Les raccourcis (D3) ne bougent pas d'une langue à l'autre — seuls leurs libellés (« Suppr »/« Échap » → "Del"/"Esc") et leurs gestes se traduisent. Mécanique : catalogues plats maison, zéro dépendance (ADR 0016), repli sur <code>fr</code> pour toute clé absente, audit e2e des jeux de clés.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-13</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A16</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Synchronisation visible et actionnable — retours bêta (<code>docs/PLAN-SYNCHRO.md</code>, maquettes validées par le Chef Ingénieur : S-D1 barre d'état, S-D2 passe légère, S-D3 barre fine). La ligne de progression porte enfin l'<b>horodatage du prototype</b> (« dernière synchronisation il y a N minutes », persisté en base, <code>prefs.derniere_synchro</code>), le <b>cycle courant</b> devient visible (« Synchronisation · 2/4 · compte · boîte… · 37 % », sonde mémoire à la seconde pendant le cycle seul — la <b>boîte courante</b> — ou l'étape : inventaire des dossiers, fils de discussion, brouillons — et le <b>% de l'intégrale</b> compris : premier retour terrain du 2026-08-13, « 2/2 figé 7 minutes », corrigé le jour même) et une <b>barre fine de 2 px</b> court au ras supérieur de la barre d'état — déterminée quand un % honnête existe (règles de <code>sync_percent</code> : jamais 100 tant qu'il reste), balayage indéterminé sinon. Le <b>bouton de relève</b> (« Synchroniser », « Réessayer » sur échec) se loge à droite de la barre — <b>D5 rouverte au terrain</b>, câblé en E2 sur la passe légère avec le glyphe <code>sync</code>.</td>
         </tr>
       </tbody>
     </table>

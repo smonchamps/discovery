@@ -35,6 +35,19 @@ test('la nav porte les compteurs du décor Clarity', async () => {
   await expect(page.locator('[data-testid="nav-boite"]')).toHaveCount(3);
 });
 
+test("la barre d'état date la dernière relève — même sur échec", async () => {
+  // Les comptes du décor n'ont pas de serveur : l'état STABLE ici est
+  // l'échec de relève, et c'est justement lui qui doit dire depuis
+  // quand on vit sur le stock (PLAN-SYNCHRO E1, maquette état 6). Le
+  // décor Clarity pose `derniere_synchro` il y a 2 minutes — la minute
+  // affichée peut glisser avec la durée du lancement, pas la forme.
+  // (Le repos « Tous les messages sont à jour » reste couvert par la
+  // spec onboarding, sans horodatage : boîte jamais relevée.)
+  await expect(page.locator('[data-testid="progression"]')).toContainText(
+    /Synchronisation impossible — nouvelle tentative automatique · dernière synchronisation il y a \d+ minutes?/,
+  );
+});
+
 test('sélectionner ouvre le volet, lit le corps, et le non-lu tombe', async () => {
   await page.locator('[data-testid="ligne"]').first().click();
   await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(
