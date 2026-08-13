@@ -185,6 +185,17 @@ différentiel qui coûte 34 s (INBOX seule) serait livrer un bouton cassé.
 - Gate chiffrée (trace existante, sa boîte) : **cycle au repos < 60 s
   sur le compte Gmail** (contre 38 min), INBOX inchangée < 5 s.
 
+**E2c — LIST-STATUS (RFC 5819), le dernier goulot** — **État : livrée le
+2026-08-13 (nuit), gates Rust vertes, terrain CE dû.** Le 4ᵉ terrain
+(soir) a mesuré le cycle sobre à ~72 s sur le compte Gmail : dossiers
+sautés à 0,0 s (E2a parfait), INBOX 2,5 s (E2b), mais **inventaire
+65,8 s** — les ~51 STATUS séquentiels, seul écart à la gate < 60 s.
+`folders_with_status` (capacité `LIST-STATUS`) fond la liste ET tous les
+relevés en UN aller-retour ; repli sur `folders()` + `folder_status()`
+si le serveur ne l'annonce pas (défaut du trait, chemin testé).
+Inventaire attendu ~1-2 s, cycle Gmail au repos < 10 s — gate E2a
+re-mesurée au terrain.
+
 **E2b — CONDSTORE réel** (le report Phase 1 arrive à échéance) —
 **État : livrée le 2026-08-13 (gate locale verte), terrain CE dû —
 drapeau posé au téléphone, reflété au cycle suivant, cycle au repos

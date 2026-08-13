@@ -123,6 +123,11 @@ pub struct FolderStatus {
     pub highest_modseq: Option<u64>,
 }
 
+/// Un dossier ET son relevé, tel que LIST-STATUS (RFC 5819) les rend
+/// APPARIÉS en un aller-retour. Le relevé est optionnel : le serveur
+/// peut l'omettre pour un dossier sur lequel il bute (RFC 5819 §2).
+pub type FolderWithStatus = (Folder, Option<FolderStatus>);
+
 pub trait MailServer {
     /// Sélectionne une boîte et retourne son état courant.
     fn select(&mut self, mailbox: &str) -> Result<MailboxSnapshot, Error>;
@@ -213,6 +218,23 @@ pub trait MailServer {
 
     /// Les dossiers du compte, tels que l'utilisateur peut les choisir.
     fn folders(&mut self) -> Result<Vec<Folder>, Error>;
+
+    /// Les dossiers ET leur relevé, en UN aller-retour (LIST-STATUS,
+    /// RFC 5819) — ce que `folders()` + un `folder_status()` par dossier
+    /// font en ~51 allers-retours séquentiels.
+    ///
+    /// Terrain du 2026-08-13 : le cycle sobre tenait tout SAUF l'inventaire,
+    /// resté à 66 s sur le compte Gmail — ~51 STATUS un par un. LIST-STATUS
+    /// les fond en une commande.
+    ///
+    /// `None` = capacité absente (le serveur n'annonce pas LIST-STATUS) :
+    /// l'appelant retombe sur `folders()` + `folder_status()`, chemin
+    /// complet et testé. Le relevé de chaque dossier est optionnel jusque
+    /// dans la réponse — RFC 5819 §2 autorise le serveur à l'omettre s'il
+    /// bute dessus ; l'appelant traite alors ce dossier comme non gardé.
+    fn folders_with_status(&mut self) -> Result<Option<Vec<FolderWithStatus>>, Error> {
+        Ok(None)
+    }
 
     /// Le relevé d'un dossier — SANS le sélectionner.
     ///

@@ -173,6 +173,10 @@ pub struct ImapServer {
     supports_move: Option<bool>,
     /// Le serveur annonce-t-il CONDSTORE (RFC 7162) ? Même discipline.
     supports_condstore: Option<bool>,
+    /// Le serveur annonce-t-il LIST-STATUS (RFC 5819) ? Même discipline —
+    /// c'est lui qui fond ~51 STATUS en un aller-retour (terrain
+    /// 2026-08-13 : l'inventaire, dernier goulot du cycle sobre).
+    supports_list_status: Option<bool>,
 }
 
 impl ImapServer {
@@ -202,6 +206,7 @@ impl ImapServer {
             sent: None,
             supports_move: None,
             supports_condstore: None,
+            supports_list_status: None,
         })
     }
 
@@ -226,6 +231,7 @@ impl ImapServer {
             sent: None,
             supports_move: None,
             supports_condstore: None,
+            supports_list_status: None,
         })
     }
 
@@ -462,6 +468,20 @@ impl ImapServer {
         Ok(supported)
     }
 
+    /// Le serveur sait-il faire LIST-STATUS (RFC 5819) ? Décide de
+    /// l'inventaire en un aller-retour au lieu de ~51 STATUS. Émettre
+    /// `LIST … RETURN (STATUS …)` à un serveur qui ne l'annonce pas
+    /// serait un BAD — d'où la garde.
+    fn supports_list_status(&mut self) -> Result<bool, Error> {
+        if let Some(known) = self.supports_list_status {
+            return Ok(known);
+        }
+        let capabilities = self.session.capabilities().map_err(server_err)?;
+        let supported = capabilities.has_str("LIST-STATUS");
+        self.supports_list_status = Some(supported);
+        Ok(supported)
+    }
+
     fn expunge_uid(&mut self, uid: Uid) -> Result<(), Error> {
         self.session
             .uid_store(uid.to_string(), "+FLAGS.SILENT (\\Deleted)")
@@ -644,21 +664,41 @@ impl MailServer for ImapServer {
 
     fn folders(&mut self) -> Result<Vec<mail_core::Folder>, Error> {
         let names = self.session.list(None, Some("*")).map_err(server_err)?;
-        Ok(names
-            .iter()
-            .map(|name| mail_core::Folder {
-                wire: name.name().to_string(),
-                // Décodé pour l'œil SEULEMENT : `wire` reste ce qu'on
-                // renvoie au serveur (RFC 3501 §5.1.3).
-                display: mutf7::decode(name.name()),
-                // `\Noselect` marque un conteneur sans courrier : le
-                // proposer comme destination produirait un échec au clic.
-                selectable: !name
-                    .attributes()
-                    .iter()
-                    .any(|attribute| matches!(attribute, NameAttribute::NoSelect)),
-            })
-            .collect())
+        Ok(names.iter().map(name_to_folder).collect())
+    }
+
+    fn folders_with_status(&mut self) -> Result<Option<Vec<mail_core::FolderWithStatus>>, Error> {
+        if !self.supports_list_status()? {
+            return Ok(None);
+        }
+        // HIGHESTMODSEQ dans le RETURN quand CONDSTORE est là (E2b),
+        // comme `folder_status` : le même relevé sert la relève gardée.
+        let items = if self.supports_condstore()? {
+            "(MESSAGES UIDNEXT UIDVALIDITY HIGHESTMODSEQ)"
+        } else {
+            "(MESSAGES UIDNEXT UIDVALIDITY)"
+        };
+        let noms = self
+            .session
+            .list_status(None, Some("*"), items)
+            .map_err(server_err)?;
+        Ok(Some(
+            noms.iter()
+                .map(|(name, mailbox)| {
+                    // Le STATUS reste OPTIONNEL dans la réponse : RFC 5819
+                    // §2 autorise le serveur à l'omettre s'il bute sur un
+                    // dossier — l'appelant traite alors ce dossier comme
+                    // non gardé (il le relèvera, prudence d'ADR 0017).
+                    let statut = mailbox.as_ref().map(|mb| mail_core::FolderStatus {
+                        messages: mb.exists,
+                        uid_next: mb.uid_next,
+                        uid_validity: mb.uid_validity,
+                        highest_modseq: mb.highest_mod_seq,
+                    });
+                    (name_to_folder(name), statut)
+                })
+                .collect(),
+        ))
     }
 
     fn folder_status(&mut self, mailbox: &str) -> Result<mail_core::FolderStatus, Error> {
@@ -774,6 +814,24 @@ impl MailServer for ImapServer {
 
 fn server_err(err: imap::Error) -> Error {
     Error::Server(err.to_string())
+}
+
+/// Un `Name` IMAP (issu de LIST ou LIST-STATUS) devient un `Folder` du
+/// domaine — mapping unique, partagé par `folders()` et
+/// `folders_with_status()` pour qu'ils ne puissent pas diverger.
+fn name_to_folder(name: &imap::types::Name<'_>) -> mail_core::Folder {
+    mail_core::Folder {
+        wire: name.name().to_string(),
+        // Décodé pour l'œil SEULEMENT : `wire` reste ce qu'on renvoie
+        // au serveur (RFC 3501 §5.1.3).
+        display: mutf7::decode(name.name()),
+        // `\Noselect` marque un conteneur sans courrier : le proposer
+        // comme destination produirait un échec au clic.
+        selectable: !name
+            .attributes()
+            .iter()
+            .any(|attribute| matches!(attribute, NameAttribute::NoSelect)),
+    }
 }
 
 /// L'échec vient-il de la CONNEXION (résolution, TCP, TLS, délais P0)

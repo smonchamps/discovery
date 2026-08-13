@@ -47,8 +47,8 @@ pub use nav::{CanonicalFolders, NavCounts};
 pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxMessage, OutboxReport, OutboxState, flush_outbox};
 pub use remote::{
-    FetchedBody, Folder, FolderStatus, MailServer, MailboxSnapshot, MessageRecipients, RemoteDraft,
-    ThreadHeaders,
+    FetchedBody, Folder, FolderStatus, FolderWithStatus, MailServer, MailboxSnapshot,
+    MessageRecipients, RemoteDraft, ThreadHeaders,
 };
 pub use store::{Account, AccountConfig, AdoptionProgress, Store, SyncState, UnifiedRow};
 pub use sync::{

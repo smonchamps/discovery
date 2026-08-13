@@ -988,45 +988,64 @@ fn run_sync(
     // l'utilisateur (ADR 0010 §1). INBOX vient d'être faite ; `sync_order`
     // la remet en tête et l'évite en double.
     //
-    // Best effort dossier par dossier, et c'est délibéré : un serveur
-    // refuse volontiers UN dossier (quota, corruption, droits) et sert tous
-    // les autres. Faire échouer la synchronisation entière pour lui
-    // priverait l'utilisateur de son courrier à cause d'un dossier qu'il ne
-    // regarde jamais.
-    let folders = match server.folders() {
-        Ok(folders) => {
-            // Rafraîchie UNE fois par cycle — hoistée de `SyncEngine::sync`
-            // qui la payait à CHAQUE dossier (~51 LIST par cycle au
-            // terrain, ADR 0017). Déplacer hors ligne garde sa liste.
-            if let Err(reason) = store.replace_folders(account_id, &folders) {
-                problems.push(format!("liste des dossiers : {reason}"));
-            }
-            folders
-        }
+    // LIST-STATUS (RFC 5819) quand le serveur l'annonce : la liste ET le
+    // relevé de CHAQUE dossier en UN aller-retour — terrain du
+    // 2026-08-13, l'inventaire était le dernier goulot (66 s de ~51
+    // STATUS séquentiels sur le compte Gmail). `statuts` en ressort
+    // pré-rempli ; la garde d'espace plus bas n'a plus rien à demander.
+    // Repli (capacité absente OU échec LIST-STATUS) : un LIST simple,
+    // les STATUS partiront un par un — chemin d'avant, intact.
+    let mut statuts: HashMap<String, mail_core::FolderStatus> = HashMap::new();
+    let avec_statut = match server.folders_with_status() {
+        Ok(v) => v,
         Err(reason) => {
-            problems.push(format!("liste des dossiers : {reason}"));
-            Vec::new()
+            problems.push(format!("inventaire LIST-STATUS : {reason}"));
+            None
         }
     };
+    let folders = if let Some(avec_statut) = avec_statut {
+        let mut folders = Vec::with_capacity(avec_statut.len());
+        for (folder, statut) in avec_statut {
+            // Le serveur PEUT omettre le relevé d'un dossier (RFC 5819
+            // §2) : ce dossier repart alors non gardé, la boucle plus bas
+            // le rattrapera par un STATUS ciblé.
+            if let Some(statut) = statut {
+                statuts.insert(folder.wire.clone(), statut);
+            }
+            folders.push(folder);
+        }
+        folders
+    } else {
+        server.folders().unwrap_or_else(|reason| {
+            problems.push(format!("liste des dossiers : {reason}"));
+            Vec::new()
+        })
+    };
+    // Rafraîchie UNE fois par cycle — hoistée de `SyncEngine::sync` qui la
+    // payait à CHAQUE dossier (~51 LIST par cycle, ADR 0017). Déplacer
+    // hors ligne garde sa liste.
+    if let Err(reason) = store.replace_folders(account_id, &folders) {
+        problems.push(format!("liste des dossiers : {reason}"));
+    }
     let order = mail_core::sync_order(&folders, sent.as_deref());
 
     // La garde d'espace disque (ADR 0010 §4) : estimer AVANT de
-    // s'engager, refuser en le chiffrant s'il manque. STATUS interroge
-    // chaque dossier sans le sélectionner — quelques allers-retours
-    // légers, contre des heures de téléchargement qui échoueraient à
-    // mi-chemin sur un disque plein.
+    // s'engager, refuser en le chiffrant s'il manque.
     //
     // INBOX est comptée des deux côtés (annonce ET base locale) : la
     // retirer d'un seul ferait sous-estimer le restant.
     //
     // Le relevé de chaque dossier est GARDÉ (ADR 0017) : la garde
-    // d'espace et la décision de relève se servent du même aller-retour.
+    // d'espace et la décision de relève se servent du même relevé — celui
+    // de LIST-STATUS s'il a répondu, un STATUS ciblé sinon.
     let mut announced: u64 = 0;
-    let mut statuts: HashMap<String, mail_core::FolderStatus> = HashMap::new();
     for boite in &order {
-        // INBOX a déjà son relevé, payé avant sa relève.
         let statut = if boite == MAILBOX {
+            // INBOX a déjà son relevé, payé avant sa relève.
             statut_inbox.ok_or_else(|| "relevé INBOX absent".to_string())
+        } else if let Some(statut) = statuts.get(boite).copied() {
+            // Déjà relevé par LIST-STATUS : aucun second aller-retour.
+            Ok(statut)
         } else {
             server.folder_status(boite).map_err(|err| err.to_string())
         };
