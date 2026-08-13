@@ -1,0 +1,17 @@
+# Spike E4 (PLAN-SYNCHRO) — banc de mesure IDLE, hors du workspace de
+# production. JETABLE : il instruit l'ADR à venir (cycle de vie de
+# connexion, veilleur par compte), il ne livre rien. mail-auth par
+# chemin, c'est voulu : le jeton OAuth vient du trousseau que
+# l'application a déjà rempli — le terrain n'a rien à copier.
+[workspace]
+
+[package]
+name = "spike-idle"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+imap = "3.0.0-alpha.15"
+mail-auth = { path = "../../crates/mail-auth" }

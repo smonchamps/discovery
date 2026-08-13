@@ -315,6 +315,14 @@ alerte (« 1 compte sur 2 injoignable ») via `accounts_failed` au bilan.
 
 ### E4 — Le temps réel (IDLE, ex-E3)
 
+**État : le harnais du spike est livré le 2026-08-13 (`spikes/idle/`,
+compile, protocole et gates au README) — les MESURES restent dues
+(Gmail bridé ce jour, terrain au soir ou lendemain).** Jeton relu au
+trousseau de l'application à chaque reconnexion (rien à copier au
+terrain). Premier constat d'intégration consigné : la poignée `idle()`
+de la crate efface le timeout P0 en sortant — re-poser ou connexion
+dédiée, à trancher à l'ADR.
+
 - **Spike jetable d'abord** — `spikes/idle/`, hors workspace, sur les
   trois fournisseurs (Gmail, Microsoft, IMAP générique). Protocole :
   latence arrivée → événement (p50/p95), tenue de connexion 60 min,
