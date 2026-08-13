@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maquettes — Brouillons (PLAN-BROUILLONS)</title>
+<style>
+  /* Jetons du Système Clarity — valeurs exactes de systeme.css (nature, nuit). */
+  :root {
+    --bg:#f0f2ef; --panel:#eaece9; --surface:#ffffff;
+    --ink:#232725; --ink2:#4d534f; --muted:#5c625e;
+    --border:#dadfda; --accent:#2f6e5b; --accentH:#26594a;
+    --sel:#e6ede9; --alert:#8c2f22; --onAccent:#ffffff;
+    --shadow:0 2px 8px rgba(35,39,37,0.08);
+  }
+  :root[data-theme="nuit"] {
+    --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
+    --ink:#edefed; --ink2:#b7bebb; --muted:#929a96;
+    --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
+    --sel:#313f39; --alert:#d9776b; --onAccent:#11201b;
+    --shadow:0 2px 12px rgba(0,0,0,0.40);
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); }
+  body {
+    font-family:"Segoe UI", system-ui, -apple-system, sans-serif;
+    color:var(--ink); padding:48px 32px 96px;
+  }
+  .page { max-width:1080px; margin:0 auto; display:flex; flex-direction:column; gap:44px; }
+  h1 { margin:0; font-size:26px; font-weight:600; letter-spacing:-.01em; }
+  h2 { margin:0; font-size:19px; font-weight:600; letter-spacing:-.01em; }
+  p.intro { margin:0; font-size:14px; line-height:1.65; color:var(--ink2); max-width:80ch; }
+  .section { display:flex; flex-direction:column; gap:18px; }
+  .carte {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; overflow:hidden; box-shadow:var(--shadow);
+  }
+  .legende { font-size:12.5px; line-height:1.6; color:var(--muted); margin:8px 2px 0; max-width:86ch; }
+  .legende b { color:var(--ink2); font-weight:600; }
+  .etiquette {
+    display:inline-block; font-size:11px; font-weight:600; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--muted); margin-bottom:6px;
+  }
+  .reco {
+    display:inline-block; font-size:11px; font-weight:600; padding:2px 8px;
+    border-radius:99px; background:var(--sel); color:var(--accent);
+    border:1px solid var(--border); vertical-align:1px; margin-left:8px;
+    letter-spacing:.02em; text-transform:none;
+  }
+  .ecartee {
+    display:inline-block; font-size:11px; font-weight:600; padding:2px 8px;
+    border-radius:99px; background:var(--panel); color:var(--muted);
+    border:1px solid var(--border); vertical-align:1px; margin-left:8px;
+    letter-spacing:.02em; text-transform:none;
+  }
+  .bascule {
+    position:fixed; top:20px; right:20px; height:32px; padding:0 14px;
+    font-size:13px; font-family:inherit; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+  }
+  .bascule:hover { background:var(--sel); }
+  .ic { width:14px; height:14px; flex:none; fill:currentColor; }
+  .rangee-maquettes { display:flex; gap:28px; flex-wrap:wrap; align-items:flex-start; }
+  .rangee-maquettes .carte { width:fit-content; }
+  .rangee-maquettes > div { max-width:426px; }
+
+  /* ——— Le volet central : 400 px, cotes et états VERBATIM de Liste.svelte ——— */
+  .volet {
+    width:400px; background:var(--bg); padding:12px;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .ligne {
+    padding:14px 16px; border-radius:10px; border:1px solid transparent;
+    display:flex; flex-direction:column; gap:6px; cursor:pointer;
+  }
+  .ligne:hover { background:var(--sel); border-color:var(--border); }
+  .l1 { display:flex; align-items:baseline; gap:12px; }
+  .exp { font-size:13px; color:var(--ink2); flex:1; min-width:0;
+         overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .nonlu .exp { font-weight:600; color:var(--ink); }
+  .heure { font-size:12px; color:var(--muted); }
+  .objet {
+    margin:0; font-size:16px; font-weight:600; line-height:1.3;
+    letter-spacing:-.01em; color:var(--ink2);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .nonlu .objet { color:var(--ink); }
+  .apercu {
+    margin:0; font-size:13px; line-height:1.45; color:var(--muted);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-height:1.45em;
+  }
+  .nonlu .apercu { color:var(--ink2); }
+  .puces { display:flex; gap:8px; margin-top:2px; }
+  .puce {
+    height:32px; padding:0 12px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; white-space:nowrap;
+  }
+
+  /* ——— La mention « Brouillon » (proposition) ——— */
+  .mention {
+    display:inline-flex; align-items:center; gap:5px; flex:none;
+    font-size:12.5px; font-weight:600; color:var(--alert); white-space:nowrap;
+    align-self:center;
+  }
+  .mention .ic { width:13px; height:13px; }
+  .prefixe { color:var(--alert); font-weight:600; }
+  .sans { font-style:italic; color:var(--muted); }
+
+  /* ——— Le pied d'onglets du volet (52 px), Brouillons actif ——— */
+  .onglets {
+    height:52px; padding:0 12px; display:flex; align-items:center; gap:10px;
+    border-top:1px solid var(--border); background:var(--panel);
+  }
+  .onglet {
+    height:32px; padding:0 14px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; border-radius:6px; cursor:pointer;
+    color:var(--ink2); background:var(--surface); border:1px solid var(--border);
+  }
+  .onglet.actif { font-weight:600; color:var(--ink); background:var(--sel); border-color:var(--accent); }
+
+  /* ——— La conversation (écran 03) : fil replié + bloc brouillon ——— */
+  .conv { padding:24px 36px; display:flex; flex-direction:column; gap:12px; background:var(--surface); }
+  .conv-tete { padding:28px 36px 24px; border-bottom:1px solid var(--border); }
+  .conv-titre { margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em; }
+  .replie {
+    border:1px solid var(--border); border-radius:10px; padding:14px 20px;
+    display:flex; align-items:center; gap:14px; background:var(--bg); cursor:pointer;
+  }
+  .replie:hover { background:var(--sel); }
+  .replie .auteur { font-size:13px; font-weight:600; flex:none; color:var(--ink); }
+  .replie .extrait {
+    font-size:13px; color:var(--ink2); flex:1; min-width:0;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .replie .heure { flex:none; }
+  .brouillon-bloc { border:1px dashed var(--accent); }
+  .brouillon-bloc .reprendre {
+    height:26px; padding:0 12px; display:inline-flex; align-items:center; gap:7px;
+    font-size:12px; font-family:inherit; font-weight:600; color:var(--ink2); flex:none;
+    background:var(--surface); border:1px solid var(--border); border-radius:6px; cursor:pointer;
+  }
+  .brouillon-bloc .reprendre:hover { background:var(--sel); color:var(--ink); }
+  .barre-actions { padding:18px 36px 26px; display:flex; gap:10px; border-top:1px solid var(--border); }
+  .btn {
+    height:32px; padding:0 16px; display:inline-flex; align-items:center; gap:8px;
+    font-size:13px; font-family:inherit; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+  }
+  .btn.principal { font-weight:600; color:var(--onAccent); background:var(--accent); border-color:var(--accent); }
+
+  /* ——— La fente d'avis (référence — supprimée pour les brouillons) ——— */
+  .fente {
+    background:var(--surface); border-bottom:1px solid var(--border);
+    border-left:2px solid var(--accent);
+    display:flex; align-items:center; gap:14px; padding:10px 24px;
+  }
+  .fente .icone { color:var(--accent); }
+  .fente .texte { flex:1; font-size:13px; color:var(--ink); }
+  .retiree { opacity:.45; }
+  .tampon {
+    display:inline-block; font-size:11px; font-weight:600; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--alert); border:1px solid var(--alert);
+    border-radius:4px; padding:2px 8px; margin-bottom:6px;
+  }
+</style>
+</head>
+<body>
+<button type="button" class="bascule" onclick="
+  document.documentElement.dataset.theme =
+    document.documentElement.dataset.theme === 'nuit' ? '' : 'nuit'
+">Thème : nature / nuit</button>
+
+<div class="page">
+
+  <div class="section">
+    <h1>Brouillons — maquettes (validées le 2026-08-13)</h1>
+    <p class="intro">
+      PLAN-BROUILLONS. <b>Validées le 2026-08-13</b> : §1 variante B retenue ; §2, §3 et §4
+      tels quels. Deux usages conservés : le <b>dossier Brouillons</b> (reprise au clic)
+      et la <b>mention « Brouillon » sur la ligne de conversation</b> du volet central, comme
+      si le brouillon était le dernier email du fil. La fente d'avis cesse de porter les
+      brouillons. Aucune géométrie neuve : la ligne de liste, le pied d'onglets, le fil de
+      l'écran 03 et leurs jetons sont repris à l'identique — seuls s'ajoutent le préfixe
+      « Brouillon — » (<code>--alert</code>) en tête d'aperçu, la mention ✎ du bloc de
+      conversation et son trait pointillé. Le glyphe ✎ figure <code>edit_note</code>, déjà
+      dans la police.
+    </p>
+  </div>
+
+  <!-- ================= 1. LA LIGNE DE CONVERSATION ================= -->
+  <div class="section">
+    <h2>1 — La ligne de conversation avec brouillon en cours (Réception)</h2>
+
+    <div class="rangee-maquettes">
+      <div>
+        <span class="etiquette">Variante B — mention en tête d'aperçu<span class="reco">retenue — 2026-08-13</span></span>
+        <div class="carte">
+          <div class="volet">
+            <div class="ligne nonlu">
+              <div class="l1"><span class="exp">Paul Lefebvre</span><span class="heure">15:04</span></div>
+              <p class="objet">Compte-rendu du comité</p>
+              <p class="apercu">Bonjour, vous trouverez ci-joint le compte-rendu…</p>
+            </div>
+            <div class="ligne">
+              <div class="l1"><span class="exp">Marie Dubois</span><span class="heure">11:20</span></div>
+              <p class="objet">Re : Devis rénovation</p>
+              <p class="apercu"><span class="prefixe">Brouillon — </span>Bonjour Marie, merci pour le devis — deux…</p>
+              <span class="puces">
+                <span class="puce"><svg class="ic" viewBox="0 0 24 24"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg>4 messages</span>
+              </span>
+            </div>
+            <div class="ligne">
+              <div class="l1"><span class="exp">Service clients</span><span class="heure">hier</span></div>
+              <p class="objet">Votre commande est expédiée</p>
+              <p class="apercu">Votre colis n° 8842 a quitté notre entrepôt…</p>
+            </div>
+          </div>
+        </div>
+        <p class="legende">
+          <b>Retenue à la validation du 2026-08-13.</b> La première ligne ne bouge pas —
+          expéditeur du fil, heure du dernier message reçu : elle reste sincère sur ce qui est
+          arrivé. L'aperçu dit le brouillon : préfixe <b>« Brouillon — »</b> (13 px, 600,
+          <code>--alert</code>) suivi de son corps. La place dans la liste ne change pas
+          (B-D3) ; l'état non-lu reste celui du fil ; le clic ouvre la conversation comme
+          avant (B-D4).
+        </p>
+      </div>
+
+      <div>
+        <span class="etiquette">Variante A — mention en première ligne<span class="ecartee">écartée</span></span>
+        <div class="carte retiree">
+          <div class="volet">
+            <div class="ligne">
+              <div class="l1">
+                <span class="exp">Marie Dubois</span>
+                <span class="mention"><svg class="ic" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Brouillon</span>
+                <span class="heure">14:32</span>
+              </div>
+              <p class="objet">Re : Devis rénovation</p>
+              <p class="apercu">Bonjour Marie, merci pour le devis — deux questions sur le…</p>
+              <span class="puces">
+                <span class="puce"><svg class="ic" viewBox="0 0 24 24"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg>4 messages</span>
+              </span>
+            </div>
+          </div>
+        </div>
+        <p class="legende">
+          <b>Écartée à la validation du 2026-08-13</b> — conservée pour mémoire : mention
+          ✎ Brouillon en première ligne, heure et aperçu du brouillon.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 2. LE DOSSIER BROUILLONS ================= -->
+  <div class="section">
+    <h2>2 — Le dossier Brouillons (accès direct, reprise au clic)</h2>
+    <div class="carte" style="max-width:400px">
+      <div class="volet">
+        <div class="ligne">
+          <div class="l1"><span class="exp">À : marie.dubois@exemple.fr</span><span class="heure">14:32</span></div>
+          <p class="objet">Re : Devis rénovation</p>
+          <p class="apercu">Bonjour Marie, merci pour le devis — deux questions sur le…</p>
+        </div>
+        <div class="ligne">
+          <div class="l1"><span class="exp sans">(sans destinataire)</span><span class="heure">09:15</span></div>
+          <p class="objet sans" style="font-style:italic">(sans objet)</p>
+          <p class="apercu">Idées pour la réunion de rentrée : budget, planning, re…</p>
+        </div>
+        <div class="ligne">
+          <div class="l1"><span class="exp">À : paul.lefebvre@exemple.fr</span><span class="heure">lun.</span></div>
+          <p class="objet">Disponibilités de septembre</p>
+          <p class="apercu">Bonjour Paul, voici mes créneaux pour la semaine du 7…</p>
+        </div>
+      </div>
+      <div class="onglets">
+        <span class="onglet"><svg class="ic" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 12h-4c0 1.66-1.35 3-3 3s-3-1.34-3-3H5V5h14v10z"/></svg>Tous</span>
+        <span class="onglet"><svg class="ic" viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"/></svg>Non lus</span>
+        <span class="onglet actif"><svg class="ic" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Brouillons</span>
+      </div>
+    </div>
+    <p class="legende">
+      Même gabarit de ligne, servie par les <b>brouillons locaux</b> (B-D1) — plus le dossier
+      IMAP : les brouillons hors ligne y sont, et <b>le clic rouvre le composeur</b> (objet,
+      corps, destinataire restitués tels quels — jamais <code>mark_seen</code>). L'expéditeur
+      devient le <b>destinataire</b> (« À : … ») ; sans destinataire ou sans objet, l'atténué
+      italique le dit au lieu de laisser un blanc. Pas de mention « Brouillon » par ligne :
+      tout le dossier en est. L'heure est la dernière édition ; tri du plus récent au plus
+      ancien. La barre de statut garde sa forme : « Brouillons · 3 messages ».
+    </p>
+  </div>
+
+  <!-- ================= 3. LA CONVERSATION ================= -->
+  <div class="section">
+    <h2>3 — La conversation (écran 03) : le brouillon en dernière position</h2>
+    <div class="carte">
+      <div class="conv-tete"><h3 class="conv-titre">Re : Devis rénovation</h3></div>
+      <div class="conv">
+        <div class="replie">
+          <span class="auteur">Marie Dubois</span>
+          <span class="extrait">Bonjour, voici le devis mis à jour comme convenu…</span>
+          <span class="heure">12:10</span>
+        </div>
+        <div class="replie">
+          <span class="auteur">Moi</span>
+          <span class="extrait">Merci, je regarde ça et je reviens vers vous.</span>
+          <span class="heure">12:48</span>
+        </div>
+        <div class="replie brouillon-bloc">
+          <span class="mention"><svg class="ic" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Brouillon</span>
+          <span class="extrait">Bonjour Marie, merci pour le devis — deux questions sur le…</span>
+          <span class="heure">14:32</span>
+          <button type="button" class="reprendre">Reprendre</button>
+        </div>
+      </div>
+      <div class="barre-actions">
+        <button type="button" class="btn principal">Répondre</button>
+        <button type="button" class="btn">Répondre à tous</button>
+        <button type="button" class="btn">Transférer</button>
+      </div>
+    </div>
+    <p class="legende">
+      Le bloc reprend la forme d'un message replié — <b>trait accent pointillé</b> pour dire
+      « pas encore parti », la même mention ✎ à la place de l'auteur. <b>Un clic n'importe où
+      sur le bloc reprend le brouillon</b> (le bouton nomme le geste) : le composeur se
+      superpose, la conversation reste montée dessous. Sans ce bloc, la liste promettrait un
+      « dernier email » que la conversation n'aurait pas (B-D4-b).
+    </p>
+  </div>
+
+  <!-- ================= 4. LA FENTE D'AVIS ================= -->
+  <div class="section">
+    <h2>4 — La fente d'avis : la source « brouillons » disparaît</h2>
+    <div>
+      <span class="tampon">Supprimé</span>
+      <div class="carte retiree">
+        <div class="fente">
+          <svg class="ic icone" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          <span class="texte">Un brouillon en cours : « Re : Devis rénovation ».</span>
+          <button type="button" class="btn principal">Reprendre</button>
+          <button type="button" class="btn">Plus tard</button>
+        </div>
+      </div>
+      <p class="legende">
+        L'état actuel, pour mémoire. La source n° 5 de la fente (App.svelte,
+        <code>verifierBrouillons</code>) est retirée avec ses clés <code>avis.brouillon(s)</code> ;
+        les quatre autres sources — échec d'envoi, mise à jour, crash, télémétrie — ne bougent
+        pas. La reprise vit désormais au dossier (§2) et dans la conversation (§3).
+      </p>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

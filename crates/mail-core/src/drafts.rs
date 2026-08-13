@@ -42,6 +42,11 @@ pub struct DraftContent<'a> {
     pub subject: &'a str,
     pub body: &'a str,
     pub reply_to_uid: Option<Uid>,
+    /// La boîte qui donne son sens à `reply_to_uid` : les UID repartent
+    /// de 1 à chaque boîte (ADR 0009), un UID seul ne désigne rien.
+    /// C'est elle qui permet de relier le brouillon à sa conversation
+    /// (PLAN-BROUILLONS, B-D2).
+    pub reply_to_mailbox: Option<&'a str>,
 }
 
 /// Ce qu'une sauvegarde a réellement fait.
@@ -67,6 +72,16 @@ pub struct SavedDraft {
     pub body: String,
     /// UID du message auquel ce brouillon répond, s'il y en a un.
     pub reply_to_uid: Option<Uid>,
+    /// La boîte du message visé — `None` pour une composition libre ou
+    /// un brouillon d'avant la colonne (ils gardent leur filet : le
+    /// dossier Brouillons, sans mention en liste).
+    pub reply_to_mailbox: Option<String>,
+    /// Le fil de la conversation à laquelle ce brouillon répond —
+    /// résolu à la LECTURE (boîte + UID → enveloppe), jamais stocké :
+    /// un fil re-calculé ne peut pas laisser un repère périmé ici.
+    /// `None` : composition libre, boîte disparue, message expurgé, ou
+    /// brouillon d'avant la colonne.
+    pub thread_id: Option<i64>,
     /// Millisecondes — l'ordre « plus récent d'abord » doit rester vrai
     /// entre deux sauvegardes rapprochées.
     pub updated_epoch: i64,
@@ -115,6 +130,7 @@ impl Store {
             subject,
             body,
             reply_to_uid,
+            reply_to_mailbox,
         } = content;
         let now = Utc::now().timestamp_millis();
         match id {
@@ -139,8 +155,15 @@ impl Store {
                     (_, None) => false,
                 };
                 if conflit {
-                    let forked =
-                        self.insert_draft(account_id, to_raw, subject, body, reply_to_uid, now)?;
+                    let forked = self.insert_draft(
+                        account_id,
+                        to_raw,
+                        subject,
+                        body,
+                        reply_to_uid,
+                        reply_to_mailbox,
+                        now,
+                    )?;
                     return Ok(DraftSaved {
                         id: forked,
                         updated_epoch: now,
@@ -155,19 +178,21 @@ impl Store {
                 // chaque fermeture re-pousserait une copie identique vers
                 // Gmail (churn observé en validation terrain).
                 self.conn().execute(
-                    "INSERT INTO drafts (id, account_id, to_raw, subject, body, reply_to_uid, updated_epoch)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+                    "INSERT INTO drafts (id, account_id, to_raw, subject, body, reply_to_uid, reply_to_mailbox, updated_epoch)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                      ON CONFLICT(id) DO UPDATE SET
                        to_raw = excluded.to_raw,
                        subject = excluded.subject,
                        body = excluded.body,
                        reply_to_uid = excluded.reply_to_uid,
+                       reply_to_mailbox = excluded.reply_to_mailbox,
                        updated_epoch = MAX(excluded.updated_epoch, drafts.updated_epoch + 1)
                      WHERE drafts.to_raw IS NOT excluded.to_raw
                         OR drafts.subject IS NOT excluded.subject
                         OR drafts.body IS NOT excluded.body
-                        OR drafts.reply_to_uid IS NOT excluded.reply_to_uid",
-                    params![id, account_id, to_raw, subject, body, reply_to_uid, now],
+                        OR drafts.reply_to_uid IS NOT excluded.reply_to_uid
+                        OR drafts.reply_to_mailbox IS NOT excluded.reply_to_mailbox",
+                    params![id, account_id, to_raw, subject, body, reply_to_uid, reply_to_mailbox, now],
                 )?;
                 // Relu, et non supposé : le `WHERE` ci-dessus peut avoir
                 // laissé l'horodatage intact (sauvegarde identique), et
@@ -185,13 +210,22 @@ impl Store {
                 })
             }
             None => Ok(DraftSaved {
-                id: self.insert_draft(account_id, to_raw, subject, body, reply_to_uid, now)?,
+                id: self.insert_draft(
+                    account_id,
+                    to_raw,
+                    subject,
+                    body,
+                    reply_to_uid,
+                    reply_to_mailbox,
+                    now,
+                )?,
                 updated_epoch: now,
                 forked: false,
             }),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn insert_draft(
         &self,
         account_id: i64,
@@ -199,12 +233,13 @@ impl Store {
         subject: &str,
         body: &str,
         reply_to_uid: Option<Uid>,
+        reply_to_mailbox: Option<&str>,
         now: i64,
     ) -> Result<i64, Error> {
         self.conn().execute(
-            "INSERT INTO drafts (account_id, to_raw, subject, body, reply_to_uid, updated_epoch)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![account_id, to_raw, subject, body, reply_to_uid, now],
+            "INSERT INTO drafts (account_id, to_raw, subject, body, reply_to_uid, reply_to_mailbox, updated_epoch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![account_id, to_raw, subject, body, reply_to_uid, reply_to_mailbox, now],
         )?;
         Ok(self.conn().last_insert_rowid())
     }
@@ -212,7 +247,7 @@ impl Store {
     /// Les brouillons, les plus récents d'abord.
     pub fn drafts(&self) -> Result<Vec<SavedDraft>, Error> {
         let mut stmt = self.conn().prepare(&format!(
-            "{DRAFT_SELECT} ORDER BY updated_epoch DESC, id DESC"
+            "{DRAFT_SELECT} ORDER BY d.updated_epoch DESC, d.id DESC"
         ))?;
         let rows = stmt
             .query_map([], row_to_draft)?
@@ -225,7 +260,9 @@ impl Store {
     pub fn drafts_of(&self, account_id: i64) -> Result<Vec<SavedDraft>, Error> {
         let mut stmt = self
             .conn()
-            .prepare(&format!("{DRAFT_SELECT} WHERE account_id = ?1 ORDER BY id"))?;
+            .prepare(&format!(
+                "{DRAFT_SELECT} WHERE d.account_id = ?1 ORDER BY d.id"
+            ))?;
         let rows = stmt
             .query_map([account_id], row_to_draft)?
             .collect::<Result<Vec<_>, _>>()?;
@@ -237,9 +274,9 @@ impl Store {
     pub fn drafts_to_push(&self, account_id: i64) -> Result<Vec<SavedDraft>, Error> {
         let mut stmt = self.conn().prepare(&format!(
             "{DRAFT_SELECT}
-             WHERE account_id = ?1
-               AND (pushed_epoch IS NULL OR pushed_epoch < updated_epoch)
-             ORDER BY id"
+             WHERE d.account_id = ?1
+               AND (d.pushed_epoch IS NULL OR d.pushed_epoch < d.updated_epoch)
+             ORDER BY d.id"
         ))?;
         let rows = stmt
             .query_map([account_id], row_to_draft)?
@@ -463,9 +500,17 @@ impl SavedDraft {
     }
 }
 
-const DRAFT_SELECT: &str = "SELECT id, account_id, to_raw, subject, body, reply_to_uid,
-        updated_epoch, remote_uid, pushed_epoch
- FROM drafts";
+// Le fil se résout à la lecture — LEFT JOIN : un brouillon dont la
+// cible a disparu (boîte renommée, message expurgé) reste un brouillon,
+// simplement sans fil. `(mailbox_id, uid)` est la clé primaire des
+// enveloppes : la jointure ne peut pas multiplier les lignes, et les
+// brouillons se comptent en dizaines — le coût est nul.
+const DRAFT_SELECT: &str = "SELECT d.id, d.account_id, d.to_raw, d.subject, d.body,
+        d.reply_to_uid, d.reply_to_mailbox, re.thread_id,
+        d.updated_epoch, d.remote_uid, d.pushed_epoch
+ FROM drafts d
+ LEFT JOIN mailboxes rm ON rm.account_id = d.account_id AND rm.name = d.reply_to_mailbox
+ LEFT JOIN envelopes re ON re.mailbox_id = rm.id AND re.uid = d.reply_to_uid";
 
 fn row_to_draft(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedDraft> {
     Ok(SavedDraft {
@@ -475,9 +520,11 @@ fn row_to_draft(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedDraft> {
         subject: row.get(3)?,
         body: row.get(4)?,
         reply_to_uid: row.get(5)?,
-        updated_epoch: row.get(6)?,
-        remote_uid: row.get(7)?,
-        pushed_epoch: row.get(8)?,
+        reply_to_mailbox: row.get(6)?,
+        thread_id: row.get(7)?,
+        updated_epoch: row.get(8)?,
+        remote_uid: row.get(9)?,
+        pushed_epoch: row.get(10)?,
     })
 }
 
@@ -506,6 +553,7 @@ mod tests {
                     subject: "Sujet",
                     body: "corps\nsur deux lignes",
                     reply_to_uid: Some(42),
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -534,6 +582,7 @@ mod tests {
                     subject: "v1",
                     body: "texte",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -548,6 +597,7 @@ mod tests {
                     subject: "v2",
                     body: "texte enrichi",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -575,6 +625,7 @@ mod tests {
                     subject: "s",
                     body: "précieux",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -591,6 +642,7 @@ mod tests {
                     subject: "s",
                     body: "précieux",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -613,6 +665,7 @@ mod tests {
                     subject: "premier",
                     body: "a",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -626,6 +679,7 @@ mod tests {
                     subject: "second",
                     body: "b",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -648,6 +702,7 @@ mod tests {
                     subject: "s",
                     body: "b",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -669,6 +724,7 @@ mod tests {
                     subject: "s",
                     body: "v1",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -698,6 +754,7 @@ mod tests {
                     subject: "s",
                     body: "v2",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -724,6 +781,7 @@ mod tests {
                     subject: "s",
                     body: "texte",
                     reply_to_uid: Some(1),
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -741,6 +799,7 @@ mod tests {
                     subject: "s",
                     body: "texte",
                     reply_to_uid: Some(1),
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -766,6 +825,7 @@ mod tests {
                     subject: "s",
                     body: "v1",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -785,6 +845,7 @@ mod tests {
                     subject: "s",
                     body: "v2 éditée en vol",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -809,6 +870,7 @@ mod tests {
                     subject: "s",
                     body: "v1",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -835,6 +897,7 @@ mod tests {
                     subject: "poussé",
                     body: "b",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -850,6 +913,7 @@ mod tests {
                     subject: "local",
                     body: "b",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -883,6 +947,7 @@ mod tests {
                     subject: "a",
                     body: "x",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -897,6 +962,7 @@ mod tests {
                     subject: "b",
                     body: "y",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -950,6 +1016,7 @@ mod tests {
                     subject: "s",
                     body: "b",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap()
@@ -1010,6 +1077,7 @@ mod tests_concurrence {
                     subject: "Devis",
                     body: "version composeur",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -1025,6 +1093,7 @@ mod tests_concurrence {
                     subject: "Devis",
                     body: "version venue d'ailleurs",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -1040,6 +1109,7 @@ mod tests_concurrence {
                     subject: "Devis",
                     body: "version composeur",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -1074,6 +1144,7 @@ mod tests_concurrence {
                     subject: "Devis",
                     body: "un",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -1089,6 +1160,7 @@ mod tests_concurrence {
                         subject: "Devis",
                         body: texte,
                         reply_to_uid: None,
+                        reply_to_mailbox: None,
                     },
                 )
                 .unwrap();
@@ -1112,6 +1184,7 @@ mod tests_concurrence {
                     subject: "Devis",
                     body: "un",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -1125,6 +1198,7 @@ mod tests_concurrence {
                     subject: "Devis",
                     body: "deux",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -1156,6 +1230,7 @@ mod tests_concurrence {
                     subject: "Devis",
                     body: "version composeur",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -1177,6 +1252,7 @@ mod tests_concurrence {
                     subject: "Autre",
                     body: "z",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -1208,6 +1284,7 @@ mod tests_concurrence {
                     subject: "Devis",
                     body: "version composeur",
                     reply_to_uid: None,
+                    reply_to_mailbox: None,
                 },
             )
             .unwrap();
@@ -1242,6 +1319,8 @@ mod tests_tirage {
             subject: "Devis".to_string(),
             body: "Bonjour".to_string(),
             reply_to_uid: None,
+            reply_to_mailbox: None,
+            thread_id: None,
             updated_epoch: updated,
             remote_uid,
             pushed_epoch: pushed,
@@ -1330,5 +1409,142 @@ mod tests_tirage {
         let plan = plan_draft_pull(&locaux, &[7, 42], &[]);
         assert_eq!(plan.fetch, vec![42]);
         assert_eq!(plan.stale, vec![2]);
+    }
+}
+
+/// Le lien brouillon -> conversation (PLAN-BROUILLONS, B-D2) : résolu à
+/// la lecture, jamais stocké — et jamais deviné (ADR 0009 : un UID sans
+/// sa boîte ne désigne rien).
+#[cfg(test)]
+mod tests_fil {
+    use chrono::TimeZone;
+
+    use super::*;
+    use crate::envelope::Envelope;
+
+    fn store() -> (Store, i64) {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("test@exemple.fr", "gmail")
+            .unwrap();
+        (store, account)
+    }
+
+    fn message(uid: Uid, subject: &str) -> Envelope {
+        Envelope {
+            uid,
+            subject: Some(subject.to_string()),
+            sender: Some("Marie Dubois".to_string()),
+            sender_address: Some("marie@exemple.fr".to_string()),
+            message_id: Some(format!("<m{uid}@exemple.fr>")),
+            in_reply_to: None,
+            date: Some(chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap()),
+            seen: true,
+            flagged: false,
+        }
+    }
+
+    fn reponse<'a>(uid: Option<Uid>, boite: Option<&'a str>) -> DraftContent<'a> {
+        DraftContent {
+            to_raw: "marie@exemple.fr",
+            subject: "Re : Devis",
+            body: "Bonjour Marie,",
+            reply_to_uid: uid,
+            reply_to_mailbox: boite,
+        }
+    }
+
+    #[test]
+    fn un_brouillon_reponse_se_relie_a_son_fil() {
+        let (mut store, account) = store();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(inbox, &[message(42, "Devis")])
+            .unwrap();
+        store
+            .save_draft(account, None, None, reponse(Some(42), Some("INBOX")))
+            .unwrap();
+
+        let fil = store.unified_recent(0, 10).unwrap()[0].thread_id;
+        assert!(fil.is_some(), "le décor doit porter un fil");
+        let drafts = store.drafts().unwrap();
+        assert_eq!(drafts[0].thread_id, fil, "même fil que le message visé");
+        assert_eq!(drafts[0].reply_to_mailbox.as_deref(), Some("INBOX"));
+    }
+
+    #[test]
+    fn une_composition_libre_reste_sans_fil() {
+        let (store, account) = store();
+        store
+            .save_draft(account, None, None, reponse(None, None))
+            .unwrap();
+        assert_eq!(store.drafts().unwrap()[0].thread_id, None);
+    }
+
+    /// La cible peut manquer de deux façons — boîte jamais vue (renommée,
+    /// compte réagencé) ou message expurgé — et aucune ne doit faire
+    /// disparaître le brouillon : il reste, simplement sans fil.
+    #[test]
+    fn une_boite_inconnue_ou_un_message_expurge_laissent_sans_fil() {
+        let (mut store, account) = store();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(inbox, &[message(42, "Devis")])
+            .unwrap();
+        store
+            .save_draft(account, None, None, reponse(Some(42), Some("Ailleurs")))
+            .unwrap();
+        store
+            .save_draft(account, None, None, reponse(Some(99), Some("INBOX")))
+            .unwrap();
+
+        let drafts = store.drafts().unwrap();
+        assert_eq!(drafts.len(), 2, "les brouillons survivent à la cible");
+        assert!(drafts.iter().all(|draft| draft.thread_id.is_none()));
+    }
+
+    /// Les brouillons d'avant la colonne : `reply_to_uid` sans boîte.
+    /// Ils ne se relient JAMAIS — un UID seul pourrait pointer le
+    /// mauvais message (ADR 0009) ; leur filet reste le dossier.
+    #[test]
+    fn un_brouillon_d_avant_la_colonne_reste_sans_fil() {
+        let (mut store, account) = store();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(inbox, &[message(42, "Devis")])
+            .unwrap();
+        store
+            .conn()
+            .execute(
+                "INSERT INTO drafts (account_id, to_raw, subject, body, reply_to_uid, updated_epoch)
+                 VALUES (?1, '', 'Re : Devis', 'b', 42, 1)",
+                [account],
+            )
+            .unwrap();
+        assert_eq!(store.drafts().unwrap()[0].thread_id, None);
+    }
+
+    /// Le WHERE anti-churn couvre la colonne neuve : corriger SEULEMENT
+    /// la boîte visée doit remarquer le brouillon à pousser.
+    #[test]
+    fn changer_la_boite_visee_remarque_le_brouillon_a_pousser() {
+        let (store, account) = store();
+        let saved = store
+            .save_draft(account, None, None, reponse(Some(42), Some("INBOX")))
+            .unwrap();
+        store
+            .record_draft_pushed(saved.id, Some(7), saved.updated_epoch)
+            .unwrap();
+        assert!(store.drafts_to_push(account).unwrap().is_empty());
+
+        store
+            .save_draft(
+                account,
+                Some(saved.id),
+                None,
+                reponse(Some(42), Some("Archives")),
+            )
+            .unwrap();
+        assert_eq!(store.drafts_to_push(account).unwrap().len(), 1);
     }
 }

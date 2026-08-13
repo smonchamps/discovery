@@ -129,6 +129,10 @@ CREATE TABLE IF NOT EXISTS drafts (
     subject       TEXT NOT NULL,
     body          TEXT NOT NULL,
     reply_to_uid  INTEGER,
+    -- La boîte qui donne son sens à reply_to_uid (ADR 0009) — le lien
+    -- brouillon -> conversation (PLAN-BROUILLONS, B-D2). NULL avant la
+    -- colonne : ces brouillons restent sans fil, jamais mal reliés.
+    reply_to_mailbox TEXT,
     updated_epoch INTEGER NOT NULL,
     remote_uid    INTEGER,
     pushed_epoch  INTEGER
@@ -1706,7 +1710,10 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
     add_missing_columns(
         conn,
         "drafts",
-        &[("account_id", "INTEGER NOT NULL DEFAULT 1")],
+        &[
+            ("account_id", "INTEGER NOT NULL DEFAULT 1"),
+            ("reply_to_mailbox", "TEXT"),
+        ],
     )?;
     // ADR 0010 : la portee du regroupement devient explicite. Les boites
     // deja en base sont INBOX et « Envoyes » — toutes deux dedans, d'ou
@@ -2164,6 +2171,7 @@ mod tests {
                         subject: sujet,
                         body: "brouillon",
                         reply_to_uid: None,
+                        reply_to_mailbox: None,
                     },
                 )
                 .unwrap();

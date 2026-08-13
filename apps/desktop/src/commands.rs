@@ -2199,6 +2199,13 @@ pub struct DraftRow {
     pub subject: String,
     pub body: String,
     pub reply_to_uid: Option<u32>,
+    /// La boîte qui donne son sens à `reply_to_uid` (ADR 0009) — la
+    /// reprise doit la restituer au composeur, sans quoi la chaîne
+    /// réponse → brouillon → reprise perd le fil.
+    pub reply_to_mailbox: Option<String>,
+    /// Le fil auquel ce brouillon répond, résolu par le cœur — `None`
+    /// pour une composition libre ou une cible disparue.
+    pub thread_id: Option<i64>,
     /// L'éditeur le renvoie à la sauvegarde : c'est ce qui lui permet de
     /// détecter qu'un autre a écrit entre-temps.
     pub updated_epoch: i64,
@@ -2229,6 +2236,7 @@ pub struct DraftContentArg {
     subject: String,
     body: String,
     reply_to_uid: Option<u32>,
+    reply_to_mailbox: Option<String>,
 }
 
 #[tauri::command]
@@ -2250,6 +2258,7 @@ pub fn save_draft(
                 subject: &content.subject,
                 body: &content.body,
                 reply_to_uid: content.reply_to_uid,
+                reply_to_mailbox: content.reply_to_mailbox.as_deref(),
             },
         )
         .map_err(|err| err.to_string())?;
@@ -2275,6 +2284,8 @@ pub fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
             subject: draft.subject,
             body: draft.body,
             reply_to_uid: draft.reply_to_uid,
+            reply_to_mailbox: draft.reply_to_mailbox,
+            thread_id: draft.thread_id,
         })
         .collect())
 }

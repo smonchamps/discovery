@@ -169,7 +169,9 @@
     objet = brouillon.subject;
     corps = brouillon.body;
     fichiers = [];
-    replyToMailbox = null;
+    // La boîte revient AVEC l'UID : la chaîne réponse → brouillon →
+    // reprise → sauvegarde ne doit pas perdre le lien au fil (B-D2).
+    replyToMailbox = brouillon.reply_to_mailbox ?? null;
     replyToUid = brouillon.reply_to_uid ?? null;
     brouillonId = brouillon.id;
     brouillonEpoch = brouillon.updated_epoch;
@@ -194,7 +196,7 @@
         accountId: expediteur.account_id,
         id: brouillonId,
         baseEpoch: brouillonEpoch,
-        content: { to: a, subject: objet, body: corps, replyToUid },
+        content: { to: a, subject: objet, body: corps, replyToUid, replyToMailbox },
       });
       if (!visible) {
         // Le panneau s'est fermé pendant la sauvegarde (envoi parti) :
