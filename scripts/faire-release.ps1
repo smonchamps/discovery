@@ -17,7 +17,10 @@ param([Parameter(Mandatory = $true)][string]$Version)
 $ErrorActionPreference = "Stop"
 $repo = "smonchamps/discovery"
 $nsis = Join-Path $PSScriptRoot "..\target\release\bundle\nsis"
-$exe = Join-Path $nsis "Wind_${Version}_x64-setup.exe"
+# arm64 natif depuis la 0.1.3 (PLAN-WIND E4) : le seul poste utilisateur
+# est ARM64 et faisait tourner le canal x64 en emulation ; le canal x64
+# reviendra quand la beta amenera des postes x64.
+$exe = Join-Path $nsis "Wind_${Version}_arm64-setup.exe"
 $sig = "$exe.sig"
 
 foreach ($f in @($exe, $sig)) {
@@ -36,10 +39,10 @@ $manifest = [ordered]@{
     notes     = "Mise a jour signee (ADR 0013)"
     pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     platforms = [ordered]@{
-        "windows-x86_64" = [ordered]@{
+        "windows-aarch64" = [ordered]@{
             signature = $signature
             # Tag = VERSION NUE, jamais `v$Version` : c'est le piege du 404.
-            url       = "https://github.com/$repo/releases/download/$Version/Wind_${Version}_x64-setup.exe"
+            url       = "https://github.com/$repo/releases/download/$Version/Wind_${Version}_arm64-setup.exe"
         }
     }
 }

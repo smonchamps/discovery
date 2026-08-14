@@ -248,6 +248,16 @@ manuelle, et la preuve d'auto-update sous la nouvelle clé glisse à la
 release suivante (0.1.4). Le mot de passe de la nouvelle clé est au
 gestionnaire de mots de passe du CE.
 
+**Le canal de release passe en arm64 natif (2026-08-14, décision CE).**
+Le build 0.1.3 a révélé que le poste est ARM64 (chaîne Rust `aarch64`) :
+toutes les releases x64 passées y tournaient **en émulation**. Le seul
+poste utilisateur au monde étant celui-là, la 0.1.3 est publiée
+`Wind_0.1.3_arm64-setup.exe`, plateforme updater `windows-aarch64` —
+mieux pour les budgets (RAM, démarrage). La discontinuité x64 → arm64
+est absorbée par l'installation manuelle déjà prévue (rotation de clé).
+Le canal x64 reviendra quand la bêta amènera des postes x64 (« Les
+deux » au `latest.json`).
+
 ### E5 — Le dépôt (en dernier, décision CE du 2026-08-14)
 
 Renommer `smonchamps/discovery` → `smonchamps/wind` sur GitHub une
