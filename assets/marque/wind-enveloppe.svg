@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="#365a4f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Le glyphe seul de la marque Wind (Système, section « Marque »).
+       Sur tuile, il occupe 34/64 de la largeur, centré. -->
+  <rect x="7" y="13" width="34" height="23" rx="3"/>
+  <polyline points="9,16 24,27 39,16"/>
+</svg>

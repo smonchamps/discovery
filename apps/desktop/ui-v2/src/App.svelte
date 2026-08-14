@@ -797,7 +797,7 @@
 
 <div class="ecran">
   <header class="entete" data-testid="entete">
-    <span class="marque">Wind</span>
+    <span class="marque"><span class="marque-tuile" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3" /><polyline points="9,16 24,27 39,16" /></svg></span>Wind</span>
     <span class="recherche" data-testid="recherche">
       <span class="ms" aria-hidden="true">search</span>
       <input type="text" bind:this={champRecherche} bind:value={recherche}
@@ -892,7 +892,16 @@
     border-bottom:1px solid var(--border); display:flex;
     align-items:center; gap:20px; padding:0 24px;
   }
-  .marque { font-size:15px; font-weight:600; width:212px; color:var(--ink); }
+  .marque {
+    font-size:15px; font-weight:600; width:212px; color:var(--ink);
+    display:flex; align-items:center; gap:10px;
+  }
+  /* Couleurs de la marque, figées hors thèmes — jamais des jetons (W-D3). */
+  .marque-tuile {
+    width:24px; height:24px; border-radius:6px; flex:none;
+    background:#e2ebe8; color:#365a4f;
+    display:flex; align-items:center; justify-content:center;
+  }
   .recherche {
     flex:1; height:32px; display:flex; align-items:center; gap:10px;
     padding:0 14px; font-size:13px; color:var(--muted);

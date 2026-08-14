@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 70 70" width="70" height="70">
+  <!-- La marque Wind, complète : tuile 64, enveloppe 34/64, pastille 25
+       débordant de 6. Couleurs figées hors thèmes (W-D3, Système section
+       « Marque ») : fond #e2ebe8, élément #365a4f. Le « W » est tracé en
+       traits ronds, jamais composé en fonte — identique partout. -->
+  <rect x="0" y="0" width="64" height="64" rx="15" fill="#e2ebe8"/>
+  <g transform="translate(15 15) scale(0.70833)" fill="none" stroke="#365a4f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="7" y="13" width="34" height="23" rx="3"/>
+    <polyline points="9,16 24,27 39,16"/>
+  </g>
+  <rect x="45" y="45" width="25" height="25" rx="8" fill="#365a4f"/>
+  <polyline transform="translate(45 45)" points="5.8,7.5 9.4,17.5 12.5,10.5 15.6,17.5 19.2,7.5" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

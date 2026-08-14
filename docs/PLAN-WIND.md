@@ -151,6 +151,20 @@ la barre du haut à côté du mot. Section « Marque » au Système + écran
 navigateur : barre, onboarding, modale, icône de fenêtre et de barre
 des tâches.
 
+**Livrée le 2026-08-14** : `assets/marque/` (tuile complète 70×70,
+glyphe seul — le « W » tracé en traits ronds, pas en fonte, pour un
+rendu identique partout), `scripts/faire-icone.ps1` (GDI+, mêmes
+formes que le SVG), `icon.ico` en quatre tailles — 256/48 avec
+pastille, 32/16 enveloppe seule (en dessous de 48 px la pastille est
+illisible ; l'enveloppe s'élargit à 16 et le trait garde un plancher).
+Mini-tuile de 24 (rayon 6) posée dans la barre ; kickers laissés en
+texte seul. Système : section « Marque » (construction + déclinaisons)
+entre Principes et Couleurs, écran 02 amendé, A22 au journal. Vérifié
+au navigateur (section, écran 02) et sur les PNG de contrôle des
+quatre tailles ; gates coherence + contraste vertes, build ui-v2
+propre. Reste un constat d'un lancement : l'icône de fenêtre et de
+barre des tâches (le .ico embarqué se vérifie au prochain build).
+
 ### E3 — Les données suivent (couche C, terrain obligatoire)
 
 Un commit par identifiant, chacun avec sa migration :

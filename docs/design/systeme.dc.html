@@ -46,6 +46,30 @@
   </section>
 
   <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Marque</h2>
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:760px">Wind est l'outil courrier et agenda de la suite <b>Elements</b> — « ce que le vent porte, le rythme des jours ». La suite pose la règle : <b>l'icône dit la fonction, la couleur dit l'élément</b>. La marque est une enveloppe sur tuile, et une pastille « W » en coin. Ses deux couleurs sont <b>figées, hors thèmes et hors table des jetons</b> (W-D3) : elles ne varient jamais, dans aucun thème — l'accent produit reste <code>#2f6e5b</code>, la couleur de l'élément est réservée à la marque. Source des fichiers : <code>assets/marque/</code> ; l'icône d'application se régénère par <code>scripts/faire-icone.ps1</code>.</p>
+    <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:24px">
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); padding:28px; display:flex; flex-direction:column; gap:18px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">La construction</p>
+        <div style="display:flex; align-items:center; gap:28px">
+          <div aria-hidden="true" style="position:relative; width:64px; height:64px; border-radius:15px; background:#e2ebe8; color:#365a4f; display:flex; align-items:center; justify-content:center; flex:none"><svg width="34" height="34" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3"></rect><polyline points="9,16 24,27 39,16"></polyline></svg><span style="position:absolute; right:-6px; bottom:-6px; width:25px; height:25px; border-radius:8px; background:#365a4f; color:#ffffff; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:700; line-height:1">W</span></div>
+          <p style="margin:0; font-size:13px; line-height:1.6; color:#4d534f">Tuile 64, rayon 15 (15/64 à toute taille), fond <code>#e2ebe8</code>. Enveloppe en <code>#365a4f</code> : 34/64 de la tuile, centrée, tracée dans un carré de 48 (trait 3, bouts et angles ronds). Pastille 25, rayon 8, fond <code>#365a4f</code>, débordant de 6 en bas-droite ; le « W » blanc. Dans les rendus générés (icône, SVG), le « W » est <b>tracé en traits ronds</b>, jamais composé en fonte — identique sur toute plateforme.</p>
+        </div>
+      </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; box-shadow:0 2px 8px rgba(35,39,37,0.08); padding:28px; display:flex; flex-direction:column; gap:18px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Les déclinaisons</p>
+        <div style="display:flex; align-items:center; gap:28px">
+          <div style="display:flex; align-items:flex-end; gap:20px; flex:none" aria-hidden="true">
+            <div style="position:relative; width:48px; height:48px; border-radius:11px; background:#e2ebe8; color:#365a4f; display:flex; align-items:center; justify-content:center"><svg width="26" height="26" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3"></rect><polyline points="9,16 24,27 39,16"></polyline></svg><span style="position:absolute; right:-4px; bottom:-4px; width:19px; height:19px; border-radius:6px; background:#365a4f; color:#ffffff; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; line-height:1">W</span></div>
+            <div style="width:24px; height:24px; border-radius:6px; background:#e2ebe8; color:#365a4f; display:flex; align-items:center; justify-content:center"><svg width="13" height="13" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3"></rect><polyline points="9,16 24,27 39,16"></polyline></svg></div>
+          </div>
+          <p style="margin:0; font-size:13px; line-height:1.6; color:#4d534f">La pastille n'apparaît qu'à <b>48 px et plus</b> — en dessous, elle est une bouillie ; la tuile porte l'enveloppe seule. La barre de l'application montre la mini-tuile de 24 (rayon 6) devant le mot « Wind ». L'icône d'application embarque 256 et 48 avec pastille, 32 et 16 sans (l'enveloppe s'y élargit et le trait garde un plancher lisible). Les kickers (Onboarding, Migration) restent du texte seul.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
     <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Couleurs</h2>
     <table style="width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; overflow:hidden">
       <thead>
@@ -503,7 +527,7 @@ une surimpression.</p>
     <div data-screen-label="02 Boîte de réception" style="width:1440px; height:900px; background:#f0f2ef; border:1px solid #dadfda; border-radius:10px; overflow:hidden; display:flex; flex-direction:column">
 
       <div style="height:60px; flex:none; background:#ffffff; border-bottom:1px solid #dadfda; display:flex; align-items:center; gap:20px; padding:0 24px">
-        <span style="font-size:15px; font-weight:600; width:212px">Wind</span>
+        <span style="font-size:15px; font-weight:600; width:212px; display:flex; align-items:center; gap:10px"><span aria-hidden="true" style="width:24px; height:24px; border-radius:6px; background:#e2ebe8; color:#365a4f; display:flex; align-items:center; justify-content:center; flex:none"><svg width="13" height="13" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3"></rect><polyline points="9,16 24,27 39,16"></polyline></svg></span>Wind</span>
         <span style="flex:1; height:32px; display:flex; align-items:center; gap:10px; padding:0 14px; font-size:13px; color:#5c625e; background:#f0f2ef; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true" style="color:#5c625e">search</span>Chercher un message, une personne, un fichier</span>
         <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">edit_square</span>Écrire</span>
         <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">settings</span>Réglages</span>
@@ -1334,6 +1358,11 @@ directive — et tracé par un commit.</p>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-14</td>
           <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A21</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>Discovery devient Wind</b> (<code>docs/PLAN-WIND.md</code>, E1) — le client rejoint la suite <b>Elements</b> comme outil courrier/agenda, l'élément vent. Renommage de tout le nom visible : marque de la barre, kickers Onboarding et Migration, avis crash/télémétrie (fr et en), page de fin d'OAuth, titres de fenêtre et de document ; l'en-tête et les écrans de ce doc suivent dans le même commit (DC-D2). L'accent produit reste <code>#2f6e5b</code> (W-D3) : <code>#365a4f</code> est la couleur de l'élément Wind, réservée à la marque — le logo (enveloppe sur tuile <code>#e2ebe8</code>, pastille « W ») arrive en E2 du plan avec sa section « Marque ». Les archives datées (ADR, plans soldés, spikes, les entrées passées de ce journal) gardent « Discovery » (W-D2).</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-14</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A22</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>La marque Wind livrée</b> (<code>docs/PLAN-WIND.md</code>, E2 ; W-D6) — la section « Marque » entre au Système : enveloppe (carré de 48, trait 3, bouts ronds) sur tuile <code>#e2ebe8</code> (rayon 15/64), pastille « W » <code>#365a4f</code> (25/64, rayon 8, débord de 6) ; couleurs figées hors thèmes et hors table des jetons (W-D3). Règle de taille : la pastille à 48 px et plus, l'enveloppe seule en dessous. Livré : <code>assets/marque/</code> (tuile complète, glyphe seul — le « W » tracé en traits ronds, jamais en fonte), <code>icons/icon.ico</code> régénéré en quatre tailles par <code>scripts/faire-icone.ps1</code> (256/48 avec pastille, 32/16 sans), la mini-tuile de 24 posée dans la barre devant le mot — l'écran 02 suit dans le même commit (DC-D2). Les kickers restent du texte seul.</td>
         </tr>
       </tbody>
     </table>
