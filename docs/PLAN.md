@@ -124,7 +124,7 @@ elle affiche l'état et émet des intentions.
 **Organisation du workspace Cargo :**
 
 ```
-discovery/
+wind/
 ├── crates/
 │   ├── mail-core/        # domaine + synchro + stockage (zéro dépendance UI)
 │   ├── mail-protocols/   # IMAP, SMTP, Graph, OAuth (derrière des traits)

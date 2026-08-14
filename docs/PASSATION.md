@@ -227,7 +227,7 @@ côté serveur. L'UI est « bête » : elle affiche un état, elle émet des
 intentions.
 
 ```
-discovery/
+wind/
 ├── crates/
 │   ├── mail-core/     # domaine + synchro + stockage + recherche + fils
 │   │                  # (ZÉRO dépendance UI ou réseau)

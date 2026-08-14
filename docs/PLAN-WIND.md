@@ -258,6 +258,16 @@ est absorbée par l'installation manuelle déjà prévue (rotation de clé).
 Le canal x64 reviendra quand la bêta amènera des postes x64 (« Les
 deux » au `latest.json`).
 
+**E4 SOLDÉE le 2026-08-14.** Constat NSIS : installation
+`Wind_0.1.3_arm64` par-dessus discovery 0.1.2 propre — données en
+place, raccourci « Wind », **aucune entrée « discovery » restante**
+(le point de vigilance tombe). En passant : CI rouge sur b9968d1
+(`cargo fmt --check` après le renommage `wind-test-*`), réparée à
+ca937ad — leçon : gate complète avant chaque commit. Release 0.1.3
+publiée (tag nu, trois assets) ; l'endpoint
+`releases/latest/download/latest.json` vérifié : manifeste sans BOM,
+`windows-aarch64`, URL de l'exe en 200. Reste E5.
+
 ### E5 — Le dépôt (en dernier, décision CE du 2026-08-14)
 
 Renommer `smonchamps/discovery` → `smonchamps/wind` sur GitHub une
@@ -267,6 +277,15 @@ résoudre l'ancien endpoint. Dans le même commit : l'endpoint updater
 (`tauri.conf.json`) et `$repo` (`faire-release.ps1`) passent à la
 nouvelle adresse. Le dossier local (`Repositories/discovery`) suit au
 choix du CE.
+
+**E5 SOLDÉE le 2026-08-14.** `gh repo rename wind` joué (remote local
+mis à jour par gh) ; vérifié aux deux adresses : l'ancien endpoint
+updater répond 200 par redirection (les postes 0.1.3 ne cassent pas),
+le nouveau sert le même manifeste. Endpoint et `$repo` basculés, les
+arbres de PASSATION et PLAN disent `wind/`. Le dossier local reste au
+choix du CE — seul geste restant du plan. **La bascule Discovery →
+Wind est complète** : `git grep -i discovery` ne rend plus que les
+archives datées et le pont (W-D2).
 
 ## 4. Les gardes
 

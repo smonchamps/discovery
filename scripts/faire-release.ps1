@@ -15,7 +15,7 @@
 param([Parameter(Mandatory = $true)][string]$Version)
 
 $ErrorActionPreference = "Stop"
-$repo = "smonchamps/discovery"
+$repo = "smonchamps/wind"
 $nsis = Join-Path $PSScriptRoot "..\target\release\bundle\nsis"
 # arm64 natif depuis la 0.1.3 (PLAN-WIND E4) : le seul poste utilisateur
 # est ARM64 et faisait tourner le canal x64 en emulation ; le canal x64
