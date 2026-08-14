@@ -612,8 +612,9 @@ une surimpression.</p>
         </main>
       </div>
 
-      <div style="height:36px; flex:none; background:#eaece9; border-top:1px solid #dadfda; display:flex; align-items:center; padding:0 24px">
-        <span style="font-size:12px; color:#5c625e">Tous les messages sont à jour · dernière synchronisation il y a 2 minutes</span>
+      <div style="height:36px; flex:none; background:#eaece9; border-top:1px solid #dadfda; display:flex; align-items:center; gap:14px; padding:0 24px">
+        <span style="flex:1; font-size:12px; color:#5c625e">Tous les messages sont à jour · dernière synchronisation il y a 2 minutes</span>
+        <span style="height:26px; flex:none; padding:0 12px; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true" style="font-size:14px">sync</span>Synchroniser</span>
       </div>
     </div>
 
@@ -677,6 +678,90 @@ rail de navigation compte les mêmes brouillons locaux que le dossier —
 jamais deux vérités. La barre de statut garde sa forme :
 « Brouillons · 3 messages ».</p>
       </div>
+    </div>
+  </section>
+
+  <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
+    <div style="display:flex; flex-direction:column; gap:6px">
+      <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e; font-weight:600">États</p>
+      <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Barre d'état et synchronisation</h2>
+    </div>
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">La barre d'état de <b>36 px</b> est la région du <b>continu</b>
+(règle des trois régions, « Avis et progression ») : un seul message à
+la fois, texte 12 px atténué, jamais un empilement. L'horodatage se
+re-rend toutes les 30 secondes (« à l'instant » sous la minute). Le
+<b>bouton de relève</b> (S-D1, A16) vit à droite — 26 px, il tient dans
+les 36 sans les forcer : « Synchroniser » au repos, inhibé pendant un
+cycle (le glyphe <code>sync</code> tourne — la machine travaille déjà),
+« Réessayer » sur échec. <b>Hors ligne, le geste manuel force
+toujours.</b> Les états d'alerte se précèdent d'un point de 7 px ; la
+<b>barre fine de 2 px</b> court au ras supérieur — <b>déterminée</b>
+quand un pourcentage honnête existe (jamais 100 tant qu'il reste),
+<b>balayage</b> sinon : un différentiel n'a pas de dénominateur
+honnête. Les rattrapages (« Rattrapage des messages · N restants »,
+« Rattrapage des aperçus… ») passent par la même ligne.</p>
+
+    <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:30px; display:flex; flex-direction:column; gap:26px">
+
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">1 — À jour</p>
+        <div style="border:1px solid #dadfda; border-radius:8px; overflow:hidden">
+          <div style="height:40px; background:#f0f2ef; display:flex; align-items:center; padding:0 24px; font-size:12px; color:#5c625e; opacity:.55">… volet de lecture …</div>
+          <div style="position:relative; height:36px; background:#eaece9; border-top:1px solid #dadfda; display:flex; align-items:center; gap:14px; padding:0 24px">
+            <span style="flex:1; font-size:12px; color:#5c625e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Tous les messages sont à jour · dernière synchronisation il y a 2 minutes</span>
+            <span style="height:26px; flex:none; padding:0 12px; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true" style="font-size:14px">sync</span>Synchroniser</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; border-top:1px solid #dadfda; padding-top:24px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">2 — Cycle en cours, pourcentage honnête</p>
+        <div style="border:1px solid #dadfda; border-radius:8px; overflow:hidden">
+          <div style="height:40px; background:#f0f2ef; display:flex; align-items:center; padding:0 24px; font-size:12px; color:#5c625e; opacity:.55">… volet de lecture …</div>
+          <div style="position:relative; height:36px; background:#eaece9; border-top:1px solid #dadfda; display:flex; align-items:center; gap:14px; padding:0 24px">
+            <div style="position:absolute; top:-1px; left:0; right:0; height:2px; overflow:hidden" aria-hidden="true"><div style="height:100%; width:37%; background:#2f6e5b"></div></div>
+            <span style="flex:1; font-size:12px; color:#5c625e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Synchronisation · 2/4 · marie@atelier-brindille.fr · [Gmail]/Tous les messages… · 37 %</span>
+            <span style="height:26px; flex:none; padding:0 12px; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px; opacity:.55"><span class="ms" aria-hidden="true" style="font-size:14px">sync</span>Synchronisation…</span>
+          </div>
+        </div>
+        <p style="margin:0; font-size:13px; line-height:1.55; color:#4d534f; max-width:88ch">Le cycle courant est <b>visible</b> : quel compte, où on en est (« 2/4 »), quelle boîte — ou l'étape (« inventaire des dossiers », « fils de discussion », « brouillons ») — et le % de l'intégrale quand il existe. Sonde à la seconde pendant le cycle seul. Sans dénominateur, la barre fine passe au balayage et le % se tait.</p>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; border-top:1px solid #dadfda; padding-top:24px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">3 — Échec total</p>
+        <div style="border:1px solid #dadfda; border-radius:8px; overflow:hidden">
+          <div style="height:40px; background:#f0f2ef; display:flex; align-items:center; padding:0 24px; font-size:12px; color:#5c625e; opacity:.55">… volet de lecture …</div>
+          <div style="position:relative; height:36px; background:#eaece9; border-top:1px solid #dadfda; display:flex; align-items:center; gap:14px; padding:0 24px">
+            <span style="display:flex; align-items:center; gap:8px; flex:1; min-width:0"><span style="width:7px; height:7px; border-radius:99px; background:#8c2f22; flex:none" aria-hidden="true"></span><span style="font-size:12px; color:#5c625e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Synchronisation impossible — nouvelle tentative automatique · dernière synchronisation il y a 12 minutes</span></span>
+            <span style="height:26px; flex:none; padding:0 12px; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true" style="font-size:14px">sync</span>Réessayer</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; border-top:1px solid #dadfda; padding-top:24px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">4 — Échec partiel</p>
+        <div style="border:1px solid #dadfda; border-radius:8px; overflow:hidden">
+          <div style="height:40px; background:#f0f2ef; display:flex; align-items:center; padding:0 24px; font-size:12px; color:#5c625e; opacity:.55">… volet de lecture …</div>
+          <div style="position:relative; height:36px; background:#eaece9; border-top:1px solid #dadfda; display:flex; align-items:center; gap:14px; padding:0 24px">
+            <span style="display:flex; align-items:center; gap:8px; flex:1; min-width:0"><span style="width:7px; height:7px; border-radius:99px; background:#8c2f22; flex:none" aria-hidden="true"></span><span style="font-size:12px; color:#5c625e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">1 compte sur 2 injoignable — nouvelle tentative automatique</span></span>
+            <span style="height:26px; flex:none; padding:0 12px; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true" style="font-size:14px">sync</span>Réessayer</span>
+          </div>
+        </div>
+        <p style="margin:0; font-size:13px; line-height:1.55; color:#4d534f; max-width:88ch">Un compte mort sur deux n'est jamais invisible : sans cet état, l'horodatage rajeuni par le compte survivant mentirait par omission.</p>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; border-top:1px solid #dadfda; padding-top:24px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">5 — Hors ligne</p>
+        <div style="border:1px solid #dadfda; border-radius:8px; overflow:hidden">
+          <div style="height:40px; background:#f0f2ef; display:flex; align-items:center; padding:0 24px; font-size:12px; color:#5c625e; opacity:.55">… volet de lecture …</div>
+          <div style="position:relative; height:36px; background:#eaece9; border-top:1px solid #dadfda; display:flex; align-items:center; gap:14px; padding:0 24px">
+            <span style="display:flex; align-items:center; gap:8px; flex:1; min-width:0"><span style="width:7px; height:7px; border-radius:99px; background:#8c2f22; flex:none" aria-hidden="true"></span><span style="font-size:12px; color:#5c625e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Hors ligne · dernière synchronisation il y a 18 minutes</span></span>
+            <span style="height:26px; flex:none; padding:0 12px; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:#4d534f; background:#ffffff; border:1px solid #dadfda; border-radius:6px"><span class="ms" aria-hidden="true" style="font-size:14px">sync</span>Synchroniser</span>
+          </div>
+        </div>
+        <p style="margin:0; font-size:13px; line-height:1.55; color:#4d534f; max-width:88ch">L'état réseau vient de l'OS par la WebView, <b>à l'instant</b> — jamais l'attente d'un timeout (P0-bis). On vit sur le stock et on dit depuis quand. Les cycles automatiques se suspendent ; le retour réseau déclenche une passe légère immédiate ; le bouton reste actif — le geste manuel force toujours. « Hors ligne » n'est pas un incident : il vit dans la ligne, jamais dans la fente d'avis.</p>
+      </div>
+
     </div>
   </section>
 
