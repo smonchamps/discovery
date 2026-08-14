@@ -114,10 +114,21 @@ fn se_connecter(acces: &Acces) -> Result<imap::Session<imap::Connection>> {
     }
 }
 
-/// La veille elle-même : IDLE sur la boîte, relance automatique avant
-/// l'échéance (keepalive de la crate), chaque réponse non sollicitée
-/// horodatée. Ne rend la main que par erreur — c'est la boucle de
-/// reconnexion qui décide de la suite.
+/// La veille elle-même : IDLE sur la boîte, relancé toutes les
+/// `relance` minutes PAR NOTRE boucle (pas le keepalive de la crate),
+/// chaque réponse non sollicitée horodatée. Ne rend la main que par
+/// erreur — c'est la boucle de reconnexion qui décide de la suite.
+///
+/// Le 1ᵉʳ terrain (2026-08-14) a montré pourquoi la relance doit être
+/// COURTE : le timeout de lecture de la veille EST le détecteur de
+/// connexion morte. Coupure Wi-Fi et veille Windows ne produisent AUCUNE
+/// erreur — la lecture bloque en silence jusqu'à l'échéance (le « hang »
+/// de Thunderbird sur changement d'IP, bug Mozilla 284152). À 28 min de
+/// relance, le spike est resté aveugle ; à 3 min, la mort se détecte en
+/// ≤ 3 min au DONE/re-IDLE, pour 2 commandes par cycle — un coût nul.
+/// Et le keepalive vit dans NOTRE boucle pour que chaque relance
+/// s'imprime : un log muet pendant une coupure était l'angle mort n°1
+/// du terrain.
 fn veiller(
     mut session: imap::Session<imap::Connection>,
     boite: &str,
@@ -125,17 +136,19 @@ fn veiller(
 ) -> Result<()> {
     session.select(boite).context("SELECT")?;
     horodate(&format!(
-        "veille ouverte sur {boite} (relance IDLE toutes les {} min)",
+        "veille ouverte sur {boite} (relance IDLE toutes les {} min — c'est \
+         aussi le délai max de détection d'une connexion morte)",
         relance.as_secs() / 60
     ));
     loop {
         let mut poignee = session.idle();
-        poignee.timeout(relance).keepalive(true);
+        poignee.timeout(relance).keepalive(false);
         let sortie = poignee.wait_while(|reponse| {
             use imap::types::UnsolicitedResponse as R;
             match reponse {
                 // LE point de mesure : l'horodatage de cette ligne,
-                // comparé à l'heure d'envoi depuis le téléphone.
+                // comparé à l'heure de la BULLE sur le téléphone (pas à
+                // l'heure d'envoi — elle inclut la livraison Gmail).
                 R::Exists(n) => {
                     horodate(&format!("EXISTS {n} — nouveau courrier signalé"));
                     true
@@ -147,7 +160,9 @@ fn veiller(
             }
         });
         match sortie {
-            Ok(sortie) => horodate(&format!("sortie de veille ({sortie:?}) — on repart")),
+            // TimedOut = battement de cœur : rien depuis `relance`, le
+            // DONE/re-IDLE vient de prouver que la connexion vit encore.
+            Ok(sortie) => horodate(&format!("relance de veille ({sortie:?}) — connexion vivante")),
             Err(err) => return Err(anyhow!("veille rompue : {err}")),
         }
     }
@@ -156,10 +171,13 @@ fn veiller(
 fn main() -> Result<()> {
     let acces = acces_depuis_env()?;
     let boite = std::env::var("SPIKE_BOITE").unwrap_or_else(|_| "INBOX".to_string());
+    // 3 min et non 28 (RFC 2177 permettrait 29) : la relance est AUSSI
+    // le délai max de détection d'une connexion morte — terrain du
+    // 2026-08-14, coupure et veille restées invisibles 28 min.
     let relance_min: u64 = std::env::var("SPIKE_RELANCE_MIN")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(28);
+        .unwrap_or(3);
     let relance = Duration::from_secs(relance_min * 60);
 
     horodate("spike idle — Ctrl+C pour arrêter ; chaque ligne est une mesure");

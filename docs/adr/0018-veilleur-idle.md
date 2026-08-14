@@ -38,7 +38,15 @@ sortant** — elle effacerait le garde-fou P0 (120 s) posé à la connexion.
    transport dans le noyau.)
 
 3. **Cycle de vie du veilleur** :
-   - re-IDLE avant l'échéance des **29 min** (RFC 2177) — relance à ~28 min ;
+   - **relance IDLE COURTE : ~3 min, pas 28** — 1ᵉʳ terrain du spike
+     (2026-08-14) : le timeout de lecture de la veille est AUSSI le seul
+     détecteur d'une connexion morte. Coupure Wi-Fi et veille Windows ne
+     produisent AUCUNE erreur — la lecture bloque en silence jusqu'à
+     l'échéance (le « hang » de Thunderbird sur changement d'IP, bug
+     Mozilla 284152). À 28 min de relance, le veilleur serait aveugle
+     28 min ; à 3 min, la mort se détecte en ≤ 3 min au DONE/re-IDLE,
+     pour 2 commandes par cycle — coût nul, et très en deçà des 29 min
+     de la RFC 2177 ;
    - **reconnexion à délai doublé** (2 s → 60 s, réarmé après 2 min de
      session stable), repris du spike ;
    - **jeton OAuth relu au trousseau à chaque reconnexion** — une session
@@ -89,3 +97,11 @@ Protocole et gates au `spikes/idle/README.md` : latence p50/p95 sur
 veille/reprise Windows, comportement à l'expiration du jeton OAuth — sur
 Gmail, Microsoft et un IMAP générique. La ligne s'arrête si une gate
 casse.
+
+**1ᵉʳ terrain (2026-08-14, Gmail)** : **tenue ✅** (2 h 42, un EXISTS
+encore servi au bout) ; **latence ⚠️ à re-mesurer** — les ~30 s
+constatés se comptaient depuis l'ENVOI, qui inclut la livraison Gmail ;
+la mesure juste est la parité avec la bulle du téléphone ;
+**reconnexion ❌ non prouvée** — la relance à 28 min rendait coupure et
+veille invisibles (d'où la décision 3 amendée : relance courte). Spike
+corrigé le jour même, coupure/veille/OAuth à rejouer.

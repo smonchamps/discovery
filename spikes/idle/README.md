@@ -33,21 +33,33 @@ SPIKE_PASSWORD=... cargo run
 ```
 
 Options : `SPIKE_BOITE` (défaut `INBOX`), `SPIKE_RELANCE_MIN` (défaut
-28 — relance IDLE avant l'échéance des 29 min, RFC 2177 ; descendre à
-9 si un fournisseur coupe avant).
+**3** — la relance IDLE est AUSSI le délai max de détection d'une
+connexion morte : 1ᵉʳ terrain du 2026-08-14, coupure Wi-Fi et veille
+Windows ne produisent AUCUNE erreur, la lecture bloque en silence
+jusqu'à cette échéance — à 28 min le spike était resté aveugle. Le
+re-IDLE coûte 2 commandes par cycle : nul).
 
-## Protocole
+## Protocole (amendé au 1ᵉʳ terrain)
 
-1. **Latence** : envoyer 10 messages depuis le téléphone en notant
-   l'heure d'envoi de chacun ; la ligne `EXISTS n — nouveau courrier
-   signalé` donne l'heure d'arrivée ; p50/p95 sur les 10 écarts.
-2. **Tenue** : laisser tourner 60 min sans trafic ; compter les
-   `reconnexion dans N s` (zéro attendu ; sinon, noter la période).
-3. **Coupure** : couper le Wi-Fi 2 min en pleine veille ; la session
-   doit tomber en erreur PUIS repartir seule (délai doublé 2 s → 60 s,
-   réarmé après 2 min de session stable).
-4. **Veille/reprise** : fermer le capot 10 min ; au réveil, noter le
-   délai avant `connecté`.
+1. **Latence — mesurer contre la BULLE du téléphone, pas l'heure
+   d'envoi** : l'envoi → `EXISTS` inclut la livraison Gmail elle-même
+   (~30 s constatés), qu'IDLE ne compresse pas. La gate produit est la
+   **parité téléphone** : noter l'heure de la bulle sur le téléphone et
+   celle de la ligne `EXISTS` — p50/p95 sur cet écart-là (attendu :
+   quasi nul, quelques secondes).
+2. **Tenue** : laisser tourner 60 min sans trafic. Chaque relance
+   s'imprime (`relance de veille … connexion vivante`) : des relances
+   régulières sans `reconnexion dans N s` = tenue prouvée.
+   **✅ Acquise au 1ᵉʳ terrain : 2 h 42 (11:45 → 14:27), un EXISTS
+   encore servi au bout.**
+3. **Coupure** : couper le Wi-Fi 2 min en pleine veille ; attendu :
+   `veille rompue …` en **≤ 3 min** (la relance), puis `reconnexion
+   dans N s` (délai doublé 2 s → 60 s) et `connecté` au retour du
+   réseau. **À REJOUER avec la relance courte** (1ᵉʳ terrain : aveugle,
+   relance à 28 min.)
+4. **Veille/reprise** : fermer le capot 10 min ; au réveil, `veille
+   rompue` puis `connecté` en ≤ 3 min + délai de reconnexion. **À
+   REJOUER** (même cause).
 5. **OAuth** : laisser tourner au-delà de l'expiration du jeton
    (~60 min) puis provoquer une coupure : la reconnexion relit le
    trousseau — elle doit aboutir sans geste.
