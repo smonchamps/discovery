@@ -374,16 +374,24 @@
     appel('flush_outbox')
       .then((bilan) => {
         // Un envoi DIFFÉRÉ (hors ligne) n'a rien déposé chez le
-        // serveur : rien à relever, le cycle du retour s'en chargera.
+        // serveur : rien à réconcilier, le retour en ligne s'en charge
+        // (R-D3) — et l'envoi n'ayant pas eu lieu, il n'a pas d'écho.
         if (bilan.sent > 0) {
-          appel('sync_sent', { accountId: compteEnvoi })
+          // E3 : l'écho Envoyés est NÉ à la vidange (transaction du
+          // passage à `sent`) — la copie se montre < 1 s, sans le
+          // serveur. La passe d'après-geste réconcilie derrière.
+          oncourrier();
+          appel('sync_apres_geste', { accountId: compteEnvoi })
             .then((releve) => {
               for (const incident of releve.errors) {
-                console.error('sync_sent :', incident);
+                console.error('sync_apres_geste :', incident);
               }
-              if (releve.fetched > 0 || releve.deleted > 0) oncourrier();
+              if (releve.fetched > 0 || releve.deleted > 0 || releve.reconcilies > 0
+                  || releve.balayes > 0) {
+                oncourrier();
+              }
             })
-            .catch((err) => console.error('sync_sent :', err));
+            .catch((err) => console.error('sync_apres_geste :', err));
         }
         return appel('sync_drafts').catch(() => {});
       })

@@ -638,6 +638,10 @@
       // les veilleurs ; la relève immédiate couvre le courrier retenu.
       appel('reseau_etat', { enLigne: true }).catch(() => {});
       relever(false);
+      // R-D3 (E3) : les gestes joués hors ligne attendent — la passe
+      // d'après-geste rejoue leurs actions et réconcilie leurs échos.
+      // Sans travail, elle ne coûte aucune connexion.
+      passeApresGeste(null);
     });
     // L'état initial : si l'app démarre hors ligne, les veilleurs le
     // savent tout de suite.
@@ -712,6 +716,35 @@
     event.preventDefault();
   }
 
+  // E3 (PLAN-REACTIVITE) : un écho local est une copie en cours de
+  // synchronisation — le geste dessus attend la réconciliation (une
+  // fenêtre de quelques secondes), et le toast le dit au lieu d'un
+  // échec silencieux. La ligne se reconnaît à sa boîte synthétique.
+  function estEcho(ligne) {
+    return typeof ligne?.mailbox === 'string' && ligne.mailbox.startsWith('echo:');
+  }
+  function gesteSurEcho(ligne) {
+    if (!estEcho(ligne)) return false;
+    flash(t('toast.echoAttente'));
+    return true;
+  }
+  // E3 : la réconciliation court derrière le geste — le serveur suit,
+  // l'écho s'efface sous sa vraie ligne (invisible à l'œil, E1). Le
+  // bilan dit tout : incidents en console, courrier/balayage → liste
+  // resservie. `accountId: null` = tous les comptes qui ont du travail
+  // (le déclencheur du retour en ligne, R-D3).
+  function passeApresGeste(accountId) {
+    appel('sync_apres_geste', { accountId })
+      .then((bilan) => {
+        for (const incident of bilan.errors) console.error('sync_apres_geste :', incident);
+        if (bilan.fetched > 0 || bilan.deleted > 0 || bilan.reconcilies > 0 || bilan.balayes > 0) {
+          chargerNav();
+          liste?.recharger();
+        }
+      })
+      .catch((err) => console.error('sync_apres_geste :', err));
+  }
+
   function ouvrirConversation(ligne) {
     conversation.ouvrir(ligne);
   }
@@ -723,12 +756,15 @@
     composition.ouvrir('new');
   }
   function repondre(ligne) {
+    if (gesteSurEcho(ligne)) return;
     composition.ouvrir('reply', ligne);
   }
   function repondreTous(ligne) {
+    if (gesteSurEcho(ligne)) return;
     composition.ouvrir('reply_all', ligne);
   }
   function transferer(ligne) {
+    if (gesteSurEcho(ligne)) return;
     composition.ouvrir('forward', ligne);
   }
   // Après une vidange : les compteurs (Envoyés) ont pu bouger.
@@ -784,6 +820,7 @@
   }
 
   async function archiver(ligne) {
+    if (gesteSurEcho(ligne)) return;
     try {
       await appel('archive_message', {
         accountId: ligne.account_id,
@@ -792,13 +829,18 @@
       });
       flash(t('toast.archivee'));
       lecture.fermer();
+      // L'écho de destination est DÉJÀ en base (même transaction que le
+      // geste, E3) : la resservie le montre en Archives < 1 s — le
+      // serveur suit par la passe, en silence.
       liste.recharger();
       chargerNav();
+      passeApresGeste(ligne.account_id);
     } catch (err) {
       console.error('archive_message :', err);
     }
   }
   async function supprimer(ligne) {
+    if (gesteSurEcho(ligne)) return;
     try {
       await appel('delete_message', {
         accountId: ligne.account_id,
@@ -807,8 +849,11 @@
       });
       flash(t('toast.supprimee'));
       lecture.fermer();
+      // Même mécanique qu'archiver : l'écho est en base, la Corbeille
+      // le montre tout de suite, la passe réconcilie derrière.
       liste.recharger();
       chargerNav();
+      passeApresGeste(ligne.account_id);
     } catch (err) {
       console.error('delete_message :', err);
     }

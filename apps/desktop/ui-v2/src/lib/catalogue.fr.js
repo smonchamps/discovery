@@ -95,6 +95,7 @@ export const FR = {
   'toast.brouillonEnregistre': 'Brouillon enregistré.',
   'toast.brouillonFork': 'Ce brouillon avait changé ailleurs — votre version a été conservée à part.',
   'toast.envoye': 'Message envoyé.',
+  'toast.echoAttente': 'Copie en cours de synchronisation — réessayez dans un instant.',
 
   // --- Enveloppes d'erreur (le détail du cœur reste verbatim, L-3) -----
   'erreur.renvoi': 'Renvoi impossible : {err}',

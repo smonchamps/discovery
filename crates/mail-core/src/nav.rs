@@ -270,15 +270,18 @@ impl Store {
             &exclusion_archives,
         )?;
         let (corbeille, _) = self.compte_boite(account_id, dossiers.corbeille.as_deref(), &[])?;
+        // Les échos locaux (PLAN-REACTIVITE E3) comptent avec les
+        // enveloppes : le compteur dit ce que le clic ouvre — jamais
+        // deux vérités entre la nav et la liste.
         Ok(NavCounts {
             reception_total: reception_total as u64,
             reception_non_lues: reception_non_lues as u64,
-            envoyes,
+            envoyes: envoyes + self.compte_echos("envoyes", Some(account_id))?,
             brouillons: brouillons as u64,
             indesirables_total,
             indesirables_non_lus,
-            archives,
-            corbeille,
+            archives: archives + self.compte_echos("archives", Some(account_id))?,
+            corbeille: corbeille + self.compte_echos("corbeille", Some(account_id))?,
         })
     }
 
@@ -330,10 +333,16 @@ impl Store {
 
     /// `(total, non lus)` cumulés des boîtes données — le total de la
     /// pagination d'une catégorie, et le héros non-lu des indésirables.
+    ///
+    /// `echos` (PLAN-REACTIVITE E3) : la catégorie et les comptes dont
+    /// les échos locaux comptent AUSSI — le compteur et la liste disent
+    /// la même chose, jamais deux vérités. Un écho est lu par nature :
+    /// il n'entre jamais dans `non_lus`.
     pub fn category_totals(
         &self,
         mailbox_ids: &[i64],
         exclure: &[i64],
+        echos: Option<(&str, &[i64])>,
     ) -> Result<(u64, u64), Error> {
         let mut total = 0u64;
         let mut non_lus = 0u64;
@@ -348,6 +357,11 @@ impl Store {
                 .query_row(&sql, params![id], |row| Ok((row.get(0)?, row.get(1)?)))?;
             total += t as u64;
             non_lus += n as u64;
+        }
+        if let Some((destination, comptes)) = echos {
+            for compte in comptes {
+                total += self.compte_echos(destination, Some(*compte))?;
+            }
         }
         Ok((total, non_lus))
     }
@@ -366,10 +380,21 @@ impl Store {
         mailbox_ids: &[i64],
         non_lus: bool,
         exclure: &[i64],
+        echos: Option<(&str, &[i64])>,
         offset: usize,
         limit: usize,
     ) -> Result<Vec<UnifiedRow>, Error> {
-        if mailbox_ids.is_empty() {
+        // Les échos (PLAN-REACTIVITE E3) n'entrent que hors onglet
+        // « Non lus » (un écho est lu par nature) et si des comptes les
+        // portent. Sans échos, le SQL est EXACTEMENT celui d'avant — le
+        // chemin chaud ne paye rien.
+        let echos = match echos {
+            Some((destination, comptes)) if !non_lus && !comptes.is_empty() => {
+                Some((destination, comptes))
+            }
+            _ => None,
+        };
+        if mailbox_ids.is_empty() && echos.is_none() {
             return Ok(Vec::new());
         }
         let n = mailbox_ids.len();
@@ -377,37 +402,102 @@ impl Store {
         // L'exclusion s'applique DANS chaque tranche : appliquée après,
         // la pagination compterait des lignes qu'elle ne sert pas.
         let exclusion = clause_exclusion(exclure);
-        let tranches: Vec<String> = (1..=n)
+        let borne_idx = n + 1;
+        let limite_idx = n + 2;
+        let decalage_idx = n + 3;
+        let mut tranches: Vec<String> = (1..=n)
             .map(|i| {
                 format!(
                     "SELECT * FROM (SELECT e.mailbox_id, e.uid, e.date_epoch FROM envelopes e
                       WHERE e.mailbox_id = ?{i}{filtre}{exclusion}
-                      ORDER BY e.date_epoch DESC, e.uid DESC LIMIT ?{})",
-                    n + 1
+                      ORDER BY e.date_epoch DESC, e.uid DESC LIMIT ?{borne_idx})"
                 )
             })
             .collect();
-        let sql = format!(
-            "{SELECT_UNIFIED}, COALESCE(t.size, 1),
-                    COALESCE(t.unseen, CASE WHEN e.seen THEN 0 ELSE 1 END)
-             FROM (SELECT mailbox_id, uid FROM ({tranches})
-                   ORDER BY date_epoch DESC, uid DESC, mailbox_id
-                   LIMIT ?{limite} OFFSET ?{decalage}) page
-             JOIN envelopes e ON e.mailbox_id = page.mailbox_id AND e.uid = page.uid
-             JOIN mailboxes m ON m.id = e.mailbox_id
-             JOIN accounts a ON a.id = m.account_id
-             LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
-             LEFT JOIN threads t ON t.id = e.thread_id
-             ORDER BY e.date_epoch DESC, e.uid DESC, e.mailbox_id",
-            tranches = tranches.join(" UNION ALL "),
-            limite = n + 2,
-            decalage = n + 3,
-        );
+        if echos.is_some() {
+            // La tranche des échos : identifiée par un mailbox_id NÉGATIF
+            // (-id d'écho) — jamais confondue avec une vraie boîte, et la
+            // jointure de sortie sait la reconnaître. Les comptes sont
+            // NOS entiers : inclusion littérale, comme l'exclusion.
+            let comptes = echos
+                .as_ref()
+                .map(|(_, comptes)| {
+                    comptes
+                        .iter()
+                        .map(i64::to_string)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                })
+                .unwrap_or_default();
+            tranches.push(format!(
+                "SELECT * FROM (SELECT -ec.id AS mailbox_id, 0 AS uid, ec.date_epoch
+                  FROM echos ec
+                  WHERE ec.destination = ?{dest} AND ec.account_id IN ({comptes})
+                  ORDER BY ec.date_epoch DESC LIMIT ?{borne_idx})",
+                dest = n + 4,
+            ));
+        }
+        let sql = if echos.is_none() {
+            format!(
+                "{SELECT_UNIFIED}, COALESCE(t.size, 1),
+                        COALESCE(t.unseen, CASE WHEN e.seen THEN 0 ELSE 1 END)
+                 FROM (SELECT mailbox_id, uid FROM ({tranches})
+                       ORDER BY date_epoch DESC, uid DESC, mailbox_id
+                       LIMIT ?{limite_idx} OFFSET ?{decalage_idx}) page
+                 JOIN envelopes e ON e.mailbox_id = page.mailbox_id AND e.uid = page.uid
+                 JOIN mailboxes m ON m.id = e.mailbox_id
+                 JOIN accounts a ON a.id = m.account_id
+                 LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+                 LEFT JOIN threads t ON t.id = e.thread_id
+                 ORDER BY e.date_epoch DESC, e.uid DESC, e.mailbox_id",
+                tranches = tranches.join(" UNION ALL "),
+            )
+        } else {
+            // Avec échos : la page fusionnée porte des lignes des DEUX
+            // mondes — les enveloppes rejoignent leurs tables, les échos
+            // la leur, et l'UNION ressort les mêmes colonnes que
+            // SELECT_UNIFIED (uid 0, boîte synthétique `echo:<id>`, lu,
+            // sans étoile ni fil). Le tri final rejoue la clé de la page.
+            format!(
+                "WITH page AS (SELECT mailbox_id, uid, date_epoch FROM ({tranches})
+                       ORDER BY date_epoch DESC, uid DESC, mailbox_id
+                       LIMIT ?{limite_idx} OFFSET ?{decalage_idx})
+                 SELECT * FROM (
+                   {SELECT_UNIFIED}, COALESCE(t.size, 1),
+                        COALESCE(t.unseen, CASE WHEN e.seen THEN 0 ELSE 1 END),
+                        page.date_epoch AS tri_date, page.uid AS tri_uid,
+                        page.mailbox_id AS tri_boite
+                   FROM page
+                   JOIN envelopes e ON e.mailbox_id = page.mailbox_id AND e.uid = page.uid
+                   JOIN mailboxes m ON m.id = e.mailbox_id
+                   JOIN accounts a ON a.id = m.account_id
+                   LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+                   LEFT JOIN threads t ON t.id = e.thread_id
+                   UNION ALL
+                   SELECT a.id, a.email, 0, ec.subject, ec.sender, ec.sender_address,
+                        ec.message_id, ec.date_epoch, 1, 0, ec.attachment_count,
+                        NULL, NULL, 'echo:' || ec.id, ec.preview, 1, 0,
+                        page.date_epoch AS tri_date, page.uid AS tri_uid,
+                        page.mailbox_id AS tri_boite
+                   FROM page
+                   JOIN echos ec ON page.mailbox_id = -ec.id AND page.mailbox_id < 0
+                   JOIN accounts a ON a.id = ec.account_id
+                 )
+                 ORDER BY tri_date DESC, tri_uid DESC, tri_boite",
+                tranches = tranches.join(" UNION ALL "),
+            )
+        };
         let borne = (offset + limit) as i64;
-        let parametres = mailbox_ids
+        let mut parametres: Vec<rusqlite::types::Value> = mailbox_ids
             .iter()
-            .copied()
-            .chain([borne, limit as i64, offset as i64]);
+            .map(|id| rusqlite::types::Value::Integer(*id))
+            .collect();
+        parametres.push(rusqlite::types::Value::Integer(borne));
+        parametres.push(rusqlite::types::Value::Integer(limit as i64));
+        parametres.push(rusqlite::types::Value::Integer(offset as i64));
+        if let Some((destination, _)) = echos {
+            parametres.push(rusqlite::types::Value::Text(destination.to_string()));
+        }
         let mut stmt = self.conn().prepare(&sql)?;
         let rows = stmt
             .query_map(rusqlite::params_from_iter(parametres), row_to_threaded)?
@@ -581,6 +671,100 @@ mod tests {
         assert_eq!(counts.brouillons, 1, "le local compte, le miroir non");
     }
 
+    /// E3 (PLAN-REACTIVITE) : les échos entrent dans la page À LEUR
+    /// PLACE de date — un vieux message supprimé ne saute pas en tête de
+    /// Corbeille — et le total les compte (jamais deux vérités). La
+    /// ligne d'écho porte sa boîte synthétique `echo:<id>`, son aperçu,
+    /// et l'onglet « Non lus » les ignore (un écho est lu par nature).
+    #[test]
+    fn la_page_de_categorie_sert_les_echos_a_leur_date() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("a@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        let corbeille = store.create_mailbox(account, "Trash", 1).unwrap();
+        store
+            .replace_folders(
+                account,
+                &[crate::Folder {
+                    wire: "Trash".into(),
+                    display: "Trash".into(),
+                    selectable: true,
+                }],
+            )
+            .unwrap();
+        store
+            .upsert_envelopes(
+                corbeille,
+                &[
+                    envelope(1, "vieux", 100, true),
+                    envelope(2, "recent", 300, true),
+                ],
+            )
+            .unwrap();
+        // Le message supprimé date d'ENTRE les deux : l'écho doit se
+        // glisser au milieu, pas en tête.
+        store
+            .upsert_envelopes(inbox, &[envelope(7, "milieu", 200, true)])
+            .unwrap();
+        store
+            .save_body(inbox, 7, "<p>corps du milieu</p>", &[])
+            .unwrap();
+        store
+            .geste_avec_echo(inbox, 7, crate::Action::Delete, Some("corbeille"))
+            .unwrap();
+
+        let comptes = [account];
+        let page = store
+            .category_page(
+                &[corbeille],
+                false,
+                &[],
+                Some(("corbeille", &comptes)),
+                0,
+                10,
+            )
+            .unwrap();
+        let sujets: Vec<&str> = page
+            .iter()
+            .map(|row| row.envelope.subject.as_deref().unwrap())
+            .collect();
+        assert_eq!(sujets, ["recent", "milieu", "vieux"]);
+        assert!(page[1].mailbox.starts_with("echo:"), "{}", page[1].mailbox);
+        assert_eq!(page[1].preview.as_deref(), Some("corps du milieu"));
+        assert_eq!(page[1].thread_unseen, 0, "un écho est lu");
+        // La pagination traverse l'écho sans perdre ni dupliquer.
+        let coupe = store
+            .category_page(
+                &[corbeille],
+                false,
+                &[],
+                Some(("corbeille", &comptes)),
+                1,
+                1,
+            )
+            .unwrap();
+        assert_eq!(coupe[0].envelope.subject.as_deref(), Some("milieu"));
+        // Le total dit la même chose que la page.
+        let (total, _) = store
+            .category_totals(&[corbeille], &[], Some(("corbeille", &comptes)))
+            .unwrap();
+        assert_eq!(total, 3);
+        // « Non lus » : les échos n'y entrent pas.
+        let non_lus = store
+            .category_page(
+                &[corbeille],
+                true,
+                &[],
+                Some(("corbeille", &comptes)),
+                0,
+                10,
+            )
+            .unwrap();
+        assert!(non_lus.is_empty());
+    }
+
     #[test]
     fn la_page_de_categorie_fusionne_les_boites_du_plus_recent_au_plus_ancien() {
         let mut store = Store::open_in_memory().unwrap();
@@ -602,7 +786,7 @@ mod tests {
             )
             .unwrap();
         let page = store
-            .category_page(&[gauche, droite], false, &[], 0, 3)
+            .category_page(&[gauche, droite], false, &[], None, 0, 3)
             .unwrap();
         let sujets: Vec<&str> = page
             .iter()
@@ -615,7 +799,7 @@ mod tests {
         assert_eq!(page[0].thread_unseen, 0);
         // L'OFFSET traverse la fusion sans perdre ni dupliquer.
         let suite = store
-            .category_page(&[gauche, droite], false, &[], 3, 3)
+            .category_page(&[gauche, droite], false, &[], None, 3, 3)
             .unwrap();
         let sujets: Vec<&str> = suite
             .iter()
@@ -624,7 +808,7 @@ mod tests {
         assert_eq!(sujets, ["a1"]);
         // L'onglet « Non lus » filtre côté coeur, dans les tranches mêmes.
         let non_lus = store
-            .category_page(&[gauche, droite], true, &[], 0, 10)
+            .category_page(&[gauche, droite], true, &[], None, 0, 10)
             .unwrap();
         let sujets: Vec<&str> = non_lus
             .iter()
@@ -654,7 +838,7 @@ mod tests {
             )
             .unwrap();
         let page = store
-            .category_page(&[gauche, droite], false, &[], 0, 10)
+            .category_page(&[gauche, droite], false, &[], None, 0, 10)
             .unwrap();
         let a3 = page
             .iter()
@@ -710,11 +894,11 @@ mod tests {
         let exclure = store.canoniques_hors_archives(account, &canon).unwrap();
         assert_eq!(exclure, vec![inbox]);
         let page = store
-            .category_page(&[integrale], false, &exclure, 0, 10)
+            .category_page(&[integrale], false, &exclure, None, 0, 10)
             .unwrap();
         assert_eq!(page.len(), 1);
         assert_eq!(page[0].envelope.subject.as_deref(), Some("archive"));
-        let (total, _) = store.category_totals(&[integrale], &exclure).unwrap();
+        let (total, _) = store.category_totals(&[integrale], &exclure, None).unwrap();
         assert_eq!(total, 1);
         // Un dossier d'archives PUR n'est jamais privé de rien.
         store
@@ -756,7 +940,9 @@ mod tests {
             0,
             "plus de retardataires"
         );
-        let page = store.category_page(&[inbox], false, &[], 0, 10).unwrap();
+        let page = store
+            .category_page(&[inbox], false, &[], None, 0, 10)
+            .unwrap();
         assert_eq!(page[0].preview.as_deref(), Some("Vieux corps"));
     }
 

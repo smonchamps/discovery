@@ -245,6 +245,24 @@ qu'E3 exigera est exactement cette relève ciblée réparée.
 
 ### E3 — L'écho local : la destination se montre au geste (R-D1)
 
+**État : livrée le 2026-08-14 (GO CE), gate complète verte — terrain
+CE dû (suppression/archivage/envoi → destination < 1 s, câble
+débranché compris ; réconciliation ≤ 5 s à la trace).** Écarts
+d'implémentation au plan, dits : (1) la passe d'après-geste ne devine
+pas la destination MÊME en repli sans LIST-STATUS — des STATUS ciblés
+sur les trois canoniques d'écho, jamais les ~50 dossiers ; (2) INBOX
+est exclue de la phase inventaire de la passe (la relever volerait les
+bulles du veilleur) — ses actions passent par `relever_inbox`, le
+chemin partagé ; (3) le balayage n'agit qu'après une tentative PROPRE
+(un serveur qui n'a pas répondu n'a rien démenti) ; (4) transient
+connu : sur Gmail, supprimer démasque brièvement la copie « Tous les
+messages » en Archives (clause d'exclusion) jusqu'à la passe — se
+dissout en secondes avec elle. Amendement A24 + carte « Le geste et sa
+destination » au Système (DC-D2). Tests : 8 au module `echo`, fusion
+de page `nav`, écho d'envoi à la vidange (`outbox`) ; e2e : suppression
+hors ligne → écho en Corbeille immédiat, compteur 3 → 4, ouverture
+locale, geste différé dit, écho survivant.
+
 Le verdict « < 1 s » impose que la destination s'affiche depuis la
 base locale, sans attendre le serveur. Décision de fond, avec ses
 garde-fous — les règles d'or ne plient pas :

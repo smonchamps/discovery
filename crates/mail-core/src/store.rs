@@ -195,6 +195,33 @@ CREATE TABLE IF NOT EXISTS outbox_attachments (
     bytes     BLOB
 );
 CREATE INDEX IF NOT EXISTS idx_outbox_attachments_outbox ON outbox_attachments(outbox_id);
+-- L'echo local d'un geste (PLAN-REACTIVITE E3, R-D1 « < 1 s ») : la
+-- copie de DESTINATION d'une suppression, d'un archivage ou d'un envoi,
+-- visible en liste AVANT que le serveur ait suivi. JAMAIS dans
+-- `envelopes` : un UID invente forgerait la cle (mailbox, uid) sur
+-- laquelle tout repose. L'echo meurt a la reconciliation (la vraie
+-- ligne entre, meme message_id) ou au balayage (le serveur dement).
+-- `destination` est une categorie canonique : 'envoyes' | 'archives' |
+-- 'corbeille'. `origin_action_id` (geste journalise) et
+-- `origin_outbox_id` (envoi) disent l'INTENTION dont l'echo est le
+-- reflet — un echo sans intention n'existe pas.
+CREATE TABLE IF NOT EXISTS echos (
+    id               INTEGER PRIMARY KEY,
+    account_id       INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    destination      TEXT NOT NULL,
+    message_id       TEXT NOT NULL,
+    sender           TEXT,
+    sender_address   TEXT,
+    subject          TEXT,
+    date_epoch       INTEGER,
+    preview          TEXT,
+    html             TEXT,
+    attachment_count INTEGER NOT NULL DEFAULT 0,
+    origin_action_id INTEGER,
+    origin_outbox_id INTEGER,
+    created_epoch    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_echos_destination ON echos(destination, account_id);
 ";
 
 /// Avancement de l'adoption d'une base héritée, pour l'affichage.

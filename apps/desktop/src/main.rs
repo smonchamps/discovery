@@ -72,6 +72,16 @@ pub(crate) struct Recul {
     pub depuis: Instant,
 }
 
+/// L'état de la passe d'après-geste d'un compte (PLAN-REACTIVITE E3) :
+/// un vol à la fois, coalescé — une demande pendant le vol lève le
+/// drapeau, la passe rejoue UNE fois en sortant. Archiver dix messages
+/// n'ouvre pas dix passes.
+#[derive(Default)]
+pub(crate) struct VolPasse {
+    pub en_vol: bool,
+    pub redemande: bool,
+}
+
 pub(crate) struct AppState {
     pub started_at: Instant,
     /// Sessions des comptes connectés, par email (multi-comptes).
@@ -104,6 +114,9 @@ pub(crate) struct AppState {
     /// L'état réseau remonté par l'UI (P0-bis) : hors ligne, les
     /// veilleurs dorment au lieu de reconnecter en boucle.
     pub en_ligne: Arc<AtomicBool>,
+    /// Les passes d'après-geste en vol, par compte (E3) : un vol à la
+    /// fois, les demandes pendant le vol se coalescent.
+    pub passes_geste: Arc<Mutex<HashMap<String, VolPasse>>>,
 }
 
 fn main() {
@@ -131,6 +144,7 @@ fn main() {
         // En ligne par défaut : l'UI remonte le vrai état dès son
         // premier rendu (P0-bis) — d'ici là, mieux vaut tenter que dormir.
         en_ligne: Arc::new(AtomicBool::new(true)),
+        passes_geste: Arc::new(Mutex::new(HashMap::new())),
     };
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -173,7 +187,8 @@ fn main() {
             commands::forward_context,
             commands::queue_send,
             commands::flush_outbox,
-            commands::sync_sent,
+            commands::sync_apres_geste,
+            commands::echo_body,
             commands::outbox_status,
             commands::outbox_requeue,
             commands::outbox_delete,

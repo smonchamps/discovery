@@ -743,6 +743,20 @@ source</b> (dossier, onglet, boîte — des données étrangères) et le
 <b>défilement vers des pages jamais servies</b>. Le total affiché ne
 retombe jamais à zéro pendant une recharge.</p>
       </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:28px; display:flex; flex-direction:column; gap:14px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Le geste et sa destination</p>
+        <p style="margin:0; font-size:13px; line-height:1.6; color:#4d534f; max-width:60ch">Supprimer, archiver, envoyer : la destination (Corbeille,
+Archives, Envoyés) montre le message <b>immédiatement</b> — hors ligne
+compris (A24). La ligne est un <b>écho local</b>, visuellement identique,
+à sa place de date ; le compteur de nav le compte avec le reste — jamais
+deux vérités. Le serveur suit en silence : la vraie copie <b>remplace
+l'écho sans que la ligne bouge à l'œil</b>. L'écho s'ouvre (corps local) ;
+les autres gestes dessus <b>attendent la réconciliation</b> — fenêtre de
+quelques secondes — et le toast le dit : « Copie en cours de
+synchronisation — réessayez dans un instant. » Si le serveur dément
+(copie jamais vue après relève propre), l'écho se retire et l'incident
+se consigne — on n'affiche pas ce que le serveur dément.</p>
+      </div>
     </div>
   </section>
 
@@ -1380,6 +1394,11 @@ directive — et tracé par un commit.</p>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-14</td>
           <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A23</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>La recharge ne clignote plus</b> — retour terrain (« des traits à la place de chaque email pendant la synchronisation », <code>docs/PLAN-REACTIVITE.md</code> E1). La liste fenêtrée passe en <i>stale-while-revalidate</i> : les lignes servies restent affichées pendant qu'une recharge se resert, chaque page est remplacée à l'arrivée de sa version fraîche — le squelette est réservé au premier chargement d'une source et au défilement vers l'inconnu ; l'ancrage du défilement suit le <b>delta</b> de puces d'une page remplacée, plus le compte brut. Carte « La liste sous recharge » ajoutée à la section Boîte de réception. Gate e2e : recharge jouée transport retenu, zéro ligne d'attente sur des lignes servies.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-14</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A24</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>La destination du geste se montre à l'instant</b> — retour terrain (« on s'attend à ce que ce soit instantané »), verdict CE R-D1 « &lt; 1 s » (<code>docs/PLAN-REACTIVITE.md</code> E3). Supprimer, archiver, envoyer : un <b>écho local</b> — la matière du message versée à la destination dans la transaction du geste, l'écho d'envoi né au passage à <code>sent</code> seulement — rend Corbeille, Archives et Envoyés immédiats, hors ligne compris. Ligne visuellement identique, à sa place de date ; compteurs de nav d'accord avec la liste ; corps ouvrable en local. La <b>passe d'après-geste</b> réconcilie en secondes (rejeu immédiat des actions + LIST-STATUS : seuls les dossiers qui ont bougé se relèvent — la destination n'est jamais devinée) ; la vraie copie remplace l'écho sans mouvement à l'œil. Les gestes sur un écho sont différés à la réconciliation, dits par toast (clés fr/en <code>toast.echoAttente</code>). Balayage de sûreté : intention soldée + destination relevée proprement sans copie → écho retiré, incident consigné. Carte « Le geste et sa destination » ajoutée à la section Boîte de réception. Gate e2e : suppression hors ligne → écho en Corbeille, compteur 3 → 4, ouverture locale, geste différé dit.</td>
         </tr>
       </tbody>
     </table>

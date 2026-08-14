@@ -13,6 +13,7 @@ mod body;
 mod compose;
 mod crash;
 mod drafts;
+mod echo;
 mod envelope;
 mod error;
 mod nav;
@@ -44,6 +45,7 @@ pub use drafts::{
     DraftAttachmentFull, DraftAttachmentMeta, DraftAttachmentSaved, DraftContent, DraftPull,
     DraftSaved, MAX_ATTACHMENTS_BYTES, SavedDraft, plan_draft_pull,
 };
+pub use echo::DESTINATIONS_ECHO;
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
 pub use nav::{CanonicalFolders, NavCounts};

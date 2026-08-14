@@ -1286,6 +1286,18 @@ fn run_sync(
     }
     let duree_brouillons = chrono.elapsed();
 
+    // E3 (PLAN-REACTIVITE) : le cycle vient peut-être de faire entrer
+    // la vraie ligne d'une destination d'écho — la réconciliation le
+    // constate, et la génération resert la liste (l'écho s'efface sous
+    // sa vraie ligne, invisible à l'œil).
+    match store.reconcilier_echos(account_id) {
+        Ok(n) if n > 0 => {
+            cycle.generation.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(_) => {}
+        Err(reason) => problems.push(format!("réconciliation des échos : {reason}")),
+    }
+
     // La trace qui transforme « c'est bloqué » en mesure — lisible dans
     // la console d'un `cargo run`. AVANT logout : un logout qui cale ne
     // doit pas emporter la trace avec lui.
@@ -1596,31 +1608,37 @@ pub fn list_category(
     // la catégorie des messages vivant dans une autre canonique — sinon
     // elle montre toute la boîte (défaut terrain, 2026-08-12).
     let mut exclure = Vec::new();
-    for compte in comptes {
+    for compte in &comptes {
         let dossiers = store
-            .canonical_folders(compte)
+            .canonical_folders(*compte)
             .map_err(|err| err.to_string())?;
         if let Some(nom) = dossiers.boite(&category)
             && let Some(state) = store
-                .sync_state(compte, &nom)
+                .sync_state(*compte, &nom)
                 .map_err(|err| err.to_string())?
         {
             boites.push(state.mailbox_id);
             if category == "archives" && dossiers.archives_integrale {
                 exclure.extend(
                     store
-                        .canoniques_hors_archives(compte, &dossiers)
+                        .canoniques_hors_archives(*compte, &dossiers)
                         .map_err(|err| err.to_string())?,
                 );
             }
         }
     }
+    // E3 (PLAN-REACTIVITE) : les échos locaux des destinations de geste
+    // entrent dans la page et le total — la Corbeille montre la
+    // suppression, Envoyés l'envoi, à la seconde du geste.
+    let echos = mail_core::DESTINATIONS_ECHO
+        .contains(&category.as_str())
+        .then_some((category.as_str(), comptes.as_slice()));
     let (tous, jamais_lus) = store
-        .category_totals(&boites, &exclure)
+        .category_totals(&boites, &exclure, echos)
         .map_err(|err| err.to_string())?;
     let total = if non_lus { jamais_lus } else { tous };
     let rows = store
-        .category_page(&boites, non_lus, &exclure, offset, limit)
+        .category_page(&boites, non_lus, &exclure, echos, offset, limit)
         .map_err(|err| err.to_string())?
         .into_iter()
         .map(to_message_row)
@@ -1975,12 +1993,44 @@ fn queue_removal(
     else {
         return Ok(());
     };
+    // E3 (PLAN-REACTIVITE, R-D1) : le geste est un DÉPLACEMENT — la
+    // matière du message passe à l'écho de destination dans la MÊME
+    // transaction que le journal d'action et la disparition de la
+    // source. La destination se montre < 1 s, hors ligne compris ; le
+    // serveur réconcilie derrière (`sync_apres_geste`). Un déplacement
+    // vers un dossier libre n'a pas de liste canonique : pas d'écho.
+    let destination = match &action {
+        Action::Delete => Some("corbeille"),
+        Action::Archive => Some("archives"),
+        _ => None,
+    };
     store
-        .remove_local(state.mailbox_id, uid)
-        .map_err(|err| err.to_string())?;
-    store
-        .enqueue_action(state.mailbox_id, uid, action)
+        .geste_avec_echo(state.mailbox_id, uid, action, destination)
         .map_err(|err| err.to_string())
+}
+
+/// Le corps d'un écho local (E3) pour la Lecture : même assainissement
+/// que `message_body` (S1 — le HTML d'origine est celui de l'expéditeur,
+/// le texte d'envoi est déjà échappé mais repasse par la même porte).
+/// Purement local — un écho n'a rien à demander au serveur.
+#[tauri::command]
+pub fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<BodyView, String> {
+    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+    let (html, attachment_count) = store
+        .echo_vue(id)
+        .map_err(|err| err.to_string())?
+        .ok_or_else(|| "écho déjà réconcilié".to_string())?;
+    let policy = if show_images {
+        mail_render::ImagePolicy::AllowRemote
+    } else {
+        mail_render::ImagePolicy::BlockRemote
+    };
+    let sanitized = mail_render::sanitize_with(&html, policy);
+    Ok(BodyView {
+        document: mail_render::email_document(&sanitized.html, policy),
+        remote_images_blocked: sanitized.remote_images_blocked,
+        attachment_count,
+    })
 }
 
 /// Marque lu/non-lu : application locale immédiate (optimisme UI) +
@@ -2342,119 +2392,360 @@ fn retenter_apres(tentative: u32) -> Option<Duration> {
     }
 }
 
-/// Le bilan de la relève ciblée d'Envoyés — fini le silence : les
-/// incidents remontent à l'UI comme ceux du cycle (terrain 0.1.5 :
-/// l'instruction était aveugle, tout partait en `eprintln` et le
-/// `.catch(() => {})` avalait le reste).
-#[derive(Serialize)]
-pub struct SentReport {
+/// Le bilan de la passe d'après-geste — fini le silence : les incidents
+/// remontent à l'UI comme ceux du cycle (terrain 0.1.5 : l'instruction
+/// était aveugle, tout partait en `eprintln` et le `.catch(() => {})`
+/// avalait le reste). `reconcilies` : des échos remplacés par leur
+/// vraie ligne ; `balayes` : des échos que le serveur a démentis.
+#[derive(Default, Serialize)]
+pub struct PasseReport {
     pub fetched: usize,
     pub deleted: usize,
+    pub reconcilies: usize,
+    pub balayes: usize,
     pub errors: Vec<String>,
 }
 
-/// Relève ciblée du dossier Envoyés d'UN compte — après un envoi
-/// accepté, la copie qu'ajoute le serveur (Gmail le fait lui-même à
-/// l'acceptation SMTP) doit se voir sans attendre le cycle complet :
-/// la passe légère ne couvre qu'INBOX, et le veilleur IDLE aussi
-/// (terrain 0.1.4 : 4 minutes sans copie visible). Gardée par STATUS
-/// (ADR 0017) et par le verrou de relève du compte (E4). Sans bulles :
-/// une copie d'envoi n'est pas une arrivée.
+/// La passe d'après-geste (PLAN-REACTIVITE E3) — la réconciliation de
+/// l'écho local : après une suppression, un archivage, un déplacement
+/// ou un envoi, le serveur doit suivre SANS attendre le cycle.
 ///
-/// E2 (PLAN-REACTIVITE) : la relève COMPTE son courrier — génération
-/// bumpée, la sonde UI voit la base bouger (le défaut certain du
-/// terrain 0.1.5 : relève muette, copie entrée mais écran jamais
-/// prévenu) — et RETENTE, bornée, quand elle ne rapporte rien (la
-/// copie asynchrone peut suivre l'acceptation de quelques secondes).
-/// Chaque tentative prend et rend le verrou du compte : les pauses ne
-/// bloquent ni le cycle ni le veilleur.
+/// 1. **Les intentions d'abord** : les boîtes qui portent des actions
+///    journalisées se relèvent — le rejeu part MAINTENANT (INBOX par le
+///    chemin partagé `relever_inbox` : bulles et compteurs, rien ne se
+///    raconte deux fois).
+/// 2. **L'inventaire** : LIST-STATUS (un aller-retour, E2c) —
+///    `faut_relever` désigne les dossiers qui ont bougé : la destination
+///    du geste, et elle seule en pratique. La destination n'est JAMAIS
+///    devinée (Corbeille RFC 6154, label Gmail : tout se voit au
+///    STATUS). INBOX reste au veilleur et au cycle — la relever ici
+///    volerait leurs bulles. Repli sans LIST-STATUS : des STATUS ciblés
+///    sur les seules destinations canoniques, jamais les ~50 dossiers.
+/// 3. **La réconciliation** : l'écho meurt quand la vraie ligne entre
+///    (même `message_id` dans la destination) — la ligne ne bouge pas à
+///    l'œil.
+/// 4. **La retentative** (E2) : des échos attendent encore → +5 s puis
+///    +15 s puis silence (copie Gmail asynchrone). Chaque tentative
+///    prend et REND le verrou du compte : les pauses ne bloquent rien.
+/// 5. **Le balayage** : intention soldée, destination relevée PROPREMENT
+///    et toujours pas de copie → l'écho se retire, l'incident se dit —
+///    on n'affiche pas ce que le serveur dément. Jamais après une
+///    tentative en échec : un serveur qui n'a pas répondu n'a rien
+///    démenti.
+///
+/// `account_id = None` (retour en ligne, R-D3) : tous les comptes qui
+/// ont du travail — actions en attente ou échos. Un vol par compte,
+/// coalescé : archiver dix messages n'ouvre pas dix passes.
 #[tauri::command]
-pub async fn sync_sent(
+pub async fn sync_apres_geste(
     app: AppHandle,
     state: State<'_, AppState>,
-    account_id: i64,
-) -> Result<SentReport, String> {
+    account_id: Option<i64>,
+) -> Result<PasseReport, String> {
     let path = db_path(&app)?;
-    let session = auth_for(&path, &state, account_id)?;
-    let verrous = state.verrous_releve.clone();
-    let cycle = state.sync_cycle.clone();
-
-    let (rapport, refreshed) = tauri::async_runtime::spawn_blocking(
-        move || -> Result<(SentReport, Vec<AccountSession>), String> {
-            let mut rapport = SentReport {
-                fetched: 0,
-                deleted: 0,
-                errors: Vec::new(),
-            };
-            let mut sessions = Vec::new();
-            let mut store = Store::open(&path).map_err(|err| err.to_string())?;
-            // Pas encore de dossier d'envois mémorisé (compte jamais
-            // synchronisé) : rien à relever, le cycle complet suivra.
-            let Some(sent) = store
-                .sent_mailbox(account_id)
+    let cibles: Vec<i64> = match account_id {
+        Some(id) => vec![id],
+        None => {
+            let store = Store::open(&path).map_err(|err| err.to_string())?;
+            store
+                .comptes_avec_travail()
                 .map_err(|err| err.to_string())?
-            else {
-                return Ok((rapport, sessions));
+        }
+    };
+    let mut rapport = PasseReport::default();
+    for compte in cibles {
+        let session = match auth_for(&path, &state, compte) {
+            Ok(session) => session,
+            Err(reason) => {
+                rapport.errors.push(reason);
+                continue;
+            }
+        };
+        let email = session.email().to_string();
+        // Un vol par compte : une passe en cours ABSORBE la demande — le
+        // drapeau la fera rejouer une fois, pas dix.
+        {
+            let mut passes = match state.passes_geste.lock() {
+                Ok(passes) => passes,
+                Err(empoisonne) => empoisonne.into_inner(),
             };
-            let mut session = session;
-            let mut tentative = 0u32;
-            loop {
-                tentative += 1;
-                {
-                    let verrou = verrou_compte(&verrous, session.email());
-                    let _releve = verrou.lock();
-                    let (mut server, fresh) = connect_imap(&session)?;
-                    if let Some(fresh) = fresh {
-                        session = fresh.clone();
-                        sessions.push(fresh);
+            let vol = passes.entry(email.clone()).or_default();
+            if vol.en_vol {
+                vol.redemande = true;
+                continue;
+            }
+            vol.en_vol = true;
+        }
+        loop {
+            let issue = {
+                let path = path.clone();
+                let session = session.clone();
+                let cycle = state.sync_cycle.clone();
+                let verrous = state.verrous_releve.clone();
+                let app_bulles = app.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    passe_apres_geste_compte(&path, session, compte, &cycle, &verrous, &app_bulles)
+                })
+                .await
+                .map_err(|err| err.to_string())
+                .and_then(|issue| issue)
+            };
+            match issue {
+                Ok((bilan, refreshed)) => {
+                    rapport.fetched += bilan.fetched;
+                    rapport.deleted += bilan.deleted;
+                    rapport.reconcilies += bilan.reconcilies;
+                    rapport.balayes += bilan.balayes;
+                    rapport.errors.extend(bilan.errors);
+                    reposer_sessions(&state, refreshed)?;
+                }
+                Err(reason) => rapport.errors.push(format!("{email} : {reason}")),
+            }
+            // Libérer le vol — et rejouer UNE fois si un geste est
+            // arrivé pendant la passe.
+            let encore = {
+                let mut passes = match state.passes_geste.lock() {
+                    Ok(passes) => passes,
+                    Err(empoisonne) => empoisonne.into_inner(),
+                };
+                let vol = passes.entry(email.clone()).or_default();
+                if vol.redemande {
+                    vol.redemande = false;
+                    true
+                } else {
+                    vol.en_vol = false;
+                    false
+                }
+            };
+            if !encore {
+                break;
+            }
+        }
+    }
+    Ok(rapport)
+}
+
+/// La passe d'UN compte — le corps bloquant de `sync_apres_geste`.
+fn passe_apres_geste_compte(
+    path: &Path,
+    mut session: AccountSession,
+    account_id: i64,
+    cycle: &crate::SyncShared,
+    verrous: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    app: &AppHandle,
+) -> Result<(PasseReport, Vec<AccountSession>), String> {
+    let mut rapport = PasseReport::default();
+    let mut sessions = Vec::new();
+    let mut tentative = 0u32;
+    // Posé par CHAQUE tour de boucle avant toute sortie : pas de valeur
+    // de départ — le compilateur garantit qu'on ne lit jamais un vide.
+    let mut derniere_propre;
+    loop {
+        tentative += 1;
+        let erreurs_avant = rapport.errors.len();
+        // Le courrier de CETTE tentative (hors INBOX, qui publie déjà le
+        // sien par `relever_inbox`) — c'est lui qui bump la génération.
+        let mut courrier_tentative = 0usize;
+        let chrono_total = Instant::now();
+        {
+            let verrou = verrou_compte(verrous, session.email());
+            let _releve = verrou.lock();
+            let (mut server, fresh) = connect_imap(&session)?;
+            if let Some(fresh) = fresh {
+                session = fresh.clone();
+                sessions.push(fresh);
+            }
+            let mut store = Store::open(path).map_err(|err| err.to_string())?;
+            // 1. Les intentions : le rejeu part MAINTENANT.
+            let chrono = Instant::now();
+            let sources = store
+                .mailboxes_avec_actions(account_id)
+                .map_err(|err| err.to_string())?;
+            for boite in &sources {
+                if boite == MAILBOX {
+                    if let Err(reason) = relever_inbox(
+                        &mut server,
+                        &mut store,
+                        account_id,
+                        cycle,
+                        app,
+                        &mut rapport.errors,
+                    ) {
+                        rapport.errors.push(format!("INBOX : {reason}"));
                     }
-                    let statut = server.folder_status(&sent).ok();
+                } else {
+                    let statut = server.folder_status(boite).ok();
                     if doit_relever(
                         &store,
                         account_id,
-                        &sent,
+                        boite,
                         statut.as_ref(),
                         &mut rapport.errors,
                     ) {
-                        let report = SyncEngine::default()
-                            .sync(&mut server, &mut store, account_id, &sent)
-                            .map_err(|err| err.to_string())?;
-                        solder_repere(
-                            &store,
-                            account_id,
-                            &sent,
-                            statut.as_ref(),
-                            &mut rapport.errors,
-                        );
-                        rapport.fetched += report.fetched;
-                        rapport.deleted += report.deleted;
+                        match SyncEngine::default().sync(&mut server, &mut store, account_id, boite)
+                        {
+                            Ok(report) => {
+                                rapport.fetched += report.fetched;
+                                rapport.deleted += report.deleted;
+                                courrier_tentative += report.fetched + report.deleted;
+                                solder_repere(
+                                    &store,
+                                    account_id,
+                                    boite,
+                                    statut.as_ref(),
+                                    &mut rapport.errors,
+                                );
+                            }
+                            Err(reason) => {
+                                rapport.errors.push(format!("dossier source : {reason}"))
+                            }
+                        }
                     }
-                    server.logout();
-                }
-                if rapport.fetched + rapport.deleted > 0 {
-                    // Le courrier se voit : même chemin que la relève
-                    // INBOX — compteur et génération, la sonde existante
-                    // resert liste et nav (R0-S5, aucun canal neuf).
-                    cycle.courrier.fetch_add(
-                        (rapport.fetched + rapport.deleted) as u64,
-                        Ordering::Relaxed,
-                    );
-                    cycle.generation.fetch_add(1, Ordering::Relaxed);
-                    break;
-                }
-                match retenter_apres(tentative) {
-                    Some(delai) => std::thread::sleep(delai),
-                    None => break,
                 }
             }
-            Ok((rapport, sessions))
-        },
-    )
-    .await
-    .map_err(|err| err.to_string())??;
+            let duree_actions = chrono.elapsed();
+            let n_sources = sources.len();
+            // 2. L'inventaire : seuls les dossiers qui ont BOUGÉ se
+            // relèvent — la destination du geste, sans jamais la deviner.
+            let chrono = Instant::now();
+            let mut releves = 0usize;
+            match server.folders_with_status() {
+                Ok(Some(avec_statut)) => {
+                    for (folder, statut) in avec_statut {
+                        if !folder.selectable
+                            || folder.wire == MAILBOX
+                            || sources.contains(&folder.wire)
+                        {
+                            continue;
+                        }
+                        if relever_dossier_passe(
+                            &mut server,
+                            &mut store,
+                            account_id,
+                            &folder.wire,
+                            statut.as_ref(),
+                            &mut rapport,
+                            &mut courrier_tentative,
+                        ) {
+                            releves += 1;
+                        }
+                    }
+                }
+                Ok(None) => {
+                    // Sans LIST-STATUS : des STATUS ciblés sur les seules
+                    // destinations canoniques — jamais les ~50 dossiers.
+                    let dossiers = store
+                        .canonical_folders(account_id)
+                        .map_err(|err| err.to_string())?;
+                    for nom in [dossiers.envoyes, dossiers.archives, dossiers.corbeille]
+                        .into_iter()
+                        .flatten()
+                    {
+                        if nom == MAILBOX || sources.contains(&nom) {
+                            continue;
+                        }
+                        let statut = server.folder_status(&nom).ok();
+                        if relever_dossier_passe(
+                            &mut server,
+                            &mut store,
+                            account_id,
+                            &nom,
+                            statut.as_ref(),
+                            &mut rapport,
+                            &mut courrier_tentative,
+                        ) {
+                            releves += 1;
+                        }
+                    }
+                }
+                Err(reason) => rapport
+                    .errors
+                    .push(format!("inventaire LIST-STATUS : {reason}")),
+            }
+            let duree_inventaire = chrono.elapsed();
+            // 3. La réconciliation : l'écho meurt quand la vraie ligne
+            // entre — la liste ne bouge pas à l'œil.
+            let reconcilies = store
+                .reconcilier_echos(account_id)
+                .map_err(|err| err.to_string())?;
+            rapport.reconcilies += reconcilies;
+            courrier_tentative += reconcilies;
+            server.logout();
+            // La trace qui instruira D-7 (§6.8 : durées et décomptes
+            // seuls) — à lire contre l'horodatage du geste en console.
+            eprintln!(
+                "passe geste compte {account_id} : {n_sources} source(s) {:.1}s · inventaire + {releves} relevé(s) {:.1}s · {reconcilies} réconcilié(s) · total {:.1}s",
+                duree_actions.as_secs_f32(),
+                duree_inventaire.as_secs_f32(),
+                chrono_total.elapsed().as_secs_f32(),
+            );
+            if courrier_tentative > 0 {
+                cycle
+                    .courrier
+                    .fetch_add(courrier_tentative as u64, Ordering::Relaxed);
+                cycle.generation.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        derniere_propre = rapport.errors.len() == erreurs_avant;
+        let en_attente = Store::open(path)
+            .map_err(|err| err.to_string())?
+            .echos_en_attente(account_id)
+            .map_err(|err| err.to_string())?;
+        if en_attente == 0 {
+            break;
+        }
+        match retenter_apres(tentative) {
+            Some(delai) => std::thread::sleep(delai),
+            None => break,
+        }
+    }
+    // 4. Le balayage — après une tentative PROPRE seulement : une relève
+    // en échec n'a rien démenti, l'écho vit (hors ligne, recul…).
+    if derniere_propre {
+        let store = Store::open(path).map_err(|err| err.to_string())?;
+        let incidents = store
+            .balayer_echos(account_id)
+            .map_err(|err| err.to_string())?;
+        if !incidents.is_empty() {
+            rapport.balayes += incidents.len();
+            rapport.errors.extend(incidents);
+            // Des lignes viennent de disparaître : la liste se resert.
+            cycle.generation.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+    Ok((rapport, sessions))
+}
 
-    reposer_sessions(&state, refreshed)?;
-    Ok(rapport)
+/// Une relève de dossier de la passe (phase inventaire) : gardée par
+/// `faut_relever`, soldée, comptée. Rend vrai si le dossier a été relevé.
+#[allow(clippy::too_many_arguments)]
+fn relever_dossier_passe(
+    server: &mut ImapServer,
+    store: &mut Store,
+    account_id: i64,
+    boite: &str,
+    statut: Option<&mail_core::FolderStatus>,
+    rapport: &mut PasseReport,
+    courrier: &mut usize,
+) -> bool {
+    if !doit_relever(store, account_id, boite, statut, &mut rapport.errors) {
+        return false;
+    }
+    match SyncEngine::default().sync(server, store, account_id, boite) {
+        Ok(report) => {
+            rapport.fetched += report.fetched;
+            rapport.deleted += report.deleted;
+            *courrier += report.fetched + report.deleted;
+            solder_repere(store, account_id, boite, statut, &mut rapport.errors);
+            true
+        }
+        Err(reason) => {
+            rapport
+                .errors
+                .push(format!("dossier « {boite} » : {reason}"));
+            false
+        }
+    }
 }
 
 fn run_flush_all(

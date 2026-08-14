@@ -691,3 +691,45 @@ test("hors ligne : la barre le dit à l'instant, le retour la restaure (P0-bis)"
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect(progression).not.toContainText('Hors ligne');
 });
+
+// E3 (PLAN-REACTIVITE, R-D1 « < 1 s ») : la destination d'un geste se
+// montre depuis la base locale — les comptes du décor n'ont PAS de
+// serveur, ce parcours est donc exactement le contrat hors ligne :
+// suppression → écho visible en Corbeille tout de suite, compteur
+// d'accord avec la liste, corps ouvrable en local ; le geste sur un
+// écho est différé et LE DIT ; l'écho survit (l'action attend encore —
+// le balayage ne retire jamais une intention en attente).
+test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", async () => {
+  await dossier('reception').click();
+  const corbeille = dossier('corbeille');
+  await expect(corbeille).toContainText('3');
+
+  await page
+    .locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' })
+    .first()
+    .click();
+  await page.locator('[data-testid="supprimer"]').click();
+  await expect(page.locator('[data-testid="toast"]')).toContainText(
+    'Conversation supprimée.',
+  );
+  // Le compteur et la liste disent la même chose : 3 + l'écho.
+  await expect(corbeille).toContainText('4');
+  await corbeille.click();
+  const echo = page.locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' });
+  await expect(echo).toBeVisible();
+
+  // L'écho s'ouvre en LOCAL (echo_body) — le volet porte le sujet.
+  await echo.click();
+  await expect(page.locator('[data-testid="lecture-sujet"]')).toContainText(
+    'Facture 2026-0841',
+  );
+  // Un geste sur l'écho attend la réconciliation — et le dit.
+  await page.locator('[data-testid="supprimer"]').click();
+  await expect(page.locator('[data-testid="toast"]')).toContainText(
+    'Copie en cours de synchronisation',
+  );
+  // L'écho vit toujours : son intention (l'action journalisée) attend
+  // le serveur — hors ligne, rien ne le balaie.
+  await expect(echo).toBeVisible();
+  await dossier('reception').click();
+});

@@ -360,6 +360,12 @@ pub fn flush_outbox(
             Ok(()) => {
                 store.set_outbox_state(message.id, OutboxState::Sent)?;
                 store.purge_sent_attachment_bytes(message.id)?;
+                // E3 (PLAN-REACTIVITE) : la copie Envoyés se montre TOUT
+                // DE SUITE — l'écho local naît au passage à `sent`, jamais
+                // avant (« jamais d'envoi fantôme »). Best effort : le
+                // message EST parti, un échec d'écho ne doit pas le faire
+                // passer pour perdu.
+                let _ = store.echo_envoi(message.id);
                 report.sent += 1;
             }
             Err(SendError::Transient(reason)) => {
@@ -490,6 +496,9 @@ mod tests {
                 .is_empty()
         );
         assert_eq!(store.outbox_in_state(OutboxState::Sent).unwrap().len(), 2);
+        // E3 : chaque envoi parti a son écho Envoyés — la copie se
+        // montre sans attendre la relève du serveur.
+        assert_eq!(store.compte_echos("envoyes", Some(account)).unwrap(), 2);
     }
 
     /// Règle d'or n°1 : une coupure réseau ne perd rien — la file survit

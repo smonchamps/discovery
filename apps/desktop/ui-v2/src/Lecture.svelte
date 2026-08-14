@@ -53,6 +53,13 @@
     return nbPieces > 0 ? `${messages} · ${t('puce.fichiers', { n: nbPieces })}` : messages;
   });
 
+  // E3 (PLAN-REACTIVITE) : un écho local — la copie de destination d'un
+  // geste, en attente de sa vraie ligne — se reconnaît à sa boîte
+  // synthétique. Son corps est LOCAL (echo_body) ; ses pièces n'ont pas
+  // de métadonnées par pièce (fenêtre de quelques secondes), la puce
+  // méta dit le compte, les puces cliquables attendent la vraie ligne.
+  const estEcho = (l) => typeof l?.mailbox === 'string' && l.mailbox.startsWith('echo:');
+
   export async function ouvrir(nouvelle) {
     const t0 = performance.now();
     imagesVoulues = false;
@@ -61,7 +68,7 @@
     // Hors du chemin d'ouverture mesuré : les métadonnées de pièces
     // arrivent après le corps, jamais avant. Le compte est celui
     // d'après-scan (servir), jamais celui de la ligne.
-    if (nbPieces > 0) {
+    if (nbPieces > 0 && !estEcho(nouvelle)) {
       const mien = jeton;
       appel('message_attachments', {
         accountId: nouvelle.account_id,
@@ -98,12 +105,17 @@
     const mien = ++jeton;
     ligne = nouvelle;
     try {
-      const vue = await appel('message_body', {
-        accountId: nouvelle.account_id,
-        mailbox: nouvelle.mailbox,
-        uid: nouvelle.uid,
-        showImages: avecImages,
-      });
+      const vue = estEcho(nouvelle)
+        ? await appel('echo_body', {
+            id: Number(nouvelle.mailbox.slice(5)),
+            showImages: avecImages,
+          })
+        : await appel('message_body', {
+            accountId: nouvelle.account_id,
+            mailbox: nouvelle.mailbox,
+            uid: nouvelle.uid,
+            showImages: avecImages,
+          });
       if (mien !== jeton) return derniereOuvertureMs; // sélection changée
       corps = vue.document;
       imagesBloquees = avecImages ? 0 : vue.remote_images_blocked;

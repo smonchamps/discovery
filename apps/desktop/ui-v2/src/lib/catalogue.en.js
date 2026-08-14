@@ -93,6 +93,7 @@ export const EN = {
   'toast.brouillonEnregistre': 'Draft saved.',
   'toast.brouillonFork': 'This draft had changed elsewhere — your version was kept separately.',
   'toast.envoye': 'Message sent.',
+  'toast.echoAttente': 'Copy still syncing — try again in a moment.',
 
   // --- Enveloppes d'erreur (le détail du cœur reste verbatim, L-3) -----
   'erreur.renvoi': 'Could not resend: {err}',
