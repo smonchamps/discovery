@@ -357,9 +357,14 @@
       onbrouillon();
     }
     // Vidange en arrière-plan ; hors ligne, la file attend — l'incident
-    // visible est la fente d'avis (P5). Puis purge du reflet distant du
-    // brouillon réglé (séquence v1).
+    // visible est la fente d'avis (P5). Vidange faite : relève ciblée
+    // du dossier Envoyés (la copie qu'ajoute le serveur doit se voir
+    // sans attendre le cycle complet — terrain 0.1.4) ; hors ligne le
+    // catch se tait, le cycle suivant rattrapera. Puis purge du reflet
+    // distant du brouillon réglé (séquence v1).
+    const compteEnvoi = expediteur.account_id;
     appel('flush_outbox')
+      .then(() => appel('sync_sent', { accountId: compteEnvoi }).catch(() => {}))
       .catch((err) => console.error('flush_outbox :', err))
       .then(() => appel('sync_drafts').catch(() => {}))
       .finally(() => onenvoye());

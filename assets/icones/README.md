@@ -1,6 +1,6 @@
 # Icônes vendorisées — sous-ensemble Material Symbols Rounded (R0-S3)
 
-**39 glyphes**, **18 364 octets** (17,9 Kio) woff2, servis depuis le dépôt.
+**43 glyphes**, **20 944 octets** (20,5 Kio) woff2, servis depuis le dépôt.
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
@@ -19,14 +19,21 @@ de la lecture et de la conversation). A16 (PLAN-SYNCHRO E3) ajoute
 `sync` (bouton de relève manuelle, barre d'état — D5 rouverte). A17
 (PLAN-PIECES-JOINTES E3) ajoute `hourglass_empty` (puce d'une pièce en
 rapatriement, transfert) et `warning` (refus au plafond du composeur).
+Terrain 0.1.4 (2026-08-14) : les icônes des avis RARES de la fente
+n'étaient JAMAIS entrées dans la police — `error` (échec d'envoi),
+`link_off` (reconnexion), `system_update_alt` (mise à jour, vu au
+premier auto-update), `volunteer_activism` (télémétrie) ; ajoutées
+toutes les quatre, et l'inventaire se vérifie désormais par BALAYAGE
+des sources (`grep` des noms utilisés), pas de mémoire.
 
 `all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
 `check_circle` `close` `delete` `description` `display_settings`
-`drafts` `edit_note` `edit_square` `format_list_bulleted` `format_quote`
-`forum` `group_add` `hourglass_empty` `inbox` `info` `keyboard` `link`
-`mark_email_unread` `notifications` `open_in_new` `person` `person_add`
-`reply` `reply_all` `report` `search` `send` `settings` `storage` `sync`
-`unfold_more` `visibility_off` `warning` `work`
+`drafts` `edit_note` `edit_square` `error` `format_list_bulleted`
+`format_quote` `forum` `group_add` `hourglass_empty` `inbox` `info`
+`keyboard` `link` `link_off` `mark_email_unread` `notifications`
+`open_in_new` `person` `person_add` `reply` `reply_all` `report`
+`search` `send` `settings` `storage` `sync` `system_update_alt`
+`unfold_more` `visibility_off` `volunteer_activism` `warning` `work`
 
 Ajouter un glyphe = régénérer le fichier (ci-dessous) **et** tenir cette
 liste à jour — l'inventaire est le contrat.
@@ -86,7 +93,7 @@ curl -s -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?fam
 ## Preuve ([apercu.html](apercu.html))
 
 Page servie localement sous CSP `default-src 'none'; font-src 'self'` :
-**PASS — police locale chargée, 40/40 ligatures repliées** (les 39 glyphes
-+ le témoin FILL 1/600 ; rejouée le 2026-08-14, A17). Vérification
-objective : une ligature résolue se replie sur ~1 em ; un nom resté en
-toutes lettres est bien plus large.
+**PASS — police locale chargée, 44/44 ligatures repliées** (les 43 glyphes
++ le témoin FILL 1/600 ; rejouée le 2026-08-14, terrain 0.1.4).
+Vérification objective : une ligature résolue se replie sur ~1 em ; un
+nom resté en toutes lettres est bien plus large.

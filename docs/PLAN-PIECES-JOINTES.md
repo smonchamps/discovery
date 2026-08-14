@@ -246,6 +246,28 @@ Gates : fmt, 407 Rust, clippy muet, 80 e2e. **Reste un second passage
 terrain** : reçu frais → pièces visibles à la première ouverture ;
 Envoyés frais idem ; transfert d'un reçu frais → rapatriement joué.
 
+**Terrain 2 (2026-08-14, Wind 0.1.4)** — les quatre gestes du plan
+tiennent : auto-update 0.1.3 → 0.1.4 sous la nouvelle clé ✅ (preuve
+de rotation soldée), pièce visible à la première ouverture du reçu ✅
+(le fix 7a75c5d tient), rapatriement joué au transfert ✅ et l'envoi
+gardé pendant qu'il court ✅. Trois défauts relevés, deux corrigés
+sur-le-champ :
+1. **l'icône du bandeau de mise à jour** en toutes lettres —
+   `system_update_alt` (et `error`, `link_off`, `volunteer_activism`,
+   les avis RARES de la fente) n'étaient JAMAIS entrés dans la police ;
+   régénérée 39 → 43 glyphes, inventaire désormais vérifié par
+   balayage des sources, preuve 44/44 ;
+2. **la copie Envoyés invisible après 4 minutes** — la passe légère et
+   le veilleur IDLE ne couvrent qu'INBOX ; commande neuve `sync_sent`
+   (relève ciblée du dossier Envoyés, gardée STATUS et verrou de
+   compte, sans bulles) jouée par le composeur sitôt la vidange
+   aboutie ;
+3. **les lenteurs pendant une synchro** (corps > 1 min, rapatriement
+   > 30 s) — chantier de PRIORITÉ AU GESTE consigné en dette (**D-7**),
+   étranger aux pièces jointes ; la puce 📎 tardive du volet central en
+   est un corollaire. Le plan se clôt au constat 0.1.5 du CE (icône du
+   bandeau, Envoyés à l'envoi).
+
 Hors périmètre (dit pour ne pas y glisser) : le glisser-déposer sur le
 composeur, le trombone en liste (dossier Brouillons, Réception), le
 tirage des pièces de brouillons nés ailleurs, l'aperçu des pièces avant

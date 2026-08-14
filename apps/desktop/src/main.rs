@@ -173,6 +173,7 @@ fn main() {
             commands::forward_context,
             commands::queue_send,
             commands::flush_outbox,
+            commands::sync_sent,
             commands::outbox_status,
             commands::outbox_requeue,
             commands::outbox_delete,

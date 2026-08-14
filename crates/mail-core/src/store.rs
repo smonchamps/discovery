@@ -667,6 +667,23 @@ impl Store {
     /// Declare la portee du regroupement d'un compte : la boite de
     /// reception, plus le dossier des envois quand le serveur en expose un.
     ///
+    /// Le dossier des envois du compte, sous son nom RÉSEAU — `None`
+    /// tant que la découverte des dossiers ne l'a pas mémorisé. C'est la
+    /// cible de la relève ciblée d'après-envoi : la copie qu'ajoute le
+    /// serveur d'envoi doit se voir sans attendre le cycle complet
+    /// (terrain 0.1.4, 2026-08-14 : 4 minutes sans copie visible).
+    pub fn sent_mailbox(&self, account_id: i64) -> Result<Option<String>, Error> {
+        Ok(self
+            .0
+            .query_row(
+                "SELECT sent_mailbox FROM accounts WHERE id = ?1",
+                [account_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten())
+    }
+
     /// Appele APRES la decouverte des dossiers, a chaque synchronisation :
     /// un serveur peut renommer son dossier d'envois, et un compte peut
     /// n'en avoir aucun — auquel cas les fils ne regroupent que les recus,

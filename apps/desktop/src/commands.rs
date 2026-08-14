@@ -2327,6 +2327,58 @@ pub async fn flush_outbox(
     Ok(summary)
 }
 
+/// Relève ciblée du dossier Envoyés d'UN compte — après un envoi
+/// accepté, la copie qu'ajoute le serveur (Gmail le fait lui-même à
+/// l'acceptation SMTP) doit se voir sans attendre le cycle complet :
+/// la passe légère ne couvre qu'INBOX, et le veilleur IDLE aussi
+/// (terrain 0.1.4 : 4 minutes sans copie visible). Gardée par STATUS
+/// (ADR 0017) et par le verrou de relève du compte (E4). Sans bulles :
+/// une copie d'envoi n'est pas une arrivée.
+#[tauri::command]
+pub async fn sync_sent(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: i64,
+) -> Result<(), String> {
+    let path = db_path(&app)?;
+    let session = auth_for(&path, &state, account_id)?;
+    let verrous = state.verrous_releve.clone();
+
+    let refreshed =
+        tauri::async_runtime::spawn_blocking(move || -> Result<Option<AccountSession>, String> {
+            let mut store = Store::open(&path).map_err(|err| err.to_string())?;
+            // Pas encore de dossier d'envois mémorisé (compte jamais
+            // synchronisé) : rien à relever, le cycle complet suivra.
+            let Some(sent) = store
+                .sent_mailbox(account_id)
+                .map_err(|err| err.to_string())?
+            else {
+                return Ok(None);
+            };
+            let verrou = verrou_compte(&verrous, session.email());
+            let _releve = verrou.lock();
+            let (mut server, fresh) = connect_imap(&session)?;
+            let mut problems = Vec::new();
+            let statut = server.folder_status(&sent).ok();
+            if doit_relever(&store, account_id, &sent, statut.as_ref(), &mut problems) {
+                SyncEngine::default()
+                    .sync(&mut server, &mut store, account_id, &sent)
+                    .map_err(|err| err.to_string())?;
+                solder_repere(&store, account_id, &sent, statut.as_ref(), &mut problems);
+            }
+            server.logout();
+            for problem in problems {
+                eprintln!("sync_sent : {problem}");
+            }
+            Ok(fresh)
+        })
+        .await
+        .map_err(|err| err.to_string())??;
+
+    reposer_sessions(&state, refreshed.into_iter().collect())?;
+    Ok(())
+}
+
 fn run_flush_all(
     jobs: Vec<(i64, AccountSession)>,
     db_path: &Path,
