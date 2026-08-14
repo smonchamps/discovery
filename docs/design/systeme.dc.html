@@ -731,6 +731,18 @@ rail de navigation compte les mêmes brouillons locaux que le dossier —
 jamais deux vérités. La barre de statut garde sa forme :
 « Brouillons · 3 messages ».</p>
       </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:28px; display:flex; flex-direction:column; gap:14px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">La liste sous recharge</p>
+        <p style="margin:0; font-size:13px; line-height:1.6; color:#4d534f; max-width:60ch">Une recharge — synchronisation, geste, veilleur — <b>ne montre
+jamais l'attente sur des lignes déjà servies</b> : les lignes affichées
+restent en place et chaque page est <b>remplacée à l'arrivée</b> de sa
+version fraîche, sans passage par le squelette et sans saut de
+défilement (A23). Les lignes d'attente (« … ») n'existent qu'aux deux
+moments où l'écran ne sait rien : le <b>premier chargement d'une
+source</b> (dossier, onglet, boîte — des données étrangères) et le
+<b>défilement vers des pages jamais servies</b>. Le total affiché ne
+retombe jamais à zéro pendant une recharge.</p>
+      </div>
     </div>
   </section>
 
@@ -1363,6 +1375,11 @@ directive — et tracé par un commit.</p>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-14</td>
           <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A22</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>La marque Wind livrée</b> (<code>docs/PLAN-WIND.md</code>, E2 ; W-D6) — la section « Marque » entre au Système : enveloppe (carré de 48, trait 3, bouts ronds) sur tuile <code>#e2ebe8</code> (rayon 15/64), pastille « W » <code>#365a4f</code> (25/64, rayon 8, débord de 6) ; couleurs figées hors thèmes et hors table des jetons (W-D3). Règle de taille : la pastille à 48 px et plus, l'enveloppe seule en dessous. Livré : <code>assets/marque/</code> (tuile complète, glyphe seul — le « W » tracé en traits ronds, jamais en fonte), <code>icons/icon.ico</code> régénéré en quatre tailles par <code>scripts/faire-icone.ps1</code> (256/48 avec pastille, 32/16 sans), la mini-tuile de 24 posée dans la barre devant le mot — l'écran 02 suit dans le même commit (DC-D2). Les kickers restent du texte seul.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-14</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A23</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>La recharge ne clignote plus</b> — retour terrain (« des traits à la place de chaque email pendant la synchronisation », <code>docs/PLAN-REACTIVITE.md</code> E1). La liste fenêtrée passe en <i>stale-while-revalidate</i> : les lignes servies restent affichées pendant qu'une recharge se resert, chaque page est remplacée à l'arrivée de sa version fraîche — le squelette est réservé au premier chargement d'une source et au défilement vers l'inconnu ; l'ancrage du défilement suit le <b>delta</b> de puces d'une page remplacée, plus le compte brut. Carte « La liste sous recharge » ajoutée à la section Boîte de réception. Gate e2e : recharge jouée transport retenu, zéro ligne d'attente sur des lignes servies.</td>
         </tr>
       </tbody>
     </table>

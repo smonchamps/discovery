@@ -10,10 +10,20 @@
 
 const invoke = globalThis.window?.__TAURI__?.core?.invoke;
 
-export const appel = invoke
+const brut = invoke
   ? (commande, args) => invoke(commande, args)
   : (commande) => Promise.reject(
       `transport indisponible : ${commande} (hors Tauri, impl distante non livree)`);
+
+// Couture e2e (PLAN-REACTIVITE E1) : une promesse posee dans
+// `window.__e2eRetenue` RETIENT tout appel au coeur jusqu'a sa
+// resolution — l'assertion « une recharge ne montre jamais l'attente »
+// doit observer l'ecran PENDANT le vol d'une resservie. Hors e2e la
+// variable n'existe pas : le chemin est identique a avant.
+export const appel = (commande, args) => {
+  const retenue = globalThis.window?.__e2eRetenue;
+  return retenue ? retenue.then(() => brut(commande, args)) : brut(commande, args);
+};
 
 // Le selecteur de fichiers natif (plugin dialog), par le MEME canal
 // invoke que le reste — pas d'API globale a injecter, une seule

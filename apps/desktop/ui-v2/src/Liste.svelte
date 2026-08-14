@@ -47,6 +47,11 @@
   let pages = new Map();
   let chipsParPage = new Map();
   let pending = new Map();
+  // Stale-while-revalidate (PLAN-REACTIVITE E1) : la génération à
+  // laquelle chaque page a été servie. Une recharge bump `generation`
+  // SANS jeter `pages` — les lignes affichées restent le fond, et une
+  // page ne se resert que si sa génération est dépareillée.
+  let servieA = new Map();
 
   const aPuces = (l) => l.thread_size > 1 || l.has_attachment;
   const pitch1 = $derived(h1 + GAP);
@@ -96,7 +101,9 @@
     // Le dossier Brouillons ne se sert pas ici : sa page vient de
     // `list_drafts` (PLAN-BROUILLONS, B-D1), pas de `list_category`.
     if (categorie === 'brouillons') return Promise.resolve();
-    if (pages.has(p) || pending.has(p)) return pending.get(p) || Promise.resolve();
+    if (servieA.get(p) === generation || pending.has(p)) {
+      return pending.get(p) || Promise.resolve();
+    }
     const nee = generation;
     const t0 = performance.now();
     const promesse = appel('list_category', {
@@ -109,16 +116,22 @@
       .then(async (page) => {
         if (nee !== generation) return; // source changée : page périmée
         total = page.total;
+        // Le delta de puces, pas le compte brut : une page REMPLACÉE
+        // affichait déjà les siennes — l'ancrage du défilement ne doit
+        // bouger que de la différence (première servie : avant = 0).
+        const avant = chipsParPage.get(p) ?? 0;
         pages.set(p, page.rows);
+        servieA.set(p, nee);
         let n = 0;
         for (const l of page.rows) if (aPuces(l)) n += 1;
         chipsParPage.set(p, n);
         pending.delete(p);
         if (premierePageMs === null) premierePageMs = performance.now() - t0;
-        if (n > 0 && (p + 1) * PAGE <= premier && cadre) {
+        const delta = n - avant;
+        if (delta !== 0 && (p + 1) * PAGE <= premier && cadre) {
           version += 1;
           await tick();
-          cadre.scrollTop += n * extraPuce;
+          cadre.scrollTop += delta * extraPuce;
         } else {
           version += 1;
         }
@@ -142,6 +155,7 @@
       generation += 1;
       pages = new Map();
       chipsParPage = new Map();
+      servieA = new Map();
       pending = new Map();
       total = 0;
       premier = 0;
@@ -301,12 +315,20 @@
     version += 1;
   }
   export function recharger() {
+    // Stale-while-revalidate (PLAN-REACTIVITE E1) : les lignes servies
+    // RESTENT affichées — chaque page est remplacée à l'arrivée de sa
+    // version fraîche, jamais jetée avant. Le squelette n'existe qu'au
+    // premier chargement d'une source et au défilement vers l'inconnu ;
+    // les pages hors écran, gardées telles quelles, se resservent au
+    // défilement (génération dépareillée).
     generation += 1;
-    pages = new Map();
-    chipsParPage = new Map();
     pending = new Map();
-    version += 1;
-    servirPage(Math.floor(premier / PAGE));
+    // L'écran d'abord — tout le rang visible, pas la seule page de
+    // `premier` (une fenêtre à cheval laissait sa seconde page sans
+    // resservie) — puis la page 0, qui porte le total frais.
+    const de = Math.floor(debut / PAGE);
+    const a = Math.floor(Math.max(0, fin - 1) / PAGE);
+    for (let p = de; p <= a; p++) servirPage(p);
     servirPage(0);
     // Une recherche ACTIVE se resert aussi : archiver un résultat doit
     // le retirer des résultats — la régression #4 de v1, même trou.

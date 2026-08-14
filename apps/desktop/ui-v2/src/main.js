@@ -47,4 +47,11 @@ window.__mesure = {
     if (!ligne) throw new Error(`aucune ligne servie à l'index ${index}`);
     return lecture.ouvrir(ligne);
   },
+  // La recharge que le cycle et les gestes déclenchent (PLAN-REACTIVITE
+  // E1) — exposée pour l'assertion « jamais d'attente sur des lignes
+  // déjà servies », jouée transport retenu (__e2eRetenue).
+  recharger() {
+    const { liste } = app.api();
+    liste.recharger();
+  },
 };

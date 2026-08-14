@@ -37,6 +37,41 @@ test('la nav porte les compteurs du décor Clarity', async () => {
   await expect(page.locator('[data-testid="nav-boite"]')).toHaveCount(3);
 });
 
+test('recharger garde les lignes servies — jamais de squelette (PLAN-REACTIVITE E1)', async () => {
+  // La recharge que le cycle et les gestes déclenchent en rafale ne
+  // doit JAMAIS repasser par les lignes d'attente : le transport est
+  // RETENU (couture __e2eRetenue), la recharge part, et l'écran doit
+  // montrer les MÊMES lignes — zéro « … » — jusqu'à l'arrivée de la
+  // version fraîche. Avant E1, `recharger()` jetait les pages : ce
+  // test montrait N squelettes, déterministe.
+  const lignes = page.locator('[data-testid="ligne"]');
+  const avant = await lignes.count();
+  expect(avant).toBeGreaterThan(0);
+  try {
+    await page.evaluate(() => {
+      window.__e2eRetenue = new Promise((liberer) => {
+        window.__e2eLiberer = liberer;
+      });
+      window.__mesure.recharger();
+    });
+    // Le vol est ouvert (transport retenu), le DOM a re-rendu : les
+    // lignes tiennent, aucune attente.
+    await expect(page.locator('[data-testid="ligne-attente"]')).toHaveCount(0);
+    await expect(lignes).toHaveCount(avant);
+  } finally {
+    // Libérer QUOI QU'IL ARRIVE : la suite est sérielle — une retenue
+    // qui survivrait au test gèlerait tous les suivants.
+    await page.evaluate(() => {
+      window.__e2eLiberer?.();
+      delete window.__e2eRetenue;
+      delete window.__e2eLiberer;
+    });
+  }
+  // La version fraîche a remplacé sans clignoter.
+  await expect(lignes.first()).toBeVisible();
+  await expect(page.locator('[data-testid="ligne-attente"]')).toHaveCount(0);
+});
+
 test("la barre d'état date la dernière relève — même sur échec", async () => {
   // Les comptes du décor n'ont pas de serveur : l'état STABLE ici est
   // l'échec de relève, et c'est justement lui qui doit dire depuis
