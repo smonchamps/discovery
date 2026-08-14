@@ -2327,6 +2327,32 @@ pub async fn flush_outbox(
     Ok(summary)
 }
 
+/// Quand retenter la relève ciblée d'Envoyés qui n'a rien rapporté —
+/// décision pure (PLAN-REACTIVITE E2). Gmail ajoute la copie de façon
+/// ASYNCHRONE après l'acceptation SMTP : la première relève peut passer
+/// AVANT elle et répondre « rien n'a bougé », honnêtement. Deux
+/// retentatives bornées (+5 s puis +15 s), puis silence — le cycle
+/// complet rattrapera ; on ne martèle pas un serveur qui n'a rien à
+/// donner (la leçon anti-martèlement du complément P0).
+fn retenter_apres(tentative: u32) -> Option<Duration> {
+    match tentative {
+        1 => Some(Duration::from_secs(5)),
+        2 => Some(Duration::from_secs(15)),
+        _ => None,
+    }
+}
+
+/// Le bilan de la relève ciblée d'Envoyés — fini le silence : les
+/// incidents remontent à l'UI comme ceux du cycle (terrain 0.1.5 :
+/// l'instruction était aveugle, tout partait en `eprintln` et le
+/// `.catch(() => {})` avalait le reste).
+#[derive(Serialize)]
+pub struct SentReport {
+    pub fetched: usize,
+    pub deleted: usize,
+    pub errors: Vec<String>,
+}
+
 /// Relève ciblée du dossier Envoyés d'UN compte — après un envoi
 /// accepté, la copie qu'ajoute le serveur (Gmail le fait lui-même à
 /// l'acceptation SMTP) doit se voir sans attendre le cycle complet :
@@ -2334,18 +2360,33 @@ pub async fn flush_outbox(
 /// (terrain 0.1.4 : 4 minutes sans copie visible). Gardée par STATUS
 /// (ADR 0017) et par le verrou de relève du compte (E4). Sans bulles :
 /// une copie d'envoi n'est pas une arrivée.
+///
+/// E2 (PLAN-REACTIVITE) : la relève COMPTE son courrier — génération
+/// bumpée, la sonde UI voit la base bouger (le défaut certain du
+/// terrain 0.1.5 : relève muette, copie entrée mais écran jamais
+/// prévenu) — et RETENTE, bornée, quand elle ne rapporte rien (la
+/// copie asynchrone peut suivre l'acceptation de quelques secondes).
+/// Chaque tentative prend et rend le verrou du compte : les pauses ne
+/// bloquent ni le cycle ni le veilleur.
 #[tauri::command]
 pub async fn sync_sent(
     app: AppHandle,
     state: State<'_, AppState>,
     account_id: i64,
-) -> Result<(), String> {
+) -> Result<SentReport, String> {
     let path = db_path(&app)?;
     let session = auth_for(&path, &state, account_id)?;
     let verrous = state.verrous_releve.clone();
+    let cycle = state.sync_cycle.clone();
 
-    let refreshed =
-        tauri::async_runtime::spawn_blocking(move || -> Result<Option<AccountSession>, String> {
+    let (rapport, refreshed) = tauri::async_runtime::spawn_blocking(
+        move || -> Result<(SentReport, Vec<AccountSession>), String> {
+            let mut rapport = SentReport {
+                fetched: 0,
+                deleted: 0,
+                errors: Vec::new(),
+            };
+            let mut sessions = Vec::new();
             let mut store = Store::open(&path).map_err(|err| err.to_string())?;
             // Pas encore de dossier d'envois mémorisé (compte jamais
             // synchronisé) : rien à relever, le cycle complet suivra.
@@ -2353,30 +2394,67 @@ pub async fn sync_sent(
                 .sent_mailbox(account_id)
                 .map_err(|err| err.to_string())?
             else {
-                return Ok(None);
+                return Ok((rapport, sessions));
             };
-            let verrou = verrou_compte(&verrous, session.email());
-            let _releve = verrou.lock();
-            let (mut server, fresh) = connect_imap(&session)?;
-            let mut problems = Vec::new();
-            let statut = server.folder_status(&sent).ok();
-            if doit_relever(&store, account_id, &sent, statut.as_ref(), &mut problems) {
-                SyncEngine::default()
-                    .sync(&mut server, &mut store, account_id, &sent)
-                    .map_err(|err| err.to_string())?;
-                solder_repere(&store, account_id, &sent, statut.as_ref(), &mut problems);
+            let mut session = session;
+            let mut tentative = 0u32;
+            loop {
+                tentative += 1;
+                {
+                    let verrou = verrou_compte(&verrous, session.email());
+                    let _releve = verrou.lock();
+                    let (mut server, fresh) = connect_imap(&session)?;
+                    if let Some(fresh) = fresh {
+                        session = fresh.clone();
+                        sessions.push(fresh);
+                    }
+                    let statut = server.folder_status(&sent).ok();
+                    if doit_relever(
+                        &store,
+                        account_id,
+                        &sent,
+                        statut.as_ref(),
+                        &mut rapport.errors,
+                    ) {
+                        let report = SyncEngine::default()
+                            .sync(&mut server, &mut store, account_id, &sent)
+                            .map_err(|err| err.to_string())?;
+                        solder_repere(
+                            &store,
+                            account_id,
+                            &sent,
+                            statut.as_ref(),
+                            &mut rapport.errors,
+                        );
+                        rapport.fetched += report.fetched;
+                        rapport.deleted += report.deleted;
+                    }
+                    server.logout();
+                }
+                if rapport.fetched + rapport.deleted > 0 {
+                    // Le courrier se voit : même chemin que la relève
+                    // INBOX — compteur et génération, la sonde existante
+                    // resert liste et nav (R0-S5, aucun canal neuf).
+                    cycle.courrier.fetch_add(
+                        (rapport.fetched + rapport.deleted) as u64,
+                        Ordering::Relaxed,
+                    );
+                    cycle.generation.fetch_add(1, Ordering::Relaxed);
+                    break;
+                }
+                match retenter_apres(tentative) {
+                    Some(delai) => std::thread::sleep(delai),
+                    None => break,
+                }
             }
-            server.logout();
-            for problem in problems {
-                eprintln!("sync_sent : {problem}");
-            }
-            Ok(fresh)
-        })
-        .await
-        .map_err(|err| err.to_string())??;
+            Ok((rapport, sessions))
+        },
+    )
+    .await
+    .map_err(|err| err.to_string())??;
 
-    reposer_sessions(&state, refreshed.into_iter().collect())?;
-    Ok(())
+    reposer_sessions(&state, refreshed)?;
+    Ok(rapport)
 }
 
 fn run_flush_all(
@@ -3690,6 +3768,21 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// La table de la retentative d'Envoyés (PLAN-REACTIVITE E2) : la
+    /// copie asynchrone de Gmail peut suivre l'acceptation SMTP de
+    /// quelques secondes — deux retentatives bornées, puis le silence
+    /// (le cycle rattrapera). Un compteur à zéro n'existe pas par
+    /// construction (la première tentative est la n°1) ; s'il arrivait,
+    /// on s'arrête — jamais une boucle.
+    #[test]
+    fn la_retentative_est_bornee() {
+        assert_eq!(retenter_apres(1), Some(Duration::from_secs(5)));
+        assert_eq!(retenter_apres(2), Some(Duration::from_secs(15)));
+        assert_eq!(retenter_apres(3), None);
+        assert_eq!(retenter_apres(0), None);
+        assert_eq!(retenter_apres(u32::MAX), None);
+    }
 
     /// La table du recul (complément P0) : rien avant deux échecs — la
     /// cadence de 5 min est déjà une politesse —, puis le délai double,

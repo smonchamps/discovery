@@ -735,6 +735,15 @@
   function apresEnvoi() {
     chargerNav();
   }
+  // E2 (PLAN-REACTIVITE) : la relève ciblée d'Envoyés rapporte du
+  // courrier — la copie est EN BASE, la liste se resert tout de suite
+  // (le cas exact du constat 0.1.5 : on envoie, on regarde Envoyés).
+  // E1 rend la resservie invisible ; la sonde de génération, bumpée par
+  // la même relève, repassera derrière sans coût.
+  function apresCourrierEnvoye() {
+    chargerNav();
+    liste?.recharger();
+  }
   // Porte simple (D4) : le compte est ajouté, la nav se recharge,
   // l'écran 01 s'efface de lui-même — et la première synchro part
   // aussitôt (la session vient d'être posée par l'ajout).
@@ -896,6 +905,7 @@
 
     <Composition bind:this={composition} {comptes} {compte}
                  onflash={flash} onenvoye={apresEnvoi}
+                 oncourrier={apresCourrierEnvoye}
                  onbrouillon={sonderBrouillons} />
     <Reglages bind:this={reglages} {comptes} onajoute={compteAjoute}
               onsupprime={compteRetire} />

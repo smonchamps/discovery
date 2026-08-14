@@ -41,6 +41,10 @@
     // Chaque geste qui change les brouillons le rapporte : la liste
     // (dossier, mention sur le fil) se ressonde sans attendre les 10 s.
     onbrouillon = () => {},
+    // E2 (PLAN-REACTIVITE) : la copie Envoyés vient d'ENTRER en base
+    // (bilan de la relève ciblée) — l'App resert liste et nav tout de
+    // suite, sans attendre la sonde de génération.
+    oncourrier = () => {},
   } = $props();
 
   let visible = $state(false);
@@ -357,16 +361,33 @@
       onbrouillon();
     }
     // Vidange en arrière-plan ; hors ligne, la file attend — l'incident
-    // visible est la fente d'avis (P5). Vidange faite : relève ciblée
-    // du dossier Envoyés (la copie qu'ajoute le serveur doit se voir
-    // sans attendre le cycle complet — terrain 0.1.4) ; hors ligne le
-    // catch se tait, le cycle suivant rattrapera. Puis purge du reflet
-    // distant du brouillon réglé (séquence v1).
+    // visible est la fente d'avis (P5). Vidange faite ET fructueuse :
+    // relève ciblée du dossier Envoyés (la copie qu'ajoute le serveur
+    // doit se voir sans attendre le cycle complet — terrain 0.1.4),
+    // lancée en PARALLÈLE de la suite : elle retente en interne (+5 s,
+    // +15 s) si la copie asynchrone n'est pas encore là (E2), et ni le
+    // reflet des brouillons ni le bilan d'envoi n'ont à l'attendre.
+    // Son bilan dit tout — les incidents en console (le `.catch` muet
+    // du terrain 0.1.5 a rendu l'instruction aveugle : plus jamais),
+    // le courrier rapporté resert la liste par `oncourrier`.
     const compteEnvoi = expediteur.account_id;
     appel('flush_outbox')
-      .then(() => appel('sync_sent', { accountId: compteEnvoi }).catch(() => {}))
+      .then((bilan) => {
+        // Un envoi DIFFÉRÉ (hors ligne) n'a rien déposé chez le
+        // serveur : rien à relever, le cycle du retour s'en chargera.
+        if (bilan.sent > 0) {
+          appel('sync_sent', { accountId: compteEnvoi })
+            .then((releve) => {
+              for (const incident of releve.errors) {
+                console.error('sync_sent :', incident);
+              }
+              if (releve.fetched > 0 || releve.deleted > 0) oncourrier();
+            })
+            .catch((err) => console.error('sync_sent :', err));
+        }
+        return appel('sync_drafts').catch(() => {});
+      })
       .catch((err) => console.error('flush_outbox :', err))
-      .then(() => appel('sync_drafts').catch(() => {}))
       .finally(() => onenvoye());
   }
 

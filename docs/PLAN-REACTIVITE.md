@@ -199,26 +199,43 @@ de `systeme.dc.html`, même commit.
 
 ### E2 — Envoyés soldé (le constat dû de PLAN-PIECES-JOINTES)
 
-L'instruction d'abord, la méthode qui a tranché deux fois : **lire
-`wind.db` sur le poste du CE** après un envoi — l'enveloppe est-elle
-entrée dans `[Gmail]/Messages envoy&AOk-s` ? Si oui, la piste 3 seule
-explique tout ; si non, la course d'asynchronie (piste 2) est active
-aussi. Les correctifs couvrent les deux :
+**État : livrée le 2026-08-14 (GO CE), gate complète verte — terrain
+CE dû (envoi réel → copie ≤ 5 s).**
 
-- **`sync_sent` compte son courrier** : la relève passe par le même
-  chemin que `relever_inbox` — `fetched + deleted > 0` → bump de
-  `cycle.courrier` ET `cycle.generation`. La sonde UI existante (5 s)
-  voit bouger et resert liste + nav, sans canal neuf (R0-S5) ;
-- **la retentative bornée** : si la relève ciblée ne rapporte rien
-  (copie asynchrone pas encore là), elle retente à +5 s puis +15 s,
-  puis se tait — le cycle rattrapera. Décision pure testée
-  (`retenter_apres(tentative)`) ;
-- **les erreurs sortent de l'ombre** : le `.catch(() => {})` de
-  `envoyer()` devient un `console.error` ; les `problems` de
-  `sync_sent` remontent au bilan comme ceux du cycle ;
-- `apresEnvoi()` resert la liste si la catégorie affichée est
-  `envoyes` — sans attendre la sonde (le cas exact du constat : on
-  envoie, on va voir Envoyés).
+**L'instruction du 2026-08-14 (base réelle, lecture seule) : les
+copies SONT en base.** Le « Test PJ 2 » du constat (journal outbox
+n°2, `sent`, 16:44:20) vit dans `[Gmail]/Messages envoy&AOk-s` du
+compte émetteur (uid 431, 16:44:28) ; `sent_mailbox` est posé pour les
+deux comptes (pas de « piste 0 » — le retour silencieux sur dossier
+inconnu n'a jamais joué) ; repères UIDNEXT/modseq sains. La base ne
+porte pas d'horodatage d'insertion : impossible de dater l'entrée
+rétroactivement — mais le tableau est exactement celui de la piste 3
+confirmée au code (la copie entre, l'écran ne l'apprend jamais), et la
+retentative couvre la piste 2 par construction. Les correctifs
+couvrent les deux :
+
+- **`sync_sent` compte son courrier** *(livré)* : même chemin que la
+  relève INBOX — `fetched + deleted > 0` → bump de `cycle.courrier` ET
+  `cycle.generation`. La sonde UI existante (5 s) voit bouger et
+  resert liste + nav, sans canal neuf (R0-S5) ;
+- **la retentative bornée** *(livré)* : la relève qui ne rapporte rien
+  retente à +5 s puis +15 s, puis se tait — le cycle rattrapera.
+  Décision pure `retenter_apres(tentative)`, table de tests ; chaque
+  tentative prend et REND le verrou du compte (les pauses ne bloquent
+  ni le cycle ni le veilleur) ;
+- **les erreurs sortent de l'ombre** *(livré)* : `sync_sent` rend un
+  bilan (`SentReport { fetched, deleted, errors }`) — les `problems`
+  y remontent comme ceux du cycle, l'UI les dit en console ; le
+  `.catch(() => {})` est mort ;
+- **la resservie immédiate** *(livré, affiné à l'implémentation)* : le
+  bilan de la relève — pas `apresEnvoi()`, qui part trop tôt — resert
+  liste + nav par `oncourrier` sitôt `fetched > 0` : le chemin couvre
+  toutes les catégories (E1 rend la resservie invisible, la
+  conditionner à `envoyes` n'économisait rien) et ferme l'écart de la
+  sonde (copie entrée à t+2 s → visible à t+2 s, pas t+7 s). La relève
+  court en PARALLÈLE de `sync_drafts` et du bilan d'envoi (elle peut
+  durer 20 s en retentative), et ne part que si la vidange a VRAIMENT
+  envoyé (`bilan.sent > 0` — un différé hors ligne n'a rien déposé).
 
 Gate terrain : envoi réel → copie visible dans Envoyés **≤ 5 s** après
 la vidange (palier intermédiaire d'O4 — E3 l'amène à < 1 s), constat
