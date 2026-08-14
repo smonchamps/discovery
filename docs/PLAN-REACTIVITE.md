@@ -337,15 +337,29 @@ sort des gestes sur un écho s'inscrivent au Système, même commit.
 
 ### E4 — L'aperçu né avec la ligne (R-D2)
 
-**État : livrée le 2026-08-14 (GO CE), gate complète verte — terrain
-CE dû (arrivée au repos → ligne AVEC aperçu en un seul affichage,
-borne < 30 s de PLAN-SYNCHRO re-constatée ; contrôle `wind.db` à
-+5 min). C'est la dernière étape : le plan se clôt à ce constat.**
-Livré au mot du plan — corps des arrivées dans `relever_inbox` (borné
-par la décision pure `corps_a_l_arrivee`, N = 10, table de tests),
-pompe amorcée à la génération (gardée en réentrance — un no-op quand
-tout est là), liste resservie au fil des lots. Amendement A25 au
-Système (DC-D2).
+**État : livrée le 2026-08-14 (GO CE), corrigée au premier terrain le
+jour même — second constat CE dû (arrivée au repos → ligne AVEC aperçu
+en un seul affichage, borne < 30 s de PLAN-SYNCHRO re-constatée ;
+contrôle `wind.db` à +5 min). C'est la dernière étape : le plan se
+clôt à ce constat.** Livré au mot du plan — corps des arrivées dans
+`relever_inbox` (borné par la décision pure `corps_a_l_arrivee`,
+N = 10, table de tests), pompe amorcée à la génération (gardée en
+réentrance — un no-op quand tout est là), liste resservie au fil des
+lots. Amendement A25 au Système (DC-D2).
+
+**Premier terrain (2026-08-14) : « la ligne se remplit après 3 ou
+4 secondes » — la gate casse, l'instruction tranche le jour même.**
+La signature (3-4 s = connexion neuve + lot + resservie) dit que le
+corps n'était PAS en base au bump : c'est la pompe qui remplissait.
+Cause : la borne était mesurée sur `report.fetched` — or sur le chemin
+CONDSTORE, `fetched` compte TOUS les drapeaux glissés du delta, et
+Gmail fait glisser HIGHESTMODSEQ à chaque étiquette (l'observation
+consignée en tête de PLAN-SYNCHRO, sur cette boîte même) : chaque
+arrivée « débordait » la borne, la relève sautait les corps à tous les
+coups. Correctif : la borne se mesure sur les ARRIVÉES — les UID
+au-dessus du repère d'avant-relève, que `relever_inbox` tient déjà
+pour les bulles (`Store::arrivees_depuis`, testée : un drapeau
+retouché ne compte pas). Seul l'UID sépare le neuf du retouché.
 
 - **la relève INBOX rapatrie les corps des arrivées** : dans
   `relever_inbox`, après l'upsert des enveloppes et AVANT le bump de

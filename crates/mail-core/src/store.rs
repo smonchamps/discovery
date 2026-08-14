@@ -1713,6 +1713,24 @@ impl Store {
         )?;
         Ok(max)
     }
+
+    /// Combien d'enveloppes d'une boîte portent un UID STRICTEMENT
+    /// au-dessus du repère — les ARRIVÉES d'une relève qui vient de se
+    /// solder (PLAN-REACTIVITE E4, terrain du 2026-08-14). Le `fetched`
+    /// du rapport ne sait pas les compter : un delta CONDSTORE y mêle
+    /// tous les drapeaux glissés — et Gmail fait glisser le modseq à
+    /// chaque étiquette. Seul l'UID sépare le neuf du retouché.
+    pub fn arrivees_depuis(&self, account_id: i64, mailbox: &str, uid: Uid) -> Result<u64, Error> {
+        let Some(state) = self.sync_state(account_id, mailbox)? else {
+            return Ok(0);
+        };
+        let count: i64 = self.0.query_row(
+            "SELECT COUNT(*) FROM envelopes WHERE mailbox_id = ?1 AND uid > ?2",
+            params![state.mailbox_id, uid],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
 }
 
 /// Fait évoluer en place une base d'une version précédente : les colonnes
@@ -2500,6 +2518,43 @@ mod tests {
             !store.set_flagged_local(id, 1, true).unwrap(),
             "déjà étoilé : aucun changement à journaliser"
         );
+    }
+
+    /// E4 (PLAN-REACTIVITE, 1ᵉʳ terrain) : les ARRIVÉES se comptent à
+    /// l'UID, jamais au `fetched` du rapport — un delta CONDSTORE y mêle
+    /// tous les drapeaux glissés (Gmail à chaque étiquette), et la borne
+    /// des corps « débordait » à chaque arrivée.
+    #[test]
+    fn les_arrivees_se_comptent_a_l_uid() {
+        let (mut store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "ancien", 100, true),
+                    envelope(2, "ancien aussi", 200, true),
+                ],
+            )
+            .unwrap();
+        assert_eq!(store.arrivees_depuis(account, "INBOX", 2).unwrap(), 0);
+
+        // Deux arrivées + un vieux drapeau retouché (upsert du même
+        // uid 1) : le compte ne bouge que pour les UID neufs.
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "ancien", 100, false),
+                    envelope(3, "neuf", 300, false),
+                    envelope(4, "neuf aussi", 400, false),
+                ],
+            )
+            .unwrap();
+        assert_eq!(store.arrivees_depuis(account, "INBOX", 2).unwrap(), 2);
+        // Boîte inconnue : zéro, jamais une erreur — la relève d'un
+        // compte jamais synchronisé ne doit pas casser sur ce compte.
+        assert_eq!(store.arrivees_depuis(account, "Ailleurs", 0).unwrap(), 0);
     }
 
     #[test]

@@ -598,7 +598,22 @@ fn relever_inbox(
     // la pompe, que l'UI amorce à la génération. `bodies_to_backfill`
     // sert du plus récent au plus ancien : le budget « nombre
     // d'arrivées » couvre exactement le lot qui vient d'entrer.
-    let corps = corps_a_l_arrivee(report.fetched);
+    //
+    // La borne se mesure sur les ARRIVÉES (UID au-dessus du repère
+    // d'avant-relève), JAMAIS sur `report.fetched` — premier terrain E4
+    // (2026-08-14) : sur Gmail, chaque arrivée fait glisser HIGHESTMODSEQ
+    // et le delta CONDSTORE rend des dizaines d'enveloppes retouchées
+    // (l'observation consignée de PLAN-SYNCHRO) ; mesuré sur `fetched`,
+    // le lot « débordait » à CHAQUE arrivée et la ligne naissait muette,
+    // remplie 3-4 s plus tard par la pompe.
+    let arrivees = match store.arrivees_depuis(account_id, MAILBOX, last_uid_before) {
+        Ok(n) => n as usize,
+        Err(err) => {
+            problems.push(format!("compte des arrivées : {err}"));
+            0
+        }
+    };
+    let corps = corps_a_l_arrivee(arrivees);
     if corps > 0
         && let Err(err) = mail_core::backfill_bodies(
             server,
@@ -2422,15 +2437,17 @@ fn retenter_apres(tentative: u32) -> Option<Duration> {
 const CORPS_A_L_ARRIVEE_MAX: usize = 10;
 
 /// Combien de corps rapatrier DANS la relève INBOX qui vient d'apporter
-/// `fetched` enveloppes — décision pure (PLAN-REACTIVITE E4, R-D2). Un
-/// lot courant : tous ses corps, la ligne naît avec son aperçu. Un lot
-/// qui déborde (rattrapage après coupure, intégrale) : zéro — le bump
-/// part d'abord, les lignes vite, et les corps échoient à la pompe.
-fn corps_a_l_arrivee(fetched: usize) -> usize {
-    if fetched > CORPS_A_L_ARRIVEE_MAX {
+/// `arrivees` messages NEUFS (UID au-dessus du repère — jamais le
+/// `fetched` du rapport, gonflé des drapeaux d'un delta CONDSTORE) —
+/// décision pure (PLAN-REACTIVITE E4, R-D2). Un lot courant : tous ses
+/// corps, la ligne naît avec son aperçu. Un lot qui déborde (rattrapage
+/// après coupure, intégrale) : zéro — le bump part d'abord, les lignes
+/// vite, et les corps échoient à la pompe.
+fn corps_a_l_arrivee(arrivees: usize) -> usize {
+    if arrivees > CORPS_A_L_ARRIVEE_MAX {
         0
     } else {
-        fetched
+        arrivees
     }
 }
 
