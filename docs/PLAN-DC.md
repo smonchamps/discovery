@@ -197,13 +197,19 @@ les écrans suivent le parcours réel :
 
 ## 7. Ordre de livraison
 
-- **E1 — gouvernance et rattrapage** *(un commit docs)* : A17, A18,
+- **E1 — gouvernance et rattrapage** *(livré le 2026-08-14, commit
+  245f07a)* : A17, A18,
   A19 inscrits ; `ui_prototype.html` supprimé ; en-tête et préambule
   du journal réécrits ; `support.js` retiré ; `#ea9a90` ; compteur →
-  renvoi ; thèmes fantômes retirés de la section (le retrait complet
-  avec re-dessin de la grille attend E2 si besoin de mise en page).
-  Après E1, plus aucune contradiction entre normes — le Système est
-  juste, pas encore complet.
+  renvoi ; thèmes fantômes retirés de la section. Livré au-delà du
+  prévu : l'accent de « L'air » dessiné `#2d6f99` réaligné sur le livré
+  `#3a7aa1` (dérive découverte à l'exécution), le banc manuel
+  `e2e/parite.mjs` retiré avec le prototype (son seul objet était la
+  comparaison au fichier supprimé ; jamais dans la suite Playwright —
+  `testDir: tests/`), commentaires de provenance rectifiés
+  (`systeme.css`, `seed_clarity.rs`). Après E1, plus aucune
+  contradiction entre normes — le Système est juste, pas encore
+  complet.
 - **E2 — l'exhaustivité** *(le gros morceau, découpable par section)* :
   les sections de la cible (§3) dessinées ou révisées ; les maquettes
   supprimées ; A20 inscrit. La section **pièces jointes se dessine
