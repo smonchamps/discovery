@@ -25,7 +25,7 @@
   <header style="display:flex; flex-direction:column; gap:14px; max-width:760px">
     <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e">Discovery — direction « Clarity »</p>
     <h1 style="margin:0; font-size:40px; line-height:1.1; font-weight:600; letter-spacing:-.02em">Système de référence et écrans</h1>
-    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f">Retenue, calme, matière chaude. Quatre actions visibles à l'écran, jamais plus. Un seul accent, un seul poids de filet, un seul niveau d'élévation. Ce document est la source à transmettre à l'implémentation.</p>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f">Retenue, calme, matière chaude. Le moins d'actions visibles possible — l'idéal des quatre, amendé au terrain quand l'usage l'exige (A14). Un seul accent, un seul poids de filet, un seul niveau d'élévation. Ce document est la source unique : ce qu'il dessine est livré, ce qui est livré s'y dessine (A18).</p>
   </header>
 
   <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
@@ -1093,9 +1093,12 @@ empilement</b> (amendement A4).</p>
 bloquante au démarrage. Rien d'autre ne bloque jamais.</p>
       <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">La <b>fente d'avis</b>, en haut : au plus <b>UN</b> avis persistant,
 choisi par priorité fixe — échec d'envoi (alerte), mise à jour prête,
-rapport d'incident, consentement télémétrie, brouillons. L'avis porte la
+rapport d'incident, consentement télémétrie. L'avis porte la
 signature (surface, filet d'accent 2 px, ombre unique). Le suivant
-n'apparaît qu'une fois le précédent résolu ou écarté.</p>
+n'apparaît qu'une fois le précédent résolu ou écarté. La source
+« brouillons » est <b>retirée</b> (PLAN-BROUILLONS, 2026-08-13) : un
+brouillon n'est pas un incident — la reprise vit au dossier Brouillons
+et dans la conversation, jamais dans la fente.</p>
       <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">La <b>ligne de progression</b>, en bas contre la barre d'état : au plus
 <b>UNE</b> progression (synchronisation ou rattrapage), en texte atténué,
 qui ne vole jamais la vedette à un avis. L'attente sereine de la boîte
@@ -1106,7 +1109,10 @@ discret marque l'anomalie sans monter en avis —, le cycle courant nommé
 (« Synchronisation · 2/4 · compte… »), une <b>barre fine de 2 px</b> au
 ras supérieur de la barre d'état (déterminée quand un % honnête existe,
 règles de <code>sync_percent</code> ; balayage sinon) et le <b>bouton de
-relève</b> à droite. La ligne reste UNE — jamais un empilement.</p>
+relève</b> à droite. La ligne reste UNE — jamais un empilement. Les
+cinq états sont dessinés à la section « Barre d'état et
+synchronisation » ; « Hors ligne » y vit aussi (P0-bis) — un état,
+pas un incident.</p>
     </div>
   </section>
 
@@ -1163,13 +1169,16 @@ relève</b> à droite. La ligne reste UNE — jamais un empilement.</p>
     </div>
     <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px 26px; display:flex; flex-direction:column; gap:10px">
       <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Règles de transmission</p>
-      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Le non-lu se lit par la graisse de l'expéditeur et la densité de l'encre, jamais par une pastille colorée. Le survol teinte le fond sans déplacer le contenu. La sélection ajoute la surface ivoire, le filet d'accent de 2 px et l'unique ombre. Quatre actions au plus dans une barre : Répondre, Transférer, Archiver, Supprimer — le reste vit dans le message lui-même.</p>
-      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch"><b>Amendement A2.</b> La ligne a une hauteur <b>fixe : 104 px</b>,
-quelle que soit sa charge — le rythme vertical ne se négocie pas. Le fil et
-les pièces jointes se signalent par des <b>marqueurs logés dans la première
-ligne</b>, à gauche de l'heure : l'icône à 16 px suivie du nombre, en texte
-atténué. Les puces (conversation, fichiers) appartiennent au <b>volet de
-lecture</b> — jamais à la ligne de liste.</p>
+      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Le non-lu se lit par la graisse de l'expéditeur et la densité de l'encre, jamais par une pastille colorée. Le survol teinte le fond sans déplacer le contenu. La sélection ajoute la surface ivoire, le filet d'accent de 2 px et l'unique ombre. Cinq actions dans la barre : Répondre, Répondre à tous (A14 — la cinquième s'est gagnée au terrain), Transférer, Archiver, Supprimer — le reste vit dans le message lui-même.</p>
+      <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch"><b>Amendement A2 — rétrogradé en repli documenté (A6).</b> La ligne
+<b>livrée</b> est celle du prototype : hauteur au contenu, puces (fil,
+fichiers) logées dans la ligne, objet à 16 px (A9) — l'écran 02 la
+dessine. Le repli, éprouvé au terrain (8/120 débordements avec puces ;
+0/120 sans), reste dégainable sur mesure du gate perf : hauteur
+<b>fixe 104 px</b> quelle que soit la charge, fil et pièces en
+<b>marqueurs de première ligne</b> (icône 16 px + nombre, atténué),
+puces bannies de la liste. Les états ci-dessus valent pour les deux
+formes.</p>
     </div>
   </section>
 
