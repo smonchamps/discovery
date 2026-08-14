@@ -135,7 +135,7 @@ pub async fn connect_accounts(
 
     // Crochet E2E : comptes factices (emails séparés par des virgules),
     // jetons invalides par construction — hors ligne garanti.
-    if let Ok(list) = std::env::var("DISCOVERY_E2E_ACCOUNT") {
+    if let Ok(list) = std::env::var("WIND_E2E_ACCOUNT") {
         let store = Store::open(&path).map_err(|err| err.to_string())?;
         let mut infos = Vec::new();
         for email in list.split(',').map(str::trim).filter(|e| !e.is_empty()) {
@@ -3145,7 +3145,7 @@ fn reposer_sessions(
 pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     // Crochet E2E : base isolée fournie par le pilote de test — la vraie
     // base de l'utilisateur ne doit jamais être touchée par un test.
-    if let Ok(path) = std::env::var("DISCOVERY_DB_PATH") {
+    if let Ok(path) = std::env::var("WIND_DB_PATH") {
         return Ok(PathBuf::from(path));
     }
     let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
@@ -3538,9 +3538,9 @@ pub async fn update_check(app: AppHandle) -> Result<Option<UpdateInfo>, String> 
     // Les E2E ne parlent a AUCUN serveur (passation §7.5). Sans cette
     // garde, des qu'une Release existe, l'endpoint `latest.json`
     // repondrait et le bandeau apparaitrait en plein test — un flake.
-    // `DISCOVERY_DB_PATH` n'est pose que par le harnais : c'est le meme
+    // `WIND_DB_PATH` n'est pose que par le harnais : c'est le meme
     // signal d'isolation que la base jetable.
-    if std::env::var("DISCOVERY_DB_PATH").is_ok() {
+    if std::env::var("WIND_DB_PATH").is_ok() {
         return Ok(None);
     }
     let updater = app.updater().map_err(|err| err.to_string())?;
@@ -3737,7 +3737,7 @@ mod tests {
     /// premier fichier — la perte serait silencieuse.
     #[test]
     fn a_second_save_never_overwrites_the_first() {
-        let dir = std::env::temp_dir().join(format!("discovery-pj-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("wind-pj-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let _ = std::fs::remove_file(dir.join("facture.pdf"));
 

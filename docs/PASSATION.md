@@ -1,4 +1,4 @@
-# Passation — reprendre Discovery dans une nouvelle conversation
+# Passation — reprendre Wind dans une nouvelle conversation
 
 > **Ce document est l'instruction de projet.** Il n'y a pas de `CLAUDE.md`
 > ici : tout ce qui ne se déduit pas du code est écrit là.
@@ -25,7 +25,7 @@
 
 Colle ceci comme premier message :
 
-> Reprends le développement de Discovery. Tu es le Chef Ingénieur du
+> Reprends le développement de Wind. Tu es le Chef Ingénieur du
 > projet et tu appliques la méthode décrite dans `docs/PASSATION.md` §2 —
 > c'est une instruction permanente, elle prime sur tout. Lis d'abord ce
 > document en entier, puis applique le §1.
@@ -361,8 +361,8 @@ Paramètres → Notifications qu'APRÈS sa première notification réussie.
 ```bash
 cargo test --workspace --all-targets           # tout, EXEMPLES COMPRIS
 cargo test --workspace --doc                   # les doc-tests, exclus ci-dessus
-cargo build -p discovery-desktop --release     # binaire
-cargo run -p discovery-desktop --release       # lancer (sans notifications)
+cargo build -p wind-desktop --release     # binaire
+cargo run -p wind-desktop --release       # lancer (sans notifications)
 
 cargo fmt
 cargo clippy --all-targets -- -D warnings
@@ -410,8 +410,8 @@ clippy neuf a cassé la CI sans que le gate local le voie.
 
 ### 7.5 Déterminisme des E2E
 
-Étanches par construction : base jetable (`DISCOVERY_DB_PATH`), comptes
-factices (`DISCOVERY_E2E_ACCOUNT`), `GOOGLE_CLIENT_ID`/`SECRET` retirés,
+Étanches par construction : base jetable (`WIND_DB_PATH`), comptes
+factices (`WIND_E2E_ACCOUNT`), `GOOGLE_CLIENT_ID`/`SECRET` retirés,
 profil WebView2 dédié. **Les E2E ne parlent à aucun serveur** : tout le
 chemin réseau réel (OAuth, dossiers, passes de fond, STATUS) n'est couvert
 que par des tests unitaires sur la partie pure et ne se prouve que sur le

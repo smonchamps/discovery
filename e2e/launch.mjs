@@ -2,8 +2,8 @@
 // fenêtre Tauri avec les crochets de test, s'y attache via CDP.
 //
 // Déterminisme par construction :
-// - base de test jetable (DISCOVERY_DB_PATH) — jamais la vraie ;
-// - compte factice au jeton invalide (DISCOVERY_E2E_ACCOUNT) — hors ligne
+// - base de test jetable (WIND_DB_PATH) — jamais la vraie ;
+// - compte factice au jeton invalide (WIND_E2E_ACCOUNT) — hors ligne
 //   garanti, la boîte d'envoi journalise sans jamais rien envoyer ;
 // - configuration OAuth retirée de l'environnement — aucun test ne peut
 //   toucher au vrai compte, même par accident.
@@ -98,7 +98,7 @@ async function attacher(db, emails) {
 
   const env = {
     ...process.env,
-    DISCOVERY_DB_PATH: db,
+    WIND_DB_PATH: db,
     // `--lang=fr` : la détection de langue au premier lancement
     // (navigator.language, PLAN-LANGUES) lit la locale du WebView — sans
     // cette épingle, la suite dépendrait de la langue de la machine.
@@ -106,8 +106,8 @@ async function attacher(db, emails) {
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${CDP_PORT} --lang=fr`,
     WEBVIEW2_USER_DATA_FOLDER: profile,
   };
-  if (emails.length > 0) env.DISCOVERY_E2E_ACCOUNT = emails.join(',');
-  else delete env.DISCOVERY_E2E_ACCOUNT;
+  if (emails.length > 0) env.WIND_E2E_ACCOUNT = emails.join(',');
+  else delete env.WIND_E2E_ACCOUNT;
   delete env.GOOGLE_CLIENT_ID;
   delete env.GOOGLE_CLIENT_SECRET;
   // Même isolation pour Microsoft : sans elle, un test qui touche la
@@ -116,7 +116,7 @@ async function attacher(db, emails) {
   delete env.MICROSOFT_CLIENT_ID;
   delete env.MICROSOFT_CLIENT_SECRET;
 
-  const app = spawn(path.join(root, 'target', 'debug', 'discovery-desktop.exe'), [], {
+  const app = spawn(path.join(root, 'target', 'debug', 'wind-desktop.exe'), [], {
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });

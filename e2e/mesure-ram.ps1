@@ -1,4 +1,4 @@
-# Somme des working sets PRIVES : discovery-desktop.exe + ses processus
+# Somme des working sets PRIVES : wind-desktop.exe + ses processus
 # WebView2 (identifies par leur ligne de commande dev.elements.wind).
 #
 # -AppPid et -Profil RESTREIGNENT la mesure a UNE instance. Sans eux, le
@@ -15,7 +15,7 @@ $ids = @()
 if ($AppPid -gt 0) {
     $ids += $AppPid
 } else {
-    $ids += (Get-CimInstance Win32_Process -Filter "Name='discovery-desktop.exe'").ProcessId
+    $ids += (Get-CimInstance Win32_Process -Filter "Name='wind-desktop.exe'").ProcessId
 }
 
 $webview = Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" |

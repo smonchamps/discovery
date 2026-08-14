@@ -63,8 +63,8 @@ purgerCacheHttp(profile);
 
 const env = {
   ...process.env,
-  DISCOVERY_DB_PATH: db,
-  DISCOVERY_E2E_ACCOUNT: comptes[0].email,
+  WIND_DB_PATH: db,
+  WIND_E2E_ACCOUNT: comptes[0].email,
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9222',
   WEBVIEW2_USER_DATA_FOLDER: profile,
 };
@@ -72,7 +72,7 @@ delete env.GOOGLE_CLIENT_ID;
 delete env.GOOGLE_CLIENT_SECRET;
 
 const t0 = performance.now();
-const app = spawn(path.join(root, 'target', 'release', 'discovery-desktop.exe'), [], {
+const app = spawn(path.join(root, 'target', 'release', 'wind-desktop.exe'), [], {
   env,
   stdio: 'ignore',
 });

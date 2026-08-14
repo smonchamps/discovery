@@ -186,7 +186,11 @@ Un commit par identifiant, chacun avec sa migration :
 **Terrain CE** : lancer sur le poste réel (base 715 Mo) — comptes
 toujours connectés, messages intacts, thème conservé, RAM mesurée.
 
-**Code livré le 2026-08-14, terrain CE dû.**
+**Terrain CE joué le 2026-08-14 — VERT, E3 soldée** : dossier
+`dev.elements.wind\wind.db` en place (l'ancien disparu), comptes
+connectés sans reconsentement, thème conservé, messages intacts.
+
+**Code livré le 2026-08-14 (commits 9196f92, 32241a8, 6e298ee).**
 `apps/desktop/src/demenagement.rs` : le déménagement passe avant tout
 dans `main()` (échec = arrêt net — jamais d'application vide devant des
 données à un rename de là) ; un `rename` par dossier (`%APPDATA%` et
@@ -218,6 +222,20 @@ d'installation et le raccourci — rejouer la mise à jour
 ancien-poste → Wind sur une machine d'essai et constater ce que NSIS
 laisse derrière (entrée de désinstallation « discovery » ?) ; décider
 alors nettoyage automatique ou note de release.
+
+**Outillage livré le 2026-08-14** : crate `wind-desktop` (exe, fixture
+télémétrie, scripts e2e/mesure/rebuild, Cargo.lock), `WIND_DB_PATH` /
+`WIND_E2E_ACCOUNT` / `WIND_ACCOUNT` (code, harnais, docs vivantes),
+paquets `wind-ui-v2` / `wind-e2e`, noms temp/test `wind-*`,
+`productName` « Wind » (menu Démarrer, artefact
+`Wind_<version>_x64-setup.exe`), `publisher` « Elements »,
+`faire-release.ps1` aligné. Gates : 407 Rust + 80 e2e (suite jouée
+avec `wind-desktop.exe`). Critère W-D2 tenu : hors archives ne
+restent que le pont (déménagement, coffre, thème), l'endpoint et
+`$repo` (E5), l'arbre du dépôt (E5) et l'UI v1 morte (dette).
+**Reste d'E4 : la release de bascule elle-même** — bump de version,
+`cargo tauri build` signé, rejouer la mise à jour ancien-poste,
+publier.
 
 ### E5 — Le dépôt (en dernier, décision CE du 2026-08-14)
 

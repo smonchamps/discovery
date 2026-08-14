@@ -448,7 +448,7 @@ mod tests {
     #[test]
     fn queued_send_survives_process_restart() {
         let path =
-            std::env::temp_dir().join(format!("discovery-test-outbox-{}.db", std::process::id()));
+            std::env::temp_dir().join(format!("wind-test-outbox-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let store = Store::open(&path).unwrap();
@@ -760,7 +760,7 @@ mod tests_pieces {
     #[test]
     fn queued_pieces_survive_process_restart() {
         let path = std::env::temp_dir().join(format!(
-            "discovery-test-outbox-pieces-{}.db",
+            "wind-test-outbox-pieces-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);

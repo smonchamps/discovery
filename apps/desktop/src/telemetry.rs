@@ -34,13 +34,13 @@ static SEQ: AtomicU32 = AtomicU32::new(0);
 /// Le crochet E2E : sous test, jamais de bandeau ni d'écriture réelle
 /// (mêmes étanchéités que le reste, passation §7.5).
 fn is_e2e() -> bool {
-    std::env::var("DISCOVERY_DB_PATH").is_ok()
+    std::env::var("WIND_DB_PATH").is_ok()
 }
 
 /// Le dossier de base des données de l'app — où vivent le consentement et
 /// les rapports. En E2E, co-localisé avec la base jetable.
 fn base_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    if let Ok(db) = std::env::var("DISCOVERY_DB_PATH") {
+    if let Ok(db) = std::env::var("WIND_DB_PATH") {
         return Ok(PathBuf::from(db)
             .parent()
             .map(Path::to_path_buf)
@@ -292,7 +292,7 @@ mod tests {
             message: "boom: victime@exemple.fr — sujet « Dossier medical confidentiel »"
                 .to_string(),
             location: Some("apps/desktop/src/commands.rs:1".to_string()),
-            backtrace: vec!["discovery_desktop::commands::quelque_chose".to_string()],
+            backtrace: vec!["wind_desktop::commands::quelque_chose".to_string()],
             app_version: "0.1.2".to_string(),
             os: "windows x86_64".to_string(),
             timestamp: "2026-07-26T15:00:00Z".to_string(),

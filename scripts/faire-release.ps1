@@ -17,7 +17,7 @@ param([Parameter(Mandatory = $true)][string]$Version)
 $ErrorActionPreference = "Stop"
 $repo = "smonchamps/discovery"
 $nsis = Join-Path $PSScriptRoot "..\target\release\bundle\nsis"
-$exe = Join-Path $nsis "discovery_${Version}_x64-setup.exe"
+$exe = Join-Path $nsis "Wind_${Version}_x64-setup.exe"
 $sig = "$exe.sig"
 
 foreach ($f in @($exe, $sig)) {
@@ -39,7 +39,7 @@ $manifest = [ordered]@{
         "windows-x86_64" = [ordered]@{
             signature = $signature
             # Tag = VERSION NUE, jamais `v$Version` : c'est le piege du 404.
-            url       = "https://github.com/$repo/releases/download/$Version/discovery_${Version}_x64-setup.exe"
+            url       = "https://github.com/$repo/releases/download/$Version/Wind_${Version}_x64-setup.exe"
         }
     }
 }

@@ -2728,7 +2728,7 @@ mod tests {
     #[test]
     fn une_base_fichier_s_ouvre_en_wal() {
         let path =
-            std::env::temp_dir().join(format!("discovery-test-wal-{}.db", std::process::id()));
+            std::env::temp_dir().join(format!("wind-test-wal-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
         // Une base héritée, née AVANT le WAL : mode rollback (delete).
@@ -2754,7 +2754,7 @@ mod tests {
     #[test]
     fn opens_and_migrates_a_phase1_database() {
         let path = std::env::temp_dir().join(format!(
-            "discovery-test-migration-{}.db",
+            "wind-test-migration-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
@@ -2809,7 +2809,7 @@ mod tests {
     #[test]
     fn migrates_a_full_phase2_database_and_adopts_everything() {
         let path = std::env::temp_dir().join(format!(
-            "discovery-test-migration-p2-{}.db",
+            "wind-test-migration-p2-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
@@ -3032,7 +3032,7 @@ mod tests {
     #[test]
     fn re_adding_a_generic_account_returns_the_same_id_and_updates_config() {
         let path = std::env::temp_dir().join(format!(
-            "discovery-test-generic-{}-{}.sqlite",
+            "wind-test-generic-{}-{}.sqlite",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -3596,7 +3596,7 @@ mod tests {
     #[test]
     fn une_base_au_schema_des_fils_precedent_s_ouvre_et_se_migre() {
         let path =
-            std::env::temp_dir().join(format!("discovery-test-fils-v1-{}.db", std::process::id()));
+            std::env::temp_dir().join(format!("wind-test-fils-v1-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
         {
@@ -3636,7 +3636,7 @@ mod tests {
     #[test]
     fn annuler_l_adoption_defait_tout_et_laisse_user_version_inchangee() {
         let path = std::env::temp_dir().join(format!(
-            "discovery-test-rembobinage-{}.db",
+            "wind-test-rembobinage-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
@@ -3731,7 +3731,7 @@ mod tests {
     #[test]
     fn l_adoption_annonce_son_avancement_du_depart_a_la_fin() {
         let path = std::env::temp_dir().join(format!(
-            "discovery-test-avancement-adoption-{}.db",
+            "wind-test-avancement-adoption-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
@@ -3797,7 +3797,7 @@ mod tests {
     #[test]
     fn la_sonde_dit_quand_une_adoption_attend_sans_la_declencher() {
         let path = std::env::temp_dir().join(format!(
-            "discovery-test-sonde-adoption-{}.db",
+            "wind-test-sonde-adoption-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);
@@ -3856,7 +3856,7 @@ mod tests {
     #[test]
     fn une_base_a_jour_s_ouvre_sans_annoncer_de_migration() {
         let path = std::env::temp_dir().join(format!(
-            "discovery-test-adoption-muette-{}.db",
+            "wind-test-adoption-muette-{}.db",
             std::process::id()
         ));
         let _ = std::fs::remove_file(&path);

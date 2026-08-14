@@ -818,26 +818,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "discovery-desktop"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "fs4",
- "mail-auth",
- "mail-core",
- "mail-imap",
- "mail-render",
- "mail-smtp",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-updater",
-]
-
-[[package]]
 name = "dispatch2"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5510,6 +5490,26 @@ name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
+
+[[package]]
+name = "wind-desktop"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fs4",
+ "mail-auth",
+ "mail-core",
+ "mail-imap",
+ "mail-render",
+ "mail-smtp",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-updater",
+]
 
 [[package]]
 name = "window-vibrancy"

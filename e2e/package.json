@@ -1,5 +1,5 @@
 {
-  "name": "discovery-e2e",
+  "name": "wind-e2e",
   "private": true,
   "type": "module",
   "scripts": {

@@ -20,15 +20,15 @@ for (const dossier of ['Cache', 'Code Cache']) {
 
 const env = {
   ...process.env,
-  DISCOVERY_DB_PATH: db,
-  DISCOVERY_E2E_ACCOUNT: 'mesure@exemple.fr',
+  WIND_DB_PATH: db,
+  WIND_E2E_ACCOUNT: 'mesure@exemple.fr',
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9222',
   WEBVIEW2_USER_DATA_FOLDER: profile,
 };
 delete env.GOOGLE_CLIENT_ID;
 delete env.GOOGLE_CLIENT_SECRET;
 
-const app = spawn(path.join(root, 'target', 'release', 'discovery-desktop.exe'), [], {
+const app = spawn(path.join(root, 'target', 'release', 'wind-desktop.exe'), [], {
   env,
   stdio: 'ignore',
 });

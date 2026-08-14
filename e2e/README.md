@@ -8,9 +8,9 @@ aucune danse de versions de driver).
 
 Déterminisme par construction ([launch.mjs](launch.mjs)) :
 
-- base seedée **jetable** (`DISCOVERY_DB_PATH`) — jamais celle de
+- base seedée **jetable** (`WIND_DB_PATH`) — jamais celle de
   l'utilisateur ;
-- compte factice au **jeton invalide** (`DISCOVERY_E2E_ACCOUNT`) — hors
+- compte factice au **jeton invalide** (`WIND_E2E_ACCOUNT`) — hors
   ligne garanti : la boîte d'envoi journalise sans jamais rien envoyer ;
 - configuration OAuth retirée de l'environnement du processus testé —
   aucun test ne peut toucher au vrai compte, même par accident.

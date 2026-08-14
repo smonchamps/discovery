@@ -25,7 +25,7 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 
 const root = path.resolve(import.meta.dirname, '..');
-execSync('cargo build -p discovery-desktop --release', { cwd: root, stdio: 'inherit' });
+execSync('cargo build -p wind-desktop --release', { cwd: root, stdio: 'inherit' });
 
 const db = process.env.MESURE_DB || path.join(root, 'target', 'e2e', 'mesure.db');
 const comptes = (process.env.MESURE_COMPTES || 'mesure@exemple.fr:50000')
@@ -54,7 +54,7 @@ if (process.env.MESURE_REUTILISER && existsSync(db)) {
 // Un profil WebView2 dédié, comme le harnais E2E (`launch.mjs`). Sans
 // lui la mesure n'est pas reproductible : WebView2 partage UN processus
 // navigateur par dossier de données utilisateur, donc une instance de
-// Discovery déjà ouverte — celle de l'utilisateur — fait ignorer nos
+// Wind déjà ouverte — celle de l'utilisateur — fait ignorer nos
 // arguments, et le port CDP ne s'ouvre jamais. Symptôme observé :
 // « Cannot read properties of null », 30 s plus tard, sans autre indice.
 const profile = path.join(root, 'target', 'e2e', 'webview2-mesure');
@@ -62,15 +62,15 @@ mkdirSync(profile, { recursive: true });
 
 const env = {
   ...process.env,
-  DISCOVERY_DB_PATH: db,
-  DISCOVERY_E2E_ACCOUNT: comptes[0].email,
+  WIND_DB_PATH: db,
+  WIND_E2E_ACCOUNT: comptes[0].email,
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9222',
   WEBVIEW2_USER_DATA_FOLDER: profile,
 };
 delete env.GOOGLE_CLIENT_ID;
 delete env.GOOGLE_CLIENT_SECRET;
 
-const app = spawn(path.join(root, 'target', 'release', 'discovery-desktop.exe'), [], {
+const app = spawn(path.join(root, 'target', 'release', 'wind-desktop.exe'), [], {
   env,
   stdio: 'ignore',
 });
@@ -89,7 +89,7 @@ if (!browser) {
   app.kill();
   throw new Error(
     'CDP injoignable sur le port 9222 après 30 s. '
-    + `Le processus est-il mort ? Une autre instance de Discovery tourne-t-elle avec le profil ${profile} ?`,
+    + `Le processus est-il mort ? Une autre instance de Wind tourne-t-elle avec le profil ${profile} ?`,
   );
 }
 

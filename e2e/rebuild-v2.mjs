@@ -22,7 +22,7 @@ function construire(root, { release, fenetre, dist }) {
   //    (constaté). On ne tue QUE les instances issues de target/ —
   //    jamais l'application installée de l'utilisateur.
   const balayage =
-    "Get-Process discovery-desktop -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\\target\\*' } | Stop-Process -Force";
+    "Get-Process wind-desktop -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\\target\\*' } | Stop-Process -Force";
   try {
     execSync(`powershell -NoProfile -Command "${balayage}"`, { stdio: 'ignore' });
   } catch {
@@ -31,7 +31,7 @@ function construire(root, { release, fenetre, dist }) {
   // 3. Échange de conf éventuel (dist v1, taille de fenêtre du banc) :
   //    RESTAURÉ même sur échec — le dépôt ne reste jamais sale.
   const conf = path.join(root, 'apps', 'desktop', 'tauri.conf.json');
-  const commande = `cargo build -p discovery-desktop${release ? ' --release' : ''}`;
+  const commande = `cargo build -p wind-desktop${release ? ' --release' : ''}`;
   if (!dist && !fenetre) {
     execSync(commande, { cwd: root, stdio: 'inherit' });
     return;

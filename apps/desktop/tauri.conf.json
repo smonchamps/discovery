@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "discovery",
+  "productName": "Wind",
   "version": "0.1.2",
   "identifier": "dev.elements.wind",
   "build": {
@@ -25,7 +25,7 @@
     "icon": [
       "icons/icon.ico"
     ],
-    "publisher": "discovery",
+    "publisher": "Elements",
     "shortDescription": "Client mail rapide, simple et fiable",
     "targets": [
       "nsis"

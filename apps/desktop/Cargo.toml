@@ -1,5 +1,5 @@
 [package]
-name = "discovery-desktop"
+name = "wind-desktop"
 version.workspace = true
 edition.workspace = true
 

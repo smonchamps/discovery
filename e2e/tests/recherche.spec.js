@@ -55,7 +55,7 @@ test('rattrapage : aucun bandeau quand tous les corps sont là', async () => {
 });
 
 /// Les E2E ne parlent à aucun serveur (§7.5) : le contrôle de mise à
-/// jour (ADR 0013) est neutralisé par la garde `DISCOVERY_DB_PATH`, que
+/// jour (ADR 0013) est neutralisé par la garde `WIND_DB_PATH`, que
 /// le harnais pose. Sans elle, une Release publiée ferait surgir le
 /// bandeau en plein test — ce test tient la garde.
 test('mise à jour : aucun bandeau en E2E (contrôle réseau neutralisé)', async () => {
@@ -63,7 +63,7 @@ test('mise à jour : aucun bandeau en E2E (contrôle réseau neutralisé)', asyn
 });
 
 /// Télémétrie (ADR 0014) : en E2E le consentement est « disabled » et
-/// zéro rapport en attente (garde `DISCOVERY_DB_PATH`). Ni la demande
+/// zéro rapport en attente (garde `WIND_DB_PATH`). Ni la demande
 /// opt-in ni le bandeau d'incident ne doivent surgir en test.
 test('télémétrie : aucun bandeau opt-in ni incident en E2E', async () => {
   await expect(page.locator('#telemetry-optin-bar')).toBeHidden();

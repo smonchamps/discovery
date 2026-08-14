@@ -18,11 +18,11 @@ use mail_smtp::SmtpMailer;
 
 fn main() -> anyhow::Result<()> {
     let auth = Authenticator::google_from_env().context("configuration OAuth")?;
-    let account = match std::env::var("DISCOVERY_ACCOUNT") {
+    let account = match std::env::var("WIND_ACCOUNT") {
         Ok(email) => auth.authenticate_silent(&email),
         Err(_) => auth.authenticate_silent_legacy(),
     }
-    .context("connectez d'abord un compte via Wind (ou définissez DISCOVERY_ACCOUNT)")?;
+    .context("connectez d'abord un compte via Wind (ou définissez WIND_ACCOUNT)")?;
 
     // Le chemin complet du produit : journaliser d'abord, envoyer ensuite.
     let db_path = std::path::PathBuf::from("target/mail-smtp-example.db");

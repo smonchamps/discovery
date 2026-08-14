@@ -12,7 +12,7 @@
 //! si une passe meurt au milieu, la relance repart du marqueur (le `.db`
 //! encore à l'ancien nom) sans rien perdre ni rien écraser.
 //!
-//! Court-circuit : `DISCOVERY_DB_PATH` posé (harnais e2e, ADR 0014) —
+//! Court-circuit : `WIND_DB_PATH` posé (harnais e2e, ADR 0014) —
 //! les bases jetables des bancs n'ont rien à déménager.
 
 use std::io;
@@ -27,7 +27,7 @@ const IDENTIFIANT: &str = "dev.elements.wind";
 /// Déménage les données d'un poste Discovery vers les chemins Wind.
 /// Répétable : un poste déjà déménagé — ou neuf — ne fait rien.
 pub fn demenager() -> io::Result<()> {
-    if std::env::var("DISCOVERY_DB_PATH").is_ok() {
+    if std::env::var("WIND_DB_PATH").is_ok() {
         return Ok(());
     }
     for racine in ["APPDATA", "LOCALAPPDATA"] {
