@@ -2,8 +2,8 @@
 //! l'adaptateur SMTP réel, contre votre compte Gmail — envoi à soi-même.
 //!
 //! Prérequis : `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` dans l'environnement
-//! et un compte déjà connecté via l'application Discovery (le refresh token
-//! vit dans le Credential Manager, service « discovery-mail »).
+//! et un compte déjà connecté via l'application Wind (le refresh token
+//! vit dans le Credential Manager, service « wind-mail »).
 //!
 //! ```powershell
 //! cargo run -p mail-smtp --example send_gmail --release
@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
         Ok(email) => auth.authenticate_silent(&email),
         Err(_) => auth.authenticate_silent_legacy(),
     }
-    .context("connectez d'abord un compte via Discovery (ou définissez DISCOVERY_ACCOUNT)")?;
+    .context("connectez d'abord un compte via Wind (ou définissez DISCOVERY_ACCOUNT)")?;
 
     // Le chemin complet du produit : journaliser d'abord, envoyer ensuite.
     let db_path = std::path::PathBuf::from("target/mail-smtp-example.db");
@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
     let draft = mail_core::compose(
         &account.email,
         &account.email,
-        "Discovery — essai de la boîte d'envoi",
+        "Wind — essai de la boîte d'envoi",
         "Ce message a transité par la boîte d'envoi persistante.\n\
          S'il arrive une seule fois, les deux règles d'or tiennent.",
         None,

@@ -21,7 +21,11 @@ pub use provider::{
     for_account_kind,
 };
 
-const KEYRING_SERVICE: &str = "discovery-mail";
+const KEYRING_SERVICE: &str = "wind-mail";
+/// Le service d'avant la bascule Wind (PLAN-WIND E3). Toute lecture du
+/// coffre passe par [`coffre_lire`], qui s'y replie et migre l'entrée
+/// trouvée — le pont vit tant que des postes Discovery existent.
+const ANCIEN_KEYRING_SERVICE: &str = "discovery-mail";
 /// Entrée héritée de la Phase 2 (un seul compte) — lue en repli puis
 /// migrée vers l'entrée par compte : pas de ré-authentification après
 /// la mise à jour multi-comptes.
@@ -132,10 +136,10 @@ impl Authenticator {
     /// Phase 2 — migrée vers l'entrée par compte au passage. Échoue s'il
     /// n'y a aucun jeton (→ [`Self::authenticate_interactive`]).
     pub fn authenticate_silent(&self, email: &str) -> Result<Authenticated, AuthError> {
-        let (refresh, from_legacy) = match self.vault(email)?.get_password() {
+        let (refresh, from_legacy) = match coffre_lire(&vault_key(self.provider, email)) {
             Ok(token) => (token, false),
             Err(keyring::Error::NoEntry) => {
-                let legacy = legacy_vault()?.get_password().map_err(|err| match err {
+                let legacy = coffre_lire(KEYRING_REFRESH_LEGACY).map_err(|err| match err {
                     keyring::Error::NoEntry => {
                         AuthError::Vault(format!("aucun jeton pour {email}"))
                     }
@@ -167,7 +171,7 @@ impl Authenticator {
     ///
     /// Ce chemin est propre à Google : la Phase 2 ne connaissait que lui.
     pub fn authenticate_silent_legacy(&self) -> Result<Authenticated, AuthError> {
-        let refresh = legacy_vault()?.get_password().map_err(|err| match err {
+        let refresh = coffre_lire(KEYRING_REFRESH_LEGACY).map_err(|err| match err {
             keyring::Error::NoEntry => AuthError::Vault("aucun compte enregistré".to_string()),
             other => AuthError::Vault(other.to_string()),
         })?;
@@ -202,10 +206,8 @@ impl Authenticator {
 
     /// Oublie UN compte : supprime son refresh token du coffre.
     pub fn forget(&self, email: &str) -> Result<(), AuthError> {
-        match self.vault(email)?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(err) => Err(AuthError::Vault(err.to_string())),
-        }
+        coffre_oublier(&vault_key(self.provider, email))
+            .map_err(|err| AuthError::Vault(err.to_string()))
     }
 
     fn client(&self) -> Result<flow::OauthClient, AuthError> {
@@ -262,6 +264,41 @@ fn legacy_vault() -> Result<keyring::Entry, AuthError> {
         .map_err(|err| AuthError::Vault(err.to_string()))
 }
 
+/// Lit une entrée du coffre sous le service Wind, avec repli sur le
+/// service Discovery d'avant la bascule (PLAN-WIND E3) : l'entrée
+/// trouvée est recopiée sous `wind-mail` puis retirée de
+/// `discovery-mail` — personne ne reconnecte un compte pour un
+/// renommage. Même geste que la migration Phase 2 de
+/// [`OauthConfig::authenticate_silent`] : migrer à la lecture.
+/// Une recopie échouée laisse l'ancienne entrée en place — la lecture
+/// suivante retentera.
+fn coffre_lire(cle: &str) -> Result<String, keyring::Error> {
+    let neuf = keyring::Entry::new(KEYRING_SERVICE, cle)?;
+    match neuf.get_password() {
+        Err(keyring::Error::NoEntry) => {
+            let ancien = keyring::Entry::new(ANCIEN_KEYRING_SERVICE, cle)?;
+            let secret = ancien.get_password()?;
+            neuf.set_password(&secret)?;
+            let _ = ancien.delete_credential();
+            Ok(secret)
+        }
+        autre => autre,
+    }
+}
+
+/// Oublie une entrée sous les DEUX services : un secret retiré ne doit
+/// pas survivre sous l'ancien nom. Une entrée absente n'est pas une
+/// erreur — l'oubli est répétable.
+fn coffre_oublier(cle: &str) -> Result<(), keyring::Error> {
+    for service in [KEYRING_SERVICE, ANCIEN_KEYRING_SERVICE] {
+        match keyring::Entry::new(service, cle)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(())
+}
+
 const KEYRING_GENERIC_PASSWORD: &str = "generic-password";
 
 fn generic_vault(email: &str) -> Result<keyring::Entry, AuthError> {
@@ -289,29 +326,23 @@ pub fn store_generic_password(email: &str, password: &str) -> Result<(), AuthErr
 /// Une entrée déjà absente n'est pas une erreur : le retrait est
 /// répétable.
 pub fn forget_credentials(account_kind: &str, email: &str) -> Result<(), AuthError> {
-    let entry = match account_kind {
-        "imap" => generic_vault(email)?,
+    let cle = match account_kind {
+        "imap" => format!("{KEYRING_GENERIC_PASSWORD}:{email}"),
         kind => {
             let provider = provider::for_account_kind(kind)
                 .ok_or_else(|| AuthError::Config(format!("fournisseur inconnu : {kind}")))?;
-            keyring::Entry::new(KEYRING_SERVICE, &vault_key(provider, email))
-                .map_err(|err| AuthError::Vault(err.to_string()))?
+            vault_key(provider, email)
         }
     };
-    match entry.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(err) => Err(AuthError::Vault(err.to_string())),
-    }
+    coffre_oublier(&cle).map_err(|err| AuthError::Vault(err.to_string()))
 }
 
 /// Récupère le mot de passe d'un compte IMAP/SMTP générique depuis le coffre.
 pub fn fetch_generic_password(email: &str) -> Result<String, AuthError> {
-    generic_vault(email)?
-        .get_password()
-        .map_err(|err| match err {
-            keyring::Error::NoEntry => AuthError::Vault(format!("aucun mot de passe pour {email}")),
-            other => AuthError::Vault(other.to_string()),
-        })
+    coffre_lire(&format!("{KEYRING_GENERIC_PASSWORD}:{email}")).map_err(|err| match err {
+        keyring::Error::NoEntry => AuthError::Vault(format!("aucun mot de passe pour {email}")),
+        other => AuthError::Vault(other.to_string()),
+    })
 }
 
 #[cfg(test)]
@@ -331,9 +362,46 @@ mod tests {
             vault_key(&GOOGLE, "moi@exemple.fr"),
             "gmail-refresh:moi@exemple.fr"
         );
-        assert_eq!(KEYRING_SERVICE, "discovery-mail");
+        // Le service a changé UNE fois, avec sa migration (PLAN-WIND E3,
+        // W-D1) : `coffre_lire` se replie sur l'ancien service et migre
+        // l'entrée trouvée. Les deux noms restent épinglés ensemble —
+        // retirer l'ancien couperait le pont pour les postes Discovery
+        // pas encore relancés.
+        assert_eq!(KEYRING_SERVICE, "wind-mail");
+        assert_eq!(ANCIEN_KEYRING_SERVICE, "discovery-mail");
         assert_eq!(KEYRING_REFRESH_LEGACY, "gmail-refresh-token");
         assert_eq!(KEYRING_GENERIC_PASSWORD, "generic-password");
+    }
+
+    /// Le pont Discovery → Wind contre le VRAI coffre de l'OS — ignoré
+    /// par défaut (la suite ne doit pas écrire dans le Credential
+    /// Manager d'un runner CI) : `cargo test -p mail-auth -- --ignored`
+    /// sur un poste Windows. Noms uniques par processus, nettoyage à la
+    /// fin du parcours.
+    #[test]
+    #[ignore]
+    fn le_pont_du_coffre_migre_discovery_vers_wind() {
+        let cle = format!("wind-test-pont:{}", std::process::id());
+        let ancien = keyring::Entry::new(ANCIEN_KEYRING_SERVICE, &cle).unwrap();
+        ancien.set_password("secret-du-pont").unwrap();
+
+        // Première lecture : trouvée sous Discovery, recopiée sous Wind,
+        // retirée de l'ancien service.
+        assert_eq!(coffre_lire(&cle).unwrap(), "secret-du-pont");
+        let neuf = keyring::Entry::new(KEYRING_SERVICE, &cle).unwrap();
+        assert_eq!(neuf.get_password().unwrap(), "secret-du-pont");
+        assert!(matches!(
+            ancien.get_password(),
+            Err(keyring::Error::NoEntry)
+        ));
+
+        // Relecture : le chemin neuf, sans repli.
+        assert_eq!(coffre_lire(&cle).unwrap(), "secret-du-pont");
+
+        // L'oubli purge les deux services et reste répétable.
+        coffre_oublier(&cle).unwrap();
+        coffre_oublier(&cle).unwrap();
+        assert!(matches!(coffre_lire(&cle), Err(keyring::Error::NoEntry)));
     }
 
     /// Deux fournisseurs pour la même adresse ne doivent jamais écrire

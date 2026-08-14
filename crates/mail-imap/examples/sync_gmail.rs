@@ -2,8 +2,8 @@
 //! l'adaptateur IMAP réel, contre votre compte Gmail.
 //!
 //! Prérequis : `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` dans l'environnement
-//! et un compte déjà connecté via l'application Discovery (le refresh token
-//! vit dans le Credential Manager, service « discovery-mail »).
+//! et un compte déjà connecté via l'application Wind (le refresh token
+//! vit dans le Credential Manager, service « wind-mail »).
 //!
 //! ```powershell
 //! cargo run -p mail-imap --example sync_gmail --release
@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
         Ok(email) => auth.authenticate_silent(&email),
         Err(_) => auth.authenticate_silent_legacy(),
     }
-    .context("connectez d'abord un compte via Discovery (ou définissez DISCOVERY_ACCOUNT)")?;
+    .context("connectez d'abord un compte via Wind (ou définissez DISCOVERY_ACCOUNT)")?;
 
     let timer = Instant::now();
     let mut server =
