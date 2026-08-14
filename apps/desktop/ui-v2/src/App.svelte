@@ -255,9 +255,22 @@
       rattrapageApercus = false;
     }
   }
+  // E4 : la génération de courrier, monotone — bumpée par toute relève
+  // INBOX qui a rapporté (cycle, bouton, veilleur IDLE). Quand elle
+  // bouge au repos, c'est un veilleur qui a relevé : la liste se
+  // recharge au battement de cette sonde (5 s), sans canal neuf (R0-S5).
+  let generationVue = null;
   async function sonderSynchro() {
     try {
       synchro = await appel('sync_progress');
+      const generation = synchro?.generation ?? null;
+      if (generation !== null) {
+        if (generationVue !== null && generation !== generationVue) {
+          liste?.recharger();
+          chargerNav();
+        }
+        generationVue = generation;
+      }
     } catch { /* hors ligne ou coeur occupé : le statut garde sa dernière valeur */ }
   }
 
@@ -613,11 +626,22 @@
     // relève tout de suite — le courrier retenu pendant la coupure
     // arrive au retour, comme le fait Thunderbird. Événement, pas
     // sondage : c'est le seul moyen d'être aussi prompt que l'OS.
-    window.addEventListener('offline', () => { enLigne = false; });
+    window.addEventListener('offline', () => {
+      enLigne = false;
+      // E4 : les veilleurs IDLE dorment hors ligne — reconnecter en
+      // boucle sans réseau ne servirait à rien.
+      appel('reseau_etat', { enLigne: false }).catch(() => {});
+    });
     window.addEventListener('online', () => {
       enLigne = true;
+      // Le retour du réseau efface les reculs (côté shell) et réveille
+      // les veilleurs ; la relève immédiate couvre le courrier retenu.
+      appel('reseau_etat', { enLigne: true }).catch(() => {});
       relever(false);
     });
+    // L'état initial : si l'app démarre hors ligne, les veilleurs le
+    // savent tout de suite.
+    appel('reseau_etat', { enLigne: navigator.onLine }).catch(() => {});
   });
 
   function choisir(quoi) {

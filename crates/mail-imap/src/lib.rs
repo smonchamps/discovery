@@ -140,6 +140,17 @@ fn lire_ligne(tcp: &mut TcpStream) -> std::io::Result<String> {
     }
 }
 
+/// Ce qu'un tour de veille IDLE rapporte (ADR 0018).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Veille {
+    /// Un `EXISTS` est arrivé : du courrier est là, la passe légère
+    /// du compte doit partir.
+    Courrier,
+    /// La relance est venue à échéance sans événement — battement de
+    /// cœur, on se remet à veiller.
+    Echeance,
+}
+
 /// Chaîne SASL XOAUTH2 (Gmail, Microsoft) : jamais de mot de passe.
 struct XOAuth2 {
     user: String,
@@ -441,6 +452,44 @@ impl ImapServer {
         let folder = self.drafts_folder()?;
         self.ensure_selected(&folder)?;
         self.expunge_uid(uid)
+    }
+
+    /// Un tour de veille IDLE (RFC 2177) sur `mailbox` — la capacité de
+    /// l'ADAPTATEUR, hors du trait `MailServer` (ADR 0018) : bloquante
+    /// par nature, elle n'a rien à faire dans le flux de commandes du
+    /// moteur. Rend [`Veille::Courrier`] dès qu'un `EXISTS` arrive
+    /// (du courrier est là — l'appelant déclenche la passe légère),
+    /// [`Veille::Echeance`] si `relance` s'écoule sans événement (le
+    /// battement de cœur : le DONE/re-IDLE du tour suivant prouvera que
+    /// la connexion vit). Une erreur = connexion morte, l'appelant
+    /// reconnecte.
+    ///
+    /// `relance` est AUSSI le délai max de détection d'une connexion
+    /// morte (2ᵉ terrain du spike, 2026-08-14) : coupure et veille
+    /// Windows ne produisent AUCUNE erreur, la lecture bloque en
+    /// silence jusqu'à cette échéance — 3 min, pas les 29 de la RFC.
+    ///
+    /// Toutes les lectures de ce chemin sont bornées : la poignée
+    /// `idle` pose `relance` en timeout de lecture pendant la veille.
+    /// (Elle remet le timeout à `None` en sortant — acceptable ICI
+    /// parce qu'une connexion de veille ne fait QUE veiller : le
+    /// prochain tour re-pose son timeout. Ne jamais partager cette
+    /// connexion avec une relève.)
+    pub fn veiller(&mut self, mailbox: &str, relance: Duration) -> Result<Veille, Error> {
+        self.ensure_selected(mailbox)?;
+        let mut poignee = self.session.idle();
+        poignee.timeout(relance).keepalive(false);
+        let sortie = poignee.wait_while(|reponse| {
+            // `true` = continuer d'attendre. Seul EXISTS interrompt la
+            // veille : les autres réponses (EXPUNGE, FETCH de drapeaux…)
+            // appartiennent au cycle complet et à CONDSTORE.
+            !matches!(reponse, imap::types::UnsolicitedResponse::Exists(_))
+        });
+        match sortie {
+            Ok(imap::extensions::idle::WaitOutcome::MailboxChanged) => Ok(Veille::Courrier),
+            Ok(imap::extensions::idle::WaitOutcome::TimedOut) => Ok(Veille::Echeance),
+            Err(err) => Err(server_err(err)),
+        }
     }
 
     /// Marque `\Deleted` puis expunge le seul UID visé (UIDPLUS).

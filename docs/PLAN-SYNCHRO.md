@@ -355,13 +355,21 @@ alerte (« 1 compte sur 2 injoignable ») via `accounts_failed` au bilan.
 
 ### E4 — Le temps réel (IDLE, ex-E3)
 
-**État : le harnais du spike est livré le 2026-08-13 (`spikes/idle/`,
-compile, protocole et gates au README) — les MESURES restent dues
-(Gmail bridé ce jour, terrain au soir ou lendemain).** Jeton relu au
-trousseau de l'application à chaque reconnexion (rien à copier au
-terrain). Premier constat d'intégration consigné : la poignée `idle()`
-de la crate efface le timeout P0 en sortant — re-poser ou connexion
-dédiée, à trancher à l'ADR.
+**État : le veilleur est CÂBLÉ le 2026-08-14 (gates locales vertes)
+après gate spike verte sur Gmail** (2 terrains : tenue 2 h 42, parité
+bulle ≤ 3 s, reconnexion coupure 1 min 48 / veille 2 s — décision CE :
+câbler, Microsoft + générique validés en usage réel). Livré selon
+l'ADR 0018 : un thread par compte (`veilleur.rs`), connexion IMAP
+dédiée, `veiller()` capacité de l'adaptateur (relance 3 min =
+détecteur de connexion morte), `EXISTS` → passe légère du compte
+(`passe_legere_compte`, verrou de relève par compte) → génération
+monotone sondée par l'UI (`sync_progress`, R0-S5 tenu) ; passe à
+chaque (re)connexion (un mail arrivé pendant une coupure n'émet
+jamais d'EXISTS) ; veilleurs endormis hors ligne (P0-bis,
+`reseau_etat` — qui efface aussi les reculs au retour du réseau) et
+sur recul (lecture seule) ; reconnexion à délai doublé, jeton relu au
+trousseau. **Terrain dû : latence EXISTS → liste à l'écran, budgets
+RAM/démarrage re-mesurés (andon si cassés).**
 
 - **Spike jetable d'abord** — `spikes/idle/`, hors workspace, sur les
   trois fournisseurs (Gmail, Microsoft, IMAP générique). Protocole :

@@ -23,7 +23,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::AppState;
 
-const MAILBOX: &str = "INBOX";
+pub(crate) const MAILBOX: &str = "INBOX";
 const LIST_LIMIT_MAX: usize = 500;
 const SEARCH_LIMIT: usize = 50;
 /// Corps rapatriés par appel, tous comptes confondus. Borner le lot rend
@@ -155,6 +155,10 @@ pub async fn connect_accounts(
                 email: email.to_string(),
             });
         }
+        // E4 : les comptes du décor gagnent aussi leurs veilleurs — même
+        // chemin que le réel, leurs échecs de connexion sont bornés
+        // (timeouts P0) et espacés (délai doublé).
+        crate::veilleur::reconcilier(&app);
         return Ok(ConnectReport {
             accounts: infos,
             problems: Vec::new(),
@@ -223,6 +227,10 @@ pub async fn connect_accounts(
         lock_accounts(&state)?.insert(email, session);
     }
     problems.sort();
+    // E4 : un veilleur IDLE par compte reconnecté (ADR 0018) — démarrés
+    // ICI, après que les sessions sont posées, jamais au boot (rien à
+    // veiller sans session).
+    crate::veilleur::reconcilier(&app);
     Ok(ConnectReport {
         accounts: infos,
         problems,
@@ -382,6 +390,8 @@ pub async fn add_generic_account(
         smtp_port,
     });
     lock_accounts(&state)?.insert(email.clone(), session);
+    // E4 : le compte neuf gagne son veilleur IDLE sans attendre.
+    crate::veilleur::reconcilier(&app);
 
     Ok(AccountInfo { id, email })
 }
@@ -428,6 +438,8 @@ pub async fn remove_account(
         .delete_account(account_id)
         .map_err(|err| err.to_string())?;
     lock_accounts(&state)?.remove(&account.email);
+    // E4 : son veilleur IDLE s'éteint au prochain tour.
+    crate::veilleur::reconcilier(&app);
     Ok(())
 }
 
@@ -588,6 +600,11 @@ fn relever_inbox(
         cycle
             .courrier
             .fetch_add((report.fetched + report.deleted) as u64, Ordering::Relaxed);
+        // E4 : la génération MONOTONE — l'UI la sonde via `sync_progress`
+        // et recharge la liste quand elle bouge. C'est le chemin par
+        // lequel le courrier signalé par un veilleur IDLE se montre au
+        // repos, sans canal neuf (R0-S5).
+        cycle.generation.fetch_add(1, Ordering::Relaxed);
     }
     match store.new_unread_after(account_id, MAILBOX, last_uid_before, NOTIFY_MAX_ARRIVALS) {
         Ok(arrivals) => {
@@ -617,12 +634,101 @@ fn attente_apres_echecs(echecs: u32) -> Duration {
 /// Le temps restant du recul de ce compte, s'il court encore. Un
 /// verrou illisible vaut « pas de recul » : la protection cède le pas
 /// à la relève, jamais l'inverse.
-fn recul_en_cours(reculs: &Mutex<HashMap<String, crate::Recul>>, email: &str) -> Option<Duration> {
+pub(crate) fn recul_en_cours(
+    reculs: &Mutex<HashMap<String, crate::Recul>>,
+    email: &str,
+) -> Option<Duration> {
     let reculs = reculs.lock().ok()?;
     let recul = reculs.get(email)?;
     attente_apres_echecs(recul.echecs)
         .checked_sub(recul.depuis.elapsed())
         .filter(|reste| !reste.is_zero())
+}
+
+/// Le verrou de relève de CE compte (E4) : cycle, bouton et veilleur
+/// IDLE peuvent vouloir relever le même INBOX au même moment — un
+/// compte à la fois. Un verrou de MAP empoisonné se répare en le
+/// reprenant : perdre la sérialisation vaut mieux que perdre la relève.
+pub(crate) fn verrou_compte(
+    verrous: &Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    email: &str,
+) -> Arc<Mutex<()>> {
+    let mut verrous = match verrous.lock() {
+        Ok(verrous) => verrous,
+        Err(empoisonne) => empoisonne.into_inner(),
+    };
+    verrous.entry(email.to_string()).or_default().clone()
+}
+
+/// La passe légère d'UN compte (ADR 0018) : celle que le veilleur IDLE
+/// déclenche — sur `EXISTS`, et à chaque (re)connexion (un mail arrivé
+/// pendant une coupure n'émet jamais d'EXISTS, 2ᵉ terrain). Même
+/// travail que `sync_inbox_light` pour ce compte : relève gardée (E2a),
+/// courrier compté et génération bumpée (l'UI recharge à la sonde),
+/// bulles (P1). Best effort : les incidents partent en console —
+/// identifiant de compte et décomptes seuls (§6.8).
+pub(crate) fn passe_legere_compte(app: &AppHandle, email: &str) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let path = db_path(app)?;
+    let session = lock_accounts(&state)?
+        .get(email)
+        .cloned()
+        .ok_or_else(|| "compte non connecté".to_string())?;
+    // Un compte à la fois : la relève du cycle ou du bouton peut être
+    // en cours sur CE compte — on attend notre tour.
+    let verrou = verrou_compte(&state.verrous_releve, email);
+    let _releve = verrou
+        .lock()
+        .map_err(|_| "verrou de relève empoisonné".to_string())?;
+    // Le recul se respecte (lecture seule) : si le compte est en échec
+    // répété, le cycle reprendra — le veilleur n'insiste pas.
+    if recul_en_cours(&state.sync_reculs, email).is_some() {
+        return Ok(());
+    }
+    let store = Store::open(&path).map_err(|err| err.to_string())?;
+    let account_id = store
+        .accounts()
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .find(|compte| compte.email == email)
+        .map(|compte| compte.id)
+        .ok_or_else(|| "compte inconnu en base".to_string())?;
+    drop(store);
+
+    let (mut server, refreshed) = connect_imap(&session)?;
+    let mut store = Store::open(&path).map_err(|err| err.to_string())?;
+    let mut problems = Vec::new();
+    let cycle = state.sync_cycle.clone();
+    let resultat = relever_inbox(
+        &mut server,
+        &mut store,
+        account_id,
+        &cycle,
+        app,
+        &mut problems,
+    );
+    server.logout();
+    match resultat {
+        Ok(_) => {
+            noter_issue(&state.sync_reculs, email, true);
+            if let Some(fresh) = refreshed {
+                lock_accounts(&state)?.insert(fresh.email().to_string(), fresh);
+            }
+            // L'horodatage vaut pour cette relève comme pour les autres :
+            // l'INBOX vient d'être vérifiée.
+            if let Ok(epoch) = SystemTime::now().duration_since(UNIX_EPOCH) {
+                let _ = store.set_text_pref(PREF_DERNIERE_SYNCHRO, &epoch.as_secs().to_string());
+            }
+            for problem in problems {
+                eprintln!("veilleur compte {account_id} : {problem}");
+            }
+            Ok(())
+        }
+        Err(err) => {
+            noter_issue(&state.sync_reculs, email, false);
+            Err(err)
+        }
+    }
 }
 
 /// Solde l'issue d'une tentative : le succès efface le recul, l'échec
@@ -667,6 +773,7 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
     // faisait toujours perdre la course contre le téléphone.
     let app_bulles = app.clone();
     let reculs = state.sync_reculs.clone();
+    let verrous = state.verrous_releve.clone();
 
     let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
         tauri::async_runtime::spawn_blocking(move || {
@@ -702,6 +809,10 @@ pub async fn sync_inbox(app: AppHandle, state: State<'_, AppState>) -> Result<Sy
                     cycle.fait.fetch_add(1, Ordering::Relaxed);
                     continue;
                 }
+                // E4 : un compte à la fois — un veilleur IDLE peut être
+                // en pleine passe légère sur CE compte au même moment.
+                let verrou = verrou_compte(&verrous, &email);
+                let _releve = verrou.lock();
                 if let Ok(mut compte) = cycle.compte.lock() {
                     compte.clone_from(&email);
                 }
@@ -785,6 +896,7 @@ pub async fn sync_inbox_light(
     let cycle = state.sync_cycle.clone();
     let app_bulles = app.clone();
     let reculs = state.sync_reculs.clone();
+    let verrous = state.verrous_releve.clone();
 
     let (accounts, accounts_failed, fetched, deleted, replayed, mut errors, refreshed) =
         tauri::async_runtime::spawn_blocking(move || {
@@ -817,6 +929,10 @@ pub async fn sync_inbox_light(
                     cycle.fait.fetch_add(1, Ordering::Relaxed);
                     continue;
                 }
+                // E4 : un compte à la fois — un veilleur IDLE peut être
+                // en pleine passe légère sur CE compte au même moment.
+                let verrou = verrou_compte(&verrous, &email);
+                let _releve = verrou.lock();
                 if let Ok(mut compte) = cycle.compte.lock() {
                     compte.clone_from(&email);
                 }
@@ -2913,7 +3029,9 @@ fn connect_smtp(session: &AccountSession) -> Result<(SmtpMailer, Option<AccountS
 /// Ouvre une connexion IMAP adaptée au type de compte. Pour un compte
 /// OAuth2, un échec déclenche un refresh silencieux ; pour un compte
 /// générique, le mot de passe est fixe.
-fn connect_imap(session: &AccountSession) -> Result<(ImapServer, Option<AccountSession>), String> {
+pub(crate) fn connect_imap(
+    session: &AccountSession,
+) -> Result<(ImapServer, Option<AccountSession>), String> {
     match session {
         AccountSession::OAuth(auth) => {
             let imap = auth.provider.imap;
@@ -2998,7 +3116,7 @@ fn account_email(store: &Store, account_id: i64) -> Result<String, String> {
         .ok_or_else(|| "compte inconnu".to_string())
 }
 
-fn lock_accounts<'a>(
+pub(crate) fn lock_accounts<'a>(
     state: &'a State<'_, AppState>,
 ) -> Result<MutexGuard<'a, HashMap<String, AccountSession>>, String> {
     state
@@ -3024,7 +3142,7 @@ fn reposer_sessions(
     Ok(())
 }
 
-fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     // Crochet E2E : base isolée fournie par le pilote de test — la vraie
     // base de l'utilisateur ne doit jamais être touchée par un test.
     if let Ok(path) = std::env::var("DISCOVERY_DB_PATH") {
@@ -3071,6 +3189,10 @@ pub struct SyncProgress {
     /// qu'aucun cycle n'a abouti : l'interface n'invente pas
     /// d'horodatage (PLAN-SYNCHRO E1).
     pub derniere: Option<i64>,
+    /// Génération de courrier, monotone (E4) : l'UI recharge la liste
+    /// quand elle bouge — c'est ainsi que le courrier relevé par un
+    /// veilleur IDLE se montre au repos, en sondage (R0-S5).
+    pub generation: u64,
 }
 
 /// Avancement de la synchronisation intégrale (ADR 0010 §5).
@@ -3079,7 +3201,7 @@ pub struct SyncProgress {
 /// en boucle pendant qu'une synchronisation tourne, sans lui coûter un
 /// seul aller-retour.
 #[tauri::command]
-pub fn sync_progress(app: AppHandle) -> Result<SyncProgress, String> {
+pub fn sync_progress(app: AppHandle, state: State<'_, AppState>) -> Result<SyncProgress, String> {
     let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
     let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
     // Un horodatage illisible (pref corrompue) vaut « jamais » : la barre
@@ -3093,7 +3215,22 @@ pub fn sync_progress(app: AppHandle) -> Result<SyncProgress, String> {
         remote,
         percent: mail_core::sync_percent(local, remote),
         derniere,
+        generation: state.sync_cycle.generation.load(Ordering::Relaxed),
     })
+}
+
+/// P0-bis + E4 : l'UI remonte l'état réseau de l'OS (`navigator.onLine`).
+/// Hors ligne, les veilleurs IDLE dorment (reconnecter en boucle sans
+/// réseau ne sert à rien) ; au retour, les reculs s'effacent — le réseau
+/// est neuf, l'échec d'hier était la coupure, pas le serveur — et les
+/// veilleurs repartent d'eux-mêmes.
+#[tauri::command]
+pub fn reseau_etat(state: State<'_, AppState>, en_ligne: bool) -> Result<(), String> {
+    state.en_ligne.store(en_ligne, Ordering::Relaxed);
+    if en_ligne && let Ok(mut reculs) = state.sync_reculs.lock() {
+        reculs.clear();
+    }
+    Ok(())
 }
 
 #[derive(Serialize)]

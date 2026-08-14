@@ -7,6 +7,7 @@
 
 mod commands;
 mod telemetry;
+mod veilleur;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64};
@@ -51,6 +52,13 @@ pub(crate) struct SyncShared {
     /// relève INBOX d'un compte soldée, sans attendre la fin du cycle.
     /// Un compteur sondé, pas un canal : le port UI reste R0-S5.
     pub courrier: AtomicU64,
+    /// Génération de courrier, MONOTONE et jamais remise à zéro (E4) :
+    /// bumpée à chaque relève INBOX qui a rapporté ou retiré du
+    /// courrier — cycle, bouton, veilleur IDLE confondus. L'UI la lit
+    /// à la sonde de `sync_progress` (5 s, déjà en place) et recharge
+    /// la liste quand elle bouge : c'est ainsi que le courrier signalé
+    /// par un veilleur se montre AU REPOS, sans canal neuf (R0-S5).
+    pub generation: AtomicU64,
 }
 
 /// Le recul d'un compte en échec (complément P0, anti-martèlement) :
@@ -84,6 +92,17 @@ pub(crate) struct AppState {
     /// passe légère SAUTENT un compte en recul — sans le taire, il reste
     /// compté injoignable. Le geste manuel force toujours la tentative.
     pub sync_reculs: Arc<Mutex<HashMap<String, Recul>>>,
+    /// Un verrou de relève PAR compte (email → verrou) : cycle, bouton
+    /// et veilleur IDLE peuvent vouloir relever le même INBOX en même
+    /// temps — deux relèves concurrentes du même compte seraient
+    /// idempotentes mais paieraient double. Un compte à la fois.
+    pub verrous_releve: Arc<Mutex<HashMap<String, Arc<Mutex<()>>>>>,
+    /// Les veilleurs IDLE (ADR 0018) : email → drapeau de vie. Éteindre
+    /// le drapeau arrête le veilleur à son prochain tour (≤ relance).
+    pub veilleurs: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+    /// L'état réseau remonté par l'UI (P0-bis) : hors ligne, les
+    /// veilleurs dorment au lieu de reconnecter en boucle.
+    pub en_ligne: Arc<AtomicBool>,
 }
 
 fn main() {
@@ -96,6 +115,11 @@ fn main() {
         migration: Arc::new(MigrationShared::default()),
         sync_cycle: Arc::new(SyncShared::default()),
         sync_reculs: Arc::new(Mutex::new(HashMap::new())),
+        verrous_releve: Arc::new(Mutex::new(HashMap::new())),
+        veilleurs: Arc::new(Mutex::new(HashMap::new())),
+        // En ligne par défaut : l'UI remonte le vrai état dès son
+        // premier rendu (P0-bis) — d'ici là, mieux vaut tenter que dormir.
+        en_ligne: Arc::new(AtomicBool::new(true)),
     };
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -151,6 +175,7 @@ fn main() {
             commands::sync_drafts,
             commands::sync_progress,
             commands::sync_activity,
+            commands::reseau_etat,
             commands::backfill_status,
             commands::backfill_bodies,
             commands::migration_check,
