@@ -34,6 +34,8 @@ export const EN = {
     'Sync failed — will retry automatically · last synced {depuis}',
   'statut.ajour': 'All messages are up to date',
   'statut.ajourDepuis': 'All messages are up to date · last synced {depuis}',
+  'statut.horsLigne': 'Offline',
+  'statut.horsLigneDepuis': 'Offline · last synced {depuis}',
   'statut.cyclePrefixe': 'Syncing',
   'statut.synchroPartielle':
     '{n} account of {m} unreachable — will retry automatically|{n} accounts of {m} unreachable — will retry automatically',

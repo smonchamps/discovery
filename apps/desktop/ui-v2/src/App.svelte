@@ -80,6 +80,13 @@
   // `synchroEchec` ne couvrait que la panne totale : un compte mort sur
   // deux était invisible, et l'horodatage rajeuni par le survivant.
   let synchroPartiel = $state(null);
+  // P0-bis : l'état réseau de l'OS, remonté par la WebView quasi
+  // instantanément (l'équivalent de l'observer réseau de Thunderbird) —
+  // au lieu d'attendre qu'un cycle cale sur le timeout socket (120 s)
+  // pour comprendre qu'on est hors ligne. `navigator.onLine` peut mentir
+  // (Wi-Fi sans internet), mais le terrain a montré le cas qui compte :
+  // câble/Wi-Fi coupé, où il bascule juste.
+  let enLigne = $state(navigator.onLine);
   // Le verdict d'un bilan de relève (cycle complet OU passe légère) :
   // panne totale, panne partielle, ou rien — une seule écriture, les
   // deux états ne peuvent pas diverger.
@@ -112,6 +119,19 @@
     if (categorie !== 'reception') {
       return {
         texte: t('statut.categorie', { boite: t(LIBELLES[categorie]), n: totalListe }),
+        fil: null,
+        alerte: false,
+      };
+    }
+    // P0-bis : hors ligne, on le DIT — et tout de suite. Prime sur le
+    // bloc synchro : un « Synchronisation… » ou un « à jour » serait
+    // faux sans réseau. On vit sur le stock, et on dit depuis quand.
+    if (!enLigne) {
+      const derniere = synchro?.derniere ?? null;
+      return {
+        texte: derniere
+          ? t('statut.horsLigneDepuis', { depuis: depuis(derniere, maintenant) })
+          : t('statut.horsLigne'),
         fil: null,
         alerte: false,
       };
@@ -437,6 +457,11 @@
   let jetonCycle = 0;
   async function synchroniser() {
     if (enSynchro) return; // réentrance interdite : un cycle à la fois
+    // P0-bis : hors ligne, un cycle automatique ne partirait que pour
+    // caller sur les timeouts — la barre dit déjà « hors ligne », et le
+    // retour du réseau relèvera. Le geste manuel, lui, force (voir
+    // `relever`) : le clic est un ordre.
+    if (!enLigne) return;
     enSynchro = true;
     const jeton = ++jetonCycle;
     sonderActivite();
@@ -513,6 +538,9 @@
   // (anti-martèlement, shell) ; le réveil de veille, lui, le respecte.
   async function relever(force) {
     if (enSynchro) return; // le cycle travaille déjà — bouton inhibé
+    // Hors ligne, seul le geste manuel (clic, `force`) tente encore —
+    // le réveil de veille et le retour réseau attendent d'être en ligne.
+    if (!force && !enLigne) return;
     enSynchro = true;
     const jeton = ++jetonCycle;
     sonderActivite();
@@ -580,6 +608,16 @@
       dernierTic = tic;
       if (retard > 120000) relever(false);
     }, 15000);
+    // P0-bis : l'état réseau de l'OS, en direct. `offline` bascule la
+    // barre à l'instant (plus d'attente du timeout 120 s) ; `online`
+    // relève tout de suite — le courrier retenu pendant la coupure
+    // arrive au retour, comme le fait Thunderbird. Événement, pas
+    // sondage : c'est le seul moyen d'être aussi prompt que l'OS.
+    window.addEventListener('offline', () => { enLigne = false; });
+    window.addEventListener('online', () => {
+      enLigne = true;
+      relever(false);
+    });
   });
 
   function choisir(quoi) {

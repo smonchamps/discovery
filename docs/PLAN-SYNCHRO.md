@@ -250,6 +250,21 @@ là : il n'y a pas encore d'IDLE à casser.
 - Gate : réseau coupé en plein cycle → échec visible en < 3 min, cycle
   suivant reparti seul, sans redémarrage.
 
+**P0-bis — l'état réseau, en direct (terrain 2026-08-14 : P0 jugé KO).**
+Le terrain a montré la limite : le timeout socket (120 s) et le watchdog
+(5 min) ne détectent la coupure qu'en MINUTES, et au repos rien ne
+disait « hors ligne » — alors que Thunderbird (et tout webmail) bascule à
+l'instant via l'observer réseau de l'OS. Livré le 2026-08-14 :
+`navigator.onLine` + les événements `online`/`offline` que la WebView
+remonte de l'OS (l'équivalent de l'observer Gecko). `offline` → barre
+« Hors ligne » immédiate + cycles automatiques suspendus (plus de sync
+qui calle 120 s pour rien) ; `online` → passe légère aussitôt (le
+courrier retenu arrive au retour, comme Thunderbird resynchronise). Les
+timeouts socket restent le filet du cas « réseau là, serveur muet ». Le
+geste manuel force toujours (le clic est un ordre). Clés fr/en, e2e sur
+la bascule événement → barre. Gate terrain : Wi-Fi coupé → « Hors ligne »
+sous 1 s ; rétabli → relève immédiate.
+
 **Complément (2026-08-13, revue anti-martèlement — livré le jour
 même)** : le bridage Gmail du jour a montré le risque symétrique du
 gel — insister. Trois protections : (1) **recul par compte** — deux

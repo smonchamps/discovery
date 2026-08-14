@@ -640,3 +640,19 @@ test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessa
   await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
 });
+
+// P0-bis (PLAN-SYNCHRO) : la coupure réseau se DIT à l'instant, sans
+// attendre qu'un cycle cale sur le timeout socket. On pilote l'événement
+// que l'OS émettrait (navigator.onLine lui-même n'est pas scriptable) :
+// le câblage événement → barre est ce qui compte.
+test("hors ligne : la barre le dit à l'instant, le retour la restaure (P0-bis)", async () => {
+  await dossier('reception').click();
+  const progression = page.locator('[data-testid="progression"]');
+  await expect(progression).not.toContainText('Hors ligne');
+
+  await page.evaluate(() => window.dispatchEvent(new Event('offline')));
+  await expect(progression).toContainText('Hors ligne');
+
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect(progression).not.toContainText('Hors ligne');
+});
