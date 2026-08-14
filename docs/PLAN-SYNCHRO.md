@@ -369,11 +369,15 @@ dédiée, à trancher à l'ADR.
   reconnexion après coupure réseau, **veille/reprise Windows**,
   comportement à l'expiration du jeton OAuth. **Gate chiffrée : p50
   ≤ 5 s, p95 ≤ 30 s, reconnexion automatique prouvée sur les trois.**
-- **ADR 0017** sur mesures : un veilleur IDLE par compte (thread du
-  shell) sur INBOX ; un événement réveille la **passe légère du compte
-  concerné** puis un événement Tauri pousse l'UI à recharger liste et
-  nav. Où vit `idle` (extension du trait `MailServer` ou capacité
-  séparée) : tranché à l'ADR, sur ce que le spike apprend.
+- **ADR 0018** (écrit le 2026-08-14) : un veilleur IDLE par compte
+  (thread du shell) sur INBOX, **connexion dédiée** (la poignée `idle`
+  de la crate efface le timeout P0 — constat du spike) ; un `EXISTS`
+  réveille la **passe légère du compte concerné** (E3), puis un
+  événement Tauri pousse l'UI à recharger liste et nav. `idle` tranché
+  comme **capacité de l'adaptateur** `mail-imap`, hors du trait
+  `MailServer` (opération bloquante, hors du flux du moteur). Veilleurs
+  arrêtés hors-ligne (P0-bis) et en recul (complément P0). **Statut :
+  architecture actée, câblage sous réserve de la gate spike.**
 - Les bulles partent avec la passe légère → **parité avec le
   téléphone**, sans rien changer à `notify.rs`.
 - Le cycle complet reste à 5 min (dossiers, brouillons, différentiel) —
