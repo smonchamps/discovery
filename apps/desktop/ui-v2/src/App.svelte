@@ -797,7 +797,7 @@
 
 <div class="ecran">
   <header class="entete" data-testid="entete">
-    <span class="marque">Discovery</span>
+    <span class="marque">Wind</span>
     <span class="recherche" data-testid="recherche">
       <span class="ms" aria-hidden="true">search</span>
       <input type="text" bind:this={champRecherche} bind:value={recherche}

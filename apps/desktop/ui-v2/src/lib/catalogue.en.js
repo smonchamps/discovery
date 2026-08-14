@@ -54,8 +54,8 @@ export const EN = {
   'avis.envoiRefuse': 'The message “{sujet}” was rejected{erreur}.',
   'avis.envoiInterrompu': 'The message “{sujet}” was interrupted{erreur}.',
   'avis.maj': 'An update is available (version {version}).',
-  'avis.crash': 'Discovery ran into a problem during a previous session ({n} report(s) pending). Nothing is sent without you.',
-  'avis.telemetrie': 'Help improve Discovery? If it crashes, a technical report would be saved on your machine — never the content of your mail. You then choose whether to send it.',
+  'avis.crash': 'Wind ran into a problem during a previous session ({n} report(s) pending). Nothing is sent without you.',
+  'avis.telemetrie': 'Help improve Wind? If it crashes, a technical report would be saved on your machine — never the content of your mail. You then choose whether to send it.',
   'avis.connexion': 'Account not reconnected — {details}',
 
   // --- Actions partagées ------------------------------------------------

@@ -56,8 +56,8 @@ export const FR = {
   'avis.envoiRefuse': "L'envoi « {sujet} » a été refusé{erreur}.",
   'avis.envoiInterrompu': "L'envoi « {sujet} » a été interrompu{erreur}.",
   'avis.maj': 'Une mise à jour est disponible (version {version}).',
-  'avis.crash': "Discovery a rencontré un problème lors d'une session précédente ({n} rapport(s) en attente). Rien n'est envoyé sans vous.",
-  'avis.telemetrie': "Aider à améliorer Discovery ? En cas de plantage, un rapport technique serait enregistré sur votre machine — jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
+  'avis.crash': "Wind a rencontré un problème lors d'une session précédente ({n} rapport(s) en attente). Rien n'est envoyé sans vous.",
+  'avis.telemetrie': "Aider à améliorer Wind ? En cas de plantage, un rapport technique serait enregistré sur votre machine — jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
   'avis.connexion': 'Compte non reconnecté — {details}',
 
   // --- Actions partagées ------------------------------------------------

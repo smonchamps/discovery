@@ -71,7 +71,7 @@
   <div class="scrim" data-testid="migration-modale">
     <div class="carte" role="dialog" aria-modal="true"
          aria-label={t('migration.aria')}>
-      <p class="kicker">Discovery</p>
+      <p class="kicker">Wind</p>
       <h3 class="titre">{t('migration.titre')}</h3>
       <p class="note">{note}</p>
       {#if !bilan}

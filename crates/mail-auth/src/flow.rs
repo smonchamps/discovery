@@ -206,7 +206,7 @@ fn wait_for_redirect(listener: &TcpListener) -> Result<(String, String), AuthErr
         if let (Some(code), Some(state)) = (params.get("code"), params.get("state")) {
             respond(
                 &mut stream,
-                "Autorisation reçue. Fermez cet onglet et revenez à Discovery.",
+                "Autorisation reçue. Fermez cet onglet et revenez à Wind.",
             )?;
             return Ok((code.clone(), state.clone()));
         }

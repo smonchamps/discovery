@@ -12,7 +12,7 @@
 
 <div class="ecran01" data-testid="onboarding">
   <div class="colonne">
-    <p class="kicker">Discovery</p>
+    <p class="kicker">Wind</p>
     <h3 class="titre">{t('onboarding.titre1')}<br>{t('onboarding.titre2')}</h3>
     <GuichetCompte {onajoute} />
   </div>
