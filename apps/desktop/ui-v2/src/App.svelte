@@ -937,8 +937,9 @@
   .texte { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
   .texte span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   /* Le bouton de relève (E3, S-D1 variante A) : 26 px, il tient dans
-     les 36 px de la barre sans les forcer — cotes de la maquette
-     validée (docs/design/maquette-synchro.html). */
+     les 36 px de la barre sans les forcer — cotes de la section
+     « Barre d'état et synchronisation » du Système (la maquette,
+     reversée, est morte au GO — DC-D4). */
   .btn-statut {
     height:26px; padding:0 12px; display:inline-flex; align-items:center;
     gap:7px; font-size:12px; font-weight:600; color:var(--ink2);

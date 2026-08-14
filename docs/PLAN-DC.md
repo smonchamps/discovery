@@ -210,13 +210,18 @@ les écrans suivent le parcours réel :
   (`systeme.css`, `seed_clarity.rs`). Après E1, plus aucune
   contradiction entre normes — le Système est juste, pas encore
   complet.
-- **E2 — l'exhaustivité** *(le gros morceau, découpable par section)* :
-  les sections de la cible (§3) dessinées ou révisées ; les maquettes
-  supprimées ; A20 inscrit. La section **pièces jointes se dessine
-  après le verdict terrain du CE** (envoi réel, transfert en ligne,
-  reflet Gmail — attendu incessamment) pour ne pas dessiner deux
-  fois ; si le verdict tarde, elle se dessine telle que livrée et
-  s'amendera au verdict (DC-D2).
+- **E2 — l'exhaustivité** *(livré le 2026-08-14, neuf commits — un par
+  section, eece496 → le commit d'A20)* : les dix sections de la cible
+  (§3) dessinées ou révisées, les trois maquettes supprimées, A20
+  inscrit. La section pièces jointes est dessinée **telle que livrée**
+  (le verdict terrain du CE n'était pas rendu — elle s'amendera par
+  DC-D2 s'il retouche quelque chose). Livré au-delà du prévu : l'objet
+  des lignes redescendu à **16 px partout** (A9 n'avait jamais été
+  reporté au doc — table Typographie comprise), A2 correctement
+  re-présenté en repli documenté, la barre d'actions dite à cinq (A14),
+  l'en-tête du document rectifié (source unique, idéal des quatre
+  amendé), le bouton de relève ajouté à la barre de l'écran 02.
+  Rendu vérifié au navigateur (18 sections, icônes, surimpressions).
 - **E3 — la gate** : attributs `data-theme` / `data-jeton` posés sur la
   table des thèmes, `e2e/coherence-systeme.mjs` écrit et branché à la
   suite, preuve « rouge sur mutation » rejouée. À partir d'E3, la
