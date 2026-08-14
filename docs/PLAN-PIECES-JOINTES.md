@@ -224,7 +224,9 @@ plafond, le transfert réel, la reprise d'un brouillon avec pièces).
   40/40, copie `public/` faite) — le refus au plafond retrouve son
   glyphe. Parcours e2e neuf : transfert hors ligne → échec dit,
   « Réessayer », envoi bloqué puis libéré au renoncement.
-  **Le plan est soldé.**
+  Gates : 403 Rust, clippy muet, 79 e2e. **Le plan est soldé** — reste
+  la validation terrain du CE (envoi réel avec pièces, transfert en
+  ligne, reflet Gmail multipart).
 
 Hors périmètre (dit pour ne pas y glisser) : le glisser-déposer sur le
 composeur, le trombone en liste (dossier Brouillons, Réception), le
