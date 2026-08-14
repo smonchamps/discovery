@@ -1,13 +1,27 @@
 // Thèmes Clarity — comportement du prototype, exactement : défaut
-// `nature`, choix persisté sous localStorage['discovery-theme'],
+// `nature`, choix persisté sous localStorage['wind-theme'],
 // restauré au montage. D6 (livré à E2 des Réglages) : le suivi de l'OS
 // sombre est un second booléen — quand il est actif et que l'OS est en
 // sombre, « La nuit » s'AFFICHE sans toucher au thème choisi, qui
 // revient tel quel dès que l'OS repasse en clair.
 
 export const THEMES = ['air', 'feu', 'eau', 'astres', 'terre', 'nature', 'nuit'];
-const CLE = 'discovery-theme';
-const CLE_AUTO = 'discovery-theme-auto';
+const CLE = 'wind-theme';
+const CLE_AUTO = 'wind-theme-auto';
+
+// Recopie des clés Discovery d'avant la bascule (PLAN-WIND E3) : le
+// choix survit au renommage, les anciennes clés sont retirées. Le
+// profil WebView2 est déménagé tel quel par l'application — les
+// anciennes clés sont donc bien là au premier lancement Wind.
+try {
+  for (const [ancienne, neuve] of [['discovery-theme', CLE], ['discovery-theme-auto', CLE_AUTO]]) {
+    const valeur = localStorage.getItem(ancienne);
+    if (valeur !== null) {
+      if (localStorage.getItem(neuve) === null) localStorage.setItem(neuve, valeur);
+      localStorage.removeItem(ancienne);
+    }
+  }
+} catch { /* stockage indisponible : rien à migrer */ }
 
 // Les fiches du dialogue Réglages — pastilles VERBATIM du prototype
 // (objet `themes` du template ; dans l'ordre accent, fond, panneau,

@@ -421,7 +421,7 @@ test('les réglages appliquent et persistent le thème', async () => {
   await page.locator('[data-testid="reglages-termine"]').click();
   await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
   // Persistance : le choix survit dans localStorage (rechargé au montage).
-  expect(await page.evaluate(() => localStorage.getItem('discovery-theme'))).toBe('nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('nuit');
   // La coche suit le choix à la réouverture ; retour à `nature` pour ne
   // pas teinter d'autres parcours.
   await page.locator('[data-testid="reglages"]').click();
@@ -483,12 +483,12 @@ test("Affichage : le suivi de l'OS sombre affiche « La nuit » sans toucher au 
   // OS sombre : « La nuit » s'affiche ; le thème CHOISI reste `nature`.
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'nuit');
-  expect(await page.evaluate(() => localStorage.getItem('discovery-theme'))).not.toBe('nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).not.toBe('nuit');
   // OS clair : le choix revient tel quel.
   await page.emulateMedia({ colorScheme: 'light' });
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'nuit');
   // Persistance : le booléen survit comme le thème.
-  expect(await page.evaluate(() => localStorage.getItem('discovery-theme-auto'))).toBe('1');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme-auto'))).toBe('1');
   await bascule.click();
   await page.emulateMedia({ colorScheme: null });
   await page.locator('[data-testid="reglages-termine"]').click();

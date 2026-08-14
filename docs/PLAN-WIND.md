@@ -186,6 +186,25 @@ Un commit par identifiant, chacun avec sa migration :
 **Terrain CE** : lancer sur le poste réel (base 715 Mo) — comptes
 toujours connectés, messages intacts, thème conservé, RAM mesurée.
 
+**Code livré le 2026-08-14, terrain CE dû.**
+`apps/desktop/src/demenagement.rs` : le déménagement passe avant tout
+dans `main()` (échec = arrêt net — jamais d'application vide devant des
+données à un rename de là) ; un `rename` par dossier (`%APPDATA%` et
+`%LOCALAPPDATA%`, atomique, aucun octet copié), puis `discovery.db` →
+`wind.db` compagnons d'abord et fichier maître en dernier (le `.db`
+encore ancien est le marqueur de reprise) ; jamais d'écrasement d'un
+état Wind existant ; court-circuit `DISCOVERY_DB_PATH` (harnais).
+Quatre tests (poste complet, jamais-écrasé, reprise interrompue, poste
+neuf). Coffre : `coffre_lire` (repli + recopie + retrait, le geste de
+la migration Phase 2), `coffre_oublier` (purge les deux services,
+répétable) ; l'épingle des noms garde les DEUX services ; pont vérifié
+en réel contre le Credential Manager du poste de dev (test `#[ignore]`,
+`cargo test -p mail-auth -- --ignored`). Thème : recopie
+`discovery-theme(-auto)` → `wind-theme(-auto)` au chargement du module,
+anciennes clés retirées. Gates : 407 tests Rust, 80 e2e (la suite
+reconstruit et relance l'application — le court-circuit du déménagement
+est exercé de fait), build ui-v2 propre.
+
 ### E4 — L'outillage et la release de bascule (couche D)
 
 Crate `wind-desktop` (exe, fixture télémétrie, scripts e2e, mesure,
