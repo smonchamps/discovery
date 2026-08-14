@@ -1,4 +1,4 @@
-# faire-release.ps1 — assemble le latest.json d'une version signee (ADR 0013).
+﻿# faire-release.ps1 — assemble le latest.json d'une version signee (ADR 0013).
 #
 #   powershell scripts\faire-release.ps1 0.1.3
 #
