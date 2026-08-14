@@ -118,12 +118,13 @@ corrigé le jour même, coupure/veille/OAuth à rejouer.
   détection immédiate, reconnecté en 2 s ;
 - **le jeton se relit bien au trousseau** à chaque reconnexion (échecs
   hors-ligne, succès au retour) ; l'expiration ~1 h reste à observer ;
-- **découverte : Gmail notifie sur un tick de ~60 s** — quatre EXISTS
-  horodatés à :35 de la minute à 0,3 s près, pour des envois répartis
-  sur toute la minute. Latence envoi→EXISTS p50 ≈ 37 s, PLAFONNÉE par ce
-  tick serveur, pas par le client : tout client IMAP (Thunderbird
-  compris) subit le même plafond. La gate latence se juge donc en
-  PARITÉ BULLE téléphone, pas en absolu — mesure en cours ;
+- **latence ✅ — parité bulle ACQUISE : écart bulle téléphone ↔ EXISTS
+  ≤ 3 s** (mesuré sur les 5 envois). Le tick de ~60 s observé (quatre
+  EXISTS à :35 de la minute à 0,3 s près) vit dans le pipeline de
+  LIVRAISON Gmail, en amont : il retarde le téléphone autant que
+  l'IMAP — les deux sont notifiés dans la même seconde. IDLE n'a aucun
+  handicap face au push propriétaire ; la gate produit « en même temps
+  (< 30 s) » est tenue avec ~27 s de marge, passe légère comprise ;
 - **découverte : le mail arrivé pendant la coupure n'émet jamais
   d'EXISTS** (déjà en boîte à la re-SELECT) — d'où la décision 4
   amendée : passe légère à chaque (re)connexion.

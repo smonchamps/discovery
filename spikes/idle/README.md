@@ -45,8 +45,10 @@ re-IDLE coûte 2 commandes par cycle : nul).
    d'envoi** : l'envoi → `EXISTS` inclut la livraison Gmail elle-même
    (~30 s constatés), qu'IDLE ne compresse pas. La gate produit est la
    **parité téléphone** : noter l'heure de la bulle sur le téléphone et
-   celle de la ligne `EXISTS` — p50/p95 sur cet écart-là (attendu :
-   quasi nul, quelques secondes).
+   celle de la ligne `EXISTS` — p50/p95 sur cet écart-là. **✅ Acquise
+   au 2ᵉ terrain : écart ≤ 3 s sur 5 envois — le tick de livraison
+   Gmail (~60 s) retarde le téléphone autant que l'IMAP, IDLE n'a aucun
+   handicap face au push propriétaire.**
 2. **Tenue** : laisser tourner 60 min sans trafic. Chaque relance
    s'imprime (`relance de veille … connexion vivante`) : des relances
    régulières sans `reconnexion dans N s` = tenue prouvée.
