@@ -159,6 +159,19 @@ sécurité — pas un pixel).
   et le compteur repart de zéro (PASSATION §2.6).
 - Aucun retrait de code pendant la fenêtre.
 
+**Point au 2026-08-14 (mi-fenêtre)** — l'observation s'est renforcée
+d'elle-même : l'application est désormais INSTALLÉE au poste du Chef
+Ingénieur (releases 0.1.3 puis 0.1.4, auto-update signé constaté), sur
+la vraie base — plus fort que le lancement terminal prévu à B1. Deux
+épisodes terrain instruits depuis la bascule, AUCUN acté critique :
+la visibilité de la synchro (bulle sans ligne en liste — PLAN-SYNCHRO,
+ADR 0018 : information, pas perte) et les pièces jointes absentes à la
+première ouverture (PLAN-PIECES-JOINTES : le SYMPTÔME ressemblait à un
+fantôme de courrier, le diagnostic a prouvé l'envoi multipart intact —
+faute d'AFFICHAGE, corrigée en 7a75c5d). Si le Chef Ingénieur juge ce
+second épisode critique malgré le diagnostic, le compteur repart du
+2026-08-14 ; sinon **l'échéance reste le 2026-08-26**.
+
 ## B2 — retrait du code v1
 
 Dans CET ordre (chaque pas compile et passe la gate avant le suivant) :
@@ -167,7 +180,9 @@ Dans CET ordre (chaque pas compile et passe la gate avant le suivant) :
 2. **e2e** : specs v1 supprimées (`parcours-critiques`, `recherche`,
    `multi-comptes`, `compte-generique`), `launchApp` v1 retiré de
    `launch.mjs` (`seed_inbox` RESTE : les parcours portés R2 l'utilisent),
-   `mesure.mjs` v1 retiré au profit de `mesure-v2.mjs`.
+   `mesure.mjs` v1 retiré au profit de `mesure-v2.mjs`. La dette **D-6**
+   (flake « étoiler » de `parcours-critiques`) tombe mécaniquement avec
+   sa spec : la rayer au registre dans le même commit.
 3. **Commandes orphelines** — retirées SEULEMENT si plus aucun appelant
    (UI, e2e, bancs, exemples) : `list_messages`, `startup_report`,
    `sync_inbox` en revanche RESTE (R1 l'appelle), et les commandes D2
@@ -178,9 +193,10 @@ Dans CET ordre (chaque pas compile et passe la gate avant le suivant) :
    n'exécutait pas les e2e (ADR 0005).
 5. **Docs** : PLAN-UI-V2 §P5 clos ; **`docs/PHASE-REFONTE.md`** — la
    revue de clôture exigée par la gate (livré vs plan, budgets mesurés,
-   écarts assumés A6-A9, enseignements, reports, GO/NO-GO signé) ;
-   PASSATION mise à jour (v2 = l'UI, v1 n'existe plus) ; ce plan marqué
-   soldé.
+   écarts assumés au journal du Système — la refonte va d'A6 à A13,
+   la suite du journal jusqu'à A18 relève des plans postérieurs —,
+   enseignements, reports, GO/NO-GO signé) ; PASSATION mise à jour
+   (v2 = l'UI, v1 n'existe plus) ; ce plan marqué soldé.
 
 **Gate B2 :** gate pré-push complète verte (fmt, build ui-v2,
 contrastes, clippy, tests Rust dont exemples, e2e entièrement v2) ;
@@ -192,8 +208,10 @@ contrastes, clippy, tests Rust dont exemples, e2e entièrement v2) ;
   noyau — réversibles par spéc courte.
 - **Pas de réécriture d'historique git** ; v1 reste lisible dans
   l'historique.
-- **Pas de retrait du prototype ni du Système** (`docs/design/`) : ce
-  sont les références normatives de v2, pas des restes de v1.
+- **Pas de retrait du Système** (`docs/design/systeme.dc.html`) : c'est
+  LA référence normative de v2 (seul normatif depuis A18/PLAN-DC — le
+  prototype et les maquettes ont déjà été retirés par CE plan-là, pas
+  par celui-ci).
 - **Pas de multi-fenêtre, Cc/Cci, pièces jointes à l'envoi** dans ce
   plan : reports déjà actés à l'Annexe A, inchangés.
 
