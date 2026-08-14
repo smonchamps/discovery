@@ -589,6 +589,29 @@ fn relever_inbox(
         }
     };
 
+    // E4 (PLAN-REACTIVITE, R-D2) : les corps des ARRIVÉES se rapatrient
+    // sur la connexion déjà ouverte, AVANT le bump de génération — la
+    // ligne naît AVEC son aperçu, au cycle comme à la passe légère comme
+    // au veilleur (un seul affichage, jamais une ligne muette qui se
+    // remplit plus tard). Borné : un lot qui déborde (rattrapage après
+    // coupure) bumpe d'abord — les lignes vite — et les corps échoient à
+    // la pompe, que l'UI amorce à la génération. `bodies_to_backfill`
+    // sert du plus récent au plus ancien : le budget « nombre
+    // d'arrivées » couvre exactement le lot qui vient d'entrer.
+    let corps = corps_a_l_arrivee(report.fetched);
+    if corps > 0
+        && let Err(err) = mail_core::backfill_bodies(
+            server,
+            store,
+            account_id,
+            MAILBOX,
+            mail_core::NO_HORIZON,
+            corps,
+        )
+    {
+        problems.push(format!("corps des arrivées : {err}"));
+    }
+
     // P1 (PLAN-SYNCHRO) : le courrier d'INBOX se voit TOUT DE SUITE —
     // le compteur sondé recharge la liste côté UI, et les bulles du
     // compte partent ICI, sans attendre l'inventaire, les dossiers ni
@@ -2392,6 +2415,25 @@ fn retenter_apres(tentative: u32) -> Option<Duration> {
     }
 }
 
+/// Au-delà, la relève ne rapatrie plus les corps elle-même : les lignes
+/// d'abord, la pompe fera les corps. ~192 ms par message amorti par lot
+/// (`spikes/body-backfill`) : dix corps coûtent ~2 s au chemin de la
+/// bulle — la borne < 30 s de PLAN-SYNCHRO garde ses marges.
+const CORPS_A_L_ARRIVEE_MAX: usize = 10;
+
+/// Combien de corps rapatrier DANS la relève INBOX qui vient d'apporter
+/// `fetched` enveloppes — décision pure (PLAN-REACTIVITE E4, R-D2). Un
+/// lot courant : tous ses corps, la ligne naît avec son aperçu. Un lot
+/// qui déborde (rattrapage après coupure, intégrale) : zéro — le bump
+/// part d'abord, les lignes vite, et les corps échoient à la pompe.
+fn corps_a_l_arrivee(fetched: usize) -> usize {
+    if fetched > CORPS_A_L_ARRIVEE_MAX {
+        0
+    } else {
+        fetched
+    }
+}
+
 /// Le bilan de la passe d'après-geste — fini le silence : les incidents
 /// remontent à l'UI comme ceux du cycle (terrain 0.1.5 : l'instruction
 /// était aveugle, tout partait en `eprintln` et le `.catch(() => {})`
@@ -4073,6 +4115,23 @@ mod tests {
         assert_eq!(retenter_apres(3), None);
         assert_eq!(retenter_apres(0), None);
         assert_eq!(retenter_apres(u32::MAX), None);
+    }
+
+    /// La table des corps à l'arrivée (PLAN-REACTIVITE E4, R-D2) : un
+    /// lot courant emporte ses corps — la ligne naît avec son aperçu —,
+    /// un lot qui déborde n'en emporte AUCUN : les lignes d'abord, la
+    /// pompe fera les corps. Zéro arrivée = zéro corps, jamais un
+    /// aller-retour pour rien.
+    #[test]
+    fn les_corps_suivent_le_lot_sans_le_retarder() {
+        assert_eq!(corps_a_l_arrivee(0), 0);
+        assert_eq!(corps_a_l_arrivee(1), 1);
+        assert_eq!(
+            corps_a_l_arrivee(CORPS_A_L_ARRIVEE_MAX),
+            CORPS_A_L_ARRIVEE_MAX
+        );
+        assert_eq!(corps_a_l_arrivee(CORPS_A_L_ARRIVEE_MAX + 1), 0);
+        assert_eq!(corps_a_l_arrivee(usize::MAX), 0);
     }
 
     /// La table du recul (complément P0) : rien avant deux échecs — la

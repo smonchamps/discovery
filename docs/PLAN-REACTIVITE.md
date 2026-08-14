@@ -337,6 +337,16 @@ sort des gestes sur un écho s'inscrivent au Système, même commit.
 
 ### E4 — L'aperçu né avec la ligne (R-D2)
 
+**État : livrée le 2026-08-14 (GO CE), gate complète verte — terrain
+CE dû (arrivée au repos → ligne AVEC aperçu en un seul affichage,
+borne < 30 s de PLAN-SYNCHRO re-constatée ; contrôle `wind.db` à
++5 min). C'est la dernière étape : le plan se clôt à ce constat.**
+Livré au mot du plan — corps des arrivées dans `relever_inbox` (borné
+par la décision pure `corps_a_l_arrivee`, N = 10, table de tests),
+pompe amorcée à la génération (gardée en réentrance — un no-op quand
+tout est là), liste resservie au fil des lots. Amendement A25 au
+Système (DC-D2).
+
 - **la relève INBOX rapatrie les corps des arrivées** : dans
   `relever_inbox`, après l'upsert des enveloppes et AVANT le bump de
   génération, un `fetch_bodies_html` des arrivées du lot — **borné aux

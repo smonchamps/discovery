@@ -268,6 +268,11 @@
         if (generationVue !== null && generation !== generationVue) {
           liste?.recharger();
           chargerNav();
+          // E4 (PLAN-REACTIVITE) : la génération a bougé — un lot vient
+          // d'entrer. Ses corps sont déjà là (relève, R-D2) SAUF s'il a
+          // débordé la borne : la pompe couvre le débordement et le
+          // stock, gardée en réentrance — un no-op quand tout est là.
+          rattraperCorps();
         }
         generationVue = generation;
       }
@@ -276,8 +281,13 @@
 
   // Rattrapage des corps (v1 l'avait en bandeau ; ici la ligne de
   // progression) : un lot à la fois, arrêt franc si un lot ne rapporte
-  // rien — hors ligne, la boucle ne tourne pas à vide.
+  // rien — hors ligne, la boucle ne tourne pas à vide. Gardée en
+  // réentrance (E4) : la génération peut l'amorcer pendant qu'une passe
+  // court déjà — une pompe à la fois, le verrou shell n'empile rien.
+  let corpsEnCours = false;
   async function rattraperCorps() {
+    if (corpsEnCours) return;
+    corpsEnCours = true;
     try {
       const etat = await appel('backfill_status');
       if (etat.remaining === 0) return;
@@ -289,10 +299,15 @@
         restant = bilan.remaining;
         rattrapageCorps = restant;
         if (bilan.fetched === 0) break;
+        // E4 : les aperçus rattrapés se montrent au fil des lots — la
+        // resservie est invisible depuis E1, plus besoin d'attendre une
+        // recharge fortuite.
+        liste?.recharger();
       }
     } catch (err) {
       console.error('backfill_bodies :', err);
     } finally {
+      corpsEnCours = false;
       rattrapageCorps = null;
       rattrapageTotal = null;
     }
