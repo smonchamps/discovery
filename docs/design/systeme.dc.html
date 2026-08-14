@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="./support.js"></script>
 </head>
 <body>
 <x-dc>
@@ -122,7 +121,7 @@
           <td style="padding:12px 20px"><span style="display:block; width:44px; height:28px; border-radius:6px; border:1px solid #dadfda; background:#8c2f22"></span></td>
           <td style="padding:12px 20px; font-size:13px">Alerte</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f">#8c2f22</td>
-          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Échec d'envoi, perte de connexion. Jamais décoratif, jamais pour Supprimer</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Échec d'envoi, perte de connexion, mention « Brouillon — ». Jamais décoratif, jamais pour Supprimer. En thème nuit la valeur s'éclaircit à #ea9a90 — c'est du texte sur les fonds de rangée, remède A8 (A19)</td>
         </tr>
       </tbody>
     </table>
@@ -130,23 +129,15 @@
 
   <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
     <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Thèmes de couleur</h2>
-    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Neuf thèmes, chacun autour d'un élément. Tous conservent la même structure de jetons — fond, panneau, surface, encre, accent, sélection — et le même unique accent par thème. Seules les valeurs changent ; les règles de forme, d'élévation et de signature restent identiques. « La nature » est la direction actuelle. « La nuit » est le thème sombre : les surfaces s'assombrissent, l'encre s'éclaircit, l'accent est adouci pour tenir le contraste.</p>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Sept thèmes, chacun autour d'un élément — ceux que <code>systeme.css</code> livre, ni plus ni moins (DC-D5). Tous conservent la même structure de jetons — fond, panneau, surface, encre, accent, sélection — et le même unique accent par thème. Seules les valeurs changent ; les règles de forme, d'élévation et de signature restent identiques. « La nature » est la direction actuelle. « La nuit » est le thème sombre : les surfaces s'assombrissent, l'encre s'éclaircit, l'accent est adouci pour tenir le contraste.</p>
     <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:20px">
 
       <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
         <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">L'air</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Ciels pâles et bleu clair, beaucoup de respiration.</p></div>
         <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
-          <span style="flex:1; background:#eef2f5"></span><span style="flex:1; background:#e3e9ee"></span><span style="flex:1; background:#ffffff"></span><span style="flex:1; background:#2d6f99"></span><span style="flex:1; background:#e0ecf3"></span><span style="flex:1; background:#22303a"></span>
+          <span style="flex:1; background:#eef2f5"></span><span style="flex:1; background:#e3e9ee"></span><span style="flex:1; background:#ffffff"></span><span style="flex:1; background:#3a7aa1"></span><span style="flex:1; background:#e0ecf3"></span><span style="flex:1; background:#22303a"></span>
         </div>
-        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#eef2f5 · #e3e9ee · #ffffff · accent #2d6f99 · #e0ecf3 · encre #22303a</p>
-      </div>
-
-      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
-        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Le vent</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Sauge pâle et gris frais, un accent ardoise-vert.</p></div>
-        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
-          <span style="flex:1; background:#eef1ef"></span><span style="flex:1; background:#e4e8e5"></span><span style="flex:1; background:#ffffff"></span><span style="flex:1; background:#457269"></span><span style="flex:1; background:#e2ebe8"></span><span style="flex:1; background:#242a29"></span>
-        </div>
-        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#eef1ef · #e4e8e5 · #ffffff · accent #457269 · #e2ebe8 · encre #242a29</p>
+        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#eef2f5 · #e3e9ee · #ffffff · accent #3a7aa1 · #e0ecf3 · encre #22303a</p>
       </div>
 
       <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
@@ -155,14 +146,6 @@
           <span style="flex:1; background:#f5efe8"></span><span style="flex:1; background:#eee3d9"></span><span style="flex:1; background:#fffaf5"></span><span style="flex:1; background:#c0492b"></span><span style="flex:1; background:#f3e2d5"></span><span style="flex:1; background:#2d201b"></span>
         </div>
         <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#f5efe8 · #eee3d9 · #fffaf5 · accent #c0492b · #f3e2d5 · encre #2d201b</p>
-      </div>
-
-      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
-        <div style="display:flex; flex-direction:column; gap:4px"><p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Tournesol</p><p style="margin:0; font-size:14px; line-height:1.5; color:#4d534f">Crème et or, un accent ambre chaud.</p></div>
-        <div style="display:flex; gap:0; border:1px solid #dadfda; border-radius:8px; overflow:hidden; height:56px">
-          <span style="flex:1; background:#fbf6e6"></span><span style="flex:1; background:#f4ecd4"></span><span style="flex:1; background:#fffef8"></span><span style="flex:1; background:#8f6410"></span><span style="flex:1; background:#f3e7c6"></span><span style="flex:1; background:#2e2716"></span>
-        </div>
-        <p style="margin:0; font-size:12px; color:#5c625e; font-variant-numeric:tabular-nums">#fbf6e6 · #f4ecd4 · #fffef8 · accent #8f6410 · #f3e7c6 · encre #2e2716</p>
       </div>
 
       <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:24px; display:flex; flex-direction:column; gap:16px">
@@ -202,7 +185,7 @@
         <div style="display:flex; gap:0; border:1px solid #394045; border-radius:8px; overflow:hidden; height:56px">
           <span style="flex:1; background:#1b1e21"></span><span style="flex:1; background:#23272b"></span><span style="flex:1; background:#2b3034"></span><span style="flex:1; background:#57a88f"></span><span style="flex:1; background:#313f39"></span><span style="flex:1; background:#edefed"></span>
         </div>
-        <p style="margin:0; font-size:12px; color:#89918d; font-variant-numeric:tabular-nums">#1b1e21 · #23272b · #2b3034 · accent #57a88f · #313f39 · encre #edefed</p>
+        <p style="margin:0; font-size:12px; color:#89918d; font-variant-numeric:tabular-nums">#1b1e21 · #23272b · #2b3034 · accent #57a88f · #313f39 · encre #edefed · alerte #ea9a90</p>
       </div>
 
     </div>
@@ -317,13 +300,13 @@
   <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
     <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Kit unifié</h2>
     <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Icônes Material Symbols Rounded, graisse 300, corps 16 px, toujours à gauche du libellé. Le dossier ouvert passe son icône en remplissage (FILL 1, graisse 600) dans l'accent ; partout ailleurs elles restent en contour, en texte atténué.</p>
-    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch"><b>Amendement A3.</b> L'inventaire du Système est <b>arrêté à 36
-glyphes</b> — ceux de ce document (31 à l'origine ; chaque évolution est
-au journal : A12, A13, A14). La police est <b>vendorisée dans le
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch"><b>Amendement A3.</b> La police est <b>vendorisée dans le
 dépôt</b> (<code>assets/icones/</code>, sous-ensemble Material Symbols
 Rounded, axes opsz 20, graisse 300–600, FILL 0–1) : hors ligne par
-construction, aucun CDN. Tout glyphe nouveau entre d'abord dans cette
-liste.</p>
+construction, aucun CDN. L'inventaire des glyphes est tenu par
+<b>le contrat <code>assets/icones/README.md</code> — le seul compteur
+qui fait foi</b> (DC-D3) : tout glyphe nouveau y entre d'abord, à la
+régénération, et l'évolution s'inscrit au journal.</p>
     <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Boutons, onglets de filtre et puces d'info partagent le même rayon de 6 px, le même filet de 1 px et la même hauteur de 32 px. Seul le remplissage distingue leur rôle.</p>
     <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:30px; display:flex; flex-direction:column; gap:28px">
       <div style="display:flex; flex-direction:column; gap:14px">
@@ -364,7 +347,7 @@ liste.</p>
 
   <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
     <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Icônes et libellés</h2>
-    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">L'inventaire complet des symboles Material Rounded employés dans les écrans, chacun relié à son libellé et à son emplacement. Une icône ne porte qu'un seul sens dans tout le produit ; quand elle sert deux gestes proches (dossier et action), les deux sont notés.</p>
+    <p style="margin:0; font-size:15px; line-height:1.6; color:#4d534f; max-width:760px">Les symboles Material Rounded employés dans les écrans, chacun relié à son libellé et à son emplacement — l'inventaire qui fait foi est le contrat <code>assets/icones/README.md</code> (DC-D3). Une icône ne porte qu'un seul sens dans tout le produit ; quand elle sert deux gestes proches (dossier et action), les deux sont notés.</p>
     <table style="width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; overflow:hidden">
       <thead>
         <tr style="background:#eaece9">
@@ -822,14 +805,13 @@ lecture</b> — jamais à la ligne de liste.</p>
   <section style="display:flex; flex-direction:column; gap:24px; width:1440px">
     <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Journal des amendements</h2>
     <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Ce document est la <b>copie vivante</b> du Système, versionnée
-dans le dépôt (<code>docs/design/</code>). Depuis la directive du
-2026-08-11 (amendement A6), le prototype interactif
-(<code>docs/design/ui_prototype.html</code>) est la <b>cible normative</b>
-de la refonte : quand ils divergent, <b>le prototype l'emporte</b> et
-l'écart s'inscrit ici. Le Système reste la référence là où le prototype
-est muet — avis et progression, corps HTML, inventaire d'icônes,
-contrastes. Chaque amendement est daté, motivé — terrain ou directive —
-et tracé par un commit.</p>
+dans le dépôt (<code>docs/design/</code>). Depuis la clôture d'A6
+(amendement A18, 2026-08-14, <code>docs/PLAN-DC.md</code>), le Système
+est l'<b>unique source normative</b> de l'écran : tout commit qui change
+un pixel ou un geste l'amende — section d'écran ou journal — <b>dans le
+même commit</b> (DC-D2). L'accessibilité prime quand elle et un dessin
+se contredisent (A8). Chaque amendement est daté, motivé — terrain ou
+directive — et tracé par un commit.</p>
     <table style="width:100%; background:#ffffff; border:1px solid #dadfda; border-radius:10px; overflow:hidden">
       <thead>
         <tr style="background:#eaece9">
@@ -918,6 +900,21 @@ et tracé par un commit.</p>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-13</td>
           <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A16</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f">Synchronisation visible et actionnable — retours bêta (<code>docs/PLAN-SYNCHRO.md</code>, maquettes validées par le Chef Ingénieur : S-D1 barre d'état, S-D2 passe légère, S-D3 barre fine). La ligne de progression porte enfin l'<b>horodatage du prototype</b> (« dernière synchronisation il y a N minutes », persisté en base, <code>prefs.derniere_synchro</code>), le <b>cycle courant</b> devient visible (« Synchronisation · 2/4 · compte · boîte… · 37 % », sonde mémoire à la seconde pendant le cycle seul — la <b>boîte courante</b> — ou l'étape : inventaire des dossiers, fils de discussion, brouillons — et le <b>% de l'intégrale</b> compris : premier retour terrain du 2026-08-13, « 2/2 figé 7 minutes », corrigé le jour même) et une <b>barre fine de 2 px</b> court au ras supérieur de la barre d'état — déterminée quand un % honnête existe (règles de <code>sync_percent</code> : jamais 100 tant qu'il reste), balayage indéterminé sinon. Le <b>bouton de relève</b> (« Synchroniser », « Réessayer » sur échec) se loge à droite de la barre — <b>D5 rouverte au terrain</b>, câblé en E3 sur la passe légère avec le glyphe <code>sync</code> (37ᵉ de la police maison).</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-14</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A17</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f">Police d'icônes <b>37 → 39 glyphes</b> — <code>hourglass_empty</code> (rapatriement d'une pièce en transfert) et <code>warning</code> (refus au plafond) ajoutés à la régénération (<code>docs/PLAN-PIECES-JOINTES.md</code> E3, commit 27ed056 ; preuve rejouée 40/40, copie <code>public/</code> faite). <b>Ligne inscrite avec retard</b> : le numéro était réclamé par le commit, la ligne manquait au journal — le trou qui a motivé la règle du même commit (A18, DC-D2).</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-14</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A18</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>Clôture d'A6</b> — commande du Chief Designer (<code>docs/PLAN-DC.md</code>, décisions DC-D1 à DC-D6). La refonte est livrée, le prototype a rempli son office : le Système redevient l'<b>unique source normative</b> de l'écran. <code>ui_prototype.html</code> est <b>supprimé</b> du dépôt (7,3 Mo de player bundlé, non maintenable par nature ; l'histoire git le garde — import au commit 9975a12) ; le banc manuel de parité <code>e2e/parite.mjs</code> part avec lui, son seul objet étant la comparaison à ce fichier. Règles de tenue : le Système s'amende <b>dans le même commit</b> que l'UI (DC-D2) ; l'inventaire des glyphes est tenu par le seul contrat <code>assets/icones/README.md</code> (DC-D3) ; une maquette de plan meurt au GO du Chef Ingénieur, reversée en section d'écran (DC-D4) ; le doc dit <b>le livré, rien que le livré</b> (DC-D5) ; une gate de cohérence gardera les valeurs (DC-D6, E3 du plan).</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-14</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A19</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>Rattrapage des chantiers muets au journal</b>, chaque fait daté de son commit. <b>Brouillons</b> (2026-08-13, <code>docs/PLAN-BROUILLONS.md</code>, commits e836809/a378dd6) : mention « Brouillon — » variante B sur les fils de la Réception, dossier Brouillons servi par les brouillons locaux (clic = reprise, jamais <code>mark_seen</code>), bloc de brouillon en pointillé en conversation, source « brouillons » retirée de la fente d'avis ; <code>--alert</code> du thème nuit éclairci <code>#d9776b → #ea9a90</code> (la mention est du texte sur les fonds de rangée — remède A8, paires au banc de contraste). <b>Pièces jointes à l'écran</b> (2026-08-14, <code>docs/PLAN-PIECES-JOINTES.md</code>, commits 74d75ad/27ed056) : puces réelles nom + taille + retrait, poids total (« 2,8 Mo / 25 Mo »), refus au plafond dit sous la rangée, transfert à trois états (rapatriement / arrivée / échec avec « Réessayer » et renoncement à la croix), envoi gardé tant que des pièces manquent. <b>Réseau en direct</b> (2026-08-14, PLAN-SYNCHRO P0-bis, commit bdc4907) : barre « Hors ligne » à l'instant, cycles suspendus hors-ligne, passe légère au retour réseau. <b>Corrections du doc lui-même</b> (DC-D5) : « Le vent » et « Tournesol », dessinés ici mais jamais livrés ni mesurés au banc de contraste, sont retirés de la section Thèmes ; l'accent de « L'air » dessiné <code>#2d6f99</code> est aligné sur la valeur livrée <code>#3a7aa1</code> (A8). Les sections d'écran correspondantes arrivent en E2 du plan (A20).</td>
         </tr>
       </tbody>
     </table>

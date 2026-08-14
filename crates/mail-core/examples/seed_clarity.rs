@@ -1,7 +1,8 @@
-//! Jeu d'essai « Clarity » — le décor EXACT du prototype
-//! (`docs/design/ui_prototype.html`), seedé dans une vraie base pour le
-//! banc de parité visuelle de la refonte (PLAN-UI-V2 §4) : v2 côte à
-//! côte avec le prototype, mêmes états, mêmes chiffres.
+//! Jeu d'essai « Clarity » — le décor EXACT du prototype d'origine
+//! (supprimé à l'amendement A18 du Système ; import au commit 9975a12),
+//! seedé dans une vraie base. Né pour le banc de parité de la refonte
+//! (PLAN-UI-V2 §4, banc retiré avec le prototype), il reste le décor
+//! des e2e et des sections d'écran du Système.
 //!
 //! Le décor : 18 conversations en réception dont 4 non lues, le fil
 //! « Relecture du contrat Vantis » (3 messages dont une réponse à soi,

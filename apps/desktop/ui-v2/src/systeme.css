@@ -1,6 +1,6 @@
 /* Système Clarity — jetons et styles de base de la v2.
-   14 rôles × 7 thèmes, valeurs du prototype (docs/design/
-   ui_prototype.html, objet `themes` du template), CORRIGÉES par
+   14 rôles × 7 thèmes, valeurs du prototype d'origine (supprimé à la
+   clôture d'A18 — import au commit 9975a12), CORRIGÉES par
    l'amendement A8 là où le prototype passait sous les seuils WCAG :
    `--muted` assombri (air, feu, eau, astres, terre) ou éclairci (nuit),
    `--accent` de l'air assombri sous son texte blanc. Même teinte,
