@@ -69,7 +69,13 @@
   font-family: 'Material Symbols Rounded';
   font-style: normal;
   font-weight: 300 600;
-  src: url('/icones/material-symbols-rounded.subset.woff2') format('woff2');
+  /* ?v=<nombre de glyphes> : le nom du fichier ne change pas d'une
+     régénération à l'autre et le cache HTTP de WebView2 survit aux mises
+     à jour (constaté au banc — styles fantômes) : sans ce cache-buster,
+     un poste pourrait servir l'ANCIEN sous-ensemble à la version neuve
+     et rendre une ligature nouvelle en toutes lettres. À incrémenter à
+     CHAQUE régénération, avec l'inventaire (assets/icones/README.md). */
+  src: url('/icones/material-symbols-rounded.subset.woff2?v=43') format('woff2');
 }
 .ms {
   font-family:'Material Symbols Rounded'; font-weight:300; font-size:16px;

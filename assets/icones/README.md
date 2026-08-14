@@ -35,8 +35,12 @@ des sources (`grep` des noms utilisés), pas de mémoire.
 `search` `send` `settings` `storage` `sync` `system_update_alt`
 `unfold_more` `visibility_off` `volunteer_activism` `warning` `work`
 
-Ajouter un glyphe = régénérer le fichier (ci-dessous) **et** tenir cette
-liste à jour — l'inventaire est le contrat.
+Ajouter un glyphe = régénérer le fichier (ci-dessous), tenir cette
+liste à jour — l'inventaire est le contrat — **et** incrémenter le
+`?v=` de l'URL `@font-face` (`systeme.css`) : le nom du fichier ne
+change pas et le cache HTTP de WebView2 survit aux mises à jour — sans
+cache-buster, un poste peut servir l'ancien sous-ensemble à la version
+neuve.
 
 **La police vit en DEUX exemplaires** : ici (la source vendorisée) et
 [`apps/desktop/ui-v2/public/icones/`](../../apps/desktop/ui-v2/public/icones/)
