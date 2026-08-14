@@ -1,5 +1,21 @@
 # Plan — Synchronisation : sincérité, geste manuel, temps réel
 
+**CHANTIER SOLDÉ le 2026-08-14 (terrain final complet).** Les trois
+plaintes bêta sont mortes sur mesures : bulle téléphone → liste en
+**12 s** sans un geste (E4, veilleur IDLE) ; « Hors ligne » affiché en
+**5 s** après coupure et mail retenu visible **4 s** après le retour du
+réseau (P0-bis) ; bouton, barre sincère et horodatage au mot du
+prototype (E1/E3). Cycle Gmail au repos : **~4-9 s** contre ~38 min à
+l'ouverture du chantier (E2a/E2b/E2c). RAM avec veilleurs :
+**115,7 Mo privés / 200** (banc `mesure-ram.ps1`, 7 processus).
+Observation consignée, à surveiller en usage réel : après une arrivée
+de courrier, Gmail fait glisser HIGHESTMODSEQ sur de nombreux dossiers
+→ un cycle « 52 dossiers (0 sautés) » à ~8 s (delta CONDSTORE, borné) au
+lieu de « 50 sautés » à ~1 s — conforme au design E2b, coût dans la
+gate ; affinage possible si le volume regêne. Restent en usage réel :
+veilleurs Microsoft + IMAP générique, expiration OAuth longue (S-D4 :
+cadence du cycle complet à re-discuter, IDLE actif).
+
 Commande (2026-08-13) : les retours bêta sur la synchronisation ne sont
 pas bons. Trois plaintes : (1) pas de vrai temps réel — la bulle arrive
 sur le téléphone, le message n'apparaît dans Discovery que quelques
@@ -368,8 +384,12 @@ chaque (re)connexion (un mail arrivé pendant une coupure n'émet
 jamais d'EXISTS) ; veilleurs endormis hors ligne (P0-bis,
 `reseau_etat` — qui efface aussi les reculs au retour du réseau) et
 sur recul (lecture seule) ; reconnexion à délai doublé, jeton relu au
-trousseau. **Terrain dû : latence EXISTS → liste à l'écran, budgets
-RAM/démarrage re-mesurés (andon si cassés).**
+trousseau. **Terrain final du 2026-08-14 : GATE TENUE** — bulle
+téléphone → liste en 12 s sans un geste ; mail retenu pendant une
+coupure visible 4 s après le retour (une coupure brève n'abat même
+pas la session TCP : c'est la relève `online` de P0-bis qui a servi,
+ceinture et bretelles) ; RAM 115,7 Mo privés / 200 avec veilleurs
+actifs (banc `mesure-ram.ps1`).
 
 - **Spike jetable d'abord** — `spikes/idle/`, hors workspace, sur les
   trois fournisseurs (Gmail, Microsoft, IMAP générique). Protocole :
