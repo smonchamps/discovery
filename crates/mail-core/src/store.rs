@@ -2727,8 +2727,7 @@ mod tests {
     /// modèle faux.
     #[test]
     fn une_base_fichier_s_ouvre_en_wal() {
-        let path =
-            std::env::temp_dir().join(format!("wind-test-wal-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wind-test-wal-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
         // Une base héritée, née AVANT le WAL : mode rollback (delete).
@@ -2753,10 +2752,8 @@ mod tests {
     /// s'enrichir sans perdre les enveloppes déjà synchronisées.
     #[test]
     fn opens_and_migrates_a_phase1_database() {
-        let path = std::env::temp_dir().join(format!(
-            "wind-test-migration-{}.db",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("wind-test-migration-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let conn = Connection::open(&path).unwrap();
@@ -2808,10 +2805,8 @@ mod tests {
     /// connexion revendique le tout.
     #[test]
     fn migrates_a_full_phase2_database_and_adopts_everything() {
-        let path = std::env::temp_dir().join(format!(
-            "wind-test-migration-p2-{}.db",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("wind-test-migration-p2-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let conn = Connection::open(&path).unwrap();
@@ -3635,10 +3630,8 @@ mod tests {
     /// prochain lancement — où la liste est complète.
     #[test]
     fn annuler_l_adoption_defait_tout_et_laisse_user_version_inchangee() {
-        let path = std::env::temp_dir().join(format!(
-            "wind-test-rembobinage-{}.db",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("wind-test-rembobinage-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
 
         // Assez de messages pour que l'annulation tombe en PLEINE passe :

@@ -116,7 +116,10 @@ mod tests {
         demenager_dossier(&ancien, &nouveau).unwrap();
         renommer_base(&nouveau).unwrap();
 
-        assert_eq!(std::fs::read(ancien.join("discovery.db")).unwrap(), b"vieux");
+        assert_eq!(
+            std::fs::read(ancien.join("discovery.db")).unwrap(),
+            b"vieux"
+        );
         assert_eq!(std::fs::read(nouveau.join("wind.db")).unwrap(), b"recent");
         let _ = std::fs::remove_dir_all(&bac);
     }

@@ -447,8 +447,7 @@ mod tests {
     /// Règle d'or n°1 : l'intention d'envoi survit à l'arrêt du processus.
     #[test]
     fn queued_send_survives_process_restart() {
-        let path =
-            std::env::temp_dir().join(format!("wind-test-outbox-{}.db", std::process::id()));
+        let path = std::env::temp_dir().join(format!("wind-test-outbox-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let store = Store::open(&path).unwrap();
@@ -759,10 +758,8 @@ mod tests_pieces {
     /// perd aucun octet — les pièces survivent à l'arrêt du processus.
     #[test]
     fn queued_pieces_survive_process_restart() {
-        let path = std::env::temp_dir().join(format!(
-            "wind-test-outbox-pieces-{}.db",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("wind-test-outbox-pieces-{}.db", std::process::id()));
         let _ = std::fs::remove_file(&path);
         {
             let store = Store::open(&path).unwrap();
