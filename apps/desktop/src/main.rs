@@ -6,6 +6,7 @@
 //! dans mail-core / mail-imap / mail-smtp / mail-auth.
 
 mod commands;
+mod demenagement;
 mod telemetry;
 mod veilleur;
 
@@ -106,6 +107,16 @@ pub(crate) struct AppState {
 }
 
 fn main() {
+    // Le déménagement Discovery → Wind (PLAN-WIND E3) passe AVANT tout :
+    // ni la base ni le profil WebView2 ne doivent naître côté Wind
+    // pendant qu'un poste Discovery attend son rename. Échec = arrêt
+    // net — continuer offrirait une application vide à un utilisateur
+    // dont les données sont à un rename de là.
+    if let Err(err) = demenagement::demenager() {
+        eprintln!("échec du déménagement des données Discovery → Wind : {err}");
+        eprintln!("Fermez toute autre instance de l'application, puis relancez.");
+        std::process::exit(1);
+    }
     let state = AppState {
         started_at: Instant::now(),
         accounts: Mutex::new(HashMap::new()),

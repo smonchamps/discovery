@@ -11,7 +11,7 @@
 //! longueur, domaine), qui suffit à désigner le défaut.
 //!
 //! ```powershell
-//! cargo run -p mail-core --example diagnostic_fils -- "$env:APPDATA\dev.discovery.app\discovery.db"
+//! cargo run -p mail-core --example diagnostic_fils -- "$env:APPDATA\dev.elements.wind\wind.db"
 //! ```
 
 use rusqlite::{Connection, OptionalExtension};

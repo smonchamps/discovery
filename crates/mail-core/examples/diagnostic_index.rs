@@ -8,7 +8,7 @@
 //! contenu de message n'est lu ni écrit.
 //!
 //! ```powershell
-//! cargo run -p mail-core --example diagnostic_index -- "$env:APPDATA\dev.discovery.app\discovery.db"
+//! cargo run -p mail-core --example diagnostic_index -- "$env:APPDATA\dev.elements.wind\wind.db"
 //! ```
 
 use rusqlite::Connection;

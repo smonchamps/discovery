@@ -1,5 +1,5 @@
 # Somme des working sets PRIVES : discovery-desktop.exe + ses processus
-# WebView2 (identifies par leur ligne de commande dev.discovery.app).
+# WebView2 (identifies par leur ligne de commande dev.elements.wind).
 #
 # -AppPid et -Profil RESTREIGNENT la mesure a UNE instance. Sans eux, le
 # script sommait toutes les instances de la machine : une fenetre ouverte
@@ -19,7 +19,7 @@ if ($AppPid -gt 0) {
 }
 
 $webview = Get-CimInstance Win32_Process -Filter "Name='msedgewebview2.exe'" |
-    Where-Object { $_.CommandLine -match 'discovery' }
+    Where-Object { $_.CommandLine -match 'dev\.elements\.wind' }
 if ($Profil -ne '') {
     # Le dossier de donnees utilisateur identifie l'instance de facon
     # sure : WebView2 le passe a chacun de ses processus enfants.

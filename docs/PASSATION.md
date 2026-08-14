@@ -76,8 +76,10 @@ garde d'espace disque veille avant chaque engagement.
 
 **Premier réflexe d'une nouvelle session :** demander à l'utilisateur où
 en est le bandeau de rattrapage et ce que pèse
-`%APPDATA%\dev.discovery.app\discovery.db` (avec ses compagnons `-wal` et
+`%APPDATA%\dev.elements.wind\wind.db` (avec ses compagnons `-wal` et
 `-shm`). Rappel du §7.1 : tu ne peux pas lire sa base toi-même.
+(Avant PLAN-WIND E3 : `dev.discovery.app\discovery.db` — le déménagement
+est automatique au premier lancement Wind.)
 
 ### 1.2 Les budgets non tenus, avec leur remède
 
@@ -333,14 +335,14 @@ Bash). Syntaxes différentes.
 - Pour un affichage non-ASCII depuis Python : `PYTHONIOENCODING=utf-8`.
 - **L'assistant ne voit PAS la vraie base.** L'application Claude est
   empaquetée MSIX : son shell lit un `%APPDATA%` **redirigé**, et
-  `discovery.db` y résout vers une copie privée périmée. **Les
+  `wind.db` y résout vers une copie privée périmée. **Les
   diagnostics du §9 sont lancés par l'utilisateur**, qui colle la sortie.
   Corollaire : annoncer d'abord ce qu'on s'attend à y lire, pour que
   l'aller-retour soit une mesure et non une collecte — et transmettre
   chaque chiffre **avec sa définition exacte** (un « ~1 650 restants » lu
   comme un reliquat alors que c'était un total a coûté une prédiction
   fausse).
-- **Depuis l'ADR 0011, la base a deux compagnons** : `discovery.db-wal`
+- **Depuis l'ADR 0011, la base a deux compagnons** : `wind.db-wal`
   et `-shm`. Une copie à chaud doit prendre les trois.
 - **Un commit ne peut pas être chaîné avec `git --no-pager …`** : le hook
   `block-no-verify` bloque le préfixe `--no-`. Séparer les commandes.

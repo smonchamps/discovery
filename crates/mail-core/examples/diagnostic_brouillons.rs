@@ -11,7 +11,7 @@
 //! suffit à distinguer deux versions sans en révéler une seule.
 //!
 //! ```powershell
-//! cargo run -p mail-core --example diagnostic_brouillons -- "$env:APPDATA\dev.discovery.app\discovery.db"
+//! cargo run -p mail-core --example diagnostic_brouillons -- "$env:APPDATA\dev.elements.wind\wind.db"
 //! ```
 
 use rusqlite::Connection;

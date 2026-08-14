@@ -3150,7 +3150,7 @@ pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     }
     let dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
-    Ok(dir.join("discovery.db"))
+    Ok(dir.join("wind.db"))
 }
 
 // ---------------------------------------------------------------------
