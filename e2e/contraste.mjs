@@ -21,7 +21,10 @@ const themes = {};
 const blocs = [...css.matchAll(/:root(?:\[data-theme="([a-z]+)"\])?\s*\{([^}]+)\}/g)];
 for (const [, nom, corps] of blocs) {
   const jetons = {};
-  for (const [, cle, valeur] of corps.matchAll(/--([a-zA-Z]+)\s*:\s*(#[0-9a-fA-F]{6})/g)) {
+  // [a-zA-Z0-9] : « ink2 » porte un chiffre — l'ancienne classe [a-zA-Z]
+  // le laissait tomber, et le `continue` d'en bas taisait les 21 paires
+  // ink2 jamais mesurées (bogue trouvé à PLAN-DC E3).
+  for (const [, cle, valeur] of corps.matchAll(/--([a-zA-Z][a-zA-Z0-9]*)\s*:\s*(#[0-9a-fA-F]{6})/g)) {
     jetons[cle] = valeur;
   }
   if (Object.keys(jetons).length > 0) themes[nom ?? 'nature'] = jetons;
@@ -66,7 +69,13 @@ let echecs = 0;
 for (const [nom, t] of Object.entries(themes)) {
   console.log(`\n=== ${nom} ===`);
   for (const [encre, fond, seuil, ou] of PAIRES) {
-    if (!t[encre] || !t[fond]) continue;
+    if (!t[encre] || !t[fond]) {
+      // Un jeton introuvable n'est pas une paire à sauter : c'est le
+      // banc qui ment. Bruyant, comme tout échec.
+      echecs += 1;
+      console.log(`ECHEC ${encre.padEnd(9)} sur ${fond.padEnd(8)} jeton introuvable dans systeme.css  ${ou}`);
+      continue;
+    }
     const r = rapport(t[encre], t[fond]);
     const ok = r >= seuil;
     if (!ok) echecs += 1;
