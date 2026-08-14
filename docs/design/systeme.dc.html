@@ -393,8 +393,18 @@ régénération, et l'évolution s'inscrit au journal.</p>
   <section style="display:flex; flex-direction:column; gap:20px">
     <div style="display:flex; flex-direction:column; gap:6px">
       <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e; font-weight:600">Écran 1</p>
-      <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Onboarding</h2>
+      <h2 style="margin:0; font-size:24px; font-weight:600; letter-spacing:-.01em">Onboarding et guichet de compte</h2>
     </div>
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4d534f; max-width:88ch">Le guichet d'ajout de compte est <b>une seule implémentation, deux
+surfaces</b> (A11) : l'écran 01 à zéro compte — ci-dessous — et la
+section « Comptes » des Réglages, en géométrie compacte (entrées
+40 px, sans ombre). Porte simple : le <b>domaine</b> choisit le flux.
+Gmail et Microsoft partent au consentement navigateur (« Autorisation
+en cours dans votre navigateur… ») ; tout autre domaine <b>révèle</b>
+les champs serveur, pré-remplis <code>imap.domaine</code> /
+<code>smtp.domaine</code>, ports 993 / 465. L'attente est une note
+atténuée, l'erreur est du texte d'alerte sous le formulaire — jamais
+une surimpression.</p>
     <div data-screen-label="01 Onboarding" style="width:1440px; height:900px; background:#f0f2ef; border:1px solid #dadfda; border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center">
       <div style="width:520px; display:flex; flex-direction:column; gap:26px">
         <p style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5c625e; font-weight:600">Discovery</p>
@@ -405,6 +415,53 @@ régénération, et l'évolution s'inscrit au journal.</p>
           <button type="button" style="height:32px; flex:none; white-space:nowrap; padding:0 16px; align-self:flex-start; font-size:13px; font-weight:600; font-family:inherit; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; cursor:pointer" style-hover="background:#26594a; border-color:#26594a">Continuer</button>
         </div>
         <p style="margin:0; font-size:13px; line-height:1.5; color:#5c625e">Le serveur est détecté automatiquement. Rien d'autre à régler.</p>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:20px; width:1440px">
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:28px; display:flex; flex-direction:column; gap:18px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Domaine inconnu — le guichet générique révélé</p>
+        <div style="display:flex; flex-direction:column; gap:12px; max-width:520px">
+          <label for="gg-adresse" style="font-size:13px; color:#4d534f">Adresse e-mail</label>
+          <input id="gg-adresse" type="email" value="camille@atelier-nord.fr" readOnly="{{ true }}" style="height:52px; font-size:15px; font-family:inherit; padding:0 16px; background:#ffffff; color:#232725; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:6px; box-shadow:0 2px 8px rgba(35,39,37,0.08)" />
+          <label for="gg-mdp" style="font-size:13px; color:#4d534f">Mot de passe</label>
+          <input id="gg-mdp" type="password" value="············" readOnly="{{ true }}" style="height:52px; font-size:15px; font-family:inherit; padding:0 16px; background:#ffffff; color:#232725; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:6px; box-shadow:0 2px 8px rgba(35,39,37,0.08)" />
+          <div style="display:flex; gap:12px">
+            <span style="display:flex; flex-direction:column; gap:12px; flex:1">
+              <label for="gg-imap" style="font-size:13px; color:#4d534f">Serveur IMAP</label>
+              <input id="gg-imap" type="text" value="imap.atelier-nord.fr" readOnly="{{ true }}" style="height:52px; font-size:15px; font-family:inherit; padding:0 16px; background:#ffffff; color:#232725; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:6px; box-shadow:0 2px 8px rgba(35,39,37,0.08)" />
+            </span>
+            <span style="display:flex; flex-direction:column; gap:12px; flex:0 0 110px">
+              <label for="gg-imap-port" style="font-size:13px; color:#4d534f">Port</label>
+              <input id="gg-imap-port" type="text" value="993" readOnly="{{ true }}" style="height:52px; font-size:15px; font-family:inherit; padding:0 16px; background:#ffffff; color:#232725; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:6px; box-shadow:0 2px 8px rgba(35,39,37,0.08)" />
+            </span>
+          </div>
+          <div style="display:flex; gap:12px">
+            <span style="display:flex; flex-direction:column; gap:12px; flex:1">
+              <label for="gg-smtp" style="font-size:13px; color:#4d534f">Serveur SMTP</label>
+              <input id="gg-smtp" type="text" value="smtp.atelier-nord.fr" readOnly="{{ true }}" style="height:52px; font-size:15px; font-family:inherit; padding:0 16px; background:#ffffff; color:#232725; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:6px; box-shadow:0 2px 8px rgba(35,39,37,0.08)" />
+            </span>
+            <span style="display:flex; flex-direction:column; gap:12px; flex:0 0 110px">
+              <label for="gg-smtp-port" style="font-size:13px; color:#4d534f">Port</label>
+              <input id="gg-smtp-port" type="text" value="465" readOnly="{{ true }}" style="height:52px; font-size:15px; font-family:inherit; padding:0 16px; background:#ffffff; color:#232725; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:6px; box-shadow:0 2px 8px rgba(35,39,37,0.08)" />
+            </span>
+          </div>
+          <button type="button" style="height:32px; flex:none; white-space:nowrap; padding:0 16px; align-self:flex-start; font-size:13px; font-weight:600; font-family:inherit; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; cursor:pointer">Continuer</button>
+          <p style="margin:0; font-size:13px; line-height:1.5; color:#5c625e">Renseignez les serveurs de votre fournisseur — le mot de passe rejoint le coffre du système, jamais un fichier.</p>
+        </div>
+      </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:28px; display:flex; flex-direction:column; gap:18px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Les trois réponses du guichet — note, attente, erreur</p>
+        <div style="display:flex; flex-direction:column; gap:12px; max-width:520px">
+          <label for="gc-adresse" style="font-size:13px; color:#4d534f">Adresse e-mail</label>
+          <input id="gc-adresse" type="email" value="paul.merand@outlook.com" readOnly="{{ true }}" style="height:40px; font-size:13px; font-family:inherit; padding:0 16px; background:#ffffff; color:#232725; border:1px solid #dadfda; border-left:2px solid #2f6e5b; border-radius:6px" />
+          <button type="button" style="height:32px; flex:none; white-space:nowrap; padding:0 16px; align-self:flex-start; font-size:13px; font-weight:600; font-family:inherit; color:#ffffff; background:#2f6e5b; border:1px solid #2f6e5b; border-radius:6px; opacity:.6; cursor:default">Continuer</button>
+          <p style="margin:0; font-size:13px; line-height:1.5; color:#5c625e">Autorisation en cours dans votre navigateur…</p>
+        </div>
+        <div style="border-top:1px solid #dadfda; padding-top:18px; display:flex; flex-direction:column; gap:10px">
+          <p style="margin:0; font-size:13px; line-height:1.5; color:#8c2f22">Connexion impossible : le serveur n'a pas répondu.</p>
+          <p style="margin:0; font-size:13px; line-height:1.55; color:#4d534f; max-width:60ch">La géométrie ci-dessus est celle des Réglages : entrées <b>40 px</b>, 13 px, sans ombre. L'adresse invalide se refuse au geste (« Saisissez votre adresse e-mail complète. ») ; la vérification serveur dit « Vérification de la connexion au serveur… ». Une seule réponse à la fois : note, attente ou erreur — jamais un empilement.</p>
+        </div>
       </div>
     </div>
   </section>
