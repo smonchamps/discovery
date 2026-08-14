@@ -162,7 +162,13 @@
       // état. La réponse, elle, n'affiche plus rien : l'usage du
       // courrier n'a jamais transmis les pièces d'origine en réponse,
       // et la puce du prototype promettait un envoi qui n'existait pas.
-      if (nouveauMode === 'forward' && source.attachment_count > 0) {
+      //
+      // SANS garde sur `source.attachment_count` : la ligne porte le
+      // compte d'AVANT l'ouverture du message — sur un message reçu à
+      // l'instant, s'y fier sautait le rapatriement en silence, la
+      // faute exacte que PJ-D4 interdit (terrain CE, 2026-08-14). La
+      // lecture des métadonnées est locale : zéro pièce = zéro coût.
+      if (nouveauMode === 'forward') {
         try {
           const lues = await appel('message_attachments', {
             accountId: source.account_id,

@@ -30,6 +30,12 @@
   // dans la conversation (ADR 0007 : octets à la demande, jamais de
   // cache).
   let pieces = $state([]);
+  // Le compte de pièces FRAIS, rendu par message_body d'après-scan : la
+  // ligne de liste porte celui d'AVANT l'ouverture — un message reçu à
+  // l'instant vient d'écrire ses pièces en base PENDANT l'ouverture, et
+  // s'en tenir à la ligne ouvrait ses fichiers sur une rangée vide
+  // (terrain CE, 2026-08-14).
+  let nbPieces = $state(0);
   let enregistrements = $state({});
   // Images distantes : bloquées par DÉFAUT (invariant), comptées par le
   // coeur ; l'opt-in est PAR MESSAGE et ne survit pas à la sélection.
@@ -44,8 +50,7 @@
   const meta = $derived.by(() => {
     if (!ligne) return '';
     const messages = t('puce.messages', { n: ligne.thread_size > 1 ? ligne.thread_size : 1 });
-    const n = ligne.attachment_count;
-    return n > 0 ? `${messages} · ${t('puce.fichiers', { n })}` : messages;
+    return nbPieces > 0 ? `${messages} · ${t('puce.fichiers', { n: nbPieces })}` : messages;
   });
 
   export async function ouvrir(nouvelle) {
@@ -54,8 +59,9 @@
     pieces = [];
     const duree = await servir(nouvelle, false, t0);
     // Hors du chemin d'ouverture mesuré : les métadonnées de pièces
-    // arrivent après le corps, jamais avant.
-    if (nouvelle.attachment_count > 0) {
+    // arrivent après le corps, jamais avant. Le compte est celui
+    // d'après-scan (servir), jamais celui de la ligne.
+    if (nbPieces > 0) {
       const mien = jeton;
       appel('message_attachments', {
         accountId: nouvelle.account_id,
@@ -101,9 +107,11 @@
       if (mien !== jeton) return derniereOuvertureMs; // sélection changée
       corps = vue.document;
       imagesBloquees = avecImages ? 0 : vue.remote_images_blocked;
+      nbPieces = vue.attachment_count;
     } catch (err) {
       corps = '';
       imagesBloquees = 0;
+      nbPieces = 0;
       console.error('message_body :', err);
     }
     if (t0 !== null) derniereOuvertureMs = performance.now() - t0;
@@ -122,6 +130,7 @@
     corps = '';
     imagesBloquees = 0;
     pieces = [];
+    nbPieces = 0;
   }
   export function etat() {
     return { derniereOuvertureMs };

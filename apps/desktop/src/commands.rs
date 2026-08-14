@@ -1660,6 +1660,12 @@ pub fn search_messages(app: AppHandle, query: String) -> Result<Vec<MessageRow>,
 pub struct BodyView {
     pub document: String,
     pub remote_images_blocked: usize,
+    /// Le compte de pièces D'APRÈS-SCAN : la première ouverture d'un
+    /// message vient d'écrire ses pièces en base (`load_body`), mais la
+    /// ligne de liste qui a mené ici portait le compte d'AVANT — s'y
+    /// fier faisait ouvrir les pièces jointes fraîchement reçues sur
+    /// une rangée vide (terrain CE, 2026-08-14).
+    pub attachment_count: usize,
 }
 
 /// Corps d'un message : cache local d'abord (aucun réseau), serveur du
@@ -1675,6 +1681,12 @@ pub async fn message_body(
     show_images: bool,
 ) -> Result<BodyView, String> {
     let html = raw_body(&app, &state, account_id, &mailbox, uid).await?;
+    // APRÈS raw_body : si le corps vient d'être rapatrié, ses pièces
+    // viennent d'entrer en base — ce compte-ci est le frais.
+    let attachment_count = Store::open(&db_path(&app)?)
+        .and_then(|store| store.attachments(account_id, &mailbox, uid))
+        .map_err(|err| err.to_string())?
+        .len();
 
     let policy = if show_images {
         mail_render::ImagePolicy::AllowRemote
@@ -1685,6 +1697,7 @@ pub async fn message_body(
     Ok(BodyView {
         document: mail_render::email_document(&sanitized.html, policy),
         remote_images_blocked: sanitized.remote_images_blocked,
+        attachment_count,
     })
 }
 

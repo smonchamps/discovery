@@ -228,6 +228,24 @@ plafond, le transfert réel, la reprise d'un brouillon avec pièces).
   la validation terrain du CE (envoi réel avec pièces, transfert en
   ligne, reflet Gmail multipart).
 
+**Terrain CE du 2026-08-14 (premier passage)** : « je ne vois la pièce
+ni dans le reçu ni dans Envoyés ». Diagnostic sur la base du poste :
+**l'envoi fonctionnait** — le journal portait la pièce (purgée à
+`sent`, PJ-D7), et les copies resynchronisées DEPUIS Gmail (INBOX et
+Envoyés) portent `Lost-rafiki.png` entière : le multipart est parti et
+est arrivé. La faute était l'AFFICHAGE à la première ouverture : la
+Lecture décidait d'afficher les pièces sur l'`attachment_count` de la
+ligne de liste — servie AVANT le scan du corps, alors que `load_body`
+venait d'écrire les pièces en base PENDANT l'ouverture. Un message
+reçu à l'instant ouvrait donc ses fichiers sur une rangée vide ; même
+garde périmée au transfert (le rapatriement aurait sauté en silence —
+la faute exacte que PJ-D4 interdit). Correctif : `message_body` rend
+le compte D'APRÈS-SCAN, la Lecture s'y fie (puce d'entête comprise),
+le transfert lit les métadonnées sans garde (local, zéro coût à vide).
+Gates : fmt, 407 Rust, clippy muet, 80 e2e. **Reste un second passage
+terrain** : reçu frais → pièces visibles à la première ouverture ;
+Envoyés frais idem ; transfert d'un reçu frais → rapatriement joué.
+
 Hors périmètre (dit pour ne pas y glisser) : le glisser-déposer sur le
 composeur, le trombone en liste (dossier Brouillons, Réception), le
 tirage des pièces de brouillons nés ailleurs, l'aperçu des pièces avant
