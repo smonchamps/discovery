@@ -237,6 +237,17 @@ restent que le pont (déménagement, coffre, thème), l'endpoint et
 `cargo tauri build` signé, rejouer la mise à jour ancien-poste,
 publier.
 
+**Rotation de la clé de signature (2026-08-14).** Le mot de passe de la
+clé minisign d'origine est perdu ; la paire est **tournée** — décision
+prise dans la seule fenêtre où elle est gratuite : la bêta n'a jamais
+démarré, l'unique poste installé est celui du CE, et le protocole
+prévoyait déjà d'y installer `Wind_0.1.3` à la main (constat NSIS).
+Nouvelle clé publique dans `tauri.conf.json` ; conséquence assumée : le
+constat « auto-update 0.1.2 → 0.1.3 » est remplacé par l'installation
+manuelle, et la preuve d'auto-update sous la nouvelle clé glisse à la
+release suivante (0.1.4). Le mot de passe de la nouvelle clé est au
+gestionnaire de mots de passe du CE.
+
 ### E5 — Le dépôt (en dernier, décision CE du 2026-08-14)
 
 Renommer `smonchamps/discovery` → `smonchamps/wind` sur GitHub une
