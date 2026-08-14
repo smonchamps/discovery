@@ -60,6 +60,10 @@ sortant** — elle effacerait le garde-fou P0 (120 s) posé à la connexion.
    téléphone**. Puis un **événement Tauri** pousse l'UI à recharger liste
    et nav. Le veilleur ne touche JAMAIS la base lui-même : il ne fait que
    signaler, la passe légère fait le travail (un seul chemin de relève).
+   **ET la passe légère part aussi à chaque (RE)CONNEXION du veilleur** —
+   2ᵉ terrain (2026-08-14) : un mail arrivé PENDANT une coupure est déjà
+   dans la boîte à la reconnexion, aucun `EXISTS` ne le signalera jamais ;
+   sans la passe de reconnexion, il attendrait le cycle de 5 min.
 
 5. **Interaction P0-bis** : hors ligne (`navigator.onLine` faux), les
    veilleurs sont arrêtés (une connexion IDLE morte ne sert à rien et
@@ -105,3 +109,21 @@ la mesure juste est la parité avec la bulle du téléphone ;
 **reconnexion ❌ non prouvée** — la relance à 28 min rendait coupure et
 veille invisibles (d'où la décision 3 amendée : relance courte). Spike
 corrigé le jour même, coupure/veille/OAuth à rejouer.
+
+**2ᵉ terrain (2026-08-14, Gmail, relance 3 min)** :
+- **reconnexion sur coupure ✅** — détection en 1 min 48 (≤ 3 min, la
+  relance courte au travail), reprise 2 s après le retour du réseau,
+  délai doublé visible (2→4→8→16 s, échecs OAuth dits pendant la panne) ;
+- **reprise de veille ✅** — Windows avorte la socket au réveil (10053) :
+  détection immédiate, reconnecté en 2 s ;
+- **le jeton se relit bien au trousseau** à chaque reconnexion (échecs
+  hors-ligne, succès au retour) ; l'expiration ~1 h reste à observer ;
+- **découverte : Gmail notifie sur un tick de ~60 s** — quatre EXISTS
+  horodatés à :35 de la minute à 0,3 s près, pour des envois répartis
+  sur toute la minute. Latence envoi→EXISTS p50 ≈ 37 s, PLAFONNÉE par ce
+  tick serveur, pas par le client : tout client IMAP (Thunderbird
+  compris) subit le même plafond. La gate latence se juge donc en
+  PARITÉ BULLE téléphone, pas en absolu — mesure en cours ;
+- **découverte : le mail arrivé pendant la coupure n'émet jamais
+  d'EXISTS** (déjà en boîte à la re-SELECT) — d'où la décision 4
+  amendée : passe légère à chaque (re)connexion.
