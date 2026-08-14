@@ -1,5 +1,14 @@
 # Plan — Pièces jointes : l'envoi
 
+**CHANTIER SOLDÉ le 2026-08-14.** Le dernier constat dû — la copie
+Envoyés visible à l'envoi — est tombé au terrain d'E2 de
+PLAN-REACTIVITE (copie en **2 s** ; cause : la relève ciblée était
+muette — `sync_sent` ne bumpait pas la génération, l'UI n'apprenait
+jamais que la copie était entrée ; E3 l'a ensuite portée à < 1 s par
+l'écho local). Les quatre gestes du plan tiennent au terrain, la
+police 43 glyphes est vivante (constat warning 0.1.5), D-7 reste au
+registre de dette.
+
 Commande (2026-08-14) : le composeur sait joindre des fichiers et les
 envoyer. Aujourd'hui « Joindre » répond par un toast d'excuse, et les
 puces de fichiers affichées en transfert sont une **fiction du

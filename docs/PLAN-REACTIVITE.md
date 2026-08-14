@@ -1,5 +1,20 @@
 # Plan — Réactivité de l'affichage : rien ne clignote, le geste se voit, l'aperçu est là
 
+**CHANTIER SOLDÉ le 2026-08-14 (terrain complet, quatre constats CE).**
+Les trois retours sont morts sur mesures : **plus un trait** à la
+recharge (E1, stale-while-revalidate) ; copie Envoyés en **2 s** (E2,
+relève muette réparée) puis **< 1 s partout** — Corbeille, Archives,
+Envoyés, câble débranché compris (E3, écho local, verdict R-D1) ;
+**aperçu dès la ligne** en un seul affichage (E4, corps des arrivées
+dans la relève, verdict R-D2 — corrigé au premier terrain : la borne se
+mesure aux UID, jamais au `fetched` gonflé des drapeaux CONDSTORE).
+Commits ec6bfb7 / 9675471 / 33be25b / 15549f9 / 22495dd ; amendements
+A23-A25 au Système. La clôture d'E2 solde aussi PLAN-PIECES-JOINTES
+(dernier constat dû). Restent, consignés hors de ce plan : **D-7**
+(priorité au geste — les chronos de la passe d'après-geste posent sa
+mesure) et l'absence d'APPEND Envoyés des serveurs non-Gmail, que le
+balayage d'E3 rendra visible si le terrain la rencontre.
+
 Commande (2026-08-14) : trois retours utilisateur sur l'affichage.
 (1) Pendant une synchronisation, l'écran se rafraîchit en montrant des
 **traits à la place de chaque email** — désagréable. (2) Après un envoi
@@ -338,10 +353,8 @@ sort des gestes sur un écho s'inscrivent au Système, même commit.
 ### E4 — L'aperçu né avec la ligne (R-D2)
 
 **État : livrée le 2026-08-14 (GO CE), corrigée au premier terrain le
-jour même — second constat CE dû (arrivée au repos → ligne AVEC aperçu
-en un seul affichage, borne < 30 s de PLAN-SYNCHRO re-constatée ;
-contrôle `wind.db` à +5 min). C'est la dernière étape : le plan se
-clôt à ce constat.** Livré au mot du plan — corps des arrivées dans
+jour même, VALIDÉE au second — « aperçu dès la ligne » constaté par le
+CE : le plan est clos.** Livré au mot du plan — corps des arrivées dans
 `relever_inbox` (borné par la décision pure `corps_a_l_arrivee`,
 N = 10, table de tests), pompe amorcée à la génération (gardée en
 réentrance — un no-op quand tout est là), liste resservie au fil des
