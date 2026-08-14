@@ -222,11 +222,23 @@ les écrans suivent le parcours réel :
   l'en-tête du document rectifié (source unique, idéal des quatre
   amendé), le bouton de relève ajouté à la barre de l'écran 02.
   Rendu vérifié au navigateur (18 sections, icônes, surimpressions).
-- **E3 — la gate** : attributs `data-theme` / `data-jeton` posés sur la
-  table des thèmes, `e2e/coherence-systeme.mjs` écrit et branché à la
-  suite, preuve « rouge sur mutation » rejouée. À partir d'E3, la
+- **E3 — la gate** *(livré le 2026-08-14)* : la section Thèmes gagne la
+  **table du contrat des jetons** (14 jetons × 7 thèmes, 98 valeurs,
+  cellules `data-theme` / `data-jeton`, générée depuis `systeme.css` —
+  juste à la naissance) ; `e2e/coherence-systeme.mjs` écrit (les deux
+  sens, thèmes fantômes compris, compteurs de glyphes interdits hors
+  journal, renvoi au contrat exigé) et branché à la CI à côté de
+  `contraste.mjs`. Preuves rejouées : **rouge sur mutation** (une
+  valeur altérée → l'écart nommé, thème · jeton · doc · livré) et
+  rouge sur rangée manquante (la gate a attrapé sa première dérive
+  réelle à sa première exécution — `--ink2` absent de la table).
+  Prise au passage : le **banc de contraste** portait le même défaut
+  de regex (`[a-zA-Z]` laisse tomber le chiffre d'`ink2`) et un
+  `continue` muet — **21 paires ink2 jamais mesurées** depuis A8 ;
+  corrigé (jeton introuvable = échec bruyant), les 21 paires passent
+  toutes (6,35:1 à 8,85:1), aucun remède couleur dû. À partir d'E3, la
   dérive des valeurs est un échec de build, plus une découverte
-  d'audit.
+  d'audit. **Le plan est soldé.**
 
 Hors périmètre (dit pour ne pas y glisser) : la renumérotation ou la
 réécriture d'amendements existants (l'historique ne se réécrit pas —

@@ -64,6 +64,8 @@ jobs:
         working-directory: apps/desktop/ui-v2
       - name: Contrastes WCAG (A8)
         run: node e2e/contraste.mjs
+      - name: Coherence du Systeme (DC-D6)
+        run: node e2e/coherence-systeme.mjs
 
   audit:
     name: cargo audit (CVE des dépendances)
