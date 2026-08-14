@@ -103,6 +103,8 @@ export const EN = {
   'erreur.repondreTous': 'Could not reply all: {err}',
   'erreur.envoi': 'Could not send: {err}',
   'erreur.piece': 'Could not attach: {err}',
+  'erreur.piecesManquantes':
+    'Some forwarded files are still missing — wait for retrieval, try again, or remove them before sending.',
   'erreur.aucunCompte': 'No sending account — add an account.',
   'erreur.connexion': 'Could not connect: {err}',
 
@@ -159,6 +161,7 @@ export const EN = {
   'compo.citation': 'Quote',
   'compo.joindre': 'Attach',
   'compo.retirerPiece': 'Remove {nom}',
+  'compo.rapatriement': '{nom} — retrieving…',
   'compo.poidsTotal': '{poids} / 25 MB',
   'compo.pieceRefusee': '"{nom}" exceeds the remaining space ({reste}).',
   'compo.enregistrerBrouillon': 'Save draft',

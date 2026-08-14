@@ -3,10 +3,12 @@
   // (nouveau / répondre / transférer), câblée aux flux réels.
   //
   // Préremplissages : formes du prototype (« Re : » / « Tr : », amorce
-  // « Bonjour Prénom, », puces des fichiers du message source) ; la
-  // citation, elle, est RÉELLE — `reply_context` / `forward_context` du
-  // cœur la préparent depuis le corps effectif (le prototype n'en avait
-  // pas besoin, sa fiction s'arrêtait à l'amorce).
+  // « Bonjour Prénom, ») ; la citation est RÉELLE — `reply_context` /
+  // `forward_context` du cœur la préparent depuis le corps effectif.
+  // Les pièces d'un transfert sont RÉELLES aussi (PJ-D4) : rapatriées
+  // du serveur, versées au brouillon, trois états par puce ; la réponse
+  // n'affiche rien — l'usage du courrier ne transmet pas les pièces
+  // d'origine en réponse, la puce du prototype mentait.
   //
   // Envoi par la boîte d'envoi (règles d'or : journalisé AVANT toute
   // tentative réseau, puis vidange) — le toast du prototype dit « Message
@@ -47,15 +49,20 @@
   let a = $state('');
   let objet = $state('');
   let corps = $state('');
-  let fichiers = $state([]);
-  // Les pièces RÉELLES du brouillon (métadonnées) — à distinguer de
-  // `fichiers`, l'écho des pièces du message source (réponse/transfert,
-  // décoratif jusqu'à E3).
+  // Les pièces RÉELLES du brouillon (métadonnées) — ce que le composeur
+  // montre est ce que le message emporte, sans exception (PJ-D4).
   let pieces = $state([]);
+  // Le rapatriement des pièces d'origine d'un transfert : une entrée
+  // par pièce pas encore acquise — { index, name, statut } avec statut
+  // 'encours' | 'echec'. Une entrée qui aboutit devient une pièce.
+  let rapatriements = $state([]);
   // Le refus au plafond, affiché sous la rangée ; effacé au geste
   // suivant qui aboutit (ajout accepté ou retrait).
   let refus = $state(null);
   let envoiEnCours = $state(false);
+  // La source d'un transfert (account_id, mailbox, uid) — « Réessayer »
+  // doit savoir d'où rapatrier.
+  let sourceTransfert = null;
   let replyToMailbox = null;
   let replyToUid = null;
   let brouillonId = null;
@@ -95,9 +102,10 @@
     a = '';
     objet = '';
     corps = '';
-    fichiers = [];
     pieces = [];
+    rapatriements = [];
     refus = null;
+    sourceTransfert = null;
     replyToMailbox = null;
     replyToUid = null;
     brouillonId = null;
@@ -149,14 +157,32 @@
         replyToMailbox = source.mailbox;
         replyToUid = source.uid;
       }
-      if (source.attachment_count > 0) {
+      // Le transfert transmet ses pièces POUR DE VRAI (PJ-D4) : chacune
+      // est rapatriée du serveur et versée au brouillon — une puce par
+      // état. La réponse, elle, n'affiche plus rien : l'usage du
+      // courrier n'a jamais transmis les pièces d'origine en réponse,
+      // et la puce du prototype promettait un envoi qui n'existait pas.
+      if (nouveauMode === 'forward' && source.attachment_count > 0) {
         try {
           const lues = await appel('message_attachments', {
             accountId: source.account_id,
             mailbox: source.mailbox,
             uid: source.uid,
           });
-          if (mien === jeton) fichiers = lues;
+          if (mien !== jeton) return;
+          sourceTransfert = {
+            account_id: source.account_id,
+            mailbox: source.mailbox,
+            uid: source.uid,
+          };
+          rapatriements = lues.map((piece) => ({
+            index: piece.index,
+            name: piece.name,
+            statut: 'encours',
+          }));
+          // Sans await : la frappe n'attend pas le réseau — les puces
+          // changent d'état à l'arrivée de chaque pièce.
+          rapatrierTout([...rapatriements], mien);
         } catch (err) {
           console.error('message_attachments :', err);
         }
@@ -188,9 +214,10 @@
     a = brouillon.to;
     objet = brouillon.subject;
     corps = brouillon.body;
-    fichiers = [];
     pieces = [];
+    rapatriements = [];
     refus = null;
+    sourceTransfert = null;
     // Les puces reviennent avec le texte (PJ-D1) : les octets vivaient
     // au brouillon, pas dans la session du composeur.
     appel('draft_attachments', { draftId: brouillon.id })
@@ -286,6 +313,13 @@
     if (envoiEnCours) return; // double-clic = un seul envoi
     if (!expediteur) {
       onflash(t('erreur.aucunCompte'));
+      return;
+    }
+    // Des pièces du transfert manquent (en cours ou en échec) : partir
+    // sans elles serait une absence silencieuse (PJ-D4). Attendre,
+    // réessayer — ou y renoncer d'un geste explicite (la croix).
+    if (rapatriements.length > 0) {
+      onflash(t('erreur.piecesManquantes'));
       return;
     }
     envoiEnCours = true;
@@ -390,6 +424,64 @@
       onflash(t('erreur.piece', { err }));
     }
   }
+
+  // Rapatrie UNE pièce du message d'origine (PJ-D4). Trois issues :
+  // versée (elle devient une puce pleine), refusée au plafond (elle
+  // disparaît, le refus est dit — définitif), échec réseau (la puce
+  // passe en échec, « Réessayer » reste).
+  async function rapatrierUne(entree, mien) {
+    try {
+      const bilan = await appel('fetch_source_attachment', {
+        accountId: sourceTransfert.account_id,
+        mailbox: sourceTransfert.mailbox,
+        uid: sourceTransfert.uid,
+        index: entree.index,
+        draftId: brouillonId,
+      });
+      if (mien !== jeton) return;
+      brouillonId = bilan.draft_id ?? brouillonId;
+      if (bilan.updated_epoch != null) brouillonEpoch = bilan.updated_epoch;
+      if (bilan.piece) {
+        pieces = [...pieces, bilan.piece];
+        rapatriements = rapatriements.filter((r) => r.index !== entree.index);
+        onbrouillon();
+      } else if (bilan.refused) {
+        rapatriements = rapatriements.filter((r) => r.index !== entree.index);
+        refus = t('compo.pieceRefusee', {
+          nom: bilan.refused.name,
+          reste: bilan.refused.remaining,
+        });
+      }
+    } catch (err) {
+      if (mien !== jeton) return;
+      console.error('fetch_source_attachment :', err);
+      rapatriements = rapatriements.map((r) =>
+        r.index === entree.index ? { ...r, statut: 'echec' } : r,
+      );
+    }
+  }
+
+  // L'enchaînement est SÉQUENTIEL : la première pièce crée le
+  // brouillon-ancre, les suivantes doivent le connaître.
+  async function rapatrierTout(entrees, mien) {
+    for (const entree of entrees) {
+      if (mien !== jeton) return;
+      await rapatrierUne(entree, mien);
+    }
+  }
+
+  function reessayer(entree) {
+    rapatriements = rapatriements.map((r) =>
+      r.index === entree.index ? { ...r, statut: 'encours' } : r,
+    );
+    rapatrierUne({ ...entree, statut: 'encours' }, jeton);
+  }
+
+  // Renoncer à une pièce en échec — le geste EXPLICITE qui autorise un
+  // envoi sans elle : jamais d'absence silencieuse (PJ-D4).
+  function renoncer(entree) {
+    rapatriements = rapatriements.filter((r) => r.index !== entree.index);
+  }
 </script>
 
 {#if visible}
@@ -440,7 +532,7 @@
         <textarea bind:this={champCorps} bind:value={corps} oninput={programmerSauvegarde}
                   placeholder={t('compo.corpsPlaceholder')} data-testid="composition-corps"></textarea>
       </div>
-      {#if pieces.length > 0}
+      {#if pieces.length > 0 || rapatriements.length > 0}
         <div class="fichiers" data-testid="composition-pieces">
           {#each pieces as piece (piece.id)}
             <span class="piece" data-testid="piece-compo">
@@ -452,22 +544,33 @@
                 <span class="ms" aria-hidden="true">close</span></button>
             </span>
           {/each}
-          <span class="poids" data-testid="composition-poids">
-            {t('compo.poidsTotal', { poids: poidsHumain(poidsTotal) })}</span>
+          {#each rapatriements as entree (entree.index)}
+            {#if entree.statut === 'encours'}
+              <span class="piece attente" data-testid="piece-rapatriement">
+                <span class="ms" aria-hidden="true">hourglass_empty</span>
+                {t('compo.rapatriement', { nom: entree.name })}</span>
+            {:else}
+              <span class="piece echec" data-testid="piece-echec">
+                <span class="ms" aria-hidden="true">description</span>
+                <span class="nom">{entree.name}</span>
+                <button type="button" class="reessayer" data-testid="piece-reessayer"
+                        onclick={() => reessayer(entree)}>{t('action.reessayer')}</button>
+                <button type="button" class="retrait" data-testid="piece-renoncer"
+                        aria-label={t('compo.retirerPiece', { nom: entree.name })}
+                        onclick={() => renoncer(entree)}>
+                  <span class="ms" aria-hidden="true">close</span></button>
+              </span>
+            {/if}
+          {/each}
+          {#if pieces.length > 0}
+            <span class="poids" data-testid="composition-poids">
+              {t('compo.poidsTotal', { poids: poidsHumain(poidsTotal) })}</span>
+          {/if}
         </div>
       {/if}
-      <!-- Sans glyphe : `warning` n'est pas dans la police vendorisée
-           (l'inventaire est le contrat, A3) — le texte --alert porte
-           seul le refus ; glyphe à la régénération groupée d'E3. -->
       {#if refus}
-        <div class="refus" data-testid="composition-refus">{refus}</div>
-      {/if}
-      {#if fichiers.length > 0}
-        <div class="fichiers">
-          {#each fichiers as fichier (fichier.index)}
-            <span class="puce"><span class="ms" aria-hidden="true">description</span>{fichier.name}</span>
-            <span class="puce"><span class="ms" aria-hidden="true">storage</span>{fichier.size}</span>
-          {/each}
+        <div class="refus" data-testid="composition-refus">
+          <span class="ms" aria-hidden="true">warning</span>{refus}
         </div>
       {/if}
       <div class="format">
@@ -576,8 +679,24 @@
   }
   .retrait:hover { background:var(--sel); color:var(--ink); }
   .retrait .ms { font-size:13px; }
+  /* Les états du rapatriement (maquette §3) : attente atténuée italique,
+     échec au bord --alert avec « Réessayer ». */
+  .piece.attente { color:var(--muted); font-style:italic; }
+  .piece.echec { border-color:var(--alert); }
+  .piece.echec .nom { color:var(--alert); font-weight:600; }
+  .reessayer {
+    height:22px; padding:0 8px; display:inline-flex; align-items:center;
+    font-size:12px; font-family:inherit; font-weight:600; color:var(--ink2);
+    background:var(--surface); border:1px solid var(--border); border-radius:4px;
+    cursor:pointer;
+  }
+  .reessayer:hover { background:var(--sel); color:var(--ink); }
   .poids { margin-left:auto; font-size:12.5px; color:var(--muted); white-space:nowrap; }
-  .refus { padding:0 22px 14px; font-size:13px; color:var(--alert); }
+  .refus {
+    padding:0 22px 14px; font-size:13px; color:var(--alert);
+    display:flex; align-items:center; gap:8px;
+  }
+  .refus .ms { font-size:14px; }
 
   .format {
     flex:none; padding:8px 18px; border-top:1px solid var(--border);

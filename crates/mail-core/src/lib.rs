@@ -41,8 +41,8 @@ pub use compose::{
 };
 pub use crash::{CrashReport, RawPanic, redact};
 pub use drafts::{
-    DraftAttachmentMeta, DraftAttachmentSaved, DraftContent, DraftPull, DraftSaved,
-    MAX_ATTACHMENTS_BYTES, SavedDraft, plan_draft_pull,
+    DraftAttachmentFull, DraftAttachmentMeta, DraftAttachmentSaved, DraftContent, DraftPull,
+    DraftSaved, MAX_ATTACHMENTS_BYTES, SavedDraft, plan_draft_pull,
 };
 pub use envelope::{Envelope, Uid};
 pub use error::Error;

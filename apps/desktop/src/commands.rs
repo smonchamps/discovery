@@ -2569,6 +2569,112 @@ pub fn attach_files(
     })
 }
 
+/// Bilan du rapatriement d'UNE pièce du message d'origine (transfert,
+/// PJ-D4). Deux issues nommées ici, la troisième — l'échec réseau — est
+/// l'erreur de la commande : la surface les distingue (refus définitif
+/// vs « Réessayer »).
+#[derive(Serialize)]
+pub struct FetchPieceReport {
+    /// `None` : la pièce a été refusée ET aucun brouillon n'existait —
+    /// l'ancre créée pour rien a été reprise.
+    pub draft_id: Option<i64>,
+    pub updated_epoch: Option<i64>,
+    /// La pièce versée au brouillon, si le rapatriement a abouti.
+    pub piece: Option<DraftPieceRow>,
+    /// Le refus au plafond (PJ-D3) — définitif, pas de « Réessayer ».
+    pub refused: Option<RefusedPiece>,
+}
+
+/// Rapatrie une pièce du message d'origine et la verse au brouillon-ancre
+/// (PJ-D4) : les octets viennent du serveur (`fetch_attachment`, le
+/// chemin de la Lecture), jamais d'un fichier local. Une par appel — le
+/// composeur enchaîne, et chaque puce porte son propre état.
+#[tauri::command]
+pub async fn fetch_source_attachment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+    index: usize,
+    draft_id: Option<i64>,
+) -> Result<FetchPieceReport, String> {
+    let path = db_path(&app)?;
+    let store = Store::open(&path).map_err(|err| err.to_string())?;
+    let attachment = store
+        .attachments(account_id, &mailbox, uid)
+        .map_err(|err| err.to_string())?
+        .into_iter()
+        .find(|candidate| candidate.index == index)
+        .ok_or_else(|| "pièce jointe inconnue".to_string())?;
+
+    let session = auth_for(&path, &state, account_id)?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
+        let (mut server, _refreshed) = connect_imap(&session)?;
+        let bytes = server
+            .fetch_attachment(&mailbox, uid, index)
+            .map_err(|err| err.to_string())?;
+        server.logout();
+        bytes.ok_or_else(|| "pièce jointe absente du message".to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+
+    let cree = draft_id.is_none();
+    let draft_id = match draft_id {
+        Some(id) => id,
+        None => {
+            store
+                .save_draft(
+                    account_id,
+                    None,
+                    None,
+                    mail_core::DraftContent {
+                        to_raw: "",
+                        subject: "",
+                        body: "",
+                        reply_to_uid: None,
+                        reply_to_mailbox: None,
+                    },
+                )
+                .map_err(|err| err.to_string())?
+                .id
+        }
+    };
+    match store.add_draft_attachment(draft_id, &attachment.name, &attachment.mime, &bytes) {
+        Ok(saved) => Ok(FetchPieceReport {
+            draft_id: Some(draft_id),
+            updated_epoch: Some(saved.updated_epoch),
+            piece: Some(piece_row(saved.attachment)),
+            refused: None,
+        }),
+        Err(mail_core::Error::AttachmentOverBudget {
+            name, remaining, ..
+        }) => {
+            // L'ancre créée pour rien est reprise — même règle
+            // qu'`attach_files` : pas de brouillon vide fantôme.
+            let draft_id = if cree {
+                store
+                    .delete_draft(draft_id)
+                    .map_err(|err| err.to_string())?;
+                None
+            } else {
+                Some(draft_id)
+            };
+            Ok(FetchPieceReport {
+                draft_id,
+                updated_epoch: None,
+                piece: None,
+                refused: Some(RefusedPiece {
+                    name,
+                    remaining: mail_core::human_size(remaining),
+                }),
+            })
+        }
+        Err(err) => Err(err.to_string()),
+    }
+}
+
 /// Retire une pièce. Rend le nouvel `updated_epoch` du brouillon, ou
 /// `None` si la pièce n'existait plus (double-clic) — rien n'a bougé.
 #[tauri::command]
@@ -2686,11 +2792,17 @@ fn run_draft_sync_all(
             .drafts_to_push(account_id)
             .map_err(|err| err.to_string())?
         {
+            // Les pièces suivent le texte (PJ-D6) : le reflet distant
+            // montre le brouillon entier.
+            let pieces = store
+                .draft_attachments_full(draft.id)
+                .map_err(|err| err.to_string())?;
             let bytes = match mail_smtp::draft_bytes(
                 session.email(),
                 &draft.to_raw,
                 &draft.subject,
                 &draft.body,
+                &pieces,
             ) {
                 Ok(bytes) => bytes,
                 // Pas poussable en l'état : le local reste la référence.

@@ -111,6 +111,15 @@ pub struct DraftAttachmentMeta {
     pub size: u64,
 }
 
+/// Une pièce avec ses octets — la forme que consomme le constructeur
+/// MIME du reflet IMAP (PJ-D6). Jamais pour une liste.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DraftAttachmentFull {
+    pub name: String,
+    pub mime: String,
+    pub bytes: Vec<u8>,
+}
+
 /// Bilan d'un geste sur les pièces (ajout ou retrait).
 ///
 /// `updated_epoch` est à reprendre comme `base_epoch` par l'éditeur :
@@ -426,6 +435,26 @@ impl Store {
         let updated_epoch = touch_draft(&tx, draft_id)?;
         tx.commit()?;
         Ok(Some(updated_epoch))
+    }
+
+    /// Les pièces d'un brouillon AVEC leurs octets — réservé à la
+    /// construction d'un message (reflet IMAP, PJ-D6). Les listes
+    /// passent par [`Store::draft_attachments_meta`].
+    pub fn draft_attachments_full(&self, draft_id: i64) -> Result<Vec<DraftAttachmentFull>, Error> {
+        let mut stmt = self.conn().prepare(
+            "SELECT name, mime, bytes FROM draft_attachments
+             WHERE draft_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt
+            .query_map([draft_id], |row| {
+                Ok(DraftAttachmentFull {
+                    name: row.get(0)?,
+                    mime: row.get(1)?,
+                    bytes: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
     }
 
     /// Les pièces d'un brouillon, métadonnées seules, dans l'ordre du

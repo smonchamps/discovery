@@ -20,7 +20,7 @@ use lettre::message::{Attachment as FilePart, Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::SmtpTransportBuilder;
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
 use lettre::{Message, SmtpTransport, Transport};
-use mail_core::{MailTransport, OutboxMessage, SendError};
+use mail_core::{DraftAttachmentFull, MailTransport, OutboxMessage, SendError};
 
 pub struct SmtpMailer {
     transport: SmtpTransport,
@@ -154,16 +154,24 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
                 piece.name
             ))
         })?;
-        // Un type inconnu ne bloque pas l'envoi : le flux d'octets
-        // générique dit honnêtement « je ne sais pas ».
-        let mime = ContentType::parse(&piece.mime)
-            .or_else(|_| ContentType::parse("application/octet-stream"))
-            .map_err(|err| SendError::Permanent(format!("type de pièce : {err}")))?;
-        parts = parts.singlepart(FilePart::new(piece.name.clone()).body(bytes, mime));
+        parts = parts.singlepart(file_part(&piece.name, &piece.mime, bytes)?);
     }
     builder
         .multipart(parts)
         .map_err(|err| SendError::Permanent(format!("construction du message : {err}")))
+}
+
+/// La partie MIME d'une pièce — LE constructeur commun de l'envoi et du
+/// reflet IMAP : un correctif (nom RFC 2231, repli de type) profite aux
+/// deux, la leçon du bug #3.
+///
+/// Un type inconnu ne bloque rien : le flux d'octets générique dit
+/// honnêtement « je ne sais pas ».
+fn file_part(name: &str, mime: &str, bytes: Vec<u8>) -> Result<SinglePart, SendError> {
+    let content_type = ContentType::parse(mime)
+        .or_else(|_| ContentType::parse("application/octet-stream"))
+        .map_err(|err| SendError::Permanent(format!("type de pièce : {err}")))?;
+    Ok(FilePart::new(name.to_string()).body(bytes, content_type))
 }
 
 /// Message RFC 5322 d'un brouillon, prêt pour un APPEND `\Draft` — la
@@ -173,11 +181,15 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
 /// omis (une adresse à moitié tapée reste locale) ; si le message n'est
 /// pas constructible en l'état, il n'est simplement pas poussé — le
 /// local reste la référence, rien n'est perdu.
+///
+/// Les pièces suivent (PJ-D6) : le reflet distant montre le brouillon
+/// ENTIER, même constructeur de partie que l'envoi.
 pub fn draft_bytes(
     from: &str,
     to_raw: &str,
     subject: &str,
     body: &str,
+    pieces: &[DraftAttachmentFull],
 ) -> Result<Vec<u8>, SendError> {
     let mut builder = Message::builder()
         .from(parse_mailbox(from)?)
@@ -188,8 +200,18 @@ pub fn draft_bytes(
             builder = builder.to(mailbox);
         }
     }
+    if pieces.is_empty() {
+        return builder
+            .body(body.to_string())
+            .map(|message| message.formatted())
+            .map_err(|err| SendError::Permanent(format!("construction du brouillon : {err}")));
+    }
+    let mut parts = MultiPart::mixed().singlepart(SinglePart::plain(body.to_string()));
+    for piece in pieces {
+        parts = parts.singlepart(file_part(&piece.name, &piece.mime, piece.bytes.clone())?);
+    }
     builder
-        .body(body.to_string())
+        .multipart(parts)
         .map(|message| message.formatted())
         .map_err(|err| SendError::Permanent(format!("construction du brouillon : {err}")))
 }
@@ -370,6 +392,7 @@ mod tests {
             "valide@exemple.fr, adresse-en-cours-de-fra",
             "Brouillon",
             "corps",
+            &[],
         )
         .expect("brouillon constructible");
         let text = String::from_utf8_lossy(&raw);
@@ -382,8 +405,47 @@ mod tests {
     /// il reste local, rien n'est perdu — comportement documenté par test.
     #[test]
     fn draft_without_any_valid_recipient_stays_local() {
-        let result = draft_bytes("moi@exemple.fr", "pas encore d'adresse", "s", "c");
+        let result = draft_bytes("moi@exemple.fr", "pas encore d'adresse", "s", "c", &[]);
         assert!(result.is_err(), "attendu : non poussable en l'état");
+    }
+
+    /// PJ-D6 : le reflet distant montre le brouillon ENTIER — pièces
+    /// comprises, par le même constructeur de partie que l'envoi.
+    #[test]
+    fn draft_bytes_carries_pieces_as_multipart_mixed() {
+        let raw = draft_bytes(
+            "moi@exemple.fr",
+            "valide@exemple.fr",
+            "Brouillon",
+            "corps",
+            &[DraftAttachmentFull {
+                name: "devis.pdf".to_string(),
+                mime: "application/pdf".to_string(),
+                bytes: vec![0xFF, 0xD8, 0xFF, 0xE0],
+            }],
+        )
+        .expect("brouillon constructible");
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("multipart/mixed"), "{text}");
+        assert!(text.contains("Content-Disposition: attachment"), "{text}");
+        assert!(text.contains("devis.pdf"), "{text}");
+        assert!(
+            text.contains("/9j/4A=="),
+            "les octets doivent suivre : {text}"
+        );
+        assert!(
+            text.contains("corps"),
+            "le texte reste la première partie : {text}"
+        );
+    }
+
+    /// Un brouillon sans pièce reste mono-partie — le chemin historique
+    /// ne paie pas le multipart.
+    #[test]
+    fn draft_bytes_without_pieces_stays_single_part() {
+        let raw = draft_bytes("moi@exemple.fr", "valide@exemple.fr", "s", "c", &[])
+            .expect("brouillon constructible");
+        assert!(!String::from_utf8_lossy(&raw).contains("multipart/mixed"));
     }
 
     /// Régression (bug #1) : le port de soumission SMTP était ignoré —

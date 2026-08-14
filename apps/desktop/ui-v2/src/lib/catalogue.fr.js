@@ -105,6 +105,8 @@ export const FR = {
   'erreur.repondreTous': 'Répondre à tous impossible : {err}',
   'erreur.envoi': 'Envoi impossible : {err}',
   'erreur.piece': 'Pièce jointe impossible : {err}',
+  'erreur.piecesManquantes':
+    "Des pièces du transfert manquent encore — attendez le rapatriement, réessayez, ou retirez-les avant d'envoyer.",
   'erreur.aucunCompte': 'Aucun compte émetteur — ajoutez un compte.',
   'erreur.connexion': 'Connexion impossible : {err}',
 
@@ -161,6 +163,7 @@ export const FR = {
   'compo.citation': 'Citation',
   'compo.joindre': 'Joindre',
   'compo.retirerPiece': 'Retirer {nom}',
+  'compo.rapatriement': '{nom} — rapatriement…',
   'compo.poidsTotal': '{poids} / 25 Mo',
   'compo.pieceRefusee': '« {nom} » dépasse la place restante ({reste}).',
   'compo.enregistrerBrouillon': 'Enregistrer le brouillon',

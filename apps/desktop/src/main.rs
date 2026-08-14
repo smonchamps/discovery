@@ -147,6 +147,7 @@ fn main() {
             commands::attach_files,
             commands::detach_file,
             commands::draft_attachments,
+            commands::fetch_source_attachment,
             commands::sync_drafts,
             commands::sync_progress,
             commands::sync_activity,

@@ -197,7 +197,7 @@ test('« Répondre à tous » se tient entre Répondre et Transférer (A14)', as
   );
 });
 
-test('répondre préremplit depuis le coeur : adresse, Re :, amorce, citation, fichiers', async () => {
+test("répondre préremplit depuis le coeur : adresse, Re :, amorce, citation — sans les pièces d'origine", async () => {
   await page.locator('[data-testid="repondre"]').click();
   await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText('Répondre');
   await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(
@@ -209,10 +209,13 @@ test('répondre préremplit depuis le coeur : adresse, Re :, amorce, citation, f
   const corps = await page.locator('[data-testid="composition-corps"]').inputValue();
   expect(corps.startsWith('Bonjour Camille,\n\n')).toBe(true);
   expect(corps).toContain('a écrit :');
-  // Les fichiers du message répondu, en puces (nom + taille).
-  await expect(page.locator('[data-testid="composition"]')).toContainText(
+  // E3 (PJ-D4) : une réponse ne porte PAS les pièces d'origine — la
+  // puce du prototype promettait un envoi qui n'existait pas, elle est
+  // tombée avec la fiction.
+  await expect(page.locator('[data-testid="composition"]')).not.toContainText(
     'Contrat_Vantis_v4.pdf',
   );
+  await expect(page.locator('[data-testid="composition-pieces"]')).toHaveCount(0);
 });
 
 test('enregistrer le brouillon conserve et confirme', async () => {
@@ -596,4 +599,44 @@ test('au-delà du plafond : le refus est dit, rien ne se joint (PJ-D3)', async (
   });
   await page.locator('[data-testid="composition-annuler"]').click();
   await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+});
+
+test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessayer », envoi gardé (PJ-D4)', async () => {
+  // Le parcours précédent vivait au dossier Brouillons : retour en
+  // Réception, où la ligne Vantis existe.
+  await dossier('reception').click();
+  await page
+    .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
+    .click();
+  await page.locator('[data-testid="transferer"]').click();
+  await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText('Transférer');
+  // Les comptes du décor n'ont pas de serveur : chaque rapatriement finit
+  // en échec — nom en alerte, « Réessayer » — jamais une puce pleine, et
+  // jamais une pièce silencieusement absente.
+  await expect(page.locator('[data-testid="piece-echec"]').first()).toBeVisible();
+  // Le dernier message du fil Vantis porte l'annexe tarifaire.
+  await expect(page.locator('[data-testid="composition-pieces"]')).toContainText(
+    'Annexe_tarifs.xlsx',
+  );
+  await expect(page.locator('[data-testid="piece-compo"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="piece-reessayer"]').first()).toBeVisible();
+
+  // Envoyer est BLOQUÉ tant que des pièces manquent.
+  await page.locator('[data-testid="composition-a"]').fill('dest@exemple.fr');
+  await page.locator('[data-testid="composition-envoyer"]').click();
+  await expect(page.locator('[data-testid="toast"]')).toContainText(
+    'Des pièces du transfert manquent',
+  );
+  await expect(page.locator('[data-testid="composition"]')).toBeVisible();
+
+  // Renoncer (la croix) est le geste EXPLICITE qui libère l'envoi.
+  const echecs = page.locator('[data-testid="piece-echec"]');
+  const restantes = await echecs.count();
+  for (let i = 0; i < restantes; i += 1) {
+    await page.locator('[data-testid="piece-renoncer"]').first().click();
+  }
+  await expect(echecs).toHaveCount(0);
+  await page.locator('[data-testid="composition-envoyer"]').click();
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Message envoyé.');
 });

@@ -211,9 +211,20 @@ plafond, le transfert réel, la reprise d'un brouillon avec pièces).
   de nouveau sur la v1 dormante (`frontendDist: "ui"`, échange de banc
   resté sale au commit 4dbf06f) — invisible de la CI, la gate e2e vivant
   hors CI hébergée (ADR 0005).
-- **E3 — le transfert réel et la réponse honnête** : rapatriement par
-  pièce avec états, retrait de la fiction en réponse, reflet IMAP
-  multipart (`sync_drafts`, PJ-D6). Le plan se solde ici.
+- **E3 — le transfert réel et la réponse honnête** *(livré le
+  2026-08-14)* : rapatriement par pièce (`fetch_source_attachment`,
+  séquentiel — la première pièce crée l'ancre) avec les trois états de
+  la maquette ; l'envoi est GARDÉ tant que des pièces manquent, et la
+  croix d'une puce en échec est le renoncement explicite qui le libère
+  (jamais d'absence silencieuse) ; la fiction des puces en réponse est
+  tombée (e2e ajusté : l'absence est affirmée) ; reflet IMAP multipart
+  (`draft_bytes` + `sync_drafts`, constructeur de partie commun
+  `file_part`, PJ-D6) ; police régénérée **37 → 39 glyphes**
+  (`hourglass_empty`, `warning` — A17, inventaire tenu, preuve rejouée
+  40/40, copie `public/` faite) — le refus au plafond retrouve son
+  glyphe. Parcours e2e neuf : transfert hors ligne → échec dit,
+  « Réessayer », envoi bloqué puis libéré au renoncement.
+  **Le plan est soldé.**
 
 Hors périmètre (dit pour ne pas y glisser) : le glisser-déposer sur le
 composeur, le trombone en liste (dossier Brouillons, Réception), le
