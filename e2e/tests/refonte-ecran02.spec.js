@@ -3,6 +3,7 @@
 // réelle. Le fichier est nommé pour passer APRÈS les parcours v1
 // (ordre alphabétique) : une seule reconstruction d'assets par gate.
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { launchAppV2, closeApp } from '../launch.mjs';
@@ -509,18 +510,20 @@ test('les réglages appliquent et persistent le thème', async () => {
   await page.locator('[data-testid="reglages"]').click();
   // A13 : les thèmes vivent dans leur groupe, choisi au rail.
   await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
-  await expect(page.locator('[data-testid="theme"]')).toHaveCount(7);
-  await page.locator('[data-theme-id="nuit"]').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nuit');
+  // A42 : 28 fiches — 14 claires et leurs 14 déclinaisons -nuit,
+  // toutes choisissables (décision D1 de PLAN-WADA-ELARGI).
+  await expect(page.locator('[data-testid="theme"]')).toHaveCount(28);
+  await page.locator('[data-theme-id="nature-nuit"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit');
   await page.locator('[data-testid="reglages-termine"]').click();
   await expect(page.locator('[data-testid="reglages-modal"]')).toHaveCount(0);
   // Persistance : le choix survit dans localStorage (rechargé au montage).
-  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('nature-nuit');
   // La coche suit le choix à la réouverture ; retour à `nature` pour ne
   // pas teinter d'autres parcours.
   await page.locator('[data-testid="reglages"]').click();
   await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
-  await expect(page.locator('[data-theme-id="nuit"] .coche')).toBeVisible();
+  await expect(page.locator('[data-theme-id="nature-nuit"] .coche')).toBeVisible();
   await page.locator('[data-theme-id="nature"]').click();
   await page.locator('[data-testid="reglages-termine"]').click();
 });
@@ -568,24 +571,97 @@ test("la section Comptes liste les comptes réels et ouvre le guichet d'ajout (A
 
 // ——— E2 des Réglages : les groupes à décision (R-D1, R-D2) —————————————
 
-test("Affichage : le suivi de l'OS sombre affiche « La nuit » sans toucher au choix (D6)", async () => {
+test("Affichage : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6, A42)", async () => {
   await page.locator('[data-testid="reglages"]').click();
   await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
   const bascule = page.locator('[data-testid="affichage-auto"]');
   await expect(bascule).toHaveAttribute('aria-checked', 'false');
   await bascule.click();
-  // OS sombre : « La nuit » s'affiche ; le thème CHOISI reste `nature`.
+  // OS sombre : la déclinaison nuit du thème choisi (nature) s'affiche ;
+  // le choix persisté reste le thème de BASE — le suffixe est un état
+  // dérivé, jamais enregistré (A42).
   await page.emulateMedia({ colorScheme: 'dark' });
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nuit');
-  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).not.toBe('nuit');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).not.toBe('nature-nuit');
+  // Le suffixe suit le thème choisi, pas un sombre unique : safran
+  // choisi sous OS sombre s'affiche safran-nuit, et safran est persisté.
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="themes"]').click();
+  await page.locator('[data-theme-id="safran"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'safran-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('safran');
+  // Un thème -nuit choisi à la main reste en paix : déjà sombre.
+  await page.locator('[data-theme-id="estampe-nuit"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'estampe-nuit');
   // OS clair : le choix revient tel quel.
+  await page.locator('[data-theme-id="nature"]').click();
   await page.emulateMedia({ colorScheme: 'light' });
-  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'nuit');
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'nature-nuit');
   // Persistance : le booléen survit comme le thème.
   expect(await page.evaluate(() => localStorage.getItem('wind-theme-auto'))).toBe('1');
+  // Retour au groupe Affichage : la bascule n'existe que sous son
+  // groupe — le rail est resté sur Thèmes depuis le choix de safran.
+  await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
   await bascule.click();
   await page.emulateMedia({ colorScheme: null });
   await page.locator('[data-testid="reglages-termine"]').click();
+});
+
+test("le suivi OS lit l'API Tauri : une vraie bascule Windows suffixe et revient (terrain A42)", async () => {
+  // Constat terrain du 2026-08-16 : prefers-color-scheme est MORT dans
+  // le WebView2 de Tauri (jamais sombre, zéro événement) — le test D6
+  // ci-dessus, joué à emulateMedia, n'exerce que le repli. Ici la
+  // bascule est RÉELLE : registre + diffusion WM_SETTINGCHANGE
+  // (bascule-sombre.ps1, le geste des Paramètres Windows), et c'est le
+  // canal Tauri theme()/onThemeChanged qui doit refléter.
+  test.skip(process.platform !== 'win32', 'bascule AppsUseLightTheme — Windows seulement');
+  const cle = String.raw`HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize`;
+  const initial = Number(execSync(
+    `powershell -NoProfile -c "(Get-ItemProperty '${cle}' -Name AppsUseLightTheme).AppsUseLightTheme"`,
+  ).toString().trim());
+  const script = path.resolve(import.meta.dirname, '..', 'bascule-sombre.ps1');
+  const basculer = (v) => execSync(
+    `powershell -NoProfile -ExecutionPolicy Bypass -File "${script}" -v ${v}`,
+  );
+  try {
+    await page.locator('[data-testid="reglages"]').click();
+    await page.locator('[data-testid="reglages-groupe"][data-groupe="affichage"]').click();
+    const bascule = page.locator('[data-testid="affichage-auto"]');
+    await bascule.click();
+    await expect(bascule).toHaveAttribute('aria-checked', 'true');
+    // OS clair d'abord (l'état de référence), puis sombre : la
+    // déclinaison nuit du thème choisi (nature) doit se poser SANS
+    // emulateMedia — la livraison de l'événement Tauri prend ~1 s.
+    basculer(1);
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', /nuit/, { timeout: 10_000 });
+    basculer(0);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit', { timeout: 10_000 });
+    // Et le RETOUR — le sens exact du constat terrain (point 4 KO).
+    basculer(1);
+    await expect(page.locator('html')).not.toHaveAttribute('data-theme', /nuit/, { timeout: 10_000 });
+    await bascule.click();
+    await expect(bascule).toHaveAttribute('aria-checked', 'false');
+    await page.locator('[data-testid="reglages-termine"]').click();
+  } finally {
+    // La machine retrouve son réglage, quoi qu'il arrive au test.
+    basculer(initial);
+  }
+});
+
+test("l'ancien choix « La nuit » migre vers nature-nuit au montage (A42)", async () => {
+  // Un profil d'avant A42 porte `nuit` : le choix SURVIT au renommage
+  // (le motif de la migration Discovery → Wind, PLAN-WIND E3).
+  await page.evaluate(() => localStorage.setItem('wind-theme', 'nuit'));
+  await page.reload();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit');
+  expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('nature-nuit');
+  // Un thème RETIRÉ (l'air) retombe sur le défaut, silencieusement.
+  await page.evaluate(() => localStorage.setItem('wind-theme', 'air'));
+  await page.reload();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+  // Retour au défaut pour ne pas teinter d'autres parcours.
+  await page.evaluate(() => localStorage.removeItem('wind-theme'));
 });
 
 test("Notifications : les bulles d'arrivée se coupent et la préférence tient en base (R-D2)", async () => {

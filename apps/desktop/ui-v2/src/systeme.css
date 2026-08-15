@@ -1,18 +1,22 @@
-/* Système Clarity, v2 « Wada » (A28, docs/PLAN-WADA.md) — jetons et
-   styles de base. 17 rôles × 7 thèmes : la nature remappée à teinte
-   d'usage constante (papier écru, encre bleutée, accent vert-de-gris,
-   alerte réchauffée), les six autres thèmes inchangés hors --alert
-   (#8c2f22 → #9e3a2c là où il servait) et les trois jetons NEUFS
-   déclinés partout (A35) : --hover (survol des rangées), --tuile et
-   --tuileInk (la tuile de la boîte en cours). Corrections A8 au banc
-   avant livraison : --muted nature ET nuit ajustés (l'heure 12 px sur
-   rangée teintée passait sous 4,5:1). Même teinte, luminosité
-   minimale — mesuré par e2e/contraste.mjs, qui est la gate ;
-   l'accessibilité prime quand le dessin la contredit (A8). Toute
-   couleur passe par un jeton — bascule de thème O(1). */
+/* Système Clarity, v3 « Wada élargi » (A42, docs/PLAN-WADA-ELARGI.md)
+   — jetons et styles de base. 17 rôles × 28 thèmes : 14 clairs composés
+   à la manière de Sanzo Wada (« la nature » = défaut, sans attribut) et
+   leurs 14 déclinaisons sombres (suffixe -nuit ; « nature-nuit »
+   reprend verbatim l'ancienne « la nuit », remèdes A8/A19/A35 compris).
+   Les anciens thèmes l'air, le feu, l'eau, les astres et la terre sont
+   retirés. --alert commun : #9e3a2c (clairs) / #ea9a90 (sombres).
+   --ink2 des 26 thèmes neufs dérivé au banc (mélange ink→muted t=0,72,
+   grammaire de la paire nature) — e2e/contraste.mjs est la gate, texte
+   ≥ 4,5:1 et composants ≥ 3:1 sur les 28 thèmes. Le paquet livré ne
+   mesurait pas les paires sur --sel/--hover (A35) : --muted de 18
+   thèmes et --sel de grenade-nuit ajustés au banc avant livraison —
+   même teinte, luminosité minimale (le remède A8). Couleurs de MARQUE
+   figées HORS thèmes et hors table (W-D3) : tuile #e2ebe8, élément
+   #365a4f. Toute couleur passe par un jeton — bascule de thème O(1)
+   via <html data-theme="…">. */
 
 :root {
-  /* la nature — défaut (Wada, A28 ; --muted au remède A8, A35) */
+  /* la nature — défaut (Wada, A28) */
   --bg:#f2f0ea; --panel:#e9e6dd; --surface:#ffffff;
   --ink:#24272e; --ink2:#4a505a; --muted:#575f6a;
   --border:#cdc6b8; --accent:#1e7566; --accentH:#175c50;
@@ -20,58 +24,247 @@
   --hover:#e4ded1; --tuile:#f1e7d3; --tuileInk:#7a5a30;
   --shadow:0 2px 8px rgba(36,39,46,0.08); --scrim:rgba(36,39,46,0.28);
 }
-:root[data-theme="air"] {
-  --bg:#eef2f5; --panel:#e3e9ee; --surface:#ffffff;
-  --ink:#22303a; --ink2:#46545e; --muted:#5e686f;
-  --border:#d4dde3; --accent:#3a7aa1; --accentH:#326d92;
-  --sel:#e0ecf3; --alert:#9e3a2c; --onAccent:#ffffff;
-  --hover:#e6ecf1; --tuile:#dce9f2; --tuileInk:#2f5670;
-  --shadow:0 2px 8px rgba(34,48,58,0.09); --scrim:rgba(34,48,58,0.26);
+:root[data-theme="hortensia"] {
+  /* L'hortensia — Bleu hortensia posé, fonds bleutés pâles. */
+  --bg:#eef1f6; --panel:#e3e8f0; --surface:#ffffff;
+  --ink:#232a38; --ink2:#4f5560; --muted:#5d636d;
+  --border:#c8cdd6; --accent:#4d6fa8; --accentH:#3f5b8a;
+  --sel:#d8dfec; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e2e5eb; --tuile:#e1e6f0; --tuileInk:#3c537b;
+  --shadow:0 2px 8px rgba(35,42,56,0.09); --scrim:rgba(35,42,56,0.28);
 }
-:root[data-theme="feu"] {
-  --bg:#f5efe8; --panel:#eee3d9; --surface:#fffaf5;
-  --ink:#2d201b; --ink2:#59453b; --muted:#766053;
-  --border:#e4d6c8; --accent:#c0492b; --accentH:#a33a1f;
-  --sel:#f3e2d5; --alert:#7a2617; --onAccent:#ffffff;
-  --hover:#eee4d8; --tuile:#f6e3c8; --tuileInk:#7d4a1f;
-  --shadow:0 2px 8px rgba(60,32,20,0.10); --scrim:rgba(45,32,27,0.30);
+:root[data-theme="coquelicot"] {
+  /* Le coquelicot — Rouge coquelicot assourdi sur papier chaud. */
+  --bg:#f5f0ea; --panel:#ece2d7; --surface:#ffffff;
+  --ink:#2e211d; --ink2:#5c514d; --muted:#685d59;
+  --border:#d1c7bd; --accent:#a8402e; --accentH:#8a3426;
+  --sel:#ecd5d1; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e9e4de; --tuile:#f0e0db; --tuileInk:#773427;
+  --shadow:0 2px 8px rgba(46,33,29,0.09); --scrim:rgba(46,33,29,0.28);
 }
-:root[data-theme="eau"] {
-  --bg:#e9f1f0; --panel:#dce9e7; --surface:#ffffff;
-  --ink:#16302d; --ink2:#3c5551; --muted:#576965;
-  --border:#ccdedb; --accent:#1f7d6d; --accentH:#155d51;
-  --sel:#d8ebe7; --alert:#9e3a2c; --onAccent:#ffffff;
-  --hover:#e0eae8; --tuile:#d9ece1; --tuileInk:#1d5c49;
-  --shadow:0 2px 8px rgba(18,48,44,0.09); --scrim:rgba(22,48,45,0.28);
+:root[data-theme="chaume"] {
+  /* Le chaume — Or de paille éteint, jaunes de toit sec. */
+  --bg:#f5f2e3; --panel:#ece7d2; --surface:#ffffff;
+  --ink:#2a2410; --ink2:#595441; --muted:#65604f;
+  --border:#d1ccb7; --accent:#6d5613; --accentH:#594710;
+  --sel:#dfdacb; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e9e6d6; --tuile:#e8e4d5; --tuileInk:#524212;
+  --shadow:0 2px 8px rgba(42,36,16,0.09); --scrim:rgba(42,36,16,0.28);
 }
-:root[data-theme="astres"] {
-  --bg:#eef0f6; --panel:#e4e6f0; --surface:#ffffff;
-  --ink:#22243a; --ink2:#464a63; --muted:#62657a;
-  --border:#d6d8e6; --accent:#5b53b5; --accentH:#4a439c;
-  --sel:#e6e5f4; --alert:#9e3a2c; --onAccent:#ffffff;
-  --hover:#e7e9f1; --tuile:#e5e3f6; --tuileInk:#47427e;
-  --shadow:0 2px 8px rgba(30,32,64,0.10); --scrim:rgba(34,36,58,0.30);
+:root[data-theme="bruyere"] {
+  /* La bruyère — Vieux rose bruyère, gris rosés. */
+  --bg:#f5f0f2; --panel:#ece3e7; --surface:#ffffff;
+  --ink:#2c2127; --ink2:#5a5156; --muted:#665d62;
+  --border:#d1c8cc; --accent:#8a4a63; --accentH:#713d51;
+  --sel:#e5d7dd; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e9e4e6; --tuile:#ebe1e5; --tuileInk:#643a4b;
+  --shadow:0 2px 8px rgba(44,33,39,0.09); --scrim:rgba(44,33,39,0.28);
 }
-:root[data-theme="terre"] {
-  --bg:#f1eee6; --panel:#e8e2d6; --surface:#fbf9f3;
-  --ink:#2b271e; --ink2:#544f3e; --muted:#686252;
-  --border:#ddd5c4; --accent:#9c5a30; --accentH:#814826;
-  --sel:#ece3d3; --alert:#9e3a2c; --onAccent:#ffffff;
-  --hover:#e9e4d8; --tuile:#efe2c8; --tuileInk:#6d5424;
-  --shadow:0 2px 8px rgba(52,40,24,0.10); --scrim:rgba(43,39,30,0.30);
+:root[data-theme="source"] {
+  /* La source — Sarcelle grisée, eaux froides claires. */
+  --bg:#ecf2f3; --panel:#dfe9ea; --surface:#ffffff;
+  --ink:#1c2c30; --ink2:#49565a; --muted:#556164;
+  --border:#c4cfd0; --accent:#2f6f7a; --accentH:#275b64;
+  --sel:#d1dfe2; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e0e6e7; --tuile:#dce7e9; --tuileInk:#27545c;
+  --shadow:0 2px 8px rgba(28,44,48,0.09); --scrim:rgba(28,44,48,0.28);
 }
-:root[data-theme="nuit"] {
+:root[data-theme="bleuet"] {
+  /* Le bleuet — Bleu bleuet franc mais mat. */
+  --bg:#eff1f7; --panel:#e4e8f2; --surface:#ffffff;
+  --ink:#222840; --ink2:#4f5367; --muted:#5a5e6f;
+  --border:#c9cdd9; --accent:#3f5fae; --accentH:#344e8f;
+  --sel:#d5dced; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e3e5ec; --tuile:#dfe4f1; --tuileInk:#334982;
+  --shadow:0 2px 8px rgba(34,40,64,0.09); --scrim:rgba(34,40,64,0.28);
+}
+:root[data-theme="lavande"] {
+  /* La lavande — Lavande grise, bleus mauves. */
+  --bg:#f1f1f6; --panel:#e7e6f0; --surface:#ffffff;
+  --ink:#26243a; --ink2:#555465; --muted:#5e5d6c;
+  --border:#cccbd7; --accent:#58549c; --accentH:#484580;
+  --sel:#dad9e9; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e5e5eb; --tuile:#e3e3ee; --tuileInk:#444175;
+  --shadow:0 2px 8px rgba(38,36,58,0.09); --scrim:rgba(38,36,58,0.28);
+}
+:root[data-theme="rosee"] {
+  /* La rosée — Bleu-vert d'eau froide, très clair. */
+  --bg:#edf2f4; --panel:#e0eaee; --surface:#ffffff;
+  --ink:#1d2b33; --ink2:#4a565c; --muted:#566166;
+  --border:#c5cfd4; --accent:#2f7291; --accentH:#275d77;
+  --sel:#d1e0e7; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e1e6e8; --tuile:#dce7ec; --tuileInk:#28566b;
+  --shadow:0 2px 8px rgba(29,43,51,0.09); --scrim:rgba(29,43,51,0.28);
+}
+:root[data-theme="iris"] {
+  /* L'iris — Ivoire rosé, indigo d'iris, sélection amande. */
+  --bg:#f5eee9; --panel:#ebe0d6; --surface:#ffffff;
+  --ink:#282536; --ink2:#55505c; --muted:#66616b;
+  --border:#d0c6c0; --accent:#4a4e8f; --accentH:#3d4075;
+  --sel:#dde5d2; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e9e2de; --tuile:#e7e9db; --tuileInk:#3c3e6b;
+  --shadow:0 2px 8px rgba(40,37,54,0.09); --scrim:rgba(40,37,54,0.28);
+}
+:root[data-theme="moisson"] {
+  /* La moisson — Paille mûre, bleu ardoise, abricot. */
+  --bg:#f5f0dd; --panel:#ebe4cb; --surface:#ffffff;
+  --ink:#282417; --ink2:#585344; --muted:#676253;
+  --border:#d0c9b2; --accent:#3e5f80; --accentH:#334e69;
+  --sel:#f3ddc2; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e9e4d1; --tuile:#f4e5cd; --tuileInk:#354756;
+  --shadow:0 2px 8px rgba(40,36,23,0.09); --scrim:rgba(40,36,23,0.28);
+}
+:root[data-theme="grenade"] {
+  /* La grenade — Sable rosé, carmin profond, vert d'eau. */
+  --bg:#f6efe8; --panel:#ece1d5; --surface:#ffffff;
+  --ink:#2c2023; --ink2:#5b5050; --muted:#6d6262;
+  --border:#d1c6bc; --accent:#963142; --accentH:#7b2836;
+  --sel:#d6e5df; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#eae3dc; --tuile:#e3e9e3; --tuileInk:#6c2a36;
+  --shadow:0 2px 8px rgba(44,32,35,0.09); --scrim:rgba(44,32,35,0.28);
+}
+:root[data-theme="safran"] {
+  /* Le safran — Blanc cassé, safran brûlé, bleu-gris. */
+  --bg:#f5f1e8; --panel:#eae4d4; --surface:#ffffff;
+  --ink:#2b2213; --ink2:#5a5244; --muted:#696154;
+  --border:#cfc9b9; --accent:#a55a12; --accentH:#874a0f;
+  --sel:#d9e1e8; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e9e5db; --tuile:#e4e7e8; --tuileInk:#744412;
+  --shadow:0 2px 8px rgba(43,34,19,0.09); --scrim:rgba(43,34,19,0.28);
+}
+:root[data-theme="estampe"] {
+  /* L'estampe — Gris perle, vermillon sombre, bleu lavis. */
+  --bg:#f1f1ef; --panel:#e6e6e2; --surface:#ffffff;
+  --ink:#28221f; --ink2:#56524f; --muted:#65615f;
+  --border:#cbcbc7; --accent:#b13a24; --accentH:#91301e;
+  --sel:#dbe2e7; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e5e5e3; --tuile:#e4e8ea; --tuileInk:#7a3022;
+  --shadow:0 2px 8px rgba(40,34,31,0.09); --scrim:rgba(40,34,31,0.28);
+}
+:root[data-theme="nature-nuit"] {
+  /* La nature · nuit */
   --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
-  /* --muted éclairci une seconde fois (A35, était #929a96) : l'heure
-     12 px sur la rangée SÉLECTIONNÉE mesurait 3,83:1 sur --sel — le
-     même défaut que l'alerte d'A19, le même remède A8. */
   --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
   --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
-  /* --alert éclairci (était #d9776b) : la mention « Brouillon : » est
-     du TEXTE sur les trois fonds de rangée — #d9776b tombait à 3,58:1
-     sur --sel. Même remède qu'A8 : même teinte, luminosité minimale. */
   --sel:#313f39; --alert:#ea9a90; --onAccent:#11201b;
   --hover:#24292c; --tuile:#3b382a; --tuileInk:#dfc893;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="hortensia-nuit"] {
+  /* L'hortensia · nuit */
+  --bg:#191e28; --panel:#202632; --surface:#2a303b;
+  --ink:#f1f3f7; --ink2:#babdc3; --muted:#a5a8af;
+  --border:#373d48; --accent:#869dc4; --accentH:#95a9cb;
+  --sel:#3c3e42; --alert:#ea9a90; --onAccent:#172132;
+  --hover:#222731; --tuile:#3f4043; --tuileInk:#b1baca;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="coquelicot-nuit"] {
+  /* Le coquelicot · nuit */
+  --bg:#211815; --panel:#291e1a; --surface:#332824;
+  --ink:#f7f2ed; --ink2:#c1bbb6; --muted:#aea9a4;
+  --border:#3f3632; --accent:#c47d71; --accentH:#cb8d82;
+  --sel:#423c3b; --alert:#ea9a90; --onAccent:#32130e;
+  --hover:#2a211e; --tuile:#433f3d; --tuileInk:#c9aea9;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="chaume-nuit"] {
+  /* Le chaume · nuit */
+  --bg:#1e1a0c; --panel:#26200e; --surface:#302a19;
+  --ink:#f7f4e7; --ink2:#c0bdb0; --muted:#aba89a;
+  --border:#3d3727; --accent:#9c8c5f; --accentH:#a89a72;
+  --sel:#3e3d39; --alert:#ea9a90; --onAccent:#211a06;
+  --hover:#272316; --tuile:#41403c; --tuileInk:#bab3a0;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="bruyere-nuit"] {
+  /* La bruyère · nuit */
+  --bg:#20181c; --panel:#281e23; --surface:#32282d;
+  --ink:#f7f2f4; --ink2:#c1bbbd; --muted:#aca6a8;
+  --border:#3f363a; --accent:#af8495; --accentH:#b993a2;
+  --sel:#403c3e; --alert:#ea9a90; --onAccent:#29161e;
+  --hover:#292125; --tuile:#423f40; --tuileInk:#c1b0b7;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="source-nuit"] {
+  /* La source · nuit */
+  --bg:#142023; --panel:#19282b; --surface:#233235;
+  --ink:#eff4f5; --ink2:#b8bfc0; --muted:#a2aaac;
+  --border:#313f41; --accent:#729da5; --accentH:#83a9b0;
+  --sel:#3b3e3f; --alert:#ea9a90; --onAccent:#0e2125;
+  --hover:#1d292c; --tuile:#3e4141; --tuileInk:#a9bbbe;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="bleuet-nuit"] {
+  /* Le bleuet · nuit */
+  --bg:#181d2e; --panel:#1f243a; --surface:#292e43;
+  --ink:#f1f3f8; --ink2:#babdc5; --muted:#a5a8b1;
+  --border:#373b4f; --accent:#7c92c8; --accentH:#8c9fcf;
+  --sel:#3c3e42; --alert:#ea9a90; --onAccent:#131d34;
+  --hover:#212636; --tuile:#3e4043; --tuileInk:#adb6cd;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="lavande-nuit"] {
+  /* La lavande · nuit */
+  --bg:#1b1a2a; --panel:#222034; --surface:#2c2a3d;
+  --ink:#f3f3f7; --ink2:#bcbcc3; --muted:#a7a7af;
+  --border:#393749; --accent:#8d8bbc; --accentH:#9b99c4;
+  --sel:#3d3d41; --alert:#ea9a90; --onAccent:#1a192f;
+  --hover:#242333; --tuile:#404043; --tuileInk:#b4b3c8;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="rosee-nuit"] {
+  /* La rosée · nuit */
+  --bg:#151f25; --panel:#1a272e; --surface:#243137;
+  --ink:#f0f4f6; --ink2:#b9bec1; --muted:#a6acaf;
+  --border:#323e44; --accent:#729fb4; --accentH:#83abbd;
+  --sel:#3b3f41; --alert:#ea9a90; --onAccent:#0e222c;
+  --hover:#1e282e; --tuile:#3e4142; --tuileInk:#a9bbc4;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="iris-nuit"] {
+  /* L'iris · nuit */
+  --bg:#1d1b27; --panel:#242131; --surface:#2e2b3a;
+  --ink:#f7f1ec; --ink2:#c0bbba; --muted:#aea9aa;
+  --border:#3b3847; --accent:#8487b3; --accentH:#9395bc;
+  --sel:#3e403b; --alert:#ea9a90; --onAccent:#16172b;
+  --hover:#262430; --tuile:#41413d; --tuileInk:#b1b2c4;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="moisson-nuit"] {
+  /* La moisson · nuit */
+  --bg:#1d1a11; --panel:#242015; --surface:#2e2a20;
+  --ink:#f7f2e2; --ink2:#c0bbad; --muted:#aea99c;
+  --border:#3b372e; --accent:#7c92a9; --accentH:#8c9fb3;
+  --sel:#443e36; --alert:#ea9a90; --onAccent:#131d26;
+  --hover:#26231b; --tuile:#444039; --tuileInk:#aeb5bb;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="grenade-nuit"] {
+  /* La grenade · nuit */
+  --bg:#201719; --panel:#281d20; --surface:#32272a;
+  --ink:#f7f1eb; --ink2:#c1bab6; --muted:#b0aba8;
+  --border:#3f3537; --accent:#b8737e; --accentH:#c1848d;
+  --sel:#383c3a; --alert:#ea9a90; --onAccent:#2d0f14;
+  --hover:#292022; --tuile:#404140; --tuileInk:#c4aaaf;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="safran-nuit"] {
+  /* Le safran · nuit */
+  --bg:#1f180e; --panel:#271f11; --surface:#31291c;
+  --ink:#f7f3eb; --ink2:#c0bcb4; --muted:#aea9a1;
+  --border:#3e372a; --accent:#c28f5e; --accentH:#c99c71;
+  --sel:#3d3f41; --alert:#ea9a90; --onAccent:#321b05;
+  --hover:#282118; --tuile:#404141; --tuileInk:#c7b4a0;
+  --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+:root[data-theme="estampe-nuit"] {
+  /* L'estampe · nuit */
+  --bg:#1d1816; --panel:#241f1c; --surface:#2e2926;
+  --ink:#f3f3f1; --ink2:#bdbcba; --muted:#aba9a7;
+  --border:#3b3734; --accent:#ca796a; --accentH:#d0897c;
+  --sel:#3d3f41; --alert:#ea9a90; --onAccent:#35110b;
+  --hover:#26211f; --tuile:#404142; --tuileInk:#caaca7;
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
 }
 

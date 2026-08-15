@@ -4,7 +4,7 @@
 //
 //   node coherence-systeme.mjs   -> écarts nommés + verdict
 //
-// Trois vérifications :
+// Quatre vérifications :
 //   1. La table du contrat des jetons (cellules data-theme/data-jeton)
 //      égale les :root de systeme.css, VALEUR POUR VALEUR, dans les
 //      deux sens — un jeton du CSS absent du doc est un échec autant
@@ -15,11 +15,16 @@
 //      foi (DC-D3). Le journal des amendements, archive de faits datés,
 //      est seul exempté.
 //   3. Le renvoi au contrat des icônes est bien présent.
+//   4. Les pastilles de FICHES (lib/theme.js) égalent les jetons
+//      [accent, bg, panel, surface, ink] du CSS — les vignettes du
+//      sélecteur Réglages montrent chaque thème sans l'appliquer, la
+//      copie ne doit jamais dériver (revue A42).
 //
 // Le remède est toujours le même : amender le Système dans le commit
 // fautif (DC-D2) — jamais tordre la gate.
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { lireThemes, NOMBRE_ATTENDU } from './jetons.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const css = readFileSync(
@@ -38,25 +43,18 @@ const echec = (message) => {
 };
 
 // --- 1. Les jetons : systeme.css d'un côté… --------------------------
-// La classe [a-zA-Z][a-zA-Z0-9]* : « ink2 » porte un chiffre (le bogue
-// du banc de contraste, corrigé au même commit que cette gate).
-const themesCss = {};
-for (const [, nom, corps] of css.matchAll(
-  /:root(?:\[data-theme="([a-z]+)"\])?\s*\{([^}]+)\}/g,
-)) {
-  const jetons = {};
-  for (const [, cle, valeur] of corps.matchAll(
-    /--([a-zA-Z][a-zA-Z0-9]*)\s*:\s*([^;]+);/g,
-  )) {
-    jetons[cle] = valeur.replace(/\s+/g, ' ').trim();
-  }
-  if (Object.keys(jetons).length > 0) themesCss[nom ?? 'nature'] = jetons;
+// Le parseur partagé des deux gates (jetons.mjs — né à la revue d'A42,
+// après deux corrections du même bogue en deux exemplaires) ; le
+// plancher NOMBRE_ATTENDU ferme le silence d'un bloc non reconnu.
+const themesCss = lireThemes(css);
+if (Object.keys(themesCss).length !== NOMBRE_ATTENDU) {
+  echec(`${Object.keys(themesCss).length} thème(s) extraits de systeme.css — ${NOMBRE_ATTENDU} attendus (jetons.mjs) : un bloc échappe au motif, ou la table a changé sans amender le plancher`);
 }
 
 // --- …la table du contrat du doc de l'autre --------------------------
 const themesDoc = {};
 for (const [, theme, jeton, contenu] of doc.matchAll(
-  /<td data-theme="([a-z]+)" data-jeton="([a-zA-Z0-9]+)"[^>]*>([^<]*)<\/td>/g,
+  /<td data-theme="([a-z-]+)" data-jeton="([a-zA-Z0-9]+)"[^>]*>([^<]*)<\/td>/g,
 )) {
   (themesDoc[theme] ??= {})[jeton] = contenu.replace(/\s+/g, ' ').trim();
 }
@@ -99,6 +97,30 @@ for (const [motif] of corpsDoc.matchAll(/\b\d+\s*(?:<[^>]+>\s*)*glyphes/g)) {
 // --- 3. Le renvoi au contrat des icônes ------------------------------
 if (!corpsDoc.includes('assets/icones/README.md')) {
   echec('le renvoi au contrat assets/icones/README.md manque dans le corps du doc (DC-D3)');
+}
+
+// --- 4. Les pastilles de FICHES disent les jetons livrés -------------
+const themeJs = readFileSync(
+  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', 'theme.js'),
+  'utf8',
+);
+const ROLES_PASTILLES = ['accent', 'bg', 'panel', 'surface', 'ink'];
+const fiches = [...themeJs.matchAll(/\{ id: '([a-z-]+)', pastilles: \[([^\]]*)\] \}/g)];
+if (fiches.length !== NOMBRE_ATTENDU) {
+  echec(`${fiches.length} fiche(s) lues dans lib/theme.js — ${NOMBRE_ATTENDU} attendues : FICHES a changé de forme, ou une fiche manque`);
+}
+for (const [, id, brut] of fiches) {
+  const pastilles = [...brut.matchAll(/'([^']+)'/g)].map(([, v]) => v);
+  const jetons = themesCss[id];
+  if (!jetons) {
+    echec(`fiche « ${id} » : au sélecteur mais absente de systeme.css`);
+    continue;
+  }
+  ROLES_PASTILLES.forEach((role, i) => {
+    if (pastilles[i] !== jetons[role]) {
+      echec(`fiche « ${id} » · pastille ${role} : theme.js « ${pastilles[i]} », livré « ${jetons[role]} »`);
+    }
+  });
 }
 
 const nbThemes = Object.keys(themesCss).length;
