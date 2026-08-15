@@ -208,6 +208,7 @@ fn main() {
             commands::update_check,
             commands::update_install,
             commands::app_version,
+            commands::open_link,
             commands::notif_pref_get,
             commands::notif_pref_set,
             commands::lang_get,

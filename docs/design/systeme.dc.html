@@ -656,7 +656,7 @@
                 <span style="font-size:13px; color:#575f6a">c.rousseau@atelier-nord.fr · à Paul Mérand</span>
               </div>
               <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Bonjour Paul, j'ai repris les articles 4 et 7 après notre échange de lundi. Il reste la clause de renouvellement à trancher : reconduction tacite de douze mois, ou renégociation annuelle.</p>
-              <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Si tu peux me dire d'ici jeudi, je transmets la version finale au cabinet vendredi matin.</p>
+              <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Si tu peux me dire d'ici jeudi, je transmets la version finale au cabinet vendredi matin. La version annotée est lisible sur <span style="color:#0b57d0; text-decoration:underline">l'espace partagé</span>.</p>
             </div>
             <div style="margin-top:auto; padding:18px 30px; border-top:1px solid #cdc6b8; display:flex; gap:12px">
               <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#1e7566; border:1px solid #1e7566; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">reply</span>Répondre</span>
@@ -859,7 +859,7 @@
               <div style="display:flex; flex-direction:column; gap:16px; max-width:68ch">
                 <p style="margin:0; font-size:15px; line-height:1.65">Bonjour Paul,</p>
                 <p style="margin:0; font-size:15px; line-height:1.65">J'ai repris les articles 4 et 7 après notre échange de lundi. Il reste la clause de renouvellement à trancher : reconduction tacite de douze mois, ou renégociation annuelle. Les deux options sont annotées dans le document.</p>
-                <p style="margin:0; font-size:15px; line-height:1.65">Si tu peux me dire d'ici jeudi, je transmets la version finale au cabinet vendredi matin.</p>
+                <p style="margin:0; font-size:15px; line-height:1.65">Si tu peux me dire d'ici jeudi, je transmets la version finale au cabinet vendredi matin. La version annotée est lisible sur <span style="color:#0b57d0; text-decoration:underline">l'espace partagé</span>.</p>
                 <p style="margin:0; font-size:15px; line-height:1.65">Camille</p>
               </div>
               <div style="display:flex; flex-direction:column; gap:12px">
@@ -1330,6 +1330,11 @@ bloquante au démarrage. Rien d'autre ne bloque jamais.</p>
           <td style="padding:12px 20px; font-size:13px; color:#4a505a; white-space:nowrap">2026-08-15</td>
           <td style="padding:12px 20px; font-size:13px; color:#24272e; font-weight:600; white-space:nowrap">A36</td>
           <td style="padding:12px 20px; font-size:13px; color:#4a505a"><b>Constat terrain E3 (PLAN-WADA), deux retouches CE.</b> 1. La tuile de la boîte en cours ne compte plus rien : l'adresse seule (la pastille de la Réception dit déjà le non-lu ; la clé <code>nav.nonLus</code> quitte les catalogues). 2. Le trait hitofude quitte le bouton de relève et devient l'<b>indicateur de progression</b>, à gauche de la ligne d'état : dessiné au rythme du pourcentage pendant un chargement (jamais complet tant qu'il reste des éléments), en boucle pendant un cycle sans dénominateur, plein et immobile au repos. La <b>barre fine de 2 px disparaît du Système</b> ; le bouton garde son glyphe <code>sync</code>, immobile.</td>
+        </tr>
+        <tr style="border-top:1px solid #cdc6b8">
+          <td style="padding:12px 20px; font-size:13px; color:#4a505a; white-space:nowrap">2026-08-15</td>
+          <td style="padding:12px 20px; font-size:13px; color:#24272e; font-weight:600; white-space:nowrap">A37</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4a505a"><b>Liens du corps d'un message</b>, constat terrain CE : le clic naviguait l'iframe sandbox vers le site, navigation refusée (X-Frame-Options / CSP), et WebView2 remplaçait le corps par sa page « Ce contenu a été bloqué ». Règle : un clic sur un lien du corps ouvre le <b>navigateur système</b> (schémas <code>http</code>, <code>https</code>, <code>mailto</code> seuls, garde revalidée côté Rust, commande <code>open_link</code>) ; <b>l'iframe ne navigue jamais</b>, même pour un lien refusé, le corps reste affiché. Mécanique : jeton <code>allow-same-origin</code> sur l'iframe, toujours <b>sans</b> <code>allow-scripts</code> (le contenu reste inerte, S1 tient), et interception du clic côté parent (<code>lib/liens.js</code>), aux deux surfaces (volet de lecture, conversation). L'habillage des liens DANS le corps reste celui du document du message (défaut navigateur) : le Système n'impose rien à l'intérieur du corps assaini.</td>
         </tr>
       </tbody>
     </table>

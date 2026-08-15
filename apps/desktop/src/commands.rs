@@ -4025,6 +4025,28 @@ pub fn app_version(app: AppHandle) -> String {
     app.package_info().version.to_string()
 }
 
+/// Ouvre un lien du corps d'un message dans l'application SYSTEME
+/// (navigateur, client mail) — constat terrain 2026-08-15 : sans ce
+/// chemin, le clic naviguait l'iframe sandbox vers le site, refuse
+/// (X-Frame-Options / CSP), et WebView2 remplacait le corps par sa
+/// page « Ce contenu a ete bloque ».
+///
+/// La GARDE vit ici, pas dans l'UI : seuls http, https et mailto
+/// passent — tout autre schema (file, smb, chemins UNC…) est refuse
+/// nommement. `open::that_detached` emballe ShellExecuteW sans bloquer
+/// le thread de commande.
+#[tauri::command]
+pub fn open_link(url: String) -> Result<(), String> {
+    let propre = url.trim();
+    let bas = propre.to_ascii_lowercase();
+    let permis =
+        bas.starts_with("http://") || bas.starts_with("https://") || bas.starts_with("mailto:");
+    if !permis {
+        return Err(format!("schéma de lien refusé : {propre}"));
+    }
+    open::that_detached(propre).map_err(|err| err.to_string())
+}
+
 /// Bulles d'arrivee : la preference se LIT pour l'afficher…
 #[tauri::command]
 pub fn notif_pref_get(app: AppHandle) -> Result<bool, String> {

@@ -5,9 +5,13 @@
   //
   // Invariant intact : le corps vit dans l'iframe sandbox, servie par
   // `message_body` (assaini côté coeur, images distantes bloquées, encre
-  // bakée par thème — S1), jamais innerHTML.
+  // bakée par thème — S1), jamais innerHTML. Le jeton `allow-same-origin`
+  // — SANS allow-scripts, le contenu reste inerte — sert l'interception
+  // des liens (lib/liens.js, terrain 2026-08-15) : le clic part au
+  // navigateur système, l'iframe ne navigue jamais.
   //
   import { appel } from './lib/transport.js';
+  import { brancherLiens } from './lib/liens.js';
   import { quandLong } from './lib/quand.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
@@ -180,7 +184,9 @@
             {t('lecture.afficherImages')}</button>
         </div>
       {/if}
-      <iframe class="corps" sandbox srcdoc={corps} title={t('lecture.corps')}></iframe>
+      <iframe class="corps" sandbox="allow-same-origin" srcdoc={corps}
+              title={t('lecture.corps')}
+              onload={(ev) => brancherLiens(ev.currentTarget)}></iframe>
       {#if pieces.length > 0}
         <div class="fichiers" data-testid="lecture-fichiers">
           {#each pieces as piece (piece.index)}

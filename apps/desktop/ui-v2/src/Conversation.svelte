@@ -7,15 +7,18 @@
   // Invariant intact : chaque message déplié porte SA propre iframe
   // sandbox (S1), servie par `message_body`, chargée au dépliage
   // seulement — « Tout déplier » sur un long fil ne monte les corps que
-  // des messages effectivement dépliés. Écart assumé : le bac à sable
-  // opaque interdit de mesurer la hauteur du contenu, le corps défile
-  // dans une fenêtre bornée au lieu de couler comme au prototype —
-  // relâcher le sandbox pour de la hauteur serait un troc refusé.
+  // des messages effectivement dépliés. Le jeton `allow-same-origin` —
+  // SANS allow-scripts, le contenu reste inerte — sert l'interception
+  // des liens (lib/liens.js, terrain 2026-08-15). Écart assumé : le
+  // corps défile dans une fenêtre bornée au lieu de couler comme au
+  // prototype (hauteur figée, héritée de l'époque du bac à sable
+  // opaque — la mesurer serait désormais possible, troc non rejoué).
   //
   // « À » n'est pas stocké par le cœur : la règle du prototype
   // s'applique — message de soi → premier autre correspondant du fil,
   // sinon l'adresse du compte. Approximation dite, pas cachée.
   import { appel } from './lib/transport.js';
+  import { brancherLiens } from './lib/liens.js';
   import { quand } from './lib/quand.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
@@ -231,8 +234,9 @@
                     <dt>{t('conv.a')}</dt><dd>{ligneA(m)}</dd>
                     <dt>{t('conv.objet')}</dt><dd>{m.subject}</dd>
                   </dl>
-                  <iframe class="corps" sandbox srcdoc={corps[cle(m)] ?? ''}
-                          title={t('lecture.corps')}></iframe>
+                  <iframe class="corps" sandbox="allow-same-origin" srcdoc={corps[cle(m)] ?? ''}
+                          title={t('lecture.corps')}
+                          onload={(ev) => brancherLiens(ev.currentTarget)}></iframe>
                   {#if m.attachment_count > 0}
                     <div class="fichiers">
                       <p class="titre-fichiers">{t('conv.fichiersJoints')}</p>

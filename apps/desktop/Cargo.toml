@@ -34,6 +34,11 @@ tauri-plugin-dialog = "2"
 # dans mail-core : interroger le systeme de fichiers est de l'I/O de
 # plateforme, la DECISION (disk_shortfall) reste pure dans le coeur.
 fs4 = "0.13"
+# Liens du corps vers le navigateur SYSTEME (open_link) : ShellExecuteW
+# bien emballe, la ou `explorer` (patron de telemetry_open_folder) est
+# fait pour des dossiers, pas des URL. Le schema est valide en Rust
+# AVANT l'appel — la garde vit ici, pas dans l'UI.
+open = "5"
 
 [lints]
 workspace = true

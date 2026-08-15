@@ -272,7 +272,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &corps(&[
             "Bonjour Paul,",
             "J'ai repris les articles 4 et 7 après notre échange de lundi. Il reste la clause de renouvellement à trancher : reconduction tacite de douze mois, ou renégociation annuelle. Les deux options sont annotées dans le document.",
-            "Si tu peux me dire d'ici jeudi, je transmets la version finale au cabinet vendredi matin.",
+            // Le seul corps du décor à LIEN — le geste « clic sur un
+            // lien -> navigateur système » (terrain 2026-08-15) se joue
+            // ici : l'iframe ne doit jamais naviguer.
+            "Si tu peux me dire d'ici jeudi, je transmets la version finale au cabinet vendredi matin. La version annotée est lisible sur <a href=\"https://espace.exemple/vantis\">l'espace partagé</a>.",
             "Camille",
         ]),
         &[

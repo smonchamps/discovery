@@ -123,6 +123,32 @@ test('sélectionner ouvre le volet, lit le corps, et le non-lu tombe', async () 
   await expect(dossier('reception')).toContainText('3');
 });
 
+test('un lien du corps part au navigateur système — le corps ne bouge pas', async () => {
+  // Constat terrain 2026-08-15 : le clic naviguait l'iframe sandbox
+  // vers le site, refusé (X-Frame-Options / CSP) — WebView2 remplaçait
+  // le corps par sa page « Ce contenu a été bloqué ». Depuis, le clic
+  // est intercepté (lib/liens.js) et part à open_link ; la couture
+  // `__e2eLiens` capte l'URL au lieu d'ouvrir un navigateur réel —
+  // tout l'amont (iframe allow-same-origin, interception, filtre de
+  // schéma) est le vrai chemin.
+  await page.evaluate(() => {
+    window.__e2eLiens = [];
+  });
+  const cadre = page.frameLocator('[data-testid="volet-lecture"] iframe');
+  try {
+    await cadre.locator('a[href="https://espace.exemple/vantis"]').click();
+    await expect
+      .poll(() => page.evaluate(() => window.__e2eLiens))
+      .toEqual(['https://espace.exemple/vantis']);
+  } finally {
+    await page.evaluate(() => {
+      delete window.__e2eLiens;
+    });
+  }
+  // Le corps est toujours là — jamais de page « contenu bloqué ».
+  await expect(cadre.locator('body')).toContainText('Bonjour Paul');
+});
+
 test("l'onglet Non lus filtre côté coeur", async () => {
   await page.locator('[data-onglet="nonlus"]').click();
   await expect(page.locator('[data-testid="ligne"]')).toHaveCount(3);
