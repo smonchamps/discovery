@@ -2,9 +2,13 @@
 
 Pilote la **vraie fenêtre Tauri** via CDP (WebView2), sans `tauri-driver`
 ni `msedgedriver` : l'application est lancée avec
-`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` et
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>` et
 Playwright s'y attache par `connectOverCDP` (spike validé le 2026-07-17 —
-aucune danse de versions de driver).
+aucune danse de versions de driver). Le port est **libre et choisi par
+l'OS à chaque lancement** ([port-cdp.mjs](port-cdp.mjs)) : deux suites
+jouées en même temps depuis deux worktrees ne partagent aucun état
+(PLAN-ISOLATION-E2E, constat 2026-08-15 — un port fixe faisait piloter
+la fenêtre d'une suite par l'autre).
 
 Déterminisme par construction ([launch.mjs](launch.mjs)) :
 

@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
+import { allouerPortCdp } from './port-cdp.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const db = process.env.MESURE_DB || path.join(root, 'target', 'e2e', 'mesure-v2.db');
@@ -18,11 +19,14 @@ for (const dossier of ['Cache', 'Code Cache']) {
   rmSync(path.join(profile, 'EBWebView', 'Default', dossier), { recursive: true, force: true });
 }
 
+// Port CDP libre à chaque lancement (PLAN-ISOLATION-E2E, D2).
+const port = await allouerPortCdp();
+
 const env = {
   ...process.env,
   WIND_DB_PATH: db,
   WIND_E2E_ACCOUNT: 'mesure@exemple.fr',
-  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9222',
+  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
   WEBVIEW2_USER_DATA_FOLDER: profile,
 };
 delete env.GOOGLE_CLIENT_ID;
@@ -36,14 +40,14 @@ const app = spawn(path.join(root, 'target', 'release', 'wind-desktop.exe'), [], 
 let browser = null;
 for (let attempt = 0; attempt < 60 && !browser; attempt++) {
   try {
-    browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   } catch {
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }
 if (!browser) {
   app.kill();
-  throw new Error('CDP injoignable sur le port 9222.');
+  throw new Error(`CDP injoignable sur le port ${port}.`);
 }
 
 try {

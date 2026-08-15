@@ -29,6 +29,7 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
 import { purgerOAuth } from './isolation.mjs';
+import { allouerPortCdp } from './port-cdp.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -62,11 +63,15 @@ const profile = path.join(root, 'target', 'e2e', 'webview2-mesure-v2');
 mkdirSync(profile, { recursive: true });
 purgerCacheHttp(profile);
 
+// Port CDP libre à chaque lancement : le banc peut tourner pendant
+// qu'une gate e2e joue sur la même machine (PLAN-ISOLATION-E2E, D2).
+const port = await allouerPortCdp();
+
 const env = {
   ...process.env,
   WIND_DB_PATH: db,
   WIND_E2E_ACCOUNT: comptes[0].email,
-  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: '--remote-debugging-port=9222',
+  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
   WEBVIEW2_USER_DATA_FOLDER: profile,
 };
 purgerOAuth(env);
@@ -80,7 +85,7 @@ const app = spawn(path.join(root, 'target', 'release', 'wind-desktop.exe'), [], 
 let browser = null;
 for (let attempt = 0; attempt < 300 && !browser; attempt++) {
   try {
-    browser = await chromium.connectOverCDP('http://127.0.0.1:9222');
+    browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   } catch {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -88,7 +93,7 @@ for (let attempt = 0; attempt < 300 && !browser; attempt++) {
 if (!browser) {
   app.kill();
   throw new Error(
-    'CDP injoignable sur le port 9222 après 30 s. '
+    `CDP injoignable sur le port ${port} après 30 s. `
     + `Le processus est-il mort ? Une autre instance tourne-t-elle avec le profil ${profile} ?`,
   );
 }

@@ -18,10 +18,15 @@ function construire(root, { release, fenetre }) {
   utimesSync(path.join(root, 'apps', 'desktop', 'src', 'main.rs'), new Date(), new Date());
   // 2. Un zombie de banc verrouille l'exe : le LINK échoue (« accès
   //    refusé ») et le vieux binaire serait rejoué en silence
-  //    (constaté). On ne tue QUE les instances issues de target/ —
-  //    jamais l'application installée de l'utilisateur.
+  //    (constaté). On ne tue QUE les instances issues de CE target/ —
+  //    jamais l'application installée de l'utilisateur, et jamais la
+  //    suite d'un AUTRE worktree : le motif '*\target\*' d'origine
+  //    abattait l'application de l'autre suite en plein vol
+  //    (Stop-Process -Force = code 0xFFFFFFFF sans sortie — le constat
+  //    du 2026-08-15, PLAN-ISOLATION-E2E).
   const balayage =
-    "Get-Process wind-desktop -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\\target\\*' } | Stop-Process -Force";
+    'Get-Process wind-desktop -ErrorAction SilentlyContinue | '
+    + `Where-Object { $_.Path -like '${path.join(root, 'target')}\\*' } | Stop-Process -Force`;
   try {
     execSync(`powershell -NoProfile -Command "${balayage}"`, { stdio: 'ignore' });
   } catch {
