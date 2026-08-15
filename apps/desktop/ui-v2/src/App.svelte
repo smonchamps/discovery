@@ -936,6 +936,13 @@
   // de lui-même. Conversation ouverte : le geste seul, comme avant. Le
   // geste à la souris (boutons des volets) ne bouge pas la sélection.
   async function avancerApres(ligne, geste) {
+    // Constat terrain (2026-08-15) : le clic laisse le focus sur une
+    // rangée ; la touche bascule le navigateur en modalité clavier et
+    // l'anneau :focus-visible surgirait sur ce nœud RECYCLÉ (rangées
+    // clées par index — il montre déjà une autre conversation) : des
+    // traits d'accent sans signification. La sélection (liseré) dit la
+    // position — le raccourci retire le focus de la rangée.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     const suivante = conversation?.estOuverte() ? null : (liste?.suivante(ligne) ?? null);
     if (!(await geste(ligne)) || !suivante) return;
     liste?.selectionner(suivante);

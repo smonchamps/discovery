@@ -796,6 +796,12 @@ test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Conversation archivée.',
   );
+  // Le raccourci retire le focus de la rangée cliquée : l'anneau
+  // :focus-visible ne surgit jamais sur un nœud recyclé (les rangées
+  // sont clées par index — il montrerait une AUTRE conversation).
+  expect(
+    await page.evaluate(() => document.activeElement === document.body),
+  ).toBe(true);
   // La sélection a avancé : la ligne du dessous porte le liseré ET son
   // volet est ouvert (trois volets — comme au clic).
   const choisie = page.locator('[data-testid="ligne"].choisie');
