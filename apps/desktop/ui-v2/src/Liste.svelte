@@ -327,7 +327,18 @@
            class:choisie={estChoisie(ligne)}
            data-testid="ligne"
            role="button" tabindex="0"
-           onclick={() => choisir(ligne)}
+           onclick={(e) => {
+             // Constat terrain (2026-08-15, suite d'A38) : un clic
+             // laissait le focus sur la rangée, et la PREMIÈRE touche
+             // venue (raccourci ou non) basculait en modalité clavier —
+             // l'anneau :focus-visible surgissait sur un nœud recyclé
+             // par index. Choisie à la souris (detail > 0 : jamais vrai
+             // au clavier ni aux technologies d'assistance), la rangée
+             // rend le focus ; le liseré dit la position. Entrée/Espace
+             // passent par activation(), focus et anneau intacts (A8).
+             if (e.detail > 0) e.currentTarget.blur();
+             choisir(ligne);
+           }}
            onkeydown={activation(() => choisir(ligne))}>
         <div class="l1">
           <span class="exp">{ligne.sender}</span>

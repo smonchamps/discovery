@@ -792,6 +792,12 @@ test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38
   expect(depart).toBeGreaterThan(-1);
   const dessous = sujets[depart + 1];
   await lignes.nth(depart).click();
+  // Le clic de souris ne laisse PAS le focus sur la rangée : aucune
+  // touche ultérieure (raccourci ou non) ne peut allumer l'anneau
+  // :focus-visible sur un nœud recyclé par index.
+  expect(
+    await page.evaluate(() => document.activeElement === document.body),
+  ).toBe(true);
   await page.keyboard.press('e');
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Conversation archivée.',
