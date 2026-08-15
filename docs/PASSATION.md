@@ -1,7 +1,11 @@
 # Passation — reprendre Wind dans une nouvelle conversation
 
-> **Ce document est l'instruction de projet.** Il n'y a pas de `CLAUDE.md`
-> ici : tout ce qui ne se déduit pas du code est écrit là.
+> **Ce document est l'instruction de projet.** Depuis le 2026-08-15, un
+> `CLAUDE.md` de dix lignes à la racine le charge automatiquement à
+> chaque session — il ne porte que le rôle et le renvoi vers ce
+> document : **toute la substance reste ici**. (La décision « pas de
+> `CLAUDE.md` » est renversée à cette date, décision CE, pour supprimer
+> le rituel d'ouverture manuel.)
 >
 > État au **2026-07-26** (soir), branche `main`.
 > **~340 tests Rust · 21/21 E2E · clippy muet**.
@@ -23,7 +27,16 @@
 
 ## 0. Comment ouvrir la conversation
 
-Colle ceci comme premier message :
+Depuis le 2026-08-15, `CLAUDE.md` (racine) charge le rôle et le renvoi
+vers ce document à chaque session : **plus rien à coller**. Les
+workflows standardisés vivent dans `.claude/skills/` (commitées,
+décision CE du même jour) : `/chantier` déroule un bug ou une feature
+de bout en bout avec ses deux validations manuelles (plan, terrain),
+`/terrain` traite un constat terrain le jour même, `/gate` rejoue la
+gate complète, `/solde` clôt un chantier. L'agent `spike`
+(`.claude/agents/`) porte l'exploration set-based en worktree isolé.
+
+Si le contexte est perdu malgré tout, l'ancien rituel reste valable :
 
 > Reprends le développement de Wind. Tu es le Chef Ingénieur du
 > projet et tu appliques la méthode décrite dans `docs/PASSATION.md` §2 —

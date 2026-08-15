@@ -1,5 +1,6 @@
 /target
-.claude/
+.claude/settings.local.json
+.claude/worktrees/
 apps/desktop/gen/
 spikes/search-engine/target/
 spikes/microsoft/target/
