@@ -22,15 +22,15 @@
   import Toast from './Toast.svelte';
   import Hitofude from './Hitofude.svelte';
 
-  let liste;
-  let lecture;
+  let liste = $state(null);
+  let lecture = $state(null);
   // La conversation REMPLACE l'écran (prototype) : elle se superpose en
   // plein écran, la boîte reste montée dessous — défilement, pages et
   // sélection sont intacts au retour.
-  let conversation;
-  let composition;
-  let reglages;
-  let modaleMigration;
+  let conversation = $state(null);
+  let composition = $state(null);
+  let reglages = $state(null);
+  let modaleMigration = $state(null);
   let champRecherche = $state(null);
 
   // Rien ne touche la base tant qu'une base héritée n'est pas adoptée :
@@ -1027,8 +1027,8 @@
       <button type="button" class="scrim-tiroir" data-testid="tiroir-scrim"
               aria-label={t('nav.fermerTiroir')}
               onclick={() => (tiroirOuvert = false)}></button>
-      <aside class="tiroir" data-testid="tiroir" role="dialog" aria-modal="true"
-             aria-label={t('nav.aria')}>
+      <div class="tiroir" data-testid="tiroir" role="dialog" aria-modal="true"
+           aria-label={t('nav.aria')}>
         <div class="tete-tiroir">
           Wind<Hitofude />
           <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
@@ -1037,7 +1037,7 @@
             <span class="ms" aria-hidden="true">close</span></button>
         </div>
         <Nav {comptes} {categorie} {compte} onchoisir={choisirDuTiroir} />
-      </aside>
+      </div>
     {/if}
 
     <Conversation bind:this={conversation} {brouillons}
