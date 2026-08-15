@@ -1,5 +1,5 @@
 // Banc P1 de la refonte (PLAN-UI-V2 §5) : les budgets sur la coquille
-// v2 (Svelte, ligne du prototype à DEUX gabarits), base seedée à
+// v2 (Svelte, ligne continue à UN gabarit depuis A29), base seedée à
 // l'échelle réelle — 256 312 messages par défaut.
 //
 //   node mesure-v2.mjs
@@ -119,7 +119,7 @@ try {
   console.log('interne    :', await page.locator('#perf').textContent());
 
   const etat = await page.evaluate(() => window.__mesure.etat());
-  console.log(`décor      : ${etat.total} lignes · gabarits ${etat.h1}/${etat.h2} px`);
+  console.log(`décor      : ${etat.total} lignes · gabarit ${etat.h1} px`);
 
   // MESURE_SANS_ACTIVITE=1 : peser la RAM AU REPOS, méthodologie ADR
   // 0002 — la même posture que le banc v1, sans quoi la comparaison

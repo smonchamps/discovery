@@ -20,6 +20,7 @@
   import FenteAvis from './FenteAvis.svelte';
   import ModaleMigration from './ModaleMigration.svelte';
   import Toast from './Toast.svelte';
+  import Hitofude from './Hitofude.svelte';
 
   let liste;
   let lecture;
@@ -241,12 +242,16 @@
         alerte: true,
       };
     }
+    // A28/A29 : aux états « À jour », le trait hitofude précède le
+    // texte — complètement dessiné et immobile (il ne boucle que
+    // pendant un cycle, dans le bouton de relève).
     return {
       texte: derniere
         ? t('statut.ajourDepuis', { depuis: depuis(derniere, maintenant) })
         : t('statut.ajour'),
       fil: null,
       alerte: false,
+      trait: true,
     };
   });
 
@@ -932,7 +937,10 @@
               onclick={() => (tiroirOuvert = true)}>
         <span class="ms" aria-hidden="true">menu</span></button>
     {/if}
-    <span class="marque" class:marque--libre={volets === 1}><span class="marque-tuile" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3" /><polyline points="9,16 24,27 39,16" /></svg></span>Wind</span>
+    <!-- A30 : la marque sans tuile-enveloppe — le mot « Wind » (18 px)
+         suivi du trait hitofude statique (A28), décalé de 3 px sous la
+         ligne de base ; la mini-tuile reste aux contextes OS. -->
+    <span class="marque" class:marque--libre={volets === 1}>Wind<Hitofude /></span>
     <span class="recherche" data-testid="recherche">
       <span class="ms" aria-hidden="true">search</span>
       <input type="text" bind:this={champRecherche} bind:value={recherche}
@@ -984,6 +992,7 @@
       {/if}
       <span class="texte">
         {#if ligne.alerte}<span class="point-alerte" aria-hidden="true"></span>{/if}
+        {#if ligne.trait}<Hitofude largeur={38} hauteur={9} />{/if}
         <span data-testid="progression">{ligne.texte}</span>
       </span>
       <span id="perf" data-testid="perf" data-startup={startup}>{perf}</span>
@@ -991,9 +1000,11 @@
            (S-D1, variante A). Inhibé pendant un cycle (le glyphe tourne :
            la machine travaille déjà) ; sur échec, il devient le levier
            au plus près de la panne. -->
+      <!-- Pendant le cycle, le trait hitofude se dessine en boucle dans
+           le bouton (A28/A29 — le glyphe sync ne tourne plus). -->
       <button type="button" class="btn-statut" data-testid="btn-releve"
               disabled={enSynchro} onclick={() => relever(true)}>
-        <span class="ms" class:tourne={enSynchro} aria-hidden="true">sync</span>
+        {#if enSynchro}<Hitofude anime largeur={38} hauteur={9} />{:else}<span class="ms" aria-hidden="true">sync</span>{/if}
         {#if enSynchro}{t('action.synchronisation')}{:else if synchroEchec || synchroPartiel}{t('action.reessayer')}{:else}{t('action.synchroniser')}{/if}
       </button>
     </div>
@@ -1009,7 +1020,7 @@
       <aside class="tiroir" data-testid="tiroir" role="dialog" aria-modal="true"
              aria-label={t('nav.aria')}>
         <div class="tete-tiroir">
-          <span class="marque-tuile" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3" /><polyline points="9,16 24,27 39,16" /></svg></span>Wind
+          Wind<Hitofude />
           <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
                   aria-label={t('nav.fermerTiroir')}
                   onclick={() => (tiroirOuvert = false)}>
@@ -1049,32 +1060,30 @@
     display:flex; flex-direction:column; height:100vh; position:relative;
     background:var(--bg); overflow:hidden;
   }
+  /* A30 : l'entête au jeton des panneaux, la recherche sur blanc. */
   .entete {
-    height:60px; flex:none; background:var(--surface);
+    height:60px; flex:none; background:var(--panel);
     border-bottom:1px solid var(--border); display:flex;
     align-items:center; gap:20px; padding:0 24px;
   }
   .marque {
-    font-size:15px; font-weight:600; width:212px; color:var(--ink);
+    font-size:18px; font-weight:600; width:212px; color:var(--ink);
     display:flex; align-items:center; gap:10px;
   }
-  /* Couleurs de la marque, figées hors thèmes — jamais des jetons (W-D3). */
-  .marque-tuile {
-    width:24px; height:24px; border-radius:6px; flex:none;
-    background:#e2ebe8; color:#365a4f;
-    display:flex; align-items:center; justify-content:center;
-  }
+  /* Le trait de la marque : décalé de 3 px sous la ligne de base (A28). */
+  .marque :global(svg), .tete-tiroir :global(svg) { margin-top:3px; }
   .recherche {
     flex:1; height:32px; display:flex; align-items:center; gap:10px;
-    padding:0 14px; font-size:13px; color:var(--muted);
-    background:var(--bg); border:1px solid var(--border); border-radius:6px;
+    padding:0 14px; font-size:13px; color:var(--ink2);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px;
   }
-  .recherche .ms { color:var(--muted); }
+  .recherche .ms { color:var(--ink2); }
   .recherche input {
     flex:1; font-size:13px; color:var(--ink); border:none; outline:none;
     background:transparent; min-width:0;
   }
-  .recherche input::placeholder { color:var(--muted); }
+  .recherche input::placeholder { color:var(--ink2); }
   .vider {
     height:22px; width:22px; padding:0; display:inline-flex; flex:none;
     align-items:center; justify-content:center; color:var(--muted);
@@ -1093,14 +1102,15 @@
   }
   .principal:hover { background:var(--accentH); border-color:var(--accentH); }
 
+  /* A29 : la nav des pistes vit à 248 px (236 avant la v2). */
   .colonnes {
-    flex:1; display:grid; grid-template-columns:236px 400px minmax(0,1fr);
+    flex:1; display:grid; grid-template-columns:248px 400px minmax(0,1fr);
     min-height:0;
   }
   /* PLAN-VOLETS (V-D1) : en deux volets la liste prend la largeur —
      gabarit de ligne inchangé (V-D3), l'aperçu respire. En un volet
      (E2) la liste est seule : son filet droit n'a plus de voisin. */
-  .colonnes--2 { grid-template-columns:236px minmax(0,1fr); }
+  .colonnes--2 { grid-template-columns:248px minmax(0,1fr); }
   .colonnes--1 { grid-template-columns:minmax(0,1fr); }
   .colonnes--1 > :global(.colonne) { border-right:none; }
 
@@ -1130,7 +1140,7 @@
   .tete-tiroir {
     height:60px; flex:none; display:flex; align-items:center; gap:10px;
     padding:0 16px 0 20px; border-bottom:1px solid var(--border);
-    font-size:15px; font-weight:600; color:var(--ink);
+    font-size:18px; font-weight:600; color:var(--ink);
   }
   .fermer-tiroir { margin-left:auto; }
 
@@ -1157,8 +1167,6 @@
   .btn-statut[disabled] { opacity:.55; cursor:default; }
   .btn-statut[disabled]:hover { background:var(--surface); color:var(--ink2); }
   .btn-statut .ms { font-size:14px; }
-  .tourne { animation:tourne 1.2s linear infinite; }
-  @keyframes tourne { from { transform:rotate(0); } to { transform:rotate(360deg); } }
   .point-alerte {
     width:7px; height:7px; border-radius:99px; background:var(--alert);
     flex:none;

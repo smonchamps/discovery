@@ -1,10 +1,13 @@
 # Plan — Système v2 « Wada » : la palette, la signature du vent et les dessins des pistes
 
 **Statut : GO CE le 2026-08-15 — W2-D1 à W2-D7 telles que proposées.
-E1 livrée le jour même** (police au balayage, icône 42/64, preuve
-45/45) ; E2 en cours ; E3 attend le terrain. Les verdicts chiffrés du
-banc (jetons neufs, remèdes A8) sont consignés au §4 — ils font foi
-pour E2. Source : le projet Claude Design **« Amélioration
+E1 et E2 livrées le jour même** (E1 : police au balayage, icône 42/64,
+preuve 45/45 — commit b324966 ; E2 : le commit UI, doc v2 intégral à
+119 jetons, A35) ; **E3 attend le constat terrain CE** (une journée en
+usage réel : la palette sous les deux luminosités, le trait pendant de
+vrais cycles, la nav aux pastilles, la liste aux filets — puis clôture
+datée ici). Les verdicts chiffrés du banc (jetons neufs, remèdes A8)
+sont consignés au §4. Source : le projet Claude Design **« Amélioration
 système de couleurs »**
 (<https://claude.ai/design/p/19bf2156-10a1-404f-9450-317380da9c83>),
 fichier **`Systeme v2.dc.html`** — l'évolution du Système de référence
@@ -246,6 +249,15 @@ compteurs), banc de contraste étendu, gate de cohérence au contrat
 corrigée des verdicts W2-D1/W2-D2** (journal A28–A34, plus la rangée
 qui date ces corrections). Fins de ligne CRLF conservées. Gates
 complètes — le banc et la cohérence AVANT le commit, pas après.
+
+Fait d'exécution d'E2, au-delà du §3 : trois parcours e2e disaient
+l'ANCIENNE grammaire des compteurs — « 9 » et « 160 » se lisaient dans
+la nav parce que les totaux y vivaient ; ils se lisent désormais à la
+ligne de perf de la barre de statut (`{total} conversations · …`), et
+le parcours des pièces jointes asserte la ligne NUE (les puces au
+volet de lecture, A29/A2). Le test neuf des pastilles vise l'élément
+`.pastille`, pas le texte brut de la rangée : le nom de ligature
+`inventory_2` porte un chiffre.
 
 **E3 — le terrain et la clôture.** Le constat CE (une journée en
 usage réel : la palette sous les deux luminosités, le trait pendant de

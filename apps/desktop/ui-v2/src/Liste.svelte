@@ -1,8 +1,9 @@
 <script>
-  // Liste fenêtrée de l'écran 02 — la ligne EXACTE du prototype (A6), à
-  // deux gabarits déterministes (voir P1), servie par `list_category` :
-  // la source est (catégorie, compte, non-lus), les onglets du prototype
-  // vivent dans le pied de cette colonne.
+  // Liste fenêtrée de l'écran 02 — lignes continues séparées au filet,
+  // le dessin des pistes (A29/A30) : UN gabarit déterministe (les puces
+  // fil/fichiers vivent au volet de lecture depuis A29 — la ligne est
+  // nue, A2), servie par `list_category` : la source est (catégorie,
+  // compte, non-lus), les onglets vivent dans le pied de cette colonne.
   //
   // Changement de source = nouvelle génération : les pages en vol de la
   // source précédente sont jetées à l'arrivée, jamais mélangées.
@@ -29,23 +30,19 @@
   } = $props();
 
   const PAGE = 200;
-  const GAP = 8;
-  const PAD = 12;
   const OVER = 8;
 
   let cadre = $state(null);
   let total = $state(0);
   let premier = $state(0);
   let version = $state(0);
-  let h1 = $state(98);
-  let h2 = $state(132);
+  let h1 = $state(90);
   let sondees = $state(false);
   let selection = $state(null);
   let premierePageMs = $state(null);
 
   let generation = 0;
   let pages = new Map();
-  let chipsParPage = new Map();
   let pending = new Map();
   // Stale-while-revalidate (PLAN-REACTIVITE E1) : la génération à
   // laquelle chaque page a été servie. Une recharge bump `generation`
@@ -53,47 +50,18 @@
   // page ne se resert que si sa génération est dépareillée.
   let servieA = new Map();
 
-  const aPuces = (l) => l.thread_size > 1 || l.has_attachment;
-  const pitch1 = $derived(h1 + GAP);
-  const extraPuce = $derived(h2 - h1);
+  // Un seul gabarit depuis A29 (lignes continues, sans puces ni
+  // marges) : la géométrie du fenêtrage est une multiplication.
+  const pitch = $derived(h1);
 
-  function chipsAvant(i) {
-    let extra = 0;
-    const pleine = Math.floor(i / PAGE);
-    for (const [p, n] of chipsParPage) {
-      if (p < pleine) extra += n;
-    }
-    const page = pages.get(pleine);
-    if (page) {
-      const borne = i - pleine * PAGE;
-      for (let k = 0; k < borne && k < page.length; k++) {
-        if (aPuces(page[k])) extra += 1;
-      }
-    }
-    return extra;
-  }
   function decalage(i) {
-    return PAD + i * pitch1 + chipsAvant(i) * extraPuce;
+    return i * pitch;
   }
 
-  const hauteurEspace = $derived.by(() => {
-    void version;
-    if (total === 0) return 0;
-    let extra = 0;
-    for (const n of chipsParPage.values()) extra += n;
-    return PAD * 2 + total * pitch1 - GAP + extra * extraPuce;
-  });
+  const hauteurEspace = $derived(total === 0 ? 0 : total * pitch);
 
   function indexPour(scrollTop) {
-    let i = Math.max(0, Math.floor((scrollTop - PAD) / pitch1));
-    for (let tour = 0; tour < 4; tour++) {
-      const corrige = Math.max(
-        0,
-        Math.floor((scrollTop - PAD - chipsAvant(i) * extraPuce) / pitch1),
-      );
-      if (corrige === i) break;
-      i = corrige;
-    }
+    const i = Math.max(0, Math.floor(scrollTop / pitch));
     return Math.min(i, Math.max(0, total - 1));
   }
 
@@ -113,28 +81,14 @@
       offset: p * PAGE,
       limit: PAGE,
     })
-      .then(async (page) => {
+      .then((page) => {
         if (nee !== generation) return; // source changée : page périmée
         total = page.total;
-        // Le delta de puces, pas le compte brut : une page REMPLACÉE
-        // affichait déjà les siennes — l'ancrage du défilement ne doit
-        // bouger que de la différence (première servie : avant = 0).
-        const avant = chipsParPage.get(p) ?? 0;
         pages.set(p, page.rows);
         servieA.set(p, nee);
-        let n = 0;
-        for (const l of page.rows) if (aPuces(l)) n += 1;
-        chipsParPage.set(p, n);
         pending.delete(p);
         if (premierePageMs === null) premierePageMs = performance.now() - t0;
-        const delta = n - avant;
-        if (delta !== 0 && (p + 1) * PAGE <= premier && cadre) {
-          version += 1;
-          await tick();
-          cadre.scrollTop += delta * extraPuce;
-        } else {
-          version += 1;
-        }
+        version += 1;
       })
       .catch((err) => {
         pending.delete(p);
@@ -154,7 +108,6 @@
     untrack(() => {
       generation += 1;
       pages = new Map();
-      chipsParPage = new Map();
       servieA = new Map();
       pending = new Map();
       total = 0;
@@ -167,7 +120,7 @@
   });
 
   const visibles = $derived(
-    cadre ? Math.ceil(cadre.clientHeight / pitch1) + 1 : 12,
+    cadre ? Math.ceil(cadre.clientHeight / pitch) + 1 : 12,
   );
   const debut = $derived(Math.max(0, premier - OVER));
   const fin = $derived(Math.min(total, premier + visibles + OVER));
@@ -233,10 +186,8 @@
     untrack(() => ontotal(n));
   });
 
-  function sonder(el, avecPuces) {
-    const h = el.offsetHeight;
-    if (avecPuces) h2 = h;
-    else h1 = h;
+  function sonder(el) {
+    h1 = el.offsetHeight;
     sondees = true;
   }
 
@@ -283,7 +234,7 @@
 
   // --- API (App, banc P1, e2e) ---------------------------------------
   export function aller(index) {
-    cadre.scrollTop = decalage(index) - PAD;
+    cadre.scrollTop = decalage(index);
     surDefilement();
   }
   export async function allerEtServir(index) {
@@ -299,7 +250,7 @@
     return performance.now() - t0;
   }
   export function etat() {
-    return { total, premier, h1, h2, premierePageMs };
+    return { total, premier, h1, premierePageMs };
   }
   export function ligneA(index) {
     const page = pages.get(Math.floor(index / PAGE));
@@ -343,16 +294,10 @@
   <div class="cadre" bind:this={cadre} onscroll={surDefilement}>
     {#if !sondees}
       <div class="sondes" aria-hidden="true">
-        <article class="ligne" use:sonder={false}>
+        <article class="ligne" use:sonder>
           <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
-        </article>
-        <article class="ligne" use:sonder={true}>
-          <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
-          <p class="objet">Sonde</p>
-          <p class="apercu">Sonde</p>
-          <span class="puces"><span class="puce"><span class="ms" aria-hidden="true">forum</span>3 messages</span></span>
         </article>
       </div>
     {/if}
@@ -377,16 +322,8 @@
         {:else}
           <p class="apercu">{ligne.preview ?? ''}</p>
         {/if}
-        {#if aPuces(ligne)}
-          <span class="puces">
-            {#if ligne.thread_size > 1}
-              <span class="puce"><span class="ms" aria-hidden="true">forum</span>{t('puce.messages', { n: ligne.thread_size })}</span>
-            {/if}
-            {#if ligne.attachment_count > 0}
-              <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: ligne.attachment_count })}</span>
-            {/if}
-          </span>
-        {/if}
+        <!-- Les puces fil/fichiers vivent au volet de lecture (A29/A2) :
+             la ligne est nue, le non-lu se lit à la graisse. -->
       </div>
     {/snippet}
     {#if resultats !== null}
@@ -456,7 +393,8 @@
 </section>
 
 <style>
-  /* Géométrie et états VERBATIM du prototype (écran 02). */
+  /* Géométrie et états du dessin des pistes (A29/A30) : lignes
+     continues séparées au filet, sans carte ni ombre. */
   .colonne {
     display:flex; flex-direction:column; min-height:0;
     background:var(--bg); border-right:1px solid var(--border);
@@ -464,61 +402,58 @@
   .cadre { flex:1; overflow:auto; position:relative; }
   .espace { position:relative; }
   .fenetre {
-    position:absolute; top:0; left:12px; right:12px;
-    display:flex; flex-direction:column; gap:8px;
+    position:absolute; top:0; left:0; right:0;
+    display:flex; flex-direction:column;
   }
-  .sondes { position:absolute; visibility:hidden; left:12px; right:12px; }
+  .sondes { position:absolute; visibility:hidden; left:0; right:0; }
   .vide {
     position:absolute; inset:0; display:flex; align-items:center;
     justify-content:center; padding:40px; text-align:center;
   }
   .vide p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
-  .fenetre-recherche {
-    padding:12px; display:flex; flex-direction:column; gap:8px;
-  }
+  .fenetre-recherche { display:flex; flex-direction:column; }
   .vide-recherche { padding:40px; text-align:center; }
   .vide-recherche p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
 
+  /* Quatre états (A30) : repos transparent, survol en teinte légère,
+     sélection en teinte + liseré d'accent de 2 px — jamais d'ombre ni
+     de surface blanche (A29). Le liseré est réservé en transparent :
+     la sélection ne déplace pas le contenu. */
   .ligne {
-    padding:14px 16px; border-radius:10px; border:1px solid transparent;
-    display:flex; flex-direction:column; gap:6px; cursor:pointer;
+    padding:13px 16px; border-top:1px solid var(--border);
+    border-left:2px solid transparent;
+    display:flex; flex-direction:column; gap:3px; cursor:pointer;
   }
-  .ligne:hover { background:var(--sel); border-color:var(--border); }
+  .ligne:hover { background:var(--hover); }
   .ligne.choisie {
-    background:var(--surface); border-color:var(--border);
-    border-left:2px solid var(--accent); box-shadow:var(--shadow);
+    background:var(--sel); border-left-color:var(--accent);
   }
-  .l1 { display:flex; align-items:baseline; gap:12px; }
-  .exp { font-size:13px; color:var(--ink2); flex:1; }
-  .nonlu .exp { font-weight:600; color:var(--ink); }
-  .heure { font-size:12px; color:var(--muted); }
-  .objet {
-    /* 16 px, pas les 18 px du prototype — verdict terrain du Chef
-       Ingénieur (A9) : l'objet dominait la ligne. */
-    margin:0; font-size:16px; font-weight:600; line-height:1.3;
-    letter-spacing:-.01em; color:var(--ink2);
+  .l1 { display:flex; align-items:baseline; gap:10px; }
+  .exp {
+    font-size:14px; color:var(--ink); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .nonlu .objet { color:var(--ink); }
+  .nonlu .exp { font-weight:700; }
+  .heure { font-size:12px; color:var(--muted); flex:none; }
+  .objet {
+    /* 14 px (A29 — amende A9) : le gabarit des pistes. */
+    margin:0; font-size:14px; font-weight:400; line-height:1.3;
+    color:var(--ink);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .nonlu .objet { font-weight:700; }
   .apercu {
-    margin:0; font-size:13px; line-height:1.45; color:var(--muted);
+    margin:0; font-size:13px; line-height:1.45; color:var(--ink2);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
     min-height:1.45em;
   }
-  .nonlu .apercu { color:var(--ink2); }
-  /* La mention « Brouillon — » (variante B, PLAN-BROUILLONS §3) : le
+  /* La mention « Brouillon : » (variante B, PLAN-BROUILLONS §3) : le
      jeton d'alerte en texte — mesuré par contraste.mjs sur les trois
      fonds de rangée (repos, survol, choisie). */
   .prefixe { color:var(--alert); font-weight:600; }
   /* Champs vides du dossier : l'atténué italique le dit, jamais un
      blanc (« (sans objet) », « (sans destinataire) »). */
   .sans, .objet.sans { font-style:italic; color:var(--muted); font-weight:400; }
-  .puces { display:flex; gap:8px; margin-top:2px; }
-  .puce {
-    height:32px; padding:0 12px; display:inline-flex; align-items:center;
-    gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
-    border:1px solid var(--border); border-radius:6px; white-space:nowrap;
-  }
   .attente { color:var(--muted); }
 
   .onglets {
@@ -532,7 +467,7 @@
     color:var(--ink2); background:var(--surface);
     border:1px solid var(--border);
   }
-  .onglet:hover { background:var(--sel); }
+  .onglet:hover { background:var(--hover); }
   .onglet.actif {
     font-weight:600; color:var(--ink); background:var(--sel);
     border-color:var(--accent);

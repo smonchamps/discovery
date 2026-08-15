@@ -35,7 +35,7 @@ export const FICHES = [
   { id: 'eau', pastilles: ['#1f7d6d', '#e9f1f0', '#dce9e7', '#ffffff', '#16302d'] },
   { id: 'astres', pastilles: ['#5b53b5', '#eef0f6', '#e4e6f0', '#ffffff', '#22243a'] },
   { id: 'terre', pastilles: ['#9c5a30', '#f1eee6', '#e8e2d6', '#fbf9f3', '#2b271e'] },
-  { id: 'nature', pastilles: ['#2f6e5b', '#f0f2ef', '#eaece9', '#ffffff', '#232725'] },
+  { id: 'nature', pastilles: ['#1e7566', '#f2f0ea', '#e9e6dd', '#ffffff', '#24272e'] },
   { id: 'nuit', pastilles: ['#57a88f', '#1b1e21', '#23272b', '#2b3034', '#edefed'] },
 ];
 

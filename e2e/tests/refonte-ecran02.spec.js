@@ -24,17 +24,24 @@ test.afterAll(async () => {
 const dossier = (categorie) =>
   page.locator(`[data-testid="nav-dossier"][data-categorie="${categorie}"]`);
 
-test('la nav porte les compteurs du décor Clarity', async () => {
+test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', async () => {
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(dossier('reception')).toContainText('4');
-  await expect(dossier('reception')).toContainText('/ 18');
-  await expect(dossier('envoyes')).toContainText('12');
-  await expect(dossier('brouillons')).toContainText('2');
-  await expect(dossier('indesirables')).toContainText('/ 3');
-  await expect(dossier('archives')).toContainText('64');
-  await expect(dossier('corbeille')).toContainText('3');
-  // Boîtes : l'agrégée + un rang par compte RÉEL.
+  // Depuis A29 la nav ne dit QUE le non-lu, en pastille pleine — les
+  // totaux (« 4 / 18 ») ont quitté la nav, la barre de statut les dit.
+  // On vise l'élément pastille : le texte brut de la rangée porte le
+  // nom de ligature de l'icône (« inventory_2 » a un chiffre).
+  const pastille = (categorie) => dossier(categorie).locator('.pastille');
+  await expect(pastille('reception')).toHaveText('4');
+  await expect(dossier('reception')).not.toContainText('/');
+  await expect(pastille('envoyes')).toHaveCount(0);
+  await expect(pastille('brouillons')).toHaveCount(0);
+  await expect(pastille('indesirables')).toHaveText('2');
+  await expect(pastille('archives')).toHaveCount(0);
+  await expect(pastille('corbeille')).toHaveCount(0);
+  // Boîtes : l'agrégée + un rang par compte RÉEL ; la boîte en cours
+  // (Toutes, au démarrage) est la tuile et dit ses non-lus.
   await expect(page.locator('[data-testid="nav-boite"]')).toHaveCount(3);
+  await expect(page.locator('[data-testid="nav-boite"]').first()).toContainText('non lus');
 });
 
 test('recharger garde les lignes servies — jamais de squelette (PLAN-REACTIVITE E1)', async () => {
@@ -81,7 +88,7 @@ test("la barre d'état date la dernière relève — même sur échec", async ()
   // (Le repos « Tous les messages sont à jour » reste couvert par la
   // spec onboarding, sans horodatage : boîte jamais relevée.)
   await expect(page.locator('[data-testid="progression"]')).toContainText(
-    /Synchronisation impossible — nouvelle tentative automatique · dernière synchronisation il y a \d+ minutes?/,
+    /Synchronisation impossible · nouvelle tentative automatique · dernière synchronisation il y a \d+ minutes?/,
   );
 });
 
@@ -148,7 +155,12 @@ test('archiver agit sur le coeur et confirme par le toast', async () => {
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Conversation archivée.',
   );
-  await expect(dossier('reception')).toContainText('/ 17');
+  // Le total a quitté la nav (A29, W2-D4) : la preuve du coeur se lit
+  // au dossier Archives — la barre de statut compte ses éléments.
+  await dossier('archives').click();
+  await expect(page.locator('[data-testid="statut"]')).toContainText('Archives · 65');
+  await dossier('reception').click();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
 // ——— Écran 03 : la conversation plein écran (P3) ————————————————————
@@ -337,7 +349,7 @@ test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente 
   const fil = page
     .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
     .first();
-  await expect(fil.locator('[data-testid="mention-brouillon"]')).toHaveText('Brouillon — ');
+  await expect(fil.locator('[data-testid="mention-brouillon"]')).toHaveText('Brouillon : ');
   await expect(fil).toContainText('Bonjour Camille,');
 
   // Le dossier : les brouillons LOCAUX (2 du décor + celui de P4), du
@@ -701,8 +713,6 @@ test("hors ligne : la barre le dit à l'instant, le retour la restaure (P0-bis)"
 // le balayage ne retire jamais une intention en attente).
 test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", async () => {
   await dossier('reception').click();
-  const corbeille = dossier('corbeille');
-  await expect(corbeille).toContainText('3');
 
   await page
     .locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' })
@@ -712,9 +722,12 @@ test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", 
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Conversation supprimée.',
   );
-  // Le compteur et la liste disent la même chose : 3 + l'écho.
-  await expect(corbeille).toContainText('4');
-  await corbeille.click();
+  // Le compteur a quitté la nav (A29, W2-D4) : la Corbeille elle-même
+  // dit « 3 + l'écho » — la barre de statut compte ses éléments.
+  await dossier('corbeille').click();
+  await expect(page.locator('[data-testid="statut"]')).toContainText(
+    'Corbeille · 4 éléments',
+  );
   const echo = page.locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' });
   await expect(echo).toBeVisible();
 

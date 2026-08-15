@@ -324,8 +324,7 @@
 
   .scene { flex:1; padding:28px; display:flex; min-height:0; }
   .carte {
-    flex:1; background:var(--surface); border:1px solid var(--border);
-    border-left:2px solid var(--accent); border-radius:10px;
+    flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px;
     box-shadow:var(--shadow); display:flex; flex-direction:column;
     overflow:hidden; min-height:0;
   }
@@ -381,8 +380,7 @@
   .replie.brouillon:hover .reprendre { background:var(--sel); color:var(--ink); }
 
   .deplie {
-    flex:none; border:1px solid var(--border);
-    border-left:2px solid var(--accent); border-radius:10px;
+    flex:none; border:1px solid var(--border); border-radius:10px;
     background:var(--surface); box-shadow:var(--shadow); overflow:hidden;
   }
   .tete-message {

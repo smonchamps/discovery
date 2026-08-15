@@ -15,6 +15,7 @@ export const FR = {
   'boite.corbeille': 'Corbeille',
   'nav.toutes': 'Toutes les boîtes',
   'nav.boites': 'Boîtes',
+  'nav.nonLus': '{n} non lu|{n} non lus',
   'nav.aria': 'Dossiers et comptes',
 
   // --- Entête de l'écran 02 -------------------------------------------
@@ -31,16 +32,16 @@ export const FR = {
   'statut.rattrapageCorps': 'Rattrapage des messages · {n} restants',
   'statut.rattrapageApercus': 'Rattrapage des aperçus…',
   'statut.envois': "Boîte d'envoi · {n} envoi en attente|Boîte d'envoi · {n} envois en attente",
-  'statut.synchroImpossible': 'Synchronisation impossible — nouvelle tentative automatique',
+  'statut.synchroImpossible': 'Synchronisation impossible · nouvelle tentative automatique',
   'statut.synchroImpossibleDepuis':
-    'Synchronisation impossible — nouvelle tentative automatique · dernière synchronisation {depuis}',
+    'Synchronisation impossible · nouvelle tentative automatique · dernière synchronisation {depuis}',
   'statut.ajour': 'Tous les messages sont à jour',
   'statut.ajourDepuis': 'Tous les messages sont à jour · dernière synchronisation {depuis}',
   'statut.horsLigne': 'Hors ligne',
   'statut.horsLigneDepuis': 'Hors ligne · dernière synchronisation {depuis}',
   'statut.cyclePrefixe': 'Synchronisation',
   'statut.synchroPartielle':
-    '{n} compte sur {m} injoignable — nouvelle tentative automatique|{n} comptes sur {m} injoignables — nouvelle tentative automatique',
+    '{n} compte sur {m} injoignable · nouvelle tentative automatique|{n} comptes sur {m} injoignables · nouvelle tentative automatique',
   'statut.pourcent': '{p} %',
   'statut.phase.inventaire': 'inventaire des dossiers',
   'statut.phase.fils': 'fils de discussion',
@@ -50,15 +51,15 @@ export const FR = {
   'depuis.heures': 'il y a {n} heure|il y a {n} heures',
   'depuis.jours': 'il y a {n} jour|il y a {n} jours',
   'statut.demarrage': 'démarrage…',
-  'statut.perf': '{total} conversations — première page servie+rendue en {ms} ms',
+  'statut.perf': '{total} conversations · première page servie+rendue en {ms} ms',
 
   // --- Fente d'avis -----------------------------------------------------
   'avis.envoiRefuse': "L'envoi « {sujet} » a été refusé{erreur}.",
   'avis.envoiInterrompu': "L'envoi « {sujet} » a été interrompu{erreur}.",
   'avis.maj': 'Une mise à jour est disponible (version {version}).',
   'avis.crash': "Wind a rencontré un problème lors d'une session précédente ({n} rapport(s) en attente). Rien n'est envoyé sans vous.",
-  'avis.telemetrie': "Aider à améliorer Wind ? En cas de plantage, un rapport technique serait enregistré sur votre machine — jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
-  'avis.connexion': 'Compte non reconnecté — {details}',
+  'avis.telemetrie': "Aider à améliorer Wind ? En cas de plantage, un rapport technique serait enregistré sur votre machine, jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
+  'avis.connexion': 'Compte non reconnecté : {details}',
 
   // --- Actions partagées ------------------------------------------------
   'action.renvoyer': 'Renvoyer',
@@ -93,9 +94,9 @@ export const FR = {
   'toast.supprimee': 'Conversation supprimée.',
   'toast.pieceEnregistree': 'Pièce enregistrée : {chemin}',
   'toast.brouillonEnregistre': 'Brouillon enregistré.',
-  'toast.brouillonFork': 'Ce brouillon avait changé ailleurs — votre version a été conservée à part.',
+  'toast.brouillonFork': 'Ce brouillon avait changé ailleurs ; votre version a été conservée à part.',
   'toast.envoye': 'Message envoyé.',
-  'toast.echoAttente': 'Copie en cours de synchronisation — réessayez dans un instant.',
+  'toast.echoAttente': 'Copie en cours de synchronisation : réessayez dans un instant.',
 
   // --- Enveloppes d'erreur (le détail du cœur reste verbatim, L-3) -----
   'erreur.renvoi': 'Renvoi impossible : {err}',
@@ -109,15 +110,15 @@ export const FR = {
   'erreur.envoi': 'Envoi impossible : {err}',
   'erreur.piece': 'Pièce jointe impossible : {err}',
   'erreur.piecesManquantes':
-    "Des pièces du transfert manquent encore — attendez le rapatriement, réessayez, ou retirez-les avant d'envoyer.",
-  'erreur.aucunCompte': 'Aucun compte émetteur — ajoutez un compte.',
+    "Des pièces du transfert manquent encore : attendez le rapatriement, réessayez, ou retirez-les avant d'envoyer.",
+  'erreur.aucunCompte': 'Aucun compte émetteur : ajoutez un compte.',
   'erreur.connexion': 'Connexion impossible : {err}',
 
   // --- Liste ------------------------------------------------------------
   'liste.aria': 'Liste des messages',
   'liste.aucunResultat': 'Aucun résultat.',
   'liste.vide': 'Aucun message ici.',
-  'liste.prefixeBrouillon': 'Brouillon — ',
+  'liste.prefixeBrouillon': 'Brouillon : ',
   'brouillons.a': 'À : {a}',
   'brouillons.sansDestinataire': '(sans destinataire)',
   'brouillons.sansObjet': '(sans objet)',
@@ -166,7 +167,7 @@ export const FR = {
   'compo.citation': 'Citation',
   'compo.joindre': 'Joindre',
   'compo.retirerPiece': 'Retirer {nom}',
-  'compo.rapatriement': '{nom} — rapatriement…',
+  'compo.rapatriement': '{nom} · rapatriement…',
   'compo.poidsTotal': '{poids} / 25 Mo',
   'compo.pieceRefusee': '« {nom} » dépasse la place restante ({reste}).',
   'compo.enregistrerBrouillon': 'Enregistrer le brouillon',
@@ -182,7 +183,7 @@ export const FR = {
   'guichet.adresseInvalide': 'Saisissez votre adresse e-mail complète.',
   'guichet.autorisation': 'Autorisation en cours dans votre navigateur…',
   'guichet.verification': 'Vérification de la connexion au serveur…',
-  'guichet.noteGenerique': 'Renseignez les serveurs de votre fournisseur — le mot de passe rejoint le coffre du système, jamais un fichier.',
+  'guichet.noteGenerique': 'Renseignez les serveurs de votre fournisseur. Le mot de passe rejoint le coffre du système, jamais un fichier.',
   'guichet.noteAuto': "Le serveur est détecté automatiquement. Rien d'autre à régler.",
 
   // --- Modale de migration ----------------------------------------------
@@ -191,7 +192,7 @@ export const FR = {
   'migration.note': 'Environ {n} messages vont être réorganisés en conversations. Cette mise à jour ne se fait qu’une fois et n’efface rien.',
   'migration.preparation': 'Préparation…',
   'migration.pourcent': '{p} %',
-  'migration.annulee': 'Mise à jour annulée — tout est revenu comme avant. Elle reprendra au prochain lancement, ou tout de suite :',
+  'migration.annulee': 'Mise à jour annulée, tout est revenu comme avant. Elle reprendra au prochain lancement, ou tout de suite :',
   'migration.echec': 'La mise à jour a échoué ({err}). Rien n’est perdu : elle peut être relancée.',
 
   // --- Réglages ---------------------------------------------------------
@@ -208,7 +209,7 @@ export const FR = {
   'reglages.retirerCompte': 'Retirer {email}',
   'reglages.retirerConfirme': 'Retirer {email} ? Son courrier local est effacé et sa connexion oubliée. Rien n’est supprimé sur le serveur.',
   'reglages.retraitEnCours': 'Retrait…',
-  'reglages.retraitImpossible': 'Retrait impossible — {err}',
+  'reglages.retraitImpossible': 'Retrait impossible : {err}',
   'reglages.sombreAuto': 'Sombre automatique',
   'reglages.sombreAutoDesc': "Suivre le réglage sombre du système : « La nuit » s'affiche quand il est actif, le thème choisi revient dès qu'il s'éteint.",
   'reglages.langue': 'Langue',
@@ -223,17 +224,17 @@ export const FR = {
   'nav.fermerTiroir': 'Fermer la navigation',
   'reglages.bulles': "Bulles d'arrivée",
   'reglages.bullesDesc': "Une bulle système annonce les nouveaux messages à la synchronisation. La couper n'arrête jamais la synchronisation elle-même.",
-  'reglages.noteRaccourcis': 'Dans un champ de saisie, les lettres redeviennent des lettres — seul Échap garde un sens.',
+  'reglages.noteRaccourcis': 'Dans un champ de saisie, les lettres redeviennent des lettres ; seul Échap garde un sens.',
   'reglages.version': 'Version',
   'reglages.maj': 'Mises à jour',
   'reglages.verifierMaj': 'Vérifier les mises à jour',
   'reglages.verification': 'Vérification…',
   'reglages.ajour': 'Vous êtes à jour.',
   'reglages.majDisponible': 'Version {version} disponible.',
-  'reglages.majImpossible': 'Vérification impossible — {err}',
+  'reglages.majImpossible': 'Vérification impossible : {err}',
   'reglages.installation': 'Téléchargement et installation…',
   'reglages.icones': 'Icônes',
-  'reglages.iconesValeur': 'Material Symbols Rounded (Google), licence Apache 2.0 — police embarquée, aucun réseau.',
+  'reglages.iconesValeur': 'Material Symbols Rounded (Google), licence Apache 2.0 ; police embarquée, aucun réseau.',
 
   // --- Raccourcis (table D3, référence) ---------------------------------
   'raccourci.touche.c': 'c',
@@ -263,7 +264,7 @@ export const FR = {
   'theme.terre.nom': 'La terre',
   'theme.terre.desc': 'Argile, ocre et lin, un accent terracotta.',
   'theme.nature.nom': 'La nature',
-  'theme.nature.desc': 'Vert pin sur ivoire — la direction actuelle.',
+  'theme.nature.desc': 'Vert pin sur ivoire, la direction de référence.',
   'theme.nuit.nom': 'La nuit',
   'theme.nuit.desc': 'Surfaces sombres, encre claire, pin adouci. Thème sombre.',
 

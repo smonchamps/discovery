@@ -36,10 +36,9 @@ test.describe('décor v1 : un compte, 200 messages', () => {
   test("lire : la liste s'affiche, le plus récent d'abord, le corps s'ouvre en iframe", async () => {
     await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
     await expect(page.locator('[data-testid="ligne"]').first()).toContainText('n°200');
-    // 200 messages, un fil sur cinq : 160 conversations.
-    await expect(
-      page.locator('[data-testid="nav-dossier"][data-categorie="reception"]'),
-    ).toContainText('160');
+    // 200 messages, un fil sur cinq : 160 conversations. Le total a
+    // quitté la nav (A29, W2-D4) — il se lit à la ligne de perf.
+    await expect(page.locator('[data-testid="perf"]')).toContainText('160 conversations');
     // Aucun avis parasite au lancement (màj/télémétrie neutralisées §7.5).
     await expect(page.locator('[data-testid="fente-avis"]')).toHaveCount(0);
 
@@ -110,14 +109,12 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   });
 
-  test('pièces jointes : la puce marque les porteurs, et eux seuls', async () => {
-    // n°190 (fil 189+190, pièce sur le 190) ; n°186 : ni fil ni pièce.
-    // Témoins choisis DANS la fenêtre rendue — la liste v2 est fenêtrée,
-    // une ligne plus profonde n'existe pas dans le DOM sans défilement.
+  test('pièces jointes : la ligne est nue, le volet de lecture dit les pièces (A29/A2)', async () => {
+    // n°190 (fil 189+190, pièce sur le 190). Depuis A29 les puces
+    // fil/fichiers vivent au volet de lecture, JAMAIS dans la ligne —
+    // le porteur se reconnaît au volet, pas à la liste.
     const porteur = page.locator('[data-testid="ligne"]', { hasText: 'n°190' }).first();
-    await expect(porteur).toContainText('1 fichier');
-    const nu = page.locator('[data-testid="ligne"]', { hasText: 'n°186' }).first();
-    await expect(nu).not.toContainText('fichier');
+    await expect(porteur).not.toContainText('fichier');
 
     await porteur.click();
     await expect(page.locator('[data-testid="lecture-sujet"]')).toContainText('n°190');

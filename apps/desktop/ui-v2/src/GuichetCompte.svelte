@@ -133,8 +133,7 @@
   label { font-size:13px; color:var(--ink2); }
   input {
     height:52px; font-size:15px; padding:0 16px; background:var(--surface);
-    color:var(--ink); border:1px solid var(--border);
-    border-left:2px solid var(--accent); border-radius:6px;
+    color:var(--ink); border:1px solid var(--border); border-radius:6px;
     box-shadow:var(--shadow); outline:none; width:100%;
   }
   .compact input { height:40px; font-size:13px; box-shadow:none; }

@@ -219,8 +219,7 @@
     text-align:center; padding:40px;
   }
   .carte {
-    flex:1; background:var(--surface); border:1px solid var(--border);
-    border-left:2px solid var(--accent); border-radius:10px;
+    flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px;
     box-shadow:var(--shadow); display:flex; flex-direction:column;
     min-height:0; overflow:hidden;
   }

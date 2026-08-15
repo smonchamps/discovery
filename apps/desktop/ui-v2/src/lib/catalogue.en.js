@@ -13,6 +13,7 @@ export const EN = {
   'boite.corbeille': 'Trash',
   'nav.toutes': 'All inboxes',
   'nav.boites': 'Inboxes',
+  'nav.nonLus': '{n} unread',
   'nav.aria': 'Folders and accounts',
 
   // --- Entête de l'écran 02 -------------------------------------------
@@ -29,16 +30,16 @@ export const EN = {
   'statut.rattrapageCorps': 'Catching up on messages · {n} to go',
   'statut.rattrapageApercus': 'Catching up on previews…',
   'statut.envois': 'Outbox · {n} message waiting|Outbox · {n} messages waiting',
-  'statut.synchroImpossible': 'Sync failed — will retry automatically',
+  'statut.synchroImpossible': 'Sync failed · will retry automatically',
   'statut.synchroImpossibleDepuis':
-    'Sync failed — will retry automatically · last synced {depuis}',
+    'Sync failed · will retry automatically · last synced {depuis}',
   'statut.ajour': 'All messages are up to date',
   'statut.ajourDepuis': 'All messages are up to date · last synced {depuis}',
   'statut.horsLigne': 'Offline',
   'statut.horsLigneDepuis': 'Offline · last synced {depuis}',
   'statut.cyclePrefixe': 'Syncing',
   'statut.synchroPartielle':
-    '{n} account of {m} unreachable — will retry automatically|{n} accounts of {m} unreachable — will retry automatically',
+    '{n} account of {m} unreachable · will retry automatically|{n} accounts of {m} unreachable · will retry automatically',
   'statut.pourcent': '{p}%',
   'statut.phase.inventaire': 'folder inventory',
   'statut.phase.fils': 'conversation threads',
@@ -48,15 +49,15 @@ export const EN = {
   'depuis.heures': '{n} hour ago|{n} hours ago',
   'depuis.jours': '{n} day ago|{n} days ago',
   'statut.demarrage': 'starting…',
-  'statut.perf': '{total} conversations — first page served+rendered in {ms} ms',
+  'statut.perf': '{total} conversations · first page served+rendered in {ms} ms',
 
   // --- Fente d'avis -----------------------------------------------------
   'avis.envoiRefuse': 'The message “{sujet}” was rejected{erreur}.',
   'avis.envoiInterrompu': 'The message “{sujet}” was interrupted{erreur}.',
   'avis.maj': 'An update is available (version {version}).',
   'avis.crash': 'Wind ran into a problem during a previous session ({n} report(s) pending). Nothing is sent without you.',
-  'avis.telemetrie': 'Help improve Wind? If it crashes, a technical report would be saved on your machine — never the content of your mail. You then choose whether to send it.',
-  'avis.connexion': 'Account not reconnected — {details}',
+  'avis.telemetrie': 'Help improve Wind? If it crashes, a technical report would be saved on your machine, never the content of your mail. You then choose whether to send it.',
+  'avis.connexion': 'Account not reconnected: {details}',
 
   // --- Actions partagées ------------------------------------------------
   'action.renvoyer': 'Send again',
@@ -91,9 +92,9 @@ export const EN = {
   'toast.supprimee': 'Conversation deleted.',
   'toast.pieceEnregistree': 'Attachment saved: {chemin}',
   'toast.brouillonEnregistre': 'Draft saved.',
-  'toast.brouillonFork': 'This draft had changed elsewhere — your version was kept separately.',
+  'toast.brouillonFork': 'This draft had changed elsewhere; your version was kept separately.',
   'toast.envoye': 'Message sent.',
-  'toast.echoAttente': 'Copy still syncing — try again in a moment.',
+  'toast.echoAttente': 'Copy still syncing: try again in a moment.',
 
   // --- Enveloppes d'erreur (le détail du cœur reste verbatim, L-3) -----
   'erreur.renvoi': 'Could not resend: {err}',
@@ -107,15 +108,15 @@ export const EN = {
   'erreur.envoi': 'Could not send: {err}',
   'erreur.piece': 'Could not attach: {err}',
   'erreur.piecesManquantes':
-    'Some forwarded files are still missing — wait for retrieval, try again, or remove them before sending.',
-  'erreur.aucunCompte': 'No sending account — add an account.',
+    'Some forwarded files are still missing: wait for retrieval, try again, or remove them before sending.',
+  'erreur.aucunCompte': 'No sending account: add an account.',
   'erreur.connexion': 'Could not connect: {err}',
 
   // --- Liste ------------------------------------------------------------
   'liste.aria': 'Message list',
   'liste.aucunResultat': 'No results.',
   'liste.vide': 'No messages here.',
-  'liste.prefixeBrouillon': 'Draft — ',
+  'liste.prefixeBrouillon': 'Draft: ',
   'brouillons.a': 'To: {a}',
   'brouillons.sansDestinataire': '(no recipient)',
   'brouillons.sansObjet': '(no subject)',
@@ -164,7 +165,7 @@ export const EN = {
   'compo.citation': 'Quote',
   'compo.joindre': 'Attach',
   'compo.retirerPiece': 'Remove {nom}',
-  'compo.rapatriement': '{nom} — retrieving…',
+  'compo.rapatriement': '{nom} · retrieving…',
   'compo.poidsTotal': '{poids} / 25 MB',
   'compo.pieceRefusee': '"{nom}" exceeds the remaining space ({reste}).',
   'compo.enregistrerBrouillon': 'Save draft',
@@ -180,7 +181,7 @@ export const EN = {
   'guichet.adresseInvalide': 'Enter your full email address.',
   'guichet.autorisation': 'Authorization in progress in your browser…',
   'guichet.verification': 'Checking the connection to the server…',
-  'guichet.noteGenerique': "Enter your provider's servers — the password goes to the system vault, never a file.",
+  'guichet.noteGenerique': "Enter your provider's servers. The password goes to the system vault, never a file.",
   'guichet.noteAuto': 'The server is detected automatically. Nothing else to set.',
 
   // --- Modale de migration ----------------------------------------------
@@ -189,7 +190,7 @@ export const EN = {
   'migration.note': 'About {n} messages will be reorganized into conversations. This update runs only once and deletes nothing.',
   'migration.preparation': 'Preparing…',
   'migration.pourcent': '{p}%',
-  'migration.annulee': 'Update canceled — everything is back as before. It will resume at the next launch, or right away:',
+  'migration.annulee': 'Update canceled, everything is back as before. It will resume at the next launch, or right away:',
   'migration.echec': 'The update failed ({err}). Nothing is lost: it can be run again.',
 
   // --- Réglages ---------------------------------------------------------
@@ -206,7 +207,7 @@ export const EN = {
   'reglages.retirerCompte': 'Remove {email}',
   'reglages.retirerConfirme': 'Remove {email}? Its local mail is erased and its connection forgotten. Nothing is deleted on the server.',
   'reglages.retraitEnCours': 'Removing…',
-  'reglages.retraitImpossible': 'Removal failed — {err}',
+  'reglages.retraitImpossible': 'Removal failed: {err}',
   'reglages.sombreAuto': 'Automatic dark',
   'reglages.sombreAutoDesc': 'Follow the system dark setting: “Night” shows while it is on, your chosen theme returns as soon as it turns off.',
   'reglages.langue': 'Language',
@@ -221,17 +222,17 @@ export const EN = {
   'nav.fermerTiroir': 'Close navigation',
   'reglages.bulles': 'Arrival notifications',
   'reglages.bullesDesc': 'A system notification announces new messages at sync. Turning it off never stops the sync itself.',
-  'reglages.noteRaccourcis': 'In a text field, letters are letters again — only Esc keeps a meaning.',
+  'reglages.noteRaccourcis': 'In a text field, letters are letters again; only Esc keeps a meaning.',
   'reglages.version': 'Version',
   'reglages.maj': 'Updates',
   'reglages.verifierMaj': 'Check for updates',
   'reglages.verification': 'Checking…',
   'reglages.ajour': 'You are up to date.',
   'reglages.majDisponible': 'Version {version} available.',
-  'reglages.majImpossible': 'Check failed — {err}',
+  'reglages.majImpossible': 'Check failed: {err}',
   'reglages.installation': 'Downloading and installing…',
   'reglages.icones': 'Icons',
-  'reglages.iconesValeur': 'Material Symbols Rounded (Google), Apache 2.0 license — bundled font, no network.',
+  'reglages.iconesValeur': 'Material Symbols Rounded (Google), Apache 2.0 license; bundled font, no network.',
 
   // --- Raccourcis (table D3, référence) ---------------------------------
   'raccourci.touche.c': 'c',
@@ -261,7 +262,7 @@ export const EN = {
   'theme.terre.nom': 'Earth',
   'theme.terre.desc': 'Clay, ochre and linen, a terracotta accent.',
   'theme.nature.nom': 'Nature',
-  'theme.nature.desc': 'Pine green on ivory — the current direction.',
+  'theme.nature.desc': 'Pine green on ivory, the reference direction.',
   'theme.nuit.nom': 'Night',
   'theme.nuit.desc': 'Dark surfaces, light ink, softened pine. Dark theme.',
 

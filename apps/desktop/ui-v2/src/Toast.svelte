@@ -17,7 +17,7 @@
     position:absolute; left:50%; bottom:28px; transform:translateX(-50%);
     z-index:3;
     background:var(--surface); border:1px solid var(--border);
-    border-left:2px solid var(--accent); border-radius:6px;
+    border-radius:6px;
     box-shadow:var(--shadow); padding:10px 16px;
     display:flex; align-items:center; gap:10px;
   }

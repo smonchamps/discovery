@@ -6,7 +6,8 @@
   //
   // L'App possède les sources et fournit l'avis élu ; cette surface ne
   // fait qu'afficher et rapporter les décisions. « Plus tard » n'efface
-  // que pour la session — l'avis suivant prend la place.
+  // que pour la session — l'avis suivant prend la place. L'alerte se
+  // lit à l'icône (le filet gauche est mort avec la signature, A29).
   let { avis = null } = $props();
 </script>
 
@@ -26,10 +27,8 @@
   .fente {
     flex:none; background:var(--surface);
     border-bottom:1px solid var(--border);
-    border-left:2px solid var(--accent);
     display:flex; align-items:center; gap:14px; padding:10px 24px;
   }
-  .fente.alerte { border-left-color:var(--alert); }
   .icone { color:var(--accent); font-variation-settings:'FILL' 1; }
   .alerte .icone { color:var(--alert); }
   .texte { flex:1; font-size:13px; color:var(--ink); min-width:0; }

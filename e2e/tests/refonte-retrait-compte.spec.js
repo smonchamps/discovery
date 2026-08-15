@@ -30,10 +30,10 @@ test.afterAll(async () => {
 
 test("le retrait se confirme — et l'annulation ne touche à rien", async () => {
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  // 6 + 4 messages, un fil sur cinq (uid 5 répond au 4) : 5 + 4 conversations.
-  await expect(
-    page.locator('[data-testid="nav-dossier"][data-categorie="reception"]'),
-  ).toContainText('9');
+  // 6 + 4 messages, un fil sur cinq (uid 5 répond au 4) : 5 + 4
+  // conversations. Le total a quitté la nav (A29, W2-D4) — il se lit
+  // à la ligne de perf de la barre de statut.
+  await expect(page.locator('[data-testid="perf"]')).toContainText('9 conversations');
   await page.locator('[data-testid="reglages"]').click();
   await expect(page.locator('[data-testid="compte-retirer"]')).toHaveCount(2);
 
@@ -76,9 +76,7 @@ test('confirmé : le compte quitte les Réglages, la nav et la liste', async () 
   await expect(page.locator('[data-testid="nav"]')).not.toContainText('deux@exemple.fr');
 
   // La liste unifiée ne montre plus que le courrier du compte restant :
-  // les 5 conversations d'un@exemple.fr, plus les 4 disparues.
-  await expect(
-    page.locator('[data-testid="nav-dossier"][data-categorie="reception"]'),
-  ).toContainText('5');
+  // les 5 conversations d'un@exemple.fr, plus les 4 disparues (le
+  // compte des lignes rendues fait foi — la liste tient sur une page).
   await expect(page.locator('[data-testid="ligne"]')).toHaveCount(5);
 });

@@ -644,7 +644,7 @@
   }
   .carte {
     width:860px; max-height:100%; background:var(--surface);
-    border:1px solid var(--border); border-left:2px solid var(--accent);
+    border:1px solid var(--border);
     border-radius:10px; box-shadow:var(--shadow);
     display:flex; flex-direction:column; overflow:hidden;
   }
@@ -704,9 +704,11 @@
   .fichiers { padding:0 22px 14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
 
   /* La puce d'une pièce à joindre (maquette §1) : nom + taille + retrait
-     dans la MÊME puce — un objet manipulable, pas deux lectures. */
+     dans la MÊME puce — un objet manipulable, pas deux lectures.
+     Marges symétriques (A33) : 12 px des deux côtés — la croix de
+     retrait ne réduit pas la marge de son côté. */
   .piece {
-    height:32px; padding:0 6px 0 12px; display:inline-flex; align-items:center;
+    height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
     border:1px solid var(--border); border-radius:6px; white-space:nowrap;
   }

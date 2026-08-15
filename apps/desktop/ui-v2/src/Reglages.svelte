@@ -399,7 +399,7 @@
   }
   .carte {
     width:800px; height:min(640px, 100%); background:var(--surface);
-    border:1px solid var(--border); border-left:2px solid var(--accent);
+    border:1px solid var(--border);
     border-radius:10px; box-shadow:var(--shadow);
     display:flex; flex-direction:column; overflow:hidden;
   }
@@ -418,9 +418,9 @@
 
   .milieu { flex:1; display:flex; min-height:0; }
 
-  /* Le rail : la grammaire de la nav de l'écran 02, réutilisée à
-     l'identique — rangées 36 px, icône + libellé, actif = surface +
-     bordure accent gauche + ombre. */
+  /* Le rail : sa grammaire propre depuis A29 (la nav de l'écran 02 vit
+     au dessin des pistes) — rangées 36 px, icône + libellé, actif en
+     surface blanche avec l'ombre unique, sans filet gauche. */
   .rail {
     width:220px; flex:none; background:var(--panel);
     border-right:1px solid var(--border); padding:20px 16px;
@@ -434,7 +434,7 @@
   .rang:hover { background:var(--sel); border-color:var(--border); }
   .rang.actif {
     background:var(--surface); border-color:var(--border);
-    border-left:2px solid var(--accent); box-shadow:var(--shadow);
+    box-shadow:var(--shadow);
   }
   .icone { color:var(--muted); }
   .actif .icone {
@@ -462,7 +462,7 @@
   .rangee:hover { background:var(--sel); }
   .rangee.active {
     background:var(--surface); border:1px solid var(--border);
-    border-left:2px solid var(--accent); box-shadow:var(--shadow);
+    box-shadow:var(--shadow);
   }
   .rangee.active:hover { background:var(--surface); }
   .pastilles { display:flex; gap:5px; flex:none; }
@@ -506,7 +506,7 @@
     color:var(--alert); background:var(--sel); border-color:var(--border);
   }
   .carte-retrait {
-    border:1px solid var(--border); border-left:2px solid var(--alert);
+    border:1px solid var(--border);
     border-radius:10px; padding:14px 16px 16px;
     display:flex; flex-direction:column; gap:12px;
   }
@@ -521,7 +521,7 @@
   }
   .danger:disabled { opacity:.6; cursor:default; }
   .carte-ajout {
-    border:1px solid var(--border); border-left:2px solid var(--accent);
+    border:1px solid var(--border);
     border-radius:10px; padding:14px 16px 16px;
     display:flex; flex-direction:column; gap:12px;
   }

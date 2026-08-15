@@ -1,27 +1,31 @@
-/* Système Clarity — jetons et styles de base de la v2.
-   14 rôles × 7 thèmes, valeurs du prototype d'origine (supprimé à la
-   clôture d'A18 — import au commit 9975a12), CORRIGÉES par
-   l'amendement A8 là où le prototype passait sous les seuils WCAG :
-   `--muted` assombri (air, feu, eau, astres, terre) ou éclairci (nuit),
-   `--accent` de l'air assombri sous son texte blanc. Même teinte,
-   luminosité minimale pour ≥ 4,5:1 texte / ≥ 3:1 composants — mesuré
-   par e2e/contraste.mjs, qui est la gate. Le prototype est la cible
-   normative (A6) ; l'accessibilité prime quand les deux se contredisent
-   (A8). Toute couleur passe par un jeton — bascule de thème O(1). */
+/* Système Clarity, v2 « Wada » (A28, docs/PLAN-WADA.md) — jetons et
+   styles de base. 17 rôles × 7 thèmes : la nature remappée à teinte
+   d'usage constante (papier écru, encre bleutée, accent vert-de-gris,
+   alerte réchauffée), les six autres thèmes inchangés hors --alert
+   (#8c2f22 → #9e3a2c là où il servait) et les trois jetons NEUFS
+   déclinés partout (A35) : --hover (survol des rangées), --tuile et
+   --tuileInk (la tuile de la boîte en cours). Corrections A8 au banc
+   avant livraison : --muted nature ET nuit ajustés (l'heure 12 px sur
+   rangée teintée passait sous 4,5:1). Même teinte, luminosité
+   minimale — mesuré par e2e/contraste.mjs, qui est la gate ;
+   l'accessibilité prime quand le dessin la contredit (A8). Toute
+   couleur passe par un jeton — bascule de thème O(1). */
 
 :root {
-  /* la nature — défaut */
-  --bg:#f0f2ef; --panel:#eaece9; --surface:#ffffff;
-  --ink:#232725; --ink2:#4d534f; --muted:#5c625e;
-  --border:#dadfda; --accent:#2f6e5b; --accentH:#26594a;
-  --sel:#e6ede9; --alert:#8c2f22; --onAccent:#ffffff;
-  --shadow:0 2px 8px rgba(35,39,37,0.08); --scrim:rgba(35,39,37,0.28);
+  /* la nature — défaut (Wada, A28 ; --muted au remède A8, A35) */
+  --bg:#f2f0ea; --panel:#e9e6dd; --surface:#ffffff;
+  --ink:#24272e; --ink2:#4a505a; --muted:#575f6a;
+  --border:#cdc6b8; --accent:#1e7566; --accentH:#175c50;
+  --sel:#cddcd2; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e4ded1; --tuile:#f1e7d3; --tuileInk:#7a5a30;
+  --shadow:0 2px 8px rgba(36,39,46,0.08); --scrim:rgba(36,39,46,0.28);
 }
 :root[data-theme="air"] {
   --bg:#eef2f5; --panel:#e3e9ee; --surface:#ffffff;
   --ink:#22303a; --ink2:#46545e; --muted:#5e686f;
   --border:#d4dde3; --accent:#3a7aa1; --accentH:#326d92;
-  --sel:#e0ecf3; --alert:#8c2f22; --onAccent:#ffffff;
+  --sel:#e0ecf3; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e6ecf1; --tuile:#dce9f2; --tuileInk:#2f5670;
   --shadow:0 2px 8px rgba(34,48,58,0.09); --scrim:rgba(34,48,58,0.26);
 }
 :root[data-theme="feu"] {
@@ -29,38 +33,60 @@
   --ink:#2d201b; --ink2:#59453b; --muted:#766053;
   --border:#e4d6c8; --accent:#c0492b; --accentH:#a33a1f;
   --sel:#f3e2d5; --alert:#7a2617; --onAccent:#ffffff;
+  --hover:#eee4d8; --tuile:#f6e3c8; --tuileInk:#7d4a1f;
   --shadow:0 2px 8px rgba(60,32,20,0.10); --scrim:rgba(45,32,27,0.30);
 }
 :root[data-theme="eau"] {
   --bg:#e9f1f0; --panel:#dce9e7; --surface:#ffffff;
   --ink:#16302d; --ink2:#3c5551; --muted:#576965;
   --border:#ccdedb; --accent:#1f7d6d; --accentH:#155d51;
-  --sel:#d8ebe7; --alert:#8c2f22; --onAccent:#ffffff;
+  --sel:#d8ebe7; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e0eae8; --tuile:#d9ece1; --tuileInk:#1d5c49;
   --shadow:0 2px 8px rgba(18,48,44,0.09); --scrim:rgba(22,48,45,0.28);
 }
 :root[data-theme="astres"] {
   --bg:#eef0f6; --panel:#e4e6f0; --surface:#ffffff;
   --ink:#22243a; --ink2:#464a63; --muted:#62657a;
   --border:#d6d8e6; --accent:#5b53b5; --accentH:#4a439c;
-  --sel:#e6e5f4; --alert:#8c2f22; --onAccent:#ffffff;
+  --sel:#e6e5f4; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e7e9f1; --tuile:#e5e3f6; --tuileInk:#47427e;
   --shadow:0 2px 8px rgba(30,32,64,0.10); --scrim:rgba(34,36,58,0.30);
 }
 :root[data-theme="terre"] {
   --bg:#f1eee6; --panel:#e8e2d6; --surface:#fbf9f3;
   --ink:#2b271e; --ink2:#544f3e; --muted:#686252;
   --border:#ddd5c4; --accent:#9c5a30; --accentH:#814826;
-  --sel:#ece3d3; --alert:#8c2f22; --onAccent:#ffffff;
+  --sel:#ece3d3; --alert:#9e3a2c; --onAccent:#ffffff;
+  --hover:#e9e4d8; --tuile:#efe2c8; --tuileInk:#6d5424;
   --shadow:0 2px 8px rgba(52,40,24,0.10); --scrim:rgba(43,39,30,0.30);
 }
 :root[data-theme="nuit"] {
   --bg:#1b1e21; --panel:#23272b; --surface:#2b3034;
-  --ink:#edefed; --ink2:#b7bebb; --muted:#929a96;
+  /* --muted éclairci une seconde fois (A35, était #929a96) : l'heure
+     12 px sur la rangée SÉLECTIONNÉE mesurait 3,83:1 sur --sel — le
+     même défaut que l'alerte d'A19, le même remède A8. */
+  --ink:#edefed; --ink2:#b7bebb; --muted:#a0a7a4;
   --border:#394045; --accent:#57a88f; --accentH:#6cbda3;
-  /* --alert éclairci (était #d9776b) : la mention « Brouillon — » est
+  /* --alert éclairci (était #d9776b) : la mention « Brouillon : » est
      du TEXTE sur les trois fonds de rangée — #d9776b tombait à 3,58:1
      sur --sel. Même remède qu'A8 : même teinte, luminosité minimale. */
   --sel:#313f39; --alert:#ea9a90; --onAccent:#11201b;
+  --hover:#24292c; --tuile:#3b382a; --tuileInk:#dfc893;
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
+}
+
+/* Le trait hitofude (A28) — la signature du vent, deux emplacements
+   normés (marque, synchronisation). Boucle de 4 s pendant un cycle :
+   tracé 2 s, plein 1 s, fondu. Au repos le trait est plein et
+   immobile ; sous prefers-reduced-motion la règle A8 coupe tout —
+   le composant garde un dashoffset de base à 0, le trait reste plein. */
+@keyframes hitofudeDraw {
+  0% { stroke-dashoffset:115; } 50% { stroke-dashoffset:0; }
+  100% { stroke-dashoffset:0; }
+}
+@keyframes hitofudeFade {
+  0% { opacity:0; } 10% { opacity:1; } 75% { opacity:1; }
+  95% { opacity:0; } 100% { opacity:0; }
 }
 
 /* Icônes Material Symbols Rounded — sous-ensemble vendorisé (A3),
