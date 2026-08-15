@@ -20,7 +20,8 @@ Déterminisme par construction ([launch.mjs](launch.mjs)) :
   aucun test ne peut toucher au vrai compte, même par accident. La liste
   des variables vit dans [isolation-oauth.json](isolation-oauth.json)
   (contrat unique, appliqué par [isolation.mjs](isolation.mjs)) : tout
-  lanceur — suite, banc de mesure, sonde — la purge en entier.
+  lanceur — suite, banc de mesure, diagnostic, sonde — la purge en
+  entier.
 
 ## Lancer
 
