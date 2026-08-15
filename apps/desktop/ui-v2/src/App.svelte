@@ -60,9 +60,10 @@
   let selectionnee = $state(null);
 
   // PLAN-VOLETS (V-D1) : le nombre de volets commande la grille ET la
-  // surface d'ouverture — 3 : le volet de lecture ; 2 : l'écran 03,
-  // plein écran (V-D2). La Lecture est DÉMONTÉE en deux volets, d'où
-  // les gardes `lecture?.` partout. Au retour en trois volets, la
+  // surface d'ouverture — 3 : le volet de lecture ; 2 et 1 : l'écran
+  // 03, plein écran (V-D2). La Lecture est DÉMONTÉE sous trois volets,
+  // d'où les gardes `lecture?.` partout ; en un volet la Nav quitte la
+  // grille et vit en TIROIR (E2). Au retour en trois volets, la
   // sélection courante rouvre son volet — l'écran ne revient pas vide
   // quand une ligne est encore choisie.
   const volets = $derived(voletsActuels());
@@ -70,8 +71,20 @@
   $effect(() => {
     const v = volets;
     if (v === 3 && voletsAvant !== 3 && selectionnee) lecture?.ouvrir(selectionnee);
+    // Quitter le mode un volet emporte le tiroir — il n'a plus de sens.
+    if (v !== 1) tiroirOuvert = false;
     voletsAvant = v;
   });
+
+  // Le tiroir de nav (mode un volet) : surimpression sous scrim, la
+  // Nav réutilisée telle quelle. Choisir un dossier ou un compte FERME
+  // — le geste accompli n'a plus besoin du panneau ; Échap et le scrim
+  // ferment aussi.
+  let tiroirOuvert = $state(false);
+  function choisirDuTiroir(quoi) {
+    tiroirOuvert = false;
+    choisir(quoi);
+  }
 
   // --- Fente d'avis (§6) : au plus UN, priorité décroissante ----------
   // Les brouillons n'y vivent plus (PLAN-BROUILLONS) : ils sont en
@@ -738,6 +751,7 @@
         if (composition?.estOuverte()) composition.fermer();
         else if (reglages?.estOuverte()) reglages.fermer();
         else if (conversation?.estOuverte()) retourBoite();
+        else if (tiroirOuvert) tiroirOuvert = false;
         else if (recherche) recherche = '';
         else return;
         break;
@@ -910,7 +924,15 @@
 
 <div class="ecran">
   <header class="entete" data-testid="entete">
-    <span class="marque"><span class="marque-tuile" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3" /><polyline points="9,16 24,27 39,16" /></svg></span>Wind</span>
+    {#if volets === 1}
+      <!-- Mode un volet (PLAN-VOLETS E2) : la nav vit en tiroir, le
+           bouton l'ouvre — 32 px, la grammaire des boutons d'entête. -->
+      <button type="button" class="btn-tiroir" data-testid="btn-tiroir"
+              aria-label={t('nav.ouvrirTiroir')} aria-expanded={tiroirOuvert}
+              onclick={() => (tiroirOuvert = true)}>
+        <span class="ms" aria-hidden="true">menu</span></button>
+    {/if}
+    <span class="marque" class:marque--libre={volets === 1}><span class="marque-tuile" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3" /><polyline points="9,16 24,27 39,16" /></svg></span>Wind</span>
     <span class="recherche" data-testid="recherche">
       <span class="ms" aria-hidden="true">search</span>
       <input type="text" bind:this={champRecherche} bind:value={recherche}
@@ -932,8 +954,11 @@
   <FenteAvis {avis} />
 
   {#if prete}
-    <div class="colonnes" class:colonnes--2={volets === 2}>
-      <Nav {comptes} {categorie} {compte} onchoisir={choisir} />
+    <div class="colonnes" class:colonnes--2={volets === 2}
+         class:colonnes--1={volets === 1}>
+      {#if volets !== 1}
+        <Nav {comptes} {categorie} {compte} onchoisir={choisir} />
+      {/if}
       <Liste bind:this={liste} {categorie} {compte} {onglet} {recherche}
              {brouillons} onreprendre={reprendreBrouillon}
              onselect={surSelection} ononglet={surOnglet}
@@ -972,6 +997,27 @@
         {#if enSynchro}{t('action.synchronisation')}{:else if synchroEchec || synchroPartiel}{t('action.reessayer')}{:else}{t('action.synchroniser')}{/if}
       </button>
     </div>
+
+    {#if volets === 1 && tiroirOuvert}
+      <!-- Le tiroir (PLAN-VOLETS E2) : géométrie du prototype validé
+           au GO — 268 px, en-tête 60 px (tuile de marque + fermer), la
+           Nav réutilisée TELLE QUELLE. Le scrim est un bouton : le
+           clic ferme, le clavier aussi (A8). -->
+      <button type="button" class="scrim-tiroir" data-testid="tiroir-scrim"
+              aria-label={t('nav.fermerTiroir')}
+              onclick={() => (tiroirOuvert = false)}></button>
+      <aside class="tiroir" data-testid="tiroir" role="dialog" aria-modal="true"
+             aria-label={t('nav.aria')}>
+        <div class="tete-tiroir">
+          <span class="marque-tuile" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="13" width="34" height="23" rx="3" /><polyline points="9,16 24,27 39,16" /></svg></span>Wind
+          <button type="button" class="btn-tiroir fermer-tiroir" data-testid="tiroir-fermer"
+                  aria-label={t('nav.fermerTiroir')}
+                  onclick={() => (tiroirOuvert = false)}>
+            <span class="ms" aria-hidden="true">close</span></button>
+        </div>
+        <Nav {comptes} {categorie} {compte} onchoisir={choisirDuTiroir} />
+      </aside>
+    {/if}
 
     <Conversation bind:this={conversation} {brouillons}
                   onreprendre={reprendreBrouillon} onretour={retourBoite}
@@ -1052,8 +1098,41 @@
     min-height:0;
   }
   /* PLAN-VOLETS (V-D1) : en deux volets la liste prend la largeur —
-     gabarit de ligne inchangé (V-D3), l'aperçu respire. */
+     gabarit de ligne inchangé (V-D3), l'aperçu respire. En un volet
+     (E2) la liste est seule : son filet droit n'a plus de voisin. */
   .colonnes--2 { grid-template-columns:236px minmax(0,1fr); }
+  .colonnes--1 { grid-template-columns:minmax(0,1fr); }
+  .colonnes--1 > :global(.colonne) { border-right:none; }
+
+  /* Le bouton du tiroir (E2) : 32 px, la grammaire des boutons
+     d'entête ; la marque perd sa largeur de colonne en un volet. */
+  .btn-tiroir {
+    width:32px; height:32px; padding:0; flex:none; display:inline-flex;
+    align-items:center; justify-content:center; color:var(--ink2);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; cursor:pointer;
+  }
+  .btn-tiroir:hover { background:var(--sel); color:var(--ink); }
+  .marque--libre { width:auto; }
+
+  /* Le tiroir : surimpression 268 px sous scrim, au niveau des
+     surimpressions (le scrim est un BOUTON — clic et clavier ferment). */
+  .scrim-tiroir {
+    position:absolute; inset:0; height:auto; padding:0; z-index:2;
+    background:var(--scrim); border:none; border-radius:0; cursor:default;
+  }
+  .tiroir {
+    position:absolute; top:0; bottom:0; left:0; width:268px; z-index:2;
+    background:var(--panel); border-right:1px solid var(--border);
+    box-shadow:var(--shadow); display:flex; flex-direction:column;
+  }
+  .tiroir > :global(nav) { flex:1; border-right:none; }
+  .tete-tiroir {
+    height:60px; flex:none; display:flex; align-items:center; gap:10px;
+    padding:0 16px 0 20px; border-bottom:1px solid var(--border);
+    font-size:15px; font-weight:600; color:var(--ink);
+  }
+  .fermer-tiroir { margin-left:auto; }
 
   .statut {
     position:relative; height:36px; flex:none; background:var(--panel);

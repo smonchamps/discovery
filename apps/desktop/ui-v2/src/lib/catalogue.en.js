@@ -213,9 +213,12 @@ export const EN = {
   'reglages.langueDesc': 'The interface language, applied immediately.',
   'reglages.volets': 'Layout',
   'reglages.voletsDesc':
-    'How many panes the main screen shows. With two panes, the list takes the full width and reading opens full screen.',
+    'How many panes the main screen shows. Below three, reading opens full screen; with one pane, navigation lives in a drawer.',
   'volets.3': 'Three panes',
   'volets.2': 'Two panes',
+  'volets.1': 'One pane',
+  'nav.ouvrirTiroir': 'Open navigation',
+  'nav.fermerTiroir': 'Close navigation',
   'reglages.bulles': 'Arrival notifications',
   'reglages.bullesDesc': 'A system notification announces new messages at sync. Turning it off never stops the sync itself.',
   'reglages.noteRaccourcis': 'In a text field, letters are letters again — only Esc keeps a meaning.',

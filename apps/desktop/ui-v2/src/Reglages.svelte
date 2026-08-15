@@ -310,13 +310,10 @@
                   <span class="nom">{t('reglages.volets')}</span>
                   <span class="desc">{t('reglages.voletsDesc')}</span>
                 </span>
-                <!-- L'option « Un volet » n'existe pas encore : elle
-                     arrive avec le tiroir de nav (PLAN-VOLETS E2) —
-                     jamais un mode cassé à l'écran. -->
                 <select class="langue" data-testid="affichage-volets"
                         aria-label={t('reglages.volets')} value={String(volets)}
                         onchange={(e) => changerVolets(Number(e.target.value))}>
-                  {#each [3, 2] as n (n)}
+                  {#each [3, 2, 1] as n (n)}
                     <option value={String(n)}>{t(`volets.${n}`)}</option>
                   {/each}
                 </select>

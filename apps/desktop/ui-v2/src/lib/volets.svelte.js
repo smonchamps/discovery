@@ -1,12 +1,12 @@
 // Le nombre de volets de l'écran 02 (PLAN-VOLETS, V-D1/V-D4) : 3 —
-// nav, liste, lecture (défaut) — ou 2 — nav + liste pleine largeur, la
-// lecture s'ouvre en plein écran (écran 03). Le mode 1 (liste seule,
-// nav en tiroir) arrive en E2 du plan. Préférence pure UI : le shell
-// n'a rien à en lire — localStorage, le patron du thème (D6), jamais
-// la base. `$state` partagé : tout gabarit qui lit `voletsActuels()`
-// se re-rend à la bascule, comme la langue.
+// nav, liste, lecture (défaut) —, 2 — nav + liste pleine largeur, la
+// lecture s'ouvre en plein écran (écran 03) — ou 1 — liste seule, la
+// nav vit en tiroir (E2). Préférence pure UI : le shell n'a rien à en
+// lire — localStorage, le patron du thème (D6), jamais la base.
+// `$state` partagé : tout gabarit qui lit `voletsActuels()` se re-rend
+// à la bascule, comme la langue.
 const CLE = 'wind-volets';
-const VALEURS = [3, 2];
+const VALEURS = [3, 2, 1];
 
 const etat = $state({ volets: 3 });
 

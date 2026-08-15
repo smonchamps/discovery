@@ -1,11 +1,13 @@
 # Plan — Les volets d'affichage : un, deux ou trois, au choix
 
 **GO du Chef Ingénieur le 2026-08-15 : V-D1 à V-D4 validées telles que
-proposées (§4). E1 livrée le même jour — voir son état à l'étape ;
-reste E2 (le mode 1 volet, le tiroir et son glyphe).** Le prototype
-cliquable qui a présenté les modes (`docs/design/prototype-volets.html`,
-validé au GO) entre au dépôt avec ce commit ; il mourra reversé au
-Système à la clôture d'E2 (DC-D4).
+proposées (§4). E1 livrée le même jour et VALIDÉE AU TERRAIN (constat
+CE : bascule au geste, zéro différence au défaut). E2 livrée dans la
+foulée — voir son état à l'étape ; le plan se clôt au constat terrain
+d'E2 (une journée en mode 1 volet, retour sans séquelle).** Le
+prototype cliquable qui a présenté les modes
+(`docs/design/prototype-volets.html`, validé au GO) mourra reversé au
+Système à la clôture du plan (DC-D4).
 
 Commande (2026-08-14) : dans une des toutes premières versions de
 Discovery, on pouvait choisir si l'interface s'affichait en mode 1, 2
@@ -145,6 +147,18 @@ vécue au geste, ouverture plein écran fluide, **aucune différence
 constatée au défaut**.
 
 ### E2 — Le mode 1 volet : le tiroir de nav
+
+**État : livrée le 2026-08-15 (terrain E1 validé le même jour), au mot
+du plan — gate complète, amendement A27 + carte « Le tiroir de
+navigation » + carte des modes complétée (DC-D2, même commit). Police
+régénérée 43 → 44 (`menu`), preuve rejouée 45/45 sous CSP. Écarts
+d'implémentation, dits : (1) le scrim du tiroir est un BOUTON — le
+clic ferme comme au prototype, et le clavier aussi (A8, la grammaire
+du produit ne connaissait pas le scrim cliquable) ; (2) le tiroir
+reprend la géométrie du prototype validé (268 px, en-tête 60 px avec
+tuile de marque + fermer) — la Nav y est montée telle quelle, zéro
+fork ; (3) quitter le mode un volet emporte le tiroir. Terrain CE dû :
+une journée en mode 1, retour sans séquelle.**
 
 - **Le glyphe d'abord** : `menu` n'est pas dans la police —
   régénération (43 → 44), inventaire tenu, `?v=` bumpé, copie

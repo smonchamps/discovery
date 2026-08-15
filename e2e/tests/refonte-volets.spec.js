@@ -123,6 +123,48 @@ test("un écho local s'ouvre en plein écran — corps local, geste différé di
   await dossier('reception').click();
 });
 
+test('en un volet, la nav quitte la grille et vit en tiroir (E2)', async () => {
+  await page.locator('[data-testid="reglages"]').click();
+  await page
+    .locator('[data-testid="reglages-groupe"][data-groupe="affichage"]')
+    .click();
+  await page.locator('[data-testid="affichage-volets"]').selectOption('1');
+  await page.locator('[data-testid="reglages-termine"]').click();
+  // La nav n'est plus dans la grille ; le bouton du tiroir est là.
+  await expect(page.locator('[data-testid="nav"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="btn-tiroir"]')).toBeVisible();
+  // Ouvrir : la Nav est LA MÊME — dossiers réels, compteurs réels.
+  await page.locator('[data-testid="btn-tiroir"]').click();
+  await expect(page.locator('[data-testid="tiroir"]')).toBeVisible();
+  await expect(dossier('corbeille')).toBeVisible();
+  // Choisir ferme ET filtre — le geste accompli n'a plus besoin du
+  // panneau.
+  await dossier('corbeille').click();
+  await expect(page.locator('[data-testid="tiroir"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="statut"]')).toContainText('Corbeille');
+});
+
+test('Échap ferme le tiroir ; quitter le mode un volet l\'emporte', async () => {
+  await page.locator('[data-testid="btn-tiroir"]').click();
+  await expect(page.locator('[data-testid="tiroir"]')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-testid="tiroir"]')).toHaveCount(0);
+  // Retour à la réception par le tiroir, puis au mode deux volets —
+  // le bouton du tiroir s'efface avec le mode, la nav revient en
+  // grille (la suite continue sur le mode 2, que le test de
+  // persistance attend).
+  await page.locator('[data-testid="btn-tiroir"]').click();
+  await dossier('reception').click();
+  await page.locator('[data-testid="reglages"]').click();
+  await page
+    .locator('[data-testid="reglages-groupe"][data-groupe="affichage"]')
+    .click();
+  await page.locator('[data-testid="affichage-volets"]').selectOption('2');
+  await page.locator('[data-testid="reglages-termine"]').click();
+  await expect(page.locator('[data-testid="btn-tiroir"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="nav"]')).toBeVisible();
+});
+
 test('la préférence survit au relancement — et le retour à trois volets restaure le volet', async () => {
   // Persistance : la page rechargée restaure le mode 2 AVANT le
   // premier rendu (pas de flash de grille).

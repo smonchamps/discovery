@@ -215,9 +215,12 @@ export const FR = {
   'reglages.langueDesc': "La langue de l'interface, appliquée immédiatement.",
   'reglages.volets': 'Disposition',
   'reglages.voletsDesc':
-    "Le nombre de volets de l'écran principal. En deux volets, la liste prend la largeur et la lecture s'ouvre en plein écran.",
+    "Le nombre de volets de l'écran principal. En dessous de trois, la lecture s'ouvre en plein écran ; en un volet, la navigation vit dans un tiroir.",
   'volets.3': 'Trois volets',
   'volets.2': 'Deux volets',
+  'volets.1': 'Un volet',
+  'nav.ouvrirTiroir': 'Ouvrir la navigation',
+  'nav.fermerTiroir': 'Fermer la navigation',
   'reglages.bulles': "Bulles d'arrivée",
   'reglages.bullesDesc': "Une bulle système annonce les nouveaux messages à la synchronisation. La couper n'arrête jamais la synchronisation elle-même.",
   'reglages.noteRaccourcis': 'Dans un champ de saisie, les lettres redeviennent des lettres — seul Échap garde un sens.',

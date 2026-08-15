@@ -1,6 +1,6 @@
 # Icônes vendorisées — sous-ensemble Material Symbols Rounded (R0-S3)
 
-**43 glyphes**, **20 944 octets** (20,5 Kio) woff2, servis depuis le dépôt.
+**44 glyphes**, **21 076 octets** (20,6 Kio) woff2, servis depuis le dépôt.
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
@@ -24,13 +24,15 @@ n'étaient JAMAIS entrées dans la police — `error` (échec d'envoi),
 `link_off` (reconnexion), `system_update_alt` (mise à jour, vu au
 premier auto-update), `volunteer_activism` (télémétrie) ; ajoutées
 toutes les quatre, et l'inventaire se vérifie désormais par BALAYAGE
-des sources (`grep` des noms utilisés), pas de mémoire.
+des sources (`grep` des noms utilisés), pas de mémoire. PLAN-VOLETS E2
+(2026-08-15) ajoute `menu` (bouton du tiroir de navigation, mode un
+volet).
 
 `all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
 `check_circle` `close` `delete` `description` `display_settings`
 `drafts` `edit_note` `edit_square` `error` `format_list_bulleted`
 `format_quote` `forum` `group_add` `hourglass_empty` `inbox` `info`
-`keyboard` `link` `link_off` `mark_email_unread` `notifications`
+`keyboard` `link` `link_off` `mark_email_unread` `menu` `notifications`
 `open_in_new` `person` `person_add` `reply` `reply_all` `report`
 `search` `send` `settings` `storage` `sync` `system_update_alt`
 `unfold_more` `visibility_off` `volunteer_activism` `warning` `work`
@@ -97,7 +99,7 @@ curl -s -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?fam
 ## Preuve ([apercu.html](apercu.html))
 
 Page servie localement sous CSP `default-src 'none'; font-src 'self'` :
-**PASS — police locale chargée, 44/44 ligatures repliées** (les 43 glyphes
-+ le témoin FILL 1/600 ; rejouée le 2026-08-14, terrain 0.1.4).
+**PASS — police locale chargée, 45/45 ligatures repliées** (les 44 glyphes
++ le témoin FILL 1/600 ; rejouée le 2026-08-15, PLAN-VOLETS E2).
 Vérification objective : une ligature résolue se replie sur ~1 em ; un
 nom resté en toutes lettres est bien plus large.

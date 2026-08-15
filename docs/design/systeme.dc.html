@@ -769,9 +769,25 @@ d'un message EST l'écran 03, plein écran — y compris pour un message
 sans fil ou un écho local, servis en message seul ; « Retour » ou
 Échap <b>rendent la liste intacte</b> : défilement, pages, sélection.
 Le marquage lu, les raccourcis et la barre d'état ne changent dans
-aucun mode. L'option « Un volet » (liste seule, nav en tiroir)
-n'existe pas encore : elle arrivera avec le tiroir — jamais un mode
-cassé à l'écran.</p>
+aucun mode. <b>Un volet</b> : la liste seule (1fr, son filet droit
+tombe), l'ouverture reste le plein écran — et la nav vit dans un
+<b>tiroir</b> (carte suivante), ouvert par un bouton d'entête qui
+n'existe que dans ce mode.</p>
+      </div>
+      <div style="background:#ffffff; border:1px solid #dadfda; border-radius:10px; padding:28px; display:flex; flex-direction:column; gap:14px">
+        <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#5c625e; font-weight:600">Le tiroir de navigation (un volet)</p>
+        <p style="margin:0; font-size:13px; line-height:1.6; color:#4d534f; max-width:60ch">Le bouton (glyphe <code>menu</code>, 32 px, la grammaire des
+boutons d'entête, <code>aria-expanded</code>) vit à gauche de la marque
+— qui perd sa largeur de colonne (212 px → auto). Le tiroir est une
+<b>surimpression de 268 px</b> à gauche, sous scrim, au niveau des
+surimpressions : en-tête 60 px (tuile de marque + « Wind » + fermer),
+puis la <b>Nav réutilisée telle quelle</b> — mêmes rangées, mêmes
+compteurs, zéro variante. <b>Choisir un dossier ou un compte ferme</b>
+(le geste accompli n'a plus besoin du panneau) ; Échap ferme (dans
+l'ordre des surimpressions : composition, réglages, conversation,
+tiroir, recherche) ; le scrim est un <b>bouton</b> — le clic ferme, le
+clavier aussi (A8). Le tiroir porte <code>role="dialog"</code> et
+<code>aria-modal</code>. Quitter le mode un volet emporte le tiroir.</p>
       </div>
     </div>
   </section>
@@ -1088,9 +1104,9 @@ Six groupes, tous à contenu réel : <b>Comptes</b> (une rangée par
 compte, « Ajouter un compte » déplie LE guichet de l'écran 01 — A11 ;
 le retrait se confirme en nommant ce qu'il fait), <b>Thèmes</b>,
 <b>Affichage</b> (« Sombre automatique », « Langue » — A15, appliquée
-immédiatement —, « Disposition » — A26, le nombre de volets de l'écran
-principal, sélecteur natif appliqué immédiatement ; l'option « Un
-volet » n'apparaîtra qu'avec le tiroir de nav), <b>Notifications</b> (« Bulles d'arrivée », préférence
+immédiatement —, « Disposition » — A26/A27, le nombre de volets de
+l'écran principal, sélecteur natif à trois options appliqué
+immédiatement), <b>Notifications</b> (« Bulles d'arrivée », préférence
 en base lue par le shell à l'émission), <b>Raccourcis</b> (la table en
 référence, lecture seule — les touches ne bougent pas d'une langue à
 l'autre), <b>À propos</b> (version réelle, vérification de mise à jour,
@@ -1129,7 +1145,7 @@ licence des icônes).</p>
             <div style="display:flex; align-items:center; gap:16px; padding:14px 0; border-bottom:1px solid #dadfda">
               <span style="flex:1; display:flex; flex-direction:column; gap:4px">
                 <span style="font-size:13px; font-weight:600">Disposition</span>
-                <span style="font-size:13px; line-height:1.5; color:#5c625e">Le nombre de volets de l'écran principal. En deux volets, la liste prend la largeur et la lecture s'ouvre en plein écran.</span>
+                <span style="font-size:13px; line-height:1.5; color:#5c625e">Le nombre de volets de l'écran principal. En dessous de trois, la lecture s'ouvre en plein écran ; en un volet, la navigation vit dans un tiroir.</span>
               </span>
               <span style="height:32px; flex:none; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#232725; background:#ffffff; border:1px solid #dadfda; border-radius:6px">Trois volets<span aria-hidden="true" style="font-size:10px; color:#5c625e">▾</span></span>
             </div>
@@ -1434,6 +1450,11 @@ directive — et tracé par un commit.</p>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-15</td>
           <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A26</td>
           <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>Les volets d'affichage</b> (<code>docs/PLAN-VOLETS.md</code>, E1 ; V-D1 à V-D4 tranchées telles que proposées) — l'écran 02 se choisit en <b>trois volets</b> (défaut, la grille inchangée) ou <b>deux volets</b> (236 / 1fr, liste pleine largeur au gabarit inchangé — V-D3) ; en deux volets, l'ouverture d'un message est l'<b>écran 03 plein écran</b>, qui apprend au passage le <b>message seul</b> (sans fil, écho local compris — V-D2 : le fil servi est la ligne elle-même, corps par <code>message_body</code>/<code>echo_body</code> ; une seule surface de lecture plein écran dans le produit). Rangée « Disposition » au groupe Affichage des Réglages (sélecteur natif, la grammaire de « Langue », clés fr/en), préférence <code>localStorage['wind-volets']</code> (V-D4, le patron du thème), appliquée immédiatement et restaurée avant le premier rendu. Carte « Les modes d'affichage » à la Boîte de réception, rangée ajoutée au dessin des Réglages. L'option « Un volet » attend le tiroir de nav (E2 du plan — le glyphe <code>menu</code> exigera une régénération de la police) : jamais un mode cassé à l'écran. La fonctionnalité, souvenir d'une toute première version de Discovery, n'a laissé aucune trace dans l'historique — construction neuve, pas restauration.</td>
+        </tr>
+        <tr style="border-top:1px solid #dadfda">
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f; white-space:nowrap">2026-08-15</td>
+          <td style="padding:12px 20px; font-size:13px; color:#232725; font-weight:600; white-space:nowrap">A27</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4d534f"><b>Le mode un volet et son tiroir</b> (<code>docs/PLAN-VOLETS.md</code>, E2 — terrain E1 validé le même jour) — la liste seule (1fr, filet droit tombé), l'ouverture reste l'écran 03 plein écran ; la nav vit en <b>tiroir</b> : bouton d'entête au glyphe <code>menu</code> (32 px, <code>aria-expanded</code>, la marque passe de 212 px à auto), surimpression de 268 px sous scrim (en-tête 60 px : tuile de marque + fermer), la <b>Nav réutilisée telle quelle</b>. Choisir ferme ; Échap ferme à son rang de surimpression ; le scrim est un bouton (clic ET clavier — A8) ; quitter le mode emporte le tiroir. L'option « Un volet » rejoint le sélecteur « Disposition » (clés fr/en, description révisée aux deux catalogues et à cette section). Police régénérée <b>43 → 44 glyphes</b> pour <code>menu</code> (le contrat <code>assets/icones/README.md</code> tient l'inventaire — DC-D3) : sous-ensemble Google Fonts re-tiré, copie <code>public/</code> faite, <code>?v=44</code> au cache-buster, preuve rejouée <b>45/45</b> ligatures sous CSP. Cartes : « Les modes d'affichage » complétée, « Le tiroir de navigation » ajoutée.</td>
         </tr>
       </tbody>
     </table>

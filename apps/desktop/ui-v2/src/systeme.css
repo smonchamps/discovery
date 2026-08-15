@@ -75,7 +75,7 @@
      un poste pourrait servir l'ANCIEN sous-ensemble à la version neuve
      et rendre une ligature nouvelle en toutes lettres. À incrémenter à
      CHAQUE régénération, avec l'inventaire (assets/icones/README.md). */
-  src: url('/icones/material-symbols-rounded.subset.woff2?v=43') format('woff2');
+  src: url('/icones/material-symbols-rounded.subset.woff2?v=44') format('woff2');
 }
 .ms {
   font-family:'Material Symbols Rounded'; font-weight:300; font-size:16px;
