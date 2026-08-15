@@ -434,6 +434,16 @@ minutes ; ne pas le faire « pour être sûr »).
 des EXEMPLES — les diagnostics du terrain vivent là et portent leurs tests.
 `--no-verify` existe ; s'en servir est une décision, pas un raccourci.
 
+**Deux gates peuvent jouer en même temps** (deux worktrees, deux push) :
+depuis PLAN-ISOLATION-E2E (2026-08-15), chaque suite e2e reçoit un port
+CDP libre choisi par l'OS (`e2e/port-cdp.mjs`, un port par suite — les
+arguments navigateur d'un même profil WebView2 doivent rester
+identiques), et le balayage de zombies de `rebuild-v2.mjs` est borné au
+`target/` du worktree courant. Avant : port 9222 partagé + balayage
+global = applications abattues en `0xFFFFFFFF` sans sortie et suites qui
+se pilotaient l'une l'autre (`connectOverCDP` reconnaît sa fenêtre au
+seul critère `tauri.localhost`). Terrain : 73 + 73 verts simultanés.
+
 **Le gate ne reflète la CI que sur la MÊME toolchain.** La version de Rust
 est **épinglée** dans [`rust-toolchain.toml`](../rust-toolchain.toml)
 (source unique : local + hook + CI). Le job CI, lui, ne lit pas ce

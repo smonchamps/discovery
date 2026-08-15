@@ -1,7 +1,11 @@
 # PLAN-ISOLATION-E2E — deux suites e2e simultanées ne doivent plus se marcher dessus
 
-Statut : **soldé** (2026-08-15). Décisions CE tranchées le 2026-08-15,
-voir §5.
+**CHANTIER SOLDÉ le 2026-08-15 — terrain complet.** Commit `ec1fe61`
+(rebasé sur `554a899`, A41), CI verte (run 31894070191, 2 min 14 s).
+GO CE du plan le 2026-08-15 (D1 port libre dynamique, D2 bancs alignés,
+§5) ; aucune retouche terrain — la passe a été verte du premier coup.
+Aucun ADR : la décision vit dans le harnais de test (ADR 0005 porte déjà
+la doctrine « e2e en local ») et ce plan en est la trace.
 
 Validation terrain CE (2026-08-15) : deux worktrees porteurs du fix
 (nifty-benz-78d858 + copie jetable essai-isolation sur 554a899), deux
