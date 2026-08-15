@@ -1,13 +1,19 @@
 # Plan — Les volets d'affichage : un, deux ou trois, au choix
 
-**GO du Chef Ingénieur le 2026-08-15 : V-D1 à V-D4 validées telles que
-proposées (§4). E1 livrée le même jour et VALIDÉE AU TERRAIN (constat
-CE : bascule au geste, zéro différence au défaut). E2 livrée dans la
-foulée — voir son état à l'étape ; le plan se clôt au constat terrain
-d'E2 (une journée en mode 1 volet, retour sans séquelle).** Le
-prototype cliquable qui a présenté les modes
-(`docs/design/prototype-volets.html`, validé au GO) mourra reversé au
-Système à la clôture du plan (DC-D4).
+**CHANTIER SOLDÉ le 2026-08-15 — terrain complet sur les deux
+étapes.** GO du Chef Ingénieur le matin même (V-D1 à V-D4 validées
+telles que proposées, §4, après plan et prototype cliquable) ; E1
+livrée et validée au terrain (bascule au geste, zéro différence au
+défaut) ; E2 livrée et validée au terrain (le tiroir au quotidien,
+retour sans séquelle). Les trois modes vivent : trois volets (défaut
+inchangé), deux volets (liste pleine largeur, ouverture plein écran),
+un volet (tiroir de nav). Commits 7b77631 (E1) / b22e9ae (E2),
+amendements A26/A27 au Système, police 43 → 44 (`menu`). Le prototype
+cliquable, reversé au Système (cartes « Les modes d'affichage » et
+« Le tiroir de navigation »), est **supprimé à cette clôture**
+(DC-D4 — l'histoire git le garde, sa validation reste datée ici). La
+fonctionnalité disparue « sans véritable justification » a désormais
+la sienne : ce plan, ses verdicts et ses gates.
 
 Commande (2026-08-14) : dans une des toutes premières versions de
 Discovery, on pouvait choisir si l'interface s'affichait en mode 1, 2
@@ -157,8 +163,9 @@ clic ferme comme au prototype, et le clavier aussi (A8, la grammaire
 du produit ne connaissait pas le scrim cliquable) ; (2) le tiroir
 reprend la géométrie du prototype validé (268 px, en-tête 60 px avec
 tuile de marque + fermer) — la Nav y est montée telle quelle, zéro
-fork ; (3) quitter le mode un volet emporte le tiroir. Terrain CE dû :
-une journée en mode 1, retour sans séquelle.**
+fork ; (3) quitter le mode un volet emporte le tiroir. Terrain CE
+VALIDÉ le 2026-08-15 (le tiroir au quotidien, retour sans séquelle) —
+le plan est clos.**
 
 - **Le glyphe d'abord** : `menu` n'est pas dans la police —
   régénération (43 → 44), inventaire tenu, `?v=` bumpé, copie
