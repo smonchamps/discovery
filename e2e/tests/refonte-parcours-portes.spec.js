@@ -1,7 +1,9 @@
-// R2 (PLAN-RETRAIT-V1) : les parcours v1 portés sur v2, avec la graine
-// EXACTE des specs d'origine (seed_inbox, 200 messages : un fil sur
-// cinq, une pièce jointe sur dix). Ce fichier remplacera
-// parcours-critiques / recherche / multi-comptes à B2.
+// R2 (PLAN-RETRAIT-V1) : les parcours de l'ancienne interface portés
+// sur v2, avec la graine EXACTE des specs d'origine (seed_inbox,
+// 200 messages : un fil sur cinq, une pièce jointe sur dix). Ce fichier
+// a REMPLACÉ parcours-critiques / recherche / multi-comptes à B2
+// (2026-08-15) — ils tournent sur v2 depuis R2, seul le nom rappelait
+// encore v1, d'où le renommage.
 //
 // Abandons motivés (PASSATION §2.6) :
 // - « étoiler (s) » et « déplacer (v) » tombent avec D2 — coupés à la

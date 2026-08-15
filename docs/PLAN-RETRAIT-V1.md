@@ -127,7 +127,7 @@ déplie LE guichet de l'écran 01, implémentation partagée). Amendement
 A11 au journal du Système.
 
 **Abandons de portage motivés** (consignés en tête de
-`refonte-parcours-v1.spec.js`) : étoiler/déplacer (D2) ; auto-avance
+`refonte-parcours-portes.spec.js (ex refonte-parcours-v1)`) : étoiler/déplacer (D2) ; auto-avance
 après archivage (le prototype ferme le volet, écart A6) ; distinction
 au corps de deux brouillons locaux (le bandeau-liste v1 n'existe plus —
 l'équivalent v2 est le dossier Brouillons après reflet, parcours
