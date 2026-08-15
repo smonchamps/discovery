@@ -123,6 +123,30 @@ for (const [, id, brut] of fiches) {
   });
 }
 
+// --- 5. Les catalogues nomment chaque thème livré --------------------
+// Revue A42 : la parité fr↔en (refonte-langue.spec) ne dit pas qu'un
+// thème LIVRÉ a son libellé — un id renommé sans les catalogues rendait
+// la clé brute `theme.<id>.nom` sur la carte, en vert partout.
+for (const langue of ['fr', 'en']) {
+  const cat = readFileSync(
+    path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', `catalogue.${langue}.js`),
+    'utf8',
+  );
+  const ids = new Set(
+    [...cat.matchAll(/'theme\.([a-z-]+)\.nom'/g)].map(([, id]) => id),
+  );
+  for (const id of Object.keys(themesCss)) {
+    if (!ids.has(id)) {
+      echec(`catalogue.${langue} : theme.${id}.nom manquant — la carte du sélecteur afficherait la clé brute`);
+    }
+  }
+  for (const id of ids) {
+    if (!themesCss[id]) {
+      echec(`catalogue.${langue} : theme.${id}.nom sans thème livré dans systeme.css`);
+    }
+  }
+}
+
 const nbThemes = Object.keys(themesCss).length;
 const nbJetons = Object.values(themesCss).reduce((n, t) => n + Object.keys(t).length, 0);
 console.log(

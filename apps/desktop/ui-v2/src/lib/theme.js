@@ -98,6 +98,29 @@ function osSombre() {
 function poser(nom) {
   if (nom === 'nature') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = nom;
+  // Revue A42 : la coche de Réglages suit la fiche AFFICHÉE — le
+  // signal dit « le thème posé vient de changer », quel qu'en soit le
+  // chemin (choix, bascule du suivi, événement OS en cours de session).
+  document.dispatchEvent(new CustomEvent('wind:theme-affiche'));
+}
+
+// Le thème POSÉ sur <html> — l'état dérivé, jamais persisté (A42).
+// C'est lui que la coche de Réglages désigne (revue A42) : sous suivi
+// OS + OS sombre, l'œil voit la déclinaison -nuit, la coche aussi.
+export function themeAffiche() {
+  return document.documentElement.dataset.theme ?? 'nature';
+}
+
+// L'encre et le fond du thème affiché, lus aux jetons calculés — bakés
+// par le cœur dans le document du corps de message (revue A42 : plus de
+// dalle blanche #ffffff sur les 14 thèmes sombres). L'iframe sandbox ne
+// voit jamais les jetons de l'hôte : les valeurs voyagent par l'appel.
+export function paletteLecture() {
+  const jetons = getComputedStyle(document.documentElement);
+  return {
+    encre: jetons.getPropertyValue('--ink').trim(),
+    fond: jetons.getPropertyValue('--surface').trim(),
+  };
 }
 
 // L'unique endroit qui décide du thème AFFICHÉ : quand le suivi de

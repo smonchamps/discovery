@@ -210,7 +210,7 @@ export const FR = {
   'reglages.retraitEnCours': 'Retrait…',
   'reglages.retraitImpossible': 'Retrait impossible : {err}',
   'reglages.sombreAuto': 'Sombre automatique',
-  'reglages.sombreAutoDesc': "Suivre le réglage sombre du système : la déclinaison nuit du thème choisi s'affiche quand il est actif, la claire revient dès qu'il s'éteint.",
+  'reglages.sombreAutoDesc': "Suivre le réglage sombre du système : la déclinaison nuit du thème choisi s'affiche quand il est actif, la claire revient dès qu'il s'éteint. Un thème nuit choisi à la main reste tel quel.",
   'reglages.langue': 'Langue',
   'reglages.langueDesc': "La langue de l'interface, appliquée immédiatement.",
   'reglages.volets': 'Disposition',
@@ -252,8 +252,9 @@ export const FR = {
   'raccourci.geste.echap': 'Fermer la surimpression, sortir du champ, revenir à la boîte',
 
   // --- Thèmes Clarity (fiches du dialogue Réglages) ---------------------
-  // A42 « Wada élargi » : 28 fiches, mot pour mot du paquet
-  // docs/design/handoff/fiches-themes.fr.js.
+  // A42 « Wada élargi » : 28 fiches, mot pour mot du paquet livré
+  // (docs/PLAN-WADA-ELARGI.md — le paquet d'étude ne rentre pas au
+  // dépôt, esprit DC-D4).
   'theme.nature.nom': 'La nature',
   'theme.nature.desc': 'Vert pin sur ivoire, la direction de référence.',
   'theme.hortensia.nom': "L'hortensia",

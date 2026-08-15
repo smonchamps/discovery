@@ -208,7 +208,7 @@ export const EN = {
   'reglages.retraitEnCours': 'Removing…',
   'reglages.retraitImpossible': 'Removal failed: {err}',
   'reglages.sombreAuto': 'Automatic dark',
-  'reglages.sombreAutoDesc': 'Follow the system dark setting: the night variant of your chosen theme shows while it is on, the light one returns as soon as it turns off.',
+  'reglages.sombreAutoDesc': 'Follow the system dark setting: the night variant of your chosen theme shows while it is on, the light one returns as soon as it turns off. A hand-picked night theme stays as it is.',
   'reglages.langue': 'Language',
   'reglages.langueDesc': 'The interface language, applied immediately.',
   'reglages.volets': 'Layout',

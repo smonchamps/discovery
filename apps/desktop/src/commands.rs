@@ -18,7 +18,7 @@ use mail_core::AccountConfig;
 use mail_core::{Action, MailServer, OutboxState, Store, SyncEngine};
 use mail_imap::ImapServer;
 use mail_smtp::SmtpMailer;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 use crate::AppState;
@@ -1710,6 +1710,23 @@ pub struct BodyView {
     pub attachment_count: usize,
 }
 
+/// L'encre et le fond du thème affiché, lus par le front aux jetons
+/// calculés (revue A42) — bakés au document par `mail_render::Palette`,
+/// qui refuse tout ce qui n'est pas `#rrggbb`.
+#[derive(Deserialize)]
+pub struct PaletteLecture {
+    pub encre: Option<String>,
+    pub fond: Option<String>,
+}
+
+impl PaletteLecture {
+    fn baker(palette: Option<Self>) -> mail_render::Palette {
+        palette
+            .map(|p| mail_render::Palette::new(p.encre.as_deref(), p.fond.as_deref()))
+            .unwrap_or_default()
+    }
+}
+
 /// Corps d'un message : cache local d'abord (aucun réseau), serveur du
 /// compte sinon. Document auto-CSP chargé dans une iframe `sandbox` —
 /// les trois couches de défense de la Phase 0.
@@ -1721,6 +1738,7 @@ pub async fn message_body(
     mailbox: String,
     uid: u32,
     show_images: bool,
+    palette: Option<PaletteLecture>,
 ) -> Result<BodyView, String> {
     let html = raw_body(&app, &state, account_id, &mailbox, uid).await?;
     // APRÈS raw_body : si le corps vient d'être rapatrié, ses pièces
@@ -1736,8 +1754,11 @@ pub async fn message_body(
         mail_render::ImagePolicy::BlockRemote
     };
     let sanitized = mail_render::sanitize_with(&html, policy);
+    // Revue A42 : l'encre et le fond du thème actif, bakés au document
+    // (l'iframe ne voit jamais les jetons de l'hôte).
+    let palette = PaletteLecture::baker(palette);
     Ok(BodyView {
-        document: mail_render::email_document(&sanitized.html, policy),
+        document: mail_render::email_document(&sanitized.html, policy, &palette),
         remote_images_blocked: sanitized.remote_images_blocked,
         attachment_count,
     })
@@ -2053,7 +2074,12 @@ fn queue_removal(
 /// le texte d'envoi est déjà échappé mais repasse par la même porte).
 /// Purement local — un écho n'a rien à demander au serveur.
 #[tauri::command]
-pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<BodyView, String> {
+pub async fn echo_body(
+    app: AppHandle,
+    id: i64,
+    show_images: bool,
+    palette: Option<PaletteLecture>,
+) -> Result<BodyView, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let (html, attachment_count) = store
@@ -2066,8 +2092,9 @@ pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<Bod
             mail_render::ImagePolicy::BlockRemote
         };
         let sanitized = mail_render::sanitize_with(&html, policy);
+        let palette = PaletteLecture::baker(palette);
         Ok(BodyView {
-            document: mail_render::email_document(&sanitized.html, policy),
+            document: mail_render::email_document(&sanitized.html, policy, &palette),
             remote_images_blocked: sanitized.remote_images_blocked,
             attachment_count,
         })

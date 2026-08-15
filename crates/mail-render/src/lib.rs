@@ -72,6 +72,47 @@ fn collapse_blank_lines(text: &str) -> String {
     lines.join("\n")
 }
 
+/// La palette bakée dans le document : l'encre et le fond du thème
+/// actif, passés par le shell (revue A42 — 14 thèmes sombres rendaient
+/// la dalle blanche du corps atteignable par tout utilisateur en OS
+/// sombre). Le document est autonome : l'iframe sandbox ne voit jamais
+/// les jetons CSS de l'hôte, les valeurs sont donc écrites en dur ici.
+pub struct Palette {
+    encre: String,
+    fond: String,
+}
+
+impl Palette {
+    /// Une teinte ne rentre que sous la forme `#rrggbb` : tout le reste
+    /// retombe sur le défaut — la valeur est écrite dans un `<style>`,
+    /// jamais de texte libre dans le document.
+    pub fn new(encre: Option<&str>, fond: Option<&str>) -> Self {
+        Self {
+            encre: teinte_sure(encre, "#222222"),
+            fond: teinte_sure(fond, "#ffffff"),
+        }
+    }
+}
+
+impl Default for Palette {
+    fn default() -> Self {
+        Self::new(None, None)
+    }
+}
+
+fn teinte_sure(teinte: Option<&str>, defaut: &str) -> String {
+    match teinte {
+        Some(t)
+            if t.len() == 7
+                && t.starts_with('#')
+                && t[1..].bytes().all(|o| o.is_ascii_hexdigit()) =>
+        {
+            t.to_ascii_lowercase()
+        }
+        _ => defaut.to_string(),
+    }
+}
+
 /// Document complet à charger dans une iframe `sandbox` (via `srcdoc`) :
 /// le modèle de production est « une CSP par message », embarquée dans le
 /// document lui-même. La CSP suit la politique d'images : elle n'ouvre
@@ -82,17 +123,18 @@ fn collapse_blank_lines(text: &str) -> String {
 /// se resserrer. L'hôte doit donc autoriser `img-src data: https: http:` et
 /// `style-src 'unsafe-inline'` — c'est CE document qui reste la couche
 /// restrictive par message (images distantes bloquées par défaut).
-pub fn email_document(sanitized_html: &str, policy: ImagePolicy) -> String {
+pub fn email_document(sanitized_html: &str, policy: ImagePolicy, palette: &Palette) -> String {
     let img_sources = match policy {
         ImagePolicy::BlockRemote => "data: cid:",
         ImagePolicy::AllowRemote => "data: cid: https: http:",
     };
+    let Palette { encre, fond } = palette;
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\
          <meta http-equiv=\"Content-Security-Policy\" \
          content=\"default-src 'none'; img-src {img_sources}; style-src 'unsafe-inline'\">\
-         <style>body{{font-family:system-ui,sans-serif;margin:12px;color:#222;\
-         overflow-wrap:break-word}}</style>\
+         <style>body{{font-family:system-ui,sans-serif;margin:12px;color:{encre};\
+         background:{fond};overflow-wrap:break-word}}</style>\
          </head><body>{sanitized_html}</body></html>"
     )
 }
@@ -143,7 +185,11 @@ mod tests {
 
     #[test]
     fn email_document_embeds_csp_and_content() {
-        let document = email_document("<p>bonjour</p>", ImagePolicy::BlockRemote);
+        let document = email_document(
+            "<p>bonjour</p>",
+            ImagePolicy::BlockRemote,
+            &Palette::default(),
+        );
         assert!(document.contains("default-src 'none'"));
         assert!(document.contains("img-src data: cid:;"));
         assert!(document.contains("<p>bonjour</p>"));
@@ -151,8 +197,29 @@ mod tests {
 
     #[test]
     fn email_document_opens_https_images_only_on_request() {
-        let document = email_document("<p>x</p>", ImagePolicy::AllowRemote);
+        let document = email_document("<p>x</p>", ImagePolicy::AllowRemote, &Palette::default());
         assert!(document.contains("img-src data: cid: https: http:;"));
         assert!(document.contains("default-src 'none'"));
+    }
+
+    #[test]
+    fn email_document_bake_la_palette_du_theme() {
+        // Revue A42 : le corps suit le thème — encre et fond passés par
+        // le shell, écrits dans le <style> du document autonome.
+        let palette = Palette::new(Some("#EDEFED"), Some("#2b3034"));
+        let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &palette);
+        assert!(document.contains("color:#edefed"), "{document}");
+        assert!(document.contains("background:#2b3034"), "{document}");
+    }
+
+    #[test]
+    fn email_document_refuse_une_teinte_hors_forme() {
+        // Une valeur libre n'entre jamais dans le <style> : hors
+        // #rrggbb, retour au défaut — le document reste inerte.
+        let palette = Palette::new(Some("red;}</style><script>"), Some("#12345"));
+        let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &palette);
+        assert!(document.contains("color:#222222"), "{document}");
+        assert!(document.contains("background:#ffffff"), "{document}");
+        assert!(!document.contains("script>alert"), "{document}");
     }
 }

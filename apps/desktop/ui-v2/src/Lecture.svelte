@@ -11,6 +11,7 @@
   // navigateur système, l'iframe ne navigue jamais.
   //
   import { appel } from './lib/transport.js';
+  import { paletteLecture } from './lib/theme.js';
   import { brancherLiens } from './lib/liens.js';
   import { quandLong } from './lib/quand.js';
   import { activation } from './lib/clavier.js';
@@ -113,12 +114,14 @@
         ? await appel('echo_body', {
             id: Number(nouvelle.mailbox.slice(5)),
             showImages: avecImages,
+            palette: paletteLecture(),
           })
         : await appel('message_body', {
             accountId: nouvelle.account_id,
             mailbox: nouvelle.mailbox,
             uid: nouvelle.uid,
             showImages: avecImages,
+            palette: paletteLecture(),
           });
       if (mien !== jeton) return derniereOuvertureMs; // sélection changée
       corps = vue.document;
@@ -267,8 +270,10 @@
   .corps {
     /* 18 px et non 30 : le document assaini porte sa propre gouttière
        de 12 px (mail-render, body margin) — 18 + 12 = 30, le texte du
-       corps s'aligne sur l'objet et l'auteur (verdict terrain). */
-    flex:1; border:none; background:#ffffff; margin:18px 18px 0;
+       corps s'aligne sur l'objet et l'auteur (verdict terrain). Le
+       fond au jeton (revue A42) : le document bake la même valeur —
+       le blanc dur faisait dalle sur les 14 thèmes sombres. */
+    flex:1; border:none; background:var(--surface); margin:18px 18px 0;
     min-height:0;
   }
   .actions {

@@ -18,6 +18,7 @@
   // s'applique — message de soi → premier autre correspondant du fil,
   // sinon l'adresse du compte. Approximation dite, pas cachée.
   import { appel } from './lib/transport.js';
+  import { paletteLecture } from './lib/theme.js';
   import { brancherLiens } from './lib/liens.js';
   import { quand } from './lib/quand.js';
   import { activation } from './lib/clavier.js';
@@ -96,12 +97,14 @@
           ? await appel('echo_body', {
               id: Number(m.mailbox.slice(5)),
               showImages: false,
+              palette: paletteLecture(),
             })
           : await appel('message_body', {
               accountId: m.account_id,
               mailbox: m.mailbox,
               uid: m.uid,
               showImages: false,
+              palette: paletteLecture(),
             });
         corps[k] = vue.document;
       } catch (err) {
@@ -405,7 +408,7 @@
     /* Déborde de 12 px à gauche et à droite : la gouttière interne du
        document assaini (mail-render) ramène le texte au fil des
        De/À/Objet (verdict terrain — alignement). */
-    border:none; background:#ffffff;
+    border:none; background:var(--surface);
     margin-left:-12px; width:calc(100% + 24px);
     height:clamp(220px, 45vh, 520px);
   }

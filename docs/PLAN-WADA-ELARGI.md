@@ -236,3 +236,45 @@ un test qui meurt après avoir armé un réglage empoisonne les relances —
 purge du profil, et le savoir est consigné. Re-gate après remède :
 **75/75 e2e** (1,6 min), fmt/build/contraste/cohérence/garde/clippy/423
 tests Rust déjà verts.
+
+## 8. Revue à regard neuf (E6, 2026-08-16)
+
+`/code-review high`, huit angles, dix constats confirmés. Corrections
+appliquées le jour même :
+
+1. **`e2e/jetons.mjs` et ce PLAN étaient non suivis** alors que les
+   gates les importent/citent — un commit des seuls fichiers suivis
+   cassait la CI en `ERR_MODULE_NOT_FOUND` avec gate locale verte
+   (le piège PASSATION §7.4). `git add` des deux.
+2. **La coche du sélecteur suit désormais la fiche AFFICHÉE**
+   (`themeAffiche()`, signal `wind:theme-affiche` posé par `poser()`) :
+   sous suivi OS + OS sombre, l'écran et la coche disent tous deux la
+   déclinaison `-nuit` — avant, le clic de « correction » sur la fiche
+   `-nuit` enfermait dans le sombre permanent. Plus jamais `actif = id`
+   après `appliquerTheme` (qui refuse en silence).
+3. **`sombreAutoDesc` dit l'exception** (« Un thème nuit choisi à la
+   main reste tel quel ») — fr, en, et l'écran Réglages du Système.
+4. **Le corps de message bake la palette du thème** (décision CE du
+   jour, périmètre élargi) : `mail_render::Palette` (encre + fond,
+   validés `#rrggbb`, défaut clair), passée par `message_body`/
+   `echo_body` (`PaletteLecture`), lue aux jetons calculés
+   (`paletteLecture()`), iframes au jeton `--surface`. TDD : 2 tests
+   RED montrés puis verts (20/20 mail-render).
+5. **Assertion pleine au retour clair** : `not.toHaveAttribute('data-theme')`
+   au lieu de « autre chose que nature-nuit ».
+6. **La transition vers le clair avec un `-nuit` choisi est assertée**
+   (estampe-nuit reste posé quand l'OS repasse au clair).
+7. Ids retirés jamais purgés du storage : **assumé** — décision CE D4
+   (repli silencieux à la lecture), consigné, pas de changement.
+8. Pastilles FICHES ↔ jetons livrés : contrôle n°4 de
+   `coherence-systeme.mjs` (posé en séance).
+9. **Contrôle n°5 ajouté** : chaque thème livré a son
+   `theme.<id>.nom` aux deux catalogues (la parité fr↔en ne le disait
+   pas — clé brute rendue en vert partout).
+10. **La gate contraste n'imprime plus que les écarts** (28 × 25 = 700
+    lignes « ok » noyaient l'échec) ; le verdict final porte les
+    comptes.
+
+Écart de méthode assumé : les amendements e2e (5, 6, coche) ont été
+écrits avec leur implémentation, sans RED isolé — le RED aurait exigé
+un run complet de la suite par assertion ; la gate d'E6 fait foi.

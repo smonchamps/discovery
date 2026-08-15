@@ -589,13 +589,26 @@ test("Affichage : le suivi de l'OS sombre suffixe le thème choisi en -nuit (D6,
   await page.locator('[data-theme-id="safran"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'safran-nuit');
   expect(await page.evaluate(() => localStorage.getItem('wind-theme'))).toBe('safran');
-  // Un thème -nuit choisi à la main reste en paix : déjà sombre.
+  // Un thème -nuit choisi à la main reste en paix : déjà sombre…
   await page.locator('[data-theme-id="estampe-nuit"]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'estampe-nuit');
-  // OS clair : le choix revient tel quel.
-  await page.locator('[data-theme-id="nature"]').click();
+  // …y compris quand l'OS repasse au clair — le choix explicite prime
+  // (revue A42 : cette direction-là n'était pas assertée).
   await page.emulateMedia({ colorScheme: 'light' });
-  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'nature-nuit');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'estampe-nuit');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  // La coche suit la fiche AFFICHÉE (revue A42) : nature choisi sous
+  // OS sombre s'affiche nature-nuit — la coche aussi, sinon le clic de
+  // « correction » sur la fiche -nuit enferme dans le sombre permanent.
+  await page.locator('[data-theme-id="nature"]').click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'nature-nuit');
+  await expect(page.locator('[data-theme-id="nature-nuit"] .coche')).toBeVisible();
+  // OS clair : le choix revient tel quel — l'attribut TOMBE (nature),
+  // et la coche revient sur la fiche claire. Assertion pleine : pas
+  // « autre chose que nature-nuit », l'absence d'attribut (revue A42).
+  await page.emulateMedia({ colorScheme: 'light' });
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+  await expect(page.locator('[data-theme-id="nature"] .coche')).toBeVisible();
   // Persistance : le booléen survit comme le thème.
   expect(await page.evaluate(() => localStorage.getItem('wind-theme-auto'))).toBe('1');
   // Retour au groupe Affichage : la bascule n'existe que sous son

@@ -9,7 +9,7 @@
   // Règle : un groupe ne s'expédie qu'avec du contenu RÉEL — aucun
   // réglage inventé pour meubler, aucun groupe vide.
   import {
-    FICHES, appliquerTheme, themeActuel, suiviOs, appliquerSuiviOs,
+    FICHES, appliquerTheme, themeAffiche, suiviOs, appliquerSuiviOs,
   } from './lib/theme.js';
   import { t, LANGUES, langueActuelle, appliquerLangue } from './lib/texte.svelte.js';
   import { voletsActuels, appliquerVolets } from './lib/volets.svelte.js';
@@ -41,8 +41,20 @@
 
   let visible = $state(false);
   let groupe = $state('comptes');
-  let actif = $state(themeActuel());
+  // La coche suit la fiche AFFICHÉE, pas le choix persisté (revue
+  // A42) : sous suivi OS + OS sombre, l'écran est en -nuit — la coche
+  // aussi, sinon l'utilisateur « corrige » en cliquant la fiche -nuit
+  // et s'enferme dans le sombre permanent. Le signal
+  // `wind:theme-affiche` la garde alignée, y compris quand l'OS
+  // bascule pendant que le dialogue est ouvert.
+  let actif = $state(themeAffiche());
   let ajoutOuvert = $state(false);
+  $effect(() => {
+    if (!visible) return;
+    const suivre = () => (actif = themeAffiche());
+    document.addEventListener('wind:theme-affiche', suivre);
+    return () => document.removeEventListener('wind:theme-affiche', suivre);
+  });
 
   // Retrait d'un compte : le geste est DESTRUCTEUR localement (courrier
   // local effacé, connexion oubliée — le serveur, lui, n'est jamais
@@ -73,7 +85,7 @@
   let volets = $state(voletsActuels());
 
   export function ouvrir() {
-    actif = themeActuel();
+    actif = themeAffiche();
     auto = suiviOs();
     langue = langueActuelle();
     volets = voletsActuels();
@@ -126,7 +138,10 @@
   }
   function choisir(id) {
     appliquerTheme(id);
-    actif = id;
+    // Jamais `actif = id` : appliquerTheme refuse en silence un id
+    // inconnu, et sous suivi OS le thème posé peut être `id-nuit` —
+    // la fiche affichée fait foi dans les deux cas.
+    actif = themeAffiche();
   }
   function basculerAuto() {
     auto = !auto;

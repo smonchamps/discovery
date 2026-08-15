@@ -72,24 +72,31 @@ if (Object.keys(themes).length !== NOMBRE_ATTENDU) {
   echecs += 1;
   console.log(`ECHEC ${Object.keys(themes).length} thème(s) extraits de systeme.css — ${NOMBRE_ATTENDU} attendus (jetons.mjs) : un bloc échappe au motif, ou la table a changé sans amender le plancher`);
 }
+// Seuls les ÉCARTS s'impriment (revue A42) : 28 × 25 lignes « ok »
+// noyaient les échecs — le verdict final porte les comptes, un rouge
+// reste bruyant et localisé.
+let mesures = 0;
 for (const [nom, t] of Object.entries(themes)) {
-  console.log(`\n=== ${nom} ===`);
   for (const [encre, fond, seuil, ou] of PAIRES) {
     if (!t[encre] || !t[fond]) {
       // Un jeton introuvable n'est pas une paire à sauter : c'est le
       // banc qui ment. Bruyant, comme tout échec.
       echecs += 1;
-      console.log(`ECHEC ${encre.padEnd(9)} sur ${fond.padEnd(8)} jeton introuvable dans systeme.css  ${ou}`);
+      console.log(`ECHEC ${nom} · ${encre} sur ${fond} : jeton introuvable dans systeme.css  ${ou}`);
       continue;
     }
+    mesures += 1;
     const r = rapport(t[encre], t[fond]);
-    const ok = r >= seuil;
-    if (!ok) echecs += 1;
-    console.log(
-      `${ok ? '  ok  ' : 'ECHEC '}${encre.padEnd(9)} sur ${fond.padEnd(8)} `
-      + `${r.toFixed(2).padStart(5)}:1  (seuil ${seuil}:1)  ${ou}`,
-    );
+    if (r < seuil) {
+      echecs += 1;
+      console.log(
+        `ECHEC ${nom} · ${encre.padEnd(9)} sur ${fond.padEnd(8)} `
+        + `${r.toFixed(2).padStart(5)}:1  (seuil ${seuil}:1)  ${ou}`,
+      );
+    }
   }
 }
-console.log(`\n${echecs === 0 ? 'Tout passe.' : `${echecs} paire(s) sous le seuil.`}`);
+console.log(echecs === 0
+  ? `Tout passe — ${Object.keys(themes).length} thèmes, ${mesures} paires mesurées.`
+  : `${echecs} paire(s) sous le seuil.`);
 process.exitCode = echecs === 0 ? 0 : 1;
