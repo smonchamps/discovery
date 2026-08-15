@@ -1,5 +1,15 @@
 # PLAN-GELS — la fenêtre ne gèle plus : aucune commande bloquante sur le thread principal
 
+**CHANTIER SOLDÉ le 2026-08-15 — terrain complet le jour même.** GO CE
+sur les quatre décisions (D1-D4, toutes les recommandations, §5) ;
+livraison intégrale en un commit (`e32280b`, A39/A40) après revue à
+regard neuf (§4bis) et un constat terrain de passe 1 — le trait
+hitofude figé — instruit et corrigé le jour même, deux racines (§6).
+Passe terrain 2 validée par le CE (« Ok pour les 3 »), CI verte.
+Preuves : 25,2 s de gels cumulés → zéro (décors A/B), zéro gel sur
+60 s sur copie de la vraie base (4,75 Go), dashoffset du trait en
+mouvement pendant un cycle réel. Décision gelée par l'ADR 0019.
+
 > Bug rapporté le 2026-08-15 : « Freeze de plusieurs secondes de Wind au
 > démarrage en ligne de commande. L'application ne répond pas au clic et
 > la fenêtre ne peut pas être agrandie ou déplacée. »

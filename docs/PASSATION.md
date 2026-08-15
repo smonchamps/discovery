@@ -290,6 +290,7 @@ scénarios du terrain sans réseau.
 | [0013](adr/0013-installeur-nsis-maj-signee.md) | Installeur **NSIS** + mise à jour signée | **Pas MSIX** (virtualiserait `%APPDATA%`, orphelinerait la base) ; updater signé minisign, piloté depuis Rust ; signature Windows reportée ; tag GitHub = **version nue**, `latest.json` sans BOM (`scripts/faire-release.ps1`) |
 | [0014](adr/0014-telemetrie-de-crash-locale.md) | Télémétrie de crash **locale, opt-in** | Fichier local seul (aucun réseau/tiers) ; panics seuls ; **message du panic supprimé** (seul vecteur de PII) ; hook qui ne touche jamais la base ; un crash thread principal fait un **double panic** (compteur `SEQ` + filtre `cannot unwind`) |
 | [0015](adr/0015-socle-ui-v2-svelte.md) | **Socle UI v2 = Svelte**, front web unique porté partout (Tauri 2 desktop+mobile + navigateur) | Départage set-based (vanilla / Svelte / WASM) **sur mesure** : liste 256 k + bascule de thème, deux moteurs (Blink desktop, Android-classe CPU ×6) — rendu neutralisé par fenêtrage + thème CSS. **Système écrit une fois** (Stratégie A) ; WASM écarté, vanilla en repli ; **iOS/WKWebView : validation terrain due** ; frontière UI↔cœur = port de transport ; `mail-core` intouché (ADR 0001) |
+| [0019](adr/0019-commandes-hors-du-thread-principal.md) | **Commandes bloquantes hors du thread principal**, une à la fois (`hors_pompe` = spawn_blocking + verrou global) | La pompe ne fait que pomper (gel mesuré : 25,2 s/40 s → 0) ; la sérialisation d'avant est CONSERVÉE ; gate `garde-thread-principal.mjs` + budget « aucun gel > 150 ms » (`sonde-gel.py`) |
 
 Décisions Phase 0 ([PHASE0.md](PHASE0.md) §2) : SQLite local ; CONDSTORE ;
 parsing MIME par `mail-parser` ; OAuth2 PKCE loopback + coffre OS ; rendu
@@ -478,6 +479,19 @@ Trouvaille terrain corrigée : un crash sur le thread principal produit un
 **double panic** à la frontière FFI de WebView2 — compteur `SEQ` (noms
 uniques) + filtre du secondaire `cannot unwind`.
 
+### Le chantier fait : plus aucune commande sur le thread principal (ADR 0019)
+
+Terminé et **validé au terrain** le 2026-08-15 (PLAN-GELS, `e32280b`,
+A39/A40). Le freeze du démarrage (25,2 s de gels cumulés sur 40 s,
+mesurés) est mort à la racine : toute commande bloquante passe par
+`hors_pompe()` — spawn_blocking + verrou global, la sérialisation
+d'avant conservée — tenu par la gate `garde-thread-principal.mjs` et le
+budget « aucun gel de pompe > 150 ms » (`sonde-gel.py`). Au passage, le
+terrain a livré et fait corriger le jour même : l'avancement figé à
+99 % par les départs en attente de rejeu (le dénominateur s'ajuste), et
+la boucle du trait hitofude morte-née (animation CSS dans un `<mask>`
+non rendu → SMIL). Dette ouverte : D-8 (sondes chères, hors pompe).
+
 ### Le chantier suivant : bêta fermée 20-50 utilisateurs
 
 Dernière étape avant le gate 5 ([PLAN.md](PLAN.md) §4). Kaizen
@@ -491,13 +505,9 @@ bandeau. La recherche gagne en profondeur à mesure.
 
 ### Reports assumés
 
-- **Requêtes chères des sondes périodiques** (PLAN-GELS D4, famille
-  D-7) : hors de la pompe elles ne gèlent plus rien, mais leur coût CPU
-  reste réel — `nav_snapshot` **865 ms** par compte Gmail (compteur
-  Archives d'une intégrale, exclusion par `message_id`, 87 k lignes,
-  toutes les 10 s) ; `pending_total` **575 ms** (COUNT par boîte,
-  NOT EXISTS sur `bodies`, à chaque génération de courrier). À rouvrir
-  sur constat terrain (ventilateur, batterie, contention d'écriture).
+- **Requêtes chères des sondes périodiques** (PLAN-GELS D4) : hors de
+  la pompe elles ne gèlent plus rien, mais leur coût CPU reste réel —
+  registre **D-8** de [DETTE.md](DETTE.md), chiffres et pistes dedans.
 - **Doublons multi-boîtes dans la recherche** (nouveau, ADR 0010) : le
   même message copié dans plusieurs boîtes remonte plusieurs fois dans
   les résultats. À observer en bêta avant de décider d'un dédoublonnage.

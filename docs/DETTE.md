@@ -35,6 +35,21 @@ motivée.)
   l'essentiel.
 - **Rouvre si** : le terrain au lecteur d'écran le réclame.
 
+### D-8 · Requêtes chères des sondes périodiques (hors pompe, coût CPU réel)
+
+- **Fait (2026-08-15, PLAN-GELS)** : `nav_snapshot` **865 ms** par
+  compte Gmail (compteur Archives d'une intégrale, exclusion par
+  `message_id`, 87 k lignes — toutes les 10 s) ; `pending_total`
+  **575 ms** (COUNT par boîte, NOT EXISTS sur `bodies` — à chaque
+  génération de courrier). Mesurés en SQL direct sur base réelle.
+- **Décision CE (2026-08-15, D4 du plan)** : depuis `hors_pompe()`
+  elles ne gèlent plus rien ni personne — les optimiser sans constat
+  serait du travail sans mesure. Famille D-7 (chronos de réactivité).
+- **Piste** : cache des compteurs de nav invalidé par génération ;
+  `pending_total` en une requête agrégée.
+- **Rouvre si** : le terrain désigne le coût (ventilateur, batterie,
+  contention d'écriture, latence perçue des sondes).
+
 ## Soldée
 
 ### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15
