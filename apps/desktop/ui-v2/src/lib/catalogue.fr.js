@@ -15,7 +15,6 @@ export const FR = {
   'boite.corbeille': 'Corbeille',
   'nav.toutes': 'Toutes les boîtes',
   'nav.boites': 'Boîtes',
-  'nav.nonLus': '{n} non lu|{n} non lus',
   'nav.aria': 'Dossiers et comptes',
 
   // --- Entête de l'écran 02 -------------------------------------------

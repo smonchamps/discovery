@@ -13,7 +13,6 @@ export const EN = {
   'boite.corbeille': 'Trash',
   'nav.toutes': 'All inboxes',
   'nav.boites': 'Inboxes',
-  'nav.nonLus': '{n} unread',
   'nav.aria': 'Folders and accounts',
 
   // --- Entête de l'écran 02 -------------------------------------------

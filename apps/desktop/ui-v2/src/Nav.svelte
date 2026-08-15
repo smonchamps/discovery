@@ -36,14 +36,12 @@
     { id: 'corbeille', icone: 'delete', libelle: t('boite.corbeille') },
   ]);
 
+  // La tuile ne compte rien (A36, terrain E3) : la pastille de la
+  // Réception dit déjà le non-lu — la tuile ne porte que l'identité.
   const boites = $derived([
-    {
-      id: null, icone: 'all_inbox', libelle: t('nav.toutes'),
-      nonLus: somme('reception_non_lues'),
-    },
+    { id: null, icone: 'all_inbox', libelle: t('nav.toutes') },
     ...comptes.map((c) => ({
       id: c.account_id, icone: 'person', libelle: c.email,
-      nonLus: c.reception_non_lues,
     })),
   ]);
 </script>
@@ -67,16 +65,14 @@
     <p class="titre">{t('nav.boites')}</p>
     {#each boites as b (b.id)}
       {#if compte === b.id}
-        <!-- La boîte en cours : la tuile d'événement (A29, W2-D5). -->
+        <!-- La boîte en cours : la tuile d'événement (A29, W2-D5),
+             l'adresse seule — sans compteur (A36). -->
         <div class="tuile" data-testid="nav-boite"
              role="button" tabindex="0" aria-current="true"
              onclick={() => onchoisir({ compte: b.id })}
              onkeydown={activation(() => onchoisir({ compte: b.id }))}>
           <span class="ms icone-tuile" aria-hidden="true">{b.icone}</span>
-          <span class="corps-tuile">
-            <span class="titre-tuile">{b.libelle}</span>
-            <span class="sous-tuile">{t('nav.nonLus', { n: b.nonLus })}</span>
-          </span>
+          <span class="titre-tuile">{b.libelle}</span>
         </div>
       {:else}
         <div class="rang" data-testid="nav-boite"
@@ -127,16 +123,14 @@
     text-transform:uppercase; color:var(--muted); font-weight:600;
   }
   .tuile {
-    display:flex; align-items:flex-start; gap:10px; flex:none;
+    display:flex; align-items:center; gap:10px; flex:none;
     padding:9px 12px; border-radius:8px; cursor:pointer;
     background:var(--tuile); color:var(--tuileInk);
     border:1px solid var(--border);
   }
-  .icone-tuile { color:var(--tuileInk); margin-top:1px; }
-  .corps-tuile { display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .icone-tuile { color:var(--tuileInk); }
   .titre-tuile {
-    font-size:13px; font-weight:600;
+    font-size:13px; font-weight:600; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .sous-tuile { font-size:12px; }
 </style>

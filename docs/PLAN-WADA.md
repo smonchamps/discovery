@@ -267,6 +267,19 @@ s'amende au commit qui retouche). Le plan se clôt au constat ; les
 trois études du projet Design restent ouvertes (A31 le dit pour le
 lien liste–lecture).
 
+**Premières retouches CE du 2026-08-15 (A36), livrées le jour même :**
+(1) la tuile de la boîte en cours ne compte plus rien — l'adresse
+seule, la pastille de la Réception dit déjà le non-lu (la clé
+`nav.nonLus` quitte les catalogues) ; (2) le trait hitofude quitte le
+bouton de relève et devient l'**indicateur de progression**, à gauche
+de la ligne d'état : dessiné au rythme du pourcentage pendant un
+chargement, en boucle pendant un cycle sans dénominateur, plein et
+immobile au repos — la **barre fine de 2 px disparaît du Système**
+(le composant Hitofude gagne la prop `progression`, la transition
+.3s reprend le geste de l'ancienne barre) ; le bouton garde son
+glyphe `sync`, immobile. Le terrain continue — la clôture attend le
+verdict de la journée.
+
 ## 6. Ce qui ne bouge pas
 
 Les six autres thèmes (hors `--alert` de quatre d'entre eux) ; les

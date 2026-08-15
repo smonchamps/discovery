@@ -39,9 +39,11 @@ test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', asy
   await expect(pastille('archives')).toHaveCount(0);
   await expect(pastille('corbeille')).toHaveCount(0);
   // Boîtes : l'agrégée + un rang par compte RÉEL ; la boîte en cours
-  // (Toutes, au démarrage) est la tuile et dit ses non-lus.
+  // (Toutes, au démarrage) est la tuile — l'identité seule, sans
+  // compteur (A36, terrain E3).
   await expect(page.locator('[data-testid="nav-boite"]')).toHaveCount(3);
-  await expect(page.locator('[data-testid="nav-boite"]').first()).toContainText('non lus');
+  await expect(page.locator('[data-testid="nav-boite"]').first()).toContainText('Toutes les boîtes');
+  await expect(page.locator('[data-testid="nav-boite"]').first()).not.toContainText('non lus');
 });
 
 test('recharger garde les lignes servies — jamais de squelette (PLAN-REACTIVITE E1)', async () => {

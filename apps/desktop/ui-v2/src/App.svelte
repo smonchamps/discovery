@@ -136,9 +136,10 @@
     corbeille: 'boite.corbeille',
   };
 
-  // La ligne de statut ENTIÈRE — texte, barre fine (A16), point
-  // d'alerte — sort d'une seule décision : les trois ne peuvent pas
-  // diverger. Au plus UNE progression (Système A4) ; priorités
+  // La ligne de statut ENTIÈRE — texte, trait hitofude (A36 : au
+  // pourcentage `fil.plein`, en boucle `fil.vague`, plein au repos
+  // `trait`), point d'alerte — sort d'une seule décision : les trois
+  // ne peuvent pas diverger. Au plus UNE progression (Système A4) ; priorités
   // re-triées par la sincérité (PLAN-SYNCHRO E1) : le cycle courant
   // d'abord — c'est lui que l'utilisateur attend — puis l'intégrale,
   // les rattrapages, l'attente d'envoi, l'échec, le repos horodaté.
@@ -981,18 +982,21 @@
     </div>
 
     <div class="statut" data-testid="statut">
-      {#if ligne.fil}
-        <div class="fil" data-testid="fil" aria-hidden="true">
-          {#if ligne.fil.mode === 'plein'}
-            <div class="plein" style:width="{ligne.fil.pct}%"></div>
-          {:else}
-            <div class="vague"></div>
-          {/if}
-        </div>
-      {/if}
+      <!-- A36 : le trait hitofude est l'indicateur de progression, à
+           gauche de la ligne — il se dessine au rythme du pourcentage
+           quand un dénominateur existe, en boucle sinon, et reste
+           plein et immobile au repos. La barre fine de 2 px est morte. -->
       <span class="texte">
         {#if ligne.alerte}<span class="point-alerte" aria-hidden="true"></span>{/if}
-        {#if ligne.trait}<Hitofude largeur={38} hauteur={9} />{/if}
+        {#if ligne.fil}
+          {#if ligne.fil.mode === 'plein'}
+            <Hitofude progression={ligne.fil.pct} largeur={38} hauteur={9} />
+          {:else}
+            <Hitofude anime largeur={38} hauteur={9} />
+          {/if}
+        {:else if ligne.trait}
+          <Hitofude largeur={38} hauteur={9} />
+        {/if}
         <span data-testid="progression">{ligne.texte}</span>
       </span>
       <span id="perf" data-testid="perf" data-startup={startup}>{perf}</span>
@@ -1000,11 +1004,11 @@
            (S-D1, variante A). Inhibé pendant un cycle (le glyphe tourne :
            la machine travaille déjà) ; sur échec, il devient le levier
            au plus près de la panne. -->
-      <!-- Pendant le cycle, le trait hitofude se dessine en boucle dans
-           le bouton (A28/A29 — le glyphe sync ne tourne plus). -->
+      <!-- Le bouton garde son glyphe sync, immobile (A36 : l'animation
+           vit dans le trait de la ligne, jamais ici). -->
       <button type="button" class="btn-statut" data-testid="btn-releve"
               disabled={enSynchro} onclick={() => relever(true)}>
-        {#if enSynchro}<Hitofude anime largeur={38} hauteur={9} />{:else}<span class="ms" aria-hidden="true">sync</span>{/if}
+        <span class="ms" aria-hidden="true">sync</span>
         {#if enSynchro}{t('action.synchronisation')}{:else if synchroEchec || synchroPartiel}{t('action.reessayer')}{:else}{t('action.synchroniser')}{/if}
       </button>
     </div>
@@ -1170,20 +1174,5 @@
   .point-alerte {
     width:7px; height:7px; border-radius:99px; background:var(--alert);
     flex:none;
-  }
-  /* La barre fine (A16) : 2 px au ras supérieur, par-dessus le filet —
-     déterminée quand un % honnête existe, balayage sinon. */
-  .fil {
-    position:absolute; top:-1px; left:0; right:0; height:2px;
-    overflow:hidden; pointer-events:none;
-  }
-  .fil .plein { height:100%; background:var(--accent); transition:width .3s; }
-  .fil .vague {
-    height:100%; width:28%; background:var(--accent); border-radius:2px;
-    animation:vague 1.6s ease-in-out infinite;
-  }
-  @keyframes vague {
-    from { transform:translateX(-110%); }
-    to { transform:translateX(460%); }
   }
 </style>
