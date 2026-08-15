@@ -256,6 +256,26 @@
     const page = pages.get(Math.floor(index / PAGE));
     return page ? page[index % PAGE] : null;
   }
+  // Le triage clavier (App) : la sélection se pose sans passer par le
+  // clic — même clé, même liseré, aucun rappel onselect.
+  export function selectionner(ligne) {
+    selection = cle(ligne);
+  }
+  // La ligne SOUS celle-ci. Recherche active : la suivante des
+  // résultats ; sinon l'index absolu dans les pages fenêtrées — une
+  // page voisine non servie rend null (rare : la fenêtre sert large).
+  export function suivante(ligne) {
+    const id = cle(ligne);
+    if (resultats !== null) {
+      const i = resultats.findIndex((l) => cle(l) === id);
+      return i >= 0 && i + 1 < resultats.length ? resultats[i + 1] : null;
+    }
+    for (const [p, rows] of pages) {
+      const i = rows.findIndex((l) => cle(l) === id);
+      if (i >= 0) return ligneA(p * PAGE + i + 1) ?? null;
+    }
+    return null;
+  }
   export function marquerLue(ligne) {
     const id = cle(ligne);
     for (const page of pages.values()) {

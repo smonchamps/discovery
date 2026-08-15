@@ -751,10 +751,10 @@
         if (selectionnee) transferer(selectionnee);
         break;
       case 'e':
-        if (selectionnee) archiver(selectionnee);
+        if (selectionnee) avancerApres(selectionnee, archiver);
         break;
       case 'Delete':
-        if (selectionnee) supprimer(selectionnee);
+        if (selectionnee) avancerApres(selectionnee, supprimer);
         break;
       case '/':
         champRecherche?.focus();
@@ -858,6 +858,20 @@
     liste?.recharger();
   }
 
+  function marquerVue(ligne) {
+    if (!(ligne.thread_unseen > 0)) return;
+    appel('mark_seen', {
+      accountId: ligne.account_id,
+      mailbox: ligne.mailbox,
+      uid: ligne.uid,
+      seen: true,
+    })
+      .then(() => {
+        liste.marquerLue(ligne);
+        chargerNav();
+      })
+      .catch((err) => console.error('mark_seen :', err));
+  }
   function surSelection(ligne) {
     selectionnee = ligne;
     // V-D2 : en deux volets, l'ouverture EST l'écran 03 — qui sait
@@ -865,23 +879,13 @@
     // bouge pas : seule la surface de destination change.
     if (volets === 3) lecture.ouvrir(ligne);
     else conversation.ouvrir(ligne);
-    if (ligne.thread_unseen > 0) {
-      appel('mark_seen', {
-        accountId: ligne.account_id,
-        mailbox: ligne.mailbox,
-        uid: ligne.uid,
-        seen: true,
-      })
-        .then(() => {
-          liste.marquerLue(ligne);
-          chargerNav();
-        })
-        .catch((err) => console.error('mark_seen :', err));
-    }
+    marquerVue(ligne);
   }
 
+  // archiver/supprimer disent leur succès : le triage clavier n'avance
+  // que sur un geste ABOUTI — jamais sur un écho différé ni un échec.
   async function archiver(ligne) {
-    if (gesteSurEcho(ligne)) return;
+    if (gesteSurEcho(ligne)) return false;
     try {
       await appel('archive_message', {
         accountId: ligne.account_id,
@@ -896,12 +900,14 @@
       liste.recharger();
       chargerNav();
       passeApresGeste(ligne.account_id);
+      return true;
     } catch (err) {
       console.error('archive_message :', err);
+      return false;
     }
   }
   async function supprimer(ligne) {
-    if (gesteSurEcho(ligne)) return;
+    if (gesteSurEcho(ligne)) return false;
     try {
       await appel('delete_message', {
         accountId: ligne.account_id,
@@ -915,8 +921,28 @@
       liste.recharger();
       chargerNav();
       passeApresGeste(ligne.account_id);
+      return true;
     } catch (err) {
       console.error('delete_message :', err);
+      return false;
+    }
+  }
+
+  // Le triage clavier s'enchaîne (A38) : après e/Suppr, la ligne du
+  // DESSOUS devient la sélection — capturée AVANT le geste (les lignes
+  // glissent à la resservie) ; dernière ligne : rien n'avance. En trois
+  // volets elle ouvre son volet comme au clic (vue, marquée lue) ; en
+  // 2/1 volets elle s'allume seulement — l'écran 03 ne s'impose jamais
+  // de lui-même. Conversation ouverte : le geste seul, comme avant. Le
+  // geste à la souris (boutons des volets) ne bouge pas la sélection.
+  async function avancerApres(ligne, geste) {
+    const suivante = conversation?.estOuverte() ? null : (liste?.suivante(ligne) ?? null);
+    if (!(await geste(ligne)) || !suivante) return;
+    liste?.selectionner(suivante);
+    selectionnee = suivante;
+    if (volets === 3) {
+      lecture?.ouvrir(suivante);
+      marquerVue(suivante);
     }
   }
 

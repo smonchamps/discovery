@@ -775,6 +775,51 @@ test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", 
   await dossier('reception').click();
 });
 
+test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38)', async () => {
+  // Joué APRÈS le parcours E3 : sa Corbeille compte « 3 + l'écho » —
+  // le Suppr d'ici ajouterait un écho de trop avant l'assertion. Départ
+  // d'une source fraîche (aller-retour de nav), et parcours sur des
+  // lignes SANS rôle dans la suite (« Atelier de septembre », puis la
+  // ligne dessous) : le fil Vantis (transfert PJ-D4) reste intact.
+  await page.locator('[data-testid="nav-dossier"][data-categorie="archives"]').click();
+  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  const lignes = page.locator('[data-testid="ligne"]');
+  await expect(lignes.first()).toBeVisible();
+  // La ligne du dessous se capture AVANT le geste — après, elle a
+  // glissé d'un rang.
+  let sujets = await lignes.locator('.objet').allTextContents();
+  const depart = sujets.indexOf('Atelier de septembre');
+  expect(depart).toBeGreaterThan(-1);
+  const dessous = sujets[depart + 1];
+  await lignes.nth(depart).click();
+  await page.keyboard.press('e');
+  await expect(page.locator('[data-testid="toast"]')).toContainText(
+    'Conversation archivée.',
+  );
+  // La sélection a avancé : la ligne du dessous porte le liseré ET son
+  // volet est ouvert (trois volets — comme au clic).
+  const choisie = page.locator('[data-testid="ligne"].choisie');
+  await expect(choisie).toHaveCount(1);
+  await expect(choisie.locator('.objet')).toHaveText(dessous);
+  await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(dessous);
+  // La liste FRAÎCHE d'abord (stale-while-revalidate : les lignes
+  // servies restent affichées un instant) — la ligne archivée partie,
+  // la capture de la prochaine ligne dessous est sûre.
+  await expect(
+    page.locator('[data-testid="ligne"]', { hasText: 'Atelier de septembre' }),
+  ).toHaveCount(0);
+  sujets = await lignes.locator('.objet').allTextContents();
+  const suivante = sujets[sujets.indexOf(dessous) + 1];
+  // Le geste s'enchaîne sans reprendre la souris : Suppr agit sur la
+  // sélection avancée, et avance encore.
+  await page.keyboard.press('Delete');
+  await expect(page.locator('[data-testid="toast"]')).toContainText(
+    'Conversation supprimée.',
+  );
+  await expect(choisie.locator('.objet')).toHaveText(suivante);
+  await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(suivante);
+});
+
 // ——— La course « vider puis fermer » (constat terrain du 2026-08-15) ——
 // Une sauvegarde différée partie AVANT le vidage porte encore du
 // contenu : sans sérialisation, son bilan ressuscitait le brouillon

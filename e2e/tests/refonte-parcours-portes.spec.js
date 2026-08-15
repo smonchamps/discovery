@@ -8,8 +8,10 @@
 // Abandons motivés (PASSATION §2.6) :
 // - « étoiler (s) » et « déplacer (v) » tombent avec D2 — coupés à la
 //   bascule, commandes cœur conservées, réversibles par spéc courte ;
-// - l'auto-avance après archivage (v1 ouvrait le message suivant) ne se
-//   porte pas : le prototype ferme le volet — écart assumé A6 ;
+// - l'auto-avance après archivage (v1 ouvrait le message suivant) fut
+//   d'abord un écart assumé A6 (le prototype ferme le volet), puis
+//   RÉTABLIE par A38 (2026-08-15) au raccourci seul : e/Suppr avancent
+//   la sélection à la ligne du dessous — couvert au spec ecran02 ;
 // - « deux brouillons de même sujet distincts au corps » : couvert par
 //   nature depuis PLAN-BROUILLONS — le dossier Brouillons montre les
 //   brouillons LOCAUX et leur aperçu distingue au corps, sans réseau.
