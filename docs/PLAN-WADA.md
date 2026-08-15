@@ -1,13 +1,19 @@
 # Plan — Système v2 « Wada » : la palette, la signature du vent et les dessins des pistes
 
-**Statut : GO CE le 2026-08-15 — W2-D1 à W2-D7 telles que proposées.
-E1 et E2 livrées le jour même** (E1 : police au balayage, icône 42/64,
-preuve 45/45 — commit b324966 ; E2 : le commit UI, doc v2 intégral à
-119 jetons, A35) ; **E3 attend le constat terrain CE** (une journée en
-usage réel : la palette sous les deux luminosités, le trait pendant de
-vrais cycles, la nav aux pastilles, la liste aux filets — puis clôture
-datée ici). Les verdicts chiffrés du banc (jetons neufs, remèdes A8)
-sont consignés au §4. Source : le projet Claude Design **« Amélioration
+**CHANTIER SOLDÉ le 2026-08-15 — terrain complet le jour même.** GO
+CE du matin (W2-D1 à W2-D7 telles que proposées, §4) ; E1 livrée
+(commit b324966 : police au balayage, icône 42/64, preuve 45/45) ; E2
+livrée (commit 848f286 : le commit UI unique, doc v2 intégral à 119
+jetons, A35) ; E3 jouée en usage réel — **deux retouches au constat
+CE, livrées le jour même** (commit 16d64c2, A36 : la tuile sans
+compteur, le trait hitofude devenu l'indicateur de progression, la
+barre fine de 2 px morte) — **puis terrain validé, sans autre
+retouche**. CI verte sur les trois commits, gate pré-push complète à
+chacun ; le projet Claude Design est réaligné sur la version livrée
+(A36). La v2 « Wada » vit : palette, signature du vent, nav et liste
+aux dessins des pistes, marges symétriques, plus un tiret cadratin.
+Les verdicts chiffrés du banc (jetons neufs, remèdes A8) restent
+consignés au §4. Source : le projet Claude Design **« Amélioration
 système de couleurs »**
 (<https://claude.ai/design/p/19bf2156-10a1-404f-9450-317380da9c83>),
 fichier **`Systeme v2.dc.html`** — l'évolution du Système de référence
@@ -277,8 +283,9 @@ chargement, en boucle pendant un cycle sans dénominateur, plein et
 immobile au repos — la **barre fine de 2 px disparaît du Système**
 (le composant Hitofude gagne la prop `progression`, la transition
 .3s reprend le geste de l'ancienne barre) ; le bouton garde son
-glyphe `sync`, immobile. Le terrain continue — la clôture attend le
-verdict de la journée.
+glyphe `sync`, immobile. **Terrain validé par le CE le 2026-08-15,
+après la journée d'usage réel — aucune retouche au-delà de ces deux-là.
+Le plan se clôt à ce constat.**
 
 ## 6. Ce qui ne bouge pas
 
@@ -291,12 +298,17 @@ sandbox (S1) ; les textes hors cadratins ; les budgets PLAN.md ; la
 règle des trois régions et la fente d'avis (qui perd seulement son
 filet gauche).
 
-## 7. Le constat de clôture
+## 7. Le constat de clôture — tenu le 2026-08-15
 
-Vérifiable, pas déclaratif : (1) `docs/design/systeme.dc.html` égale
-la source v2 corrigée, au diff près des fins de ligne ; (2)
-`coherence-systeme.mjs` vert au contrat élargi ; (3) `contraste.mjs`
-vert avec les paires nouvelles — plus aucune paire dessinée sous son
-seuil ; (4) la suite e2e verte (CI de référence — le local flake) ;
-(5) l'icône régénérée visible aux quatre tailles ; (6) le constat
-terrain CE consigné ici avec sa date.
+Vérifiable, pas déclaratif, chaque point constaté à la clôture :
+(1) le dépôt et le projet Design portent la même version livrée —
+mieux que l'énoncé initial : la source d'étude a été réalignée sur le
+normatif après A35 puis après A36 ; (2) `coherence-systeme.mjs` vert
+au contrat élargi (119 valeurs, les trois commits) ; (3)
+`contraste.mjs` vert aux 26 paires — plus aucune paire dessinée sous
+son seuil ; (4) la suite e2e verte : 69/69 en local ET la CI de
+référence verte sur b324966, 848f286 et 16d64c2 ; (5) l'icône
+régénérée, vérifiée aux quatre tailles au commit E1 et au terrain ;
+(6) le constat terrain CE : journée d'usage réel du 2026-08-15, deux
+retouches (A36) livrées le jour même, validation finale sans autre
+retouche. **PLAN-WADA est soldé.**
