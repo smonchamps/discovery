@@ -5,9 +5,11 @@ import './systeme.css';
 import { mount } from 'svelte';
 import { appliquerTheme, restaurerTheme, THEMES } from './lib/theme.js';
 import { restaurerLangue } from './lib/texte.svelte.js';
+import { restaurerVolets } from './lib/volets.svelte.js';
 import App from './App.svelte';
 
 restaurerTheme();
+restaurerVolets();
 await restaurerLangue();
 
 const app = mount(App, { target: document.getElementById('app') });
@@ -27,8 +29,11 @@ const attente = setInterval(() => {
 window.__mesure = {
   themes: THEMES,
   etat() {
+    // Le volet de lecture n'est monté qu'en mode 3 volets (PLAN-VOLETS)
+    // — le banc mesure toujours le défaut, la garde évite juste un
+    // crash si l'état a été basculé à la main.
     const { liste, lecture } = app.api();
-    return { ...liste.etat(), ...lecture.etat() };
+    return { ...liste.etat(), ...(lecture ? lecture.etat() : {}) };
   },
   async page(index) {
     const { liste } = app.api();

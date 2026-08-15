@@ -12,6 +12,7 @@
     FICHES, appliquerTheme, themeActuel, suiviOs, appliquerSuiviOs,
   } from './lib/theme.js';
   import { t, LANGUES, langueActuelle, appliquerLangue } from './lib/texte.svelte.js';
+  import { voletsActuels, appliquerVolets } from './lib/volets.svelte.js';
   import { activation } from './lib/clavier.js';
   import { appel } from './lib/transport.js';
   import GuichetCompte from './GuichetCompte.svelte';
@@ -66,11 +67,16 @@
   let auto = $state(suiviOs());
   let bulles = $state(true);
   let langue = $state(langueActuelle());
+  // Disposition (PLAN-VOLETS, V-D4) : le nombre de volets, un
+  // localStorage comme le thème — application immédiate, le geste du
+  // thème ; rien à faire échouer, donc rien à faire revenir.
+  let volets = $state(voletsActuels());
 
   export function ouvrir() {
     actif = themeActuel();
     auto = suiviOs();
     langue = langueActuelle();
+    volets = voletsActuels();
     ajoutOuvert = false;
     retrait = null;
     retraitErreur = null;
@@ -134,6 +140,10 @@
       // mentir — il revient à l'état réellement persisté.
       if (bulles === voulu) bulles = !voulu;
     });
+  }
+  function changerVolets(n) {
+    appliquerVolets(n);
+    volets = voletsActuels();
   }
   function changerLangue(code) {
     const avant = langueActuelle();
@@ -292,6 +302,22 @@
                         onchange={(e) => changerLangue(e.target.value)}>
                   {#each LANGUES as code (code)}
                     <option value={code}>{t(`langue.${code}`)}</option>
+                  {/each}
+                </select>
+              </div>
+              <div class="reglage">
+                <span class="libelles">
+                  <span class="nom">{t('reglages.volets')}</span>
+                  <span class="desc">{t('reglages.voletsDesc')}</span>
+                </span>
+                <!-- L'option « Un volet » n'existe pas encore : elle
+                     arrive avec le tiroir de nav (PLAN-VOLETS E2) —
+                     jamais un mode cassé à l'écran. -->
+                <select class="langue" data-testid="affichage-volets"
+                        aria-label={t('reglages.volets')} value={String(volets)}
+                        onchange={(e) => changerVolets(Number(e.target.value))}>
+                  {#each [3, 2] as n (n)}
+                    <option value={String(n)}>{t(`volets.${n}`)}</option>
                   {/each}
                 </select>
               </div>
@@ -530,8 +556,9 @@
     transform:translateX(16px); border-color:var(--accent);
   }
 
-  /* Le sélecteur de langue : la grammaire des boutons (32 px, jetons) —
-     un <select> natif, clavier et lecteur d'écran compris. */
+  /* Les sélecteurs (Langue, Disposition) : la grammaire des boutons
+     (32 px, jetons) — un <select> natif, clavier et lecteur d'écran
+     compris. */
   .langue {
     height:32px; padding:0 10px; flex:none; font:inherit; font-size:13px;
     color:var(--ink); background:var(--surface);

@@ -211,6 +211,11 @@ export const EN = {
   'reglages.sombreAutoDesc': 'Follow the system dark setting: “Night” shows while it is on, your chosen theme returns as soon as it turns off.',
   'reglages.langue': 'Language',
   'reglages.langueDesc': 'The interface language, applied immediately.',
+  'reglages.volets': 'Layout',
+  'reglages.voletsDesc':
+    'How many panes the main screen shows. With two panes, the list takes the full width and reading opens full screen.',
+  'volets.3': 'Three panes',
+  'volets.2': 'Two panes',
   'reglages.bulles': 'Arrival notifications',
   'reglages.bullesDesc': 'A system notification announces new messages at sync. Turning it off never stops the sync itself.',
   'reglages.noteRaccourcis': 'In a text field, letters are letters again — only Esc keeps a meaning.',

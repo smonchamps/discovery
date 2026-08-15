@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wind — Volets d’affichage</title>
+<style>
+/* ==========================================================================
+   Wind — maquette PLAN-VOLETS · jetons Clarity (systeme.dc.html)
+   Trois modes : 3 volets (défaut), 2 volets, 1 volet + tiroir.
+   La bascule se joue par la VRAIE porte (Réglages > Affichage,
+   rangée « Disposition ») ou par la barre de maquette.
+   Thème par défaut : nature (clair) · nuit via prefers-color-scheme.
+   ========================================================================== */
+:root{
+  --bg:#f0f2ef; --panel:#eaece9; --surface:#ffffff; --ink:#232725;
+  --ink2:#4d534f; --muted:#5c625e; --border:#dadfda; --accent:#2f6e5b;
+  --accentH:#26594a; --sel:#e6ede9; --alert:#8c2f22; --onAccent:#ffffff;
+  --shadow:0 2px 8px rgba(35,39,37,.08); --scrim:rgba(35,39,37,.28);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-t]){
+    --bg:#1b1e21; --panel:#23272b; --surface:#2b3034; --ink:#edefed;
+    --ink2:#b7bebb; --muted:#929a96; --border:#394045; --accent:#57a88f;
+    --accentH:#6cbda3; --sel:#313f39; --alert:#ea9a90; --onAccent:#11201b;
+    --shadow:0 2px 12px rgba(0,0,0,.40); --scrim:rgba(0,0,0,.55);
+  }
+}
+:root[data-t="nature"]{ --bg:#f0f2ef; --panel:#eaece9; --surface:#ffffff; --ink:#232725; --ink2:#4d534f; --muted:#5c625e; --border:#dadfda; --accent:#2f6e5b; --accentH:#26594a; --sel:#e6ede9; --alert:#8c2f22; --onAccent:#ffffff; --shadow:0 2px 8px rgba(35,39,37,.08); --scrim:rgba(35,39,37,.28); }
+:root[data-t="air"]{ --bg:#eef2f5; --panel:#e3e9ee; --surface:#ffffff; --ink:#22303a; --ink2:#46545e; --muted:#5e686f; --border:#d4dde3; --accent:#3a7aa1; --accentH:#326d92; --sel:#e0ecf3; --alert:#8c2f22; --onAccent:#ffffff; --shadow:0 2px 8px rgba(34,48,58,.09); --scrim:rgba(34,48,58,.26); }
+:root[data-t="nuit"]{ --bg:#1b1e21; --panel:#23272b; --surface:#2b3034; --ink:#edefed; --ink2:#b7bebb; --muted:#929a96; --border:#394045; --accent:#57a88f; --accentH:#6cbda3; --sel:#313f39; --alert:#ea9a90; --onAccent:#11201b; --shadow:0 2px 12px rgba(0,0,0,.40); --scrim:rgba(0,0,0,.55); }
+
+*,*::before,*::after{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+body{
+  background:var(--bg); color:var(--ink); overflow:hidden;
+  font:400 15px/1.65 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+button{ font:inherit; color:inherit; background:none; border:none; padding:0; cursor:pointer; text-align:left; }
+select{ font:inherit; color:var(--ink); }
+:is(button,select,[tabindex]):focus-visible{ outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+@media (prefers-reduced-motion: reduce){ *,*::before,*::after{ animation:none!important; transition:none!important; } }
+
+.ic{ width:16px; height:16px; flex:none; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; vertical-align:-3px; }
+.ic.miroir{ transform:scaleX(-1); }
+
+/* ---- barre maquette (hors produit) ---- */
+.protobar{
+  height:44px; display:flex; align-items:center; gap:14px; padding:0 14px;
+  background:var(--ink); color:var(--bg); font-size:12px;
+}
+.protobar .titre{ font-weight:600; letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
+.protobar .note{ flex:1; opacity:.75; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.seg{ display:flex; border:1px solid color-mix(in srgb, var(--bg) 35%, transparent); border-radius:6px; overflow:hidden; flex:none; }
+.seg button{ padding:4px 12px; font-size:12px; color:var(--bg); opacity:.75; }
+.seg button[aria-pressed="true"]{ background:var(--accent); color:var(--onAccent); opacity:1; font-weight:600; }
+.protobar select{
+  background:transparent; color:var(--bg); border:1px solid color-mix(in srgb, var(--bg) 35%, transparent);
+  border-radius:6px; padding:3px 6px; font-size:12px;
+}
+.protobar select option{ color:#232725; }
+.bandeau{
+  height:30px; display:flex; align-items:center; gap:8px; padding:0 14px;
+  background:var(--panel); border-bottom:1px solid var(--border);
+  font-size:12px; color:var(--ink2); white-space:nowrap; overflow:hidden;
+}
+.bandeau b{ color:var(--ink); }
+.bandeau .ref{ margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+
+/* ---- l’application ---- */
+.app{
+  height:calc(100vh - 74px); display:flex; flex-direction:column;
+  position:relative; background:var(--bg); overflow:hidden; min-width:1000px;
+}
+.entete{
+  height:60px; flex:none; background:var(--surface);
+  border-bottom:1px solid var(--border); display:flex;
+  align-items:center; gap:20px; padding:0 24px;
+}
+.btn-tiroir{
+  width:32px; height:32px; display:none; flex:none;
+  align-items:center; justify-content:center; color:var(--ink2);
+  background:var(--surface); border:1px solid var(--border); border-radius:6px;
+}
+.btn-tiroir:hover{ background:var(--sel); color:var(--ink); }
+[data-mode="1"] .btn-tiroir{ display:inline-flex; }
+.marque{
+  font-size:15px; font-weight:600; width:212px; color:var(--ink);
+  display:flex; align-items:center; gap:10px; flex:none;
+}
+[data-mode="1"] .marque{ width:auto; }
+.marque-tuile{
+  width:24px; height:24px; border-radius:6px; flex:none;
+  background:#e2ebe8; color:#365a4f;
+  display:flex; align-items:center; justify-content:center;
+}
+.marque-tuile svg{ width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:3; stroke-linecap:round; stroke-linejoin:round; }
+.recherche{
+  flex:1; height:32px; display:flex; align-items:center; gap:10px;
+  padding:0 14px; font-size:13px; color:var(--muted);
+  background:var(--bg); border:1px solid var(--border); border-radius:6px;
+}
+.btn{
+  height:32px; padding:0 16px; display:inline-flex; align-items:center;
+  gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
+  border:1px solid var(--border); border-radius:6px; cursor:pointer;
+}
+.btn:hover{ background:var(--sel); }
+.btn.principal{ font-weight:600; color:var(--onAccent); background:var(--accent); border-color:var(--accent); }
+.btn.principal:hover{ background:var(--accentH); border-color:var(--accentH); }
+
+/* ---- la grille des volets : LE cœur de la maquette ---- */
+.colonnes{ flex:1; display:grid; grid-template-columns:236px 400px minmax(0,1fr); min-height:0; }
+[data-mode="2"] .colonnes{ grid-template-columns:236px minmax(0,1fr); }
+[data-mode="1"] .colonnes{ grid-template-columns:minmax(0,1fr); }
+[data-mode="2"] .volet-lecture, [data-mode="1"] .volet-lecture{ display:none; }
+[data-mode="1"] .nav{ display:none; }
+
+/* ---- nav ---- */
+.nav{
+  background:var(--panel); border-right:1px solid var(--border);
+  padding:20px 16px; display:flex; flex-direction:column; gap:4px;
+  overflow:auto; min-height:0;
+}
+.nav .titre-nav{
+  font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--muted); font-weight:600; padding:0 12px; margin:14px 0 6px;
+}
+.nav .titre-nav:first-child{ margin-top:0; }
+.rang{
+  display:flex; align-items:center; gap:10px; height:36px; flex:none;
+  padding:0 12px; border-radius:6px; cursor:pointer;
+  border:1px solid transparent; font-size:13px; color:var(--ink2);
+  width:100%;
+}
+.rang:hover{ background:var(--sel); border-color:var(--border); }
+.rang .ic{ color:var(--muted); }
+.rang.actif{
+  background:var(--surface); border-color:var(--border);
+  border-left:2px solid var(--accent); box-shadow:var(--shadow);
+  font-weight:600; color:var(--ink);
+}
+.rang.actif .ic{ color:var(--accent); }
+.rang .compteur{ margin-left:auto; font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.rang.actif .compteur{ color:var(--accent); font-weight:600; }
+
+/* ---- liste ---- */
+.liste{
+  background:var(--bg); border-right:1px solid var(--border);
+  display:flex; flex-direction:column; min-height:0; min-width:0;
+}
+[data-mode="1"] .liste{ border-right:none; }
+.onglets{
+  height:44px; flex:none; display:flex; align-items:center; gap:4px;
+  padding:0 14px; border-bottom:1px solid var(--border);
+}
+.onglet{
+  height:28px; padding:0 12px; display:inline-flex; align-items:center;
+  font-size:13px; color:var(--ink2); border-radius:6px;
+}
+.onglet:hover{ background:var(--sel); }
+.onglet.actif{ background:var(--surface); border:1px solid var(--border); font-weight:600; color:var(--ink); box-shadow:var(--shadow); }
+.cadre{ flex:1; overflow:auto; min-height:0; padding:6px 0; }
+.ligne{
+  display:block; width:100%; padding:10px 16px 12px; cursor:pointer;
+  border-left:2px solid transparent;
+}
+.ligne:hover{ background:var(--sel); }
+.ligne.choisie{ background:var(--surface); border-left-color:var(--accent); box-shadow:var(--shadow); }
+.ligne .l1{ display:flex; align-items:baseline; gap:10px; }
+.ligne .exp{ font-size:13px; font-weight:600; color:var(--ink2); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ligne.nonlu .exp{ color:var(--ink); }
+.ligne .heure{ font-size:12px; color:var(--muted); flex:none; font-variant-numeric:tabular-nums; }
+.ligne .objet{
+  margin:2px 0 0; font-size:13px; color:var(--ink2);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ligne.nonlu .objet{ font-weight:600; color:var(--ink); }
+.ligne .apercu{
+  margin:2px 0 0; font-size:12.5px; color:var(--muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ligne .puces{ display:flex; gap:6px; margin-top:6px; }
+.ligne .puce{
+  height:22px; padding:0 8px; display:inline-flex; align-items:center; gap:6px;
+  font-size:11.5px; color:var(--ink2); background:var(--surface);
+  border:1px solid var(--border); border-radius:6px;
+}
+.pastille-nonlu{
+  width:7px; height:7px; border-radius:99px; background:var(--accent);
+  flex:none; align-self:center;
+}
+
+/* ---- volet de lecture (mode 3) ---- */
+.volet-lecture{
+  background:var(--bg); padding:12px 20px 20px; min-width:0;
+  display:flex; flex-direction:column; min-height:0;
+}
+.vide{ margin:auto; font-size:13px; color:var(--muted); text-align:center; padding:40px; line-height:1.6; }
+.carte{
+  flex:1; background:var(--surface); border:1px solid var(--border);
+  border-left:2px solid var(--accent); border-radius:10px;
+  box-shadow:var(--shadow); display:flex; flex-direction:column;
+  min-height:0; overflow:hidden;
+}
+.carte .tete-msg{ padding:26px 30px 22px; border-bottom:1px solid var(--border); display:flex; flex-direction:column; gap:14px; }
+.carte .titre-msg{ margin:0; font-size:24px; font-weight:600; line-height:1.2; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.metas{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.puce-meta{
+  height:32px; padding:0 12px; display:inline-flex; align-items:center; gap:8px;
+  font-size:13px; color:var(--ink2); background:var(--surface);
+  border:1px solid var(--border); border-radius:6px; white-space:nowrap;
+}
+.dernier{ font-size:12px; color:var(--muted); }
+.auteur{ padding:26px 30px 0; display:flex; flex-direction:column; gap:4px; }
+.auteur .nom{ font-size:15px; font-weight:600; }
+.auteur .adresse{ font-size:13px; color:var(--muted); }
+.corps{ flex:1; margin:18px 30px 0; min-height:0; overflow:auto; font-size:14px; line-height:1.7; color:var(--ink2); }
+.corps p{ margin:0 0 14px; }
+.actions{ padding:18px 30px; border-top:1px solid var(--border); display:flex; gap:12px; margin-top:18px; flex-wrap:wrap; }
+
+/* ---- barre d’état ---- */
+.statut{
+  height:36px; flex:none; background:var(--panel);
+  border-top:1px solid var(--border); display:flex; align-items:center;
+  gap:14px; padding:0 24px; font-size:12px; color:var(--muted);
+}
+.statut .texte{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.btn-statut{
+  height:26px; padding:0 12px; display:inline-flex; align-items:center; gap:7px;
+  font-size:12px; font-weight:600; color:var(--ink2);
+  background:var(--surface); border:1px solid var(--border); border-radius:6px;
+}
+.btn-statut:hover{ background:var(--sel); color:var(--ink); }
+
+/* ---- écran 03 : le plein écran (modes 1 et 2) ---- */
+.ecran03{
+  position:absolute; inset:0; z-index:3; background:var(--bg);
+  display:none; flex-direction:column;
+}
+.ecran03.ouvert{ display:flex; }
+.ecran03 .entete03{
+  height:60px; flex:none; background:var(--surface);
+  border-bottom:1px solid var(--border); display:flex;
+  align-items:center; gap:16px; padding:0 24px;
+}
+.ecran03 .scene{ flex:1; min-height:0; padding:20px 10vw 24px; display:flex; }
+.ecran03 .carte{ max-width:980px; margin:0 auto; width:100%; }
+
+/* ---- tiroir de nav (mode 1) ---- */
+.scrim{ position:absolute; inset:0; z-index:4; background:var(--scrim); display:none; }
+.scrim.ouvert{ display:block; }
+.tiroir{
+  position:absolute; top:0; bottom:0; left:0; width:268px; z-index:5;
+  background:var(--panel); border-right:1px solid var(--border);
+  box-shadow:var(--shadow); display:none; flex-direction:column;
+  padding:0;
+}
+.tiroir.ouvert{ display:flex; }
+.tiroir .tete-tiroir{
+  height:60px; flex:none; display:flex; align-items:center; gap:12px;
+  padding:0 16px 0 20px; border-bottom:1px solid var(--border);
+  font-weight:600; font-size:14px;
+}
+.tiroir .tete-tiroir .btn-tiroir{ display:inline-flex; margin-left:auto; }
+.tiroir .contenu-tiroir{ flex:1; overflow:auto; padding:20px 16px; display:flex; flex-direction:column; gap:4px; }
+
+/* ---- Réglages (surimpression) ---- */
+.scrim-reglages{
+  position:absolute; inset:0; z-index:6; background:var(--scrim);
+  display:none; align-items:center; justify-content:center; padding:36px;
+}
+.scrim-reglages.ouvert{ display:flex; }
+.carte-reglages{
+  width:800px; height:min(640px, 100%); background:var(--surface);
+  border:1px solid var(--border); border-left:2px solid var(--accent);
+  border-radius:10px; box-shadow:var(--shadow);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.carte-reglages .tete-r{
+  height:48px; flex:none; padding:0 16px 0 22px; display:flex;
+  align-items:center; gap:14px; border-bottom:1px solid var(--border);
+}
+.carte-reglages .tete-r .titre-r{ font-size:15px; font-weight:600; flex:1; }
+.fermer{
+  height:32px; width:32px; padding:0; display:inline-flex; flex:none;
+  align-items:center; justify-content:center; color:var(--ink2);
+  background:var(--surface); border:1px solid var(--border); border-radius:6px;
+}
+.fermer:hover{ background:var(--sel); }
+.milieu{ flex:1; display:flex; min-height:0; }
+.rail{
+  width:220px; flex:none; background:var(--panel);
+  border-right:1px solid var(--border); padding:20px 16px;
+  display:flex; flex-direction:column; gap:4px; overflow:auto;
+}
+.volet-r{ flex:1; padding:22px; display:flex; flex-direction:column; gap:14px; overflow:auto; min-width:0; }
+.kicker{ margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600; }
+.rangees{ display:flex; flex-direction:column; gap:6px; }
+.reglage{ display:flex; align-items:center; gap:16px; padding:14px 16px; border-radius:10px; }
+.libelles{ display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
+.libelles .nom{ font-size:14px; font-weight:600; }
+.libelles .desc{ font-size:12px; line-height:1.5; color:var(--muted); }
+.bascule{
+  width:38px; height:22px; flex:none; padding:2px; cursor:pointer;
+  display:inline-flex; align-items:center;
+  background:var(--panel); border:1px solid var(--border);
+  border-radius:11px; transition:background .12s ease;
+}
+.bille{ width:16px; height:16px; border-radius:50%; background:var(--surface); border:1px solid var(--border); transition:transform .12s ease; }
+.bascule[aria-checked="true"]{ background:var(--accent); border-color:var(--accent); }
+.bascule[aria-checked="true"] .bille{ transform:translateX(16px); border-color:var(--accent); }
+.select-r{
+  height:32px; padding:0 10px; flex:none; font-size:13px;
+  color:var(--ink); background:var(--surface);
+  border:1px solid var(--border); border-radius:6px; cursor:pointer;
+}
+.pied-r{ flex:none; padding:14px 22px 18px; border-top:1px solid var(--border); display:flex; align-items:center; }
+.pied-r .btn{ margin-left:auto; font-weight:600; color:var(--onAccent); background:var(--accent); border-color:var(--accent); }
+.pied-r .btn:hover{ background:var(--accentH); border-color:var(--accentH); }
+.note-maquette{
+  margin:4px 16px 0; padding:10px 14px; font-size:12px; line-height:1.55;
+  color:var(--ink2); background:var(--panel);
+  border:1px solid var(--border); border-left:2px solid var(--accent);
+  border-radius:8px;
+}
+</style>
+
+<body data-mode="3">
+
+<!-- barre maquette : hors produit -->
+<div class="protobar">
+  <span class="titre">Wind · maquette PLAN-VOLETS</span>
+  <span class="note">La bascule se joue par la vraie porte — Réglages&nbsp;›&nbsp;Affichage&nbsp;›&nbsp;Disposition — ou ici :</span>
+  <div class="seg" role="group" aria-label="Mode d’affichage">
+    <button type="button" data-seg="3" aria-pressed="true" onclick="setMode(3)">3 volets</button>
+    <button type="button" data-seg="2" aria-pressed="false" onclick="setMode(2)">2 volets</button>
+    <button type="button" data-seg="1" aria-pressed="false" onclick="setMode(1)">1 volet</button>
+  </div>
+  <select aria-label="Thème" onchange="document.documentElement.dataset.t=this.value; if(!this.value) delete document.documentElement.dataset.t;">
+    <option value="">Thème : auto</option>
+    <option value="nature">La nature</option>
+    <option value="air">L’air</option>
+    <option value="nuit">La nuit</option>
+  </select>
+</div>
+<div class="bandeau" id="bandeau"></div>
+
+<div class="app" id="app">
+  <header class="entete">
+    <button type="button" class="btn-tiroir" id="btnTiroir" aria-label="Ouvrir la navigation"
+            aria-expanded="false" onclick="ouvrirTiroir()">
+      <svg class="ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <span class="marque"><span class="marque-tuile" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="13" width="34" height="23" rx="3"/><polyline points="9,16 24,27 39,16"/></svg></span>Wind</span>
+    <span class="recherche"><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>Rechercher…</span>
+    <button type="button" class="btn principal"><svg class="ic" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Écrire</button>
+    <button type="button" class="btn" onclick="ouvrirReglages()"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1Z"/></svg>Réglages</button>
+  </header>
+
+  <div class="colonnes">
+    <nav class="nav" id="nav" aria-label="Navigation"></nav>
+
+    <section class="liste" aria-label="Liste des messages">
+      <div class="onglets">
+        <button type="button" class="onglet actif">Tous</button>
+        <button type="button" class="onglet">Non lus</button>
+        <button type="button" class="onglet">Suivis</button>
+      </div>
+      <div class="cadre" id="cadreListe"></div>
+    </section>
+
+    <main class="volet-lecture" id="voletLecture" aria-label="Lecture">
+      <p class="vide">Sélectionnez un message pour le lire ici.<br>
+      <span style="font-size:12px">(mode 3 volets — le volet de lecture vit dans la grille)</span></p>
+    </main>
+  </div>
+
+  <div class="statut">
+    <span class="texte">À jour · dernière synchronisation il y a 2 minutes</span>
+    <span style="font-variant-numeric:tabular-nums">1 254 conversations · 3,1 ms</span>
+    <button type="button" class="btn-statut"><svg class="ic" style="width:14px;height:14px" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>Synchroniser</button>
+  </div>
+
+  <!-- écran 03 : l’ouverture plein écran des modes 1 et 2 -->
+  <div class="ecran03" id="ecran03" role="region" aria-label="Lecture plein écran">
+    <div class="entete03">
+      <button type="button" class="btn" onclick="fermerEcran03()">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>Retour</button>
+      <span style="font-size:13px; color:var(--muted)">Échap rend la liste intacte — défilement, pages, sélection</span>
+      <span style="margin-left:auto"></span>
+      <button type="button" class="btn principal"><svg class="ic" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Écrire</button>
+    </div>
+    <div class="scene"><div class="carte" id="carte03"></div></div>
+  </div>
+
+  <!-- tiroir de nav : mode 1 -->
+  <div class="scrim" id="scrimTiroir" onclick="fermerTiroir()"></div>
+  <div class="tiroir" id="tiroir" role="dialog" aria-label="Navigation">
+    <div class="tete-tiroir">
+      <span class="marque-tuile" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="7" y="13" width="34" height="23" rx="3"/><polyline points="9,16 24,27 39,16"/></svg></span>
+      Wind
+      <button type="button" class="btn-tiroir fermer" aria-label="Fermer la navigation" onclick="fermerTiroir()">
+        <svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    </div>
+    <div class="contenu-tiroir" id="navTiroir"></div>
+    <p class="note-maquette" style="margin:0 16px 16px">Le tiroir : la Nav réutilisée telle
+    quelle, surimpression sous scrim. Choisir un dossier ferme ; Échap et
+    le scrim aussi. <b>E2</b> — le glyphe <code>menu</code> exige une
+    régénération de la police (43&nbsp;→&nbsp;44).</p>
+  </div>
+
+  <!-- Réglages -->
+  <div class="scrim-reglages" id="scrimReglages">
+    <div class="carte-reglages" role="dialog" aria-modal="true" aria-label="Réglages">
+      <div class="tete-r">
+        <span class="titre-r">Réglages</span>
+        <button type="button" class="fermer" aria-label="Fermer" onclick="fermerReglages()">
+          <svg class="ic" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="milieu">
+        <div class="rail" id="railReglages"></div>
+        <div class="volet-r">
+          <p class="kicker">Affichage</p>
+          <div class="rangees">
+            <div class="reglage">
+              <span class="libelles">
+                <span class="nom">Sombre automatique</span>
+                <span class="desc">Suivre le réglage sombre du système : «&nbsp;La nuit&nbsp;» s’affiche quand il est actif, le thème choisi revient dès qu’il s’éteint.</span>
+              </span>
+              <button type="button" class="bascule" role="switch" aria-checked="true"
+                      onclick="this.setAttribute('aria-checked', this.getAttribute('aria-checked')!=='true')">
+                <span class="bille"></span></button>
+            </div>
+            <div class="reglage">
+              <span class="libelles">
+                <span class="nom">Langue</span>
+                <span class="desc">La langue de l’interface, appliquée immédiatement.</span>
+              </span>
+              <select class="select-r" aria-label="Langue"><option>Français</option><option>English</option></select>
+            </div>
+            <div class="reglage" style="background:var(--sel); border-radius:10px">
+              <span class="libelles">
+                <span class="nom">Disposition</span>
+                <span class="desc">Le nombre de volets de l’écran principal. En un ou deux volets, la lecture s’ouvre en plein écran&nbsp;; en un volet, la navigation vit dans un tiroir.</span>
+              </span>
+              <select class="select-r" id="selVolets" aria-label="Disposition" onchange="setMode(Number(this.value))">
+                <option value="3">Trois volets</option>
+                <option value="2">Deux volets</option>
+                <option value="1">Un volet</option>
+              </select>
+            </div>
+          </div>
+          <p class="note-maquette">La rangée neuve, dans la grammaire exacte de «&nbsp;Langue&nbsp;»
+          (sélecteur natif, application immédiate, sans confirmation — le geste
+          du thème). Préférence <code>localStorage['wind-volets']</code>, défaut
+          trois volets&nbsp;: qui ne touche à rien ne voit rien changer (V-D4).</p>
+        </div>
+      </div>
+      <div class="pied-r">
+        <button type="button" class="btn" onclick="fermerReglages()">Terminé</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- données factices ---------- */
+const MESSAGES = [
+  { id:1, exp:'Claire Vasseur', heure:'09:41', objet:'Relecture du contrat Vantis',
+    apercu:'J’ai repris les clauses 4 et 7 comme convenu — la limite de responsabilité est maintenant alignée sur…',
+    fil:3, nonlu:true,
+    corps:['Bonjour,','J’ai repris les clauses 4 et 7 comme convenu — la limite de responsabilité est maintenant alignée sur le plafond discuté en réunion. Le document annoté est joint.','Deux points restent ouverts : la durée de l’engagement de confidentialité, et la juridiction en cas de litige. Je propose qu’on tranche les deux jeudi.','Bien à vous,','Claire'] },
+  { id:2, exp:'Amir Beloufa', heure:'09:12', objet:'Compte rendu — comité produit du 14',
+    apercu:'Le comité a validé la feuille de route du trimestre. Trois arbitrages notables à retenir…',
+    fil:1, nonlu:true,
+    corps:['Bonjour à tous,','Le comité a validé la feuille de route du trimestre. Trois arbitrages notables : la refonte du parcours d’accueil passe en priorité 1, l’intégration calendrier glisse d’un mois, et le chantier de recherche reste gelé.','Le compte rendu complet est dans le dossier partagé.','Amir'] },
+  { id:3, exp:'Léa Fontan', heure:'08:56', objet:'Photos du week-end',
+    apercu:'Comme promis, les photos de samedi ! Celle du phare est ma préférée — je crois que…',
+    fil:2, nonlu:false, pieces:4,
+    corps:['Salut !','Comme promis, les photos de samedi ! Celle du phare est ma préférée — je crois que tu vas comprendre pourquoi en la voyant.','On refait ça bientôt ?','Léa'] },
+  { id:4, exp:'Banque de l’Ouest', heure:'08:30', objet:'Votre relevé de mars est disponible',
+    apercu:'Votre relevé de compte est disponible dans votre espace client. Pour le consulter…',
+    fil:1, nonlu:false,
+    corps:['Madame, Monsieur,','Votre relevé de compte du mois de mars est disponible dans votre espace client, rubrique « Mes documents ».','Ceci est un message automatique.'] },
+  { id:5, exp:'Marc Deslauriers', heure:'hier', objet:'Re: Budget de la salle commune',
+    apercu:'D’accord pour le devis B, mais il faut qu’on garde une marge pour la peinture. Je propose…',
+    fil:6, nonlu:false,
+    corps:['Bonsoir,','D’accord pour le devis B, mais il faut qu’on garde une marge pour la peinture. Je propose de plafonner la première tranche à 4 800 €.','On en parle à l’assemblée ?','Marc'] },
+  { id:6, exp:'L’Hebdo des sciences', heure:'hier', objet:'Cette semaine : la mémoire des glaciers',
+    apercu:'Au sommaire : ce que les carottes de glace racontent du climat d’il y a 800 000 ans…',
+    fil:1, nonlu:false,
+    corps:['Au sommaire cette semaine :','— Ce que les carottes de glace racontent du climat d’il y a 800 000 ans.','— Entretien : pourquoi les abysses restent moins cartographiées que Mars.','— La question des lecteurs : peut-on entendre une aurore boréale ?'] },
+  { id:7, exp:'Nadia Cherki', heure:'mar.', objet:'Créneau pour la répétition générale',
+    apercu:'La salle est libre jeudi de 18 h à 21 h. Si ça convient à tout le monde, je réserve…',
+    fil:4, nonlu:false,
+    corps:['Bonjour,','La salle est libre jeudi de 18 h à 21 h. Si ça convient à tout le monde, je réserve dès demain matin.','Dites-moi vite,','Nadia'] },
+  { id:8, exp:'Atelier Méridien', heure:'mar.', objet:'Votre commande est en route',
+    apercu:'Bonne nouvelle : votre commande n° 8841 a été expédiée ce matin. Suivi disponible…',
+    fil:1, nonlu:false,
+    corps:['Bonjour,','Bonne nouvelle : votre commande n° 8841 a été expédiée ce matin.','L’atelier vous remercie de votre confiance.'] },
+];
+
+const DOSSIERS = [
+  ['Boîtes', null],
+  ['Réception', 3, 'M4 8l8 5 8-5M4 6h16v12H4z', true],
+  ['Envoyés', null, 'M22 2 11 13M22 2l-7 20-4-9-9-4Z'],
+  ['Brouillons', 2, 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'],
+  ['Indésirables', null, 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z'],
+  ['Archives', null, 'M21 8v13H3V8M1 3h22v5H1zM10 12h4'],
+  ['Corbeille', null, 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6'],
+  ['Comptes', null],
+  ['Tous les comptes', null, 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75', true],
+  ['claire@courriel.fr', null, 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'],
+  ['pro@courriel.fr', null, 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'],
+];
+
+/* ---------- état ---------- */
+let mode = 3;
+let choisie = null;
+const lus = new Set(MESSAGES.filter(m => !m.nonlu).map(m => m.id));
+
+/* ---------- rendus ---------- */
+function ic(d){ return `<svg class="ic" viewBox="0 0 24 24"><path d="${d}"/></svg>`; }
+
+function rendreNav(cible){
+  cible.innerHTML = DOSSIERS.map(([nom, n, d, actif]) => d
+    ? `<button type="button" class="rang${actif ? ' actif' : ''}" onclick="clicNav(this)">${ic(d)}${nom}${n ? `<span class="compteur">${n}</span>` : ''}</button>`
+    : `<p class="titre-nav">${nom}</p>`).join('');
+}
+
+function rendreListe(){
+  document.getElementById('cadreListe').innerHTML = MESSAGES.map(m => {
+    const nonlu = !lus.has(m.id);
+    const puces = [];
+    if (m.fil > 1) puces.push(`<span class="puce">${ic('M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z')}${m.fil} messages</span>`);
+    if (m.pieces) puces.push(`<span class="puce">${ic('m21.4 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48')}${m.pieces} fichiers</span>`);
+    return `<button type="button" class="ligne${nonlu ? ' nonlu' : ''}${choisie === m.id ? ' choisie' : ''}" onclick="ouvrirMessage(${m.id})">
+      <span class="l1">${nonlu ? '<span class="pastille-nonlu"></span>' : ''}<span class="exp">${m.exp}</span><span class="heure">${m.heure}</span></span>
+      <p class="objet">${m.objet}</p>
+      <p class="apercu">${m.apercu}</p>
+      ${puces.length ? `<span class="puces">${puces.join('')}</span>` : ''}
+    </button>`;
+  }).join('');
+}
+
+function carteMessage(m){
+  return `
+    <div class="tete-msg">
+      <h3 class="titre-msg">${m.objet}</h3>
+      <div class="metas">
+        <span class="puce-meta">${m.fil > 1 ? `${m.fil} messages` : '1 message'}${m.pieces ? ` · ${m.pieces} fichiers` : ''}</span>
+        <span class="dernier">Dernier message · aujourd’hui ${m.heure}</span>
+        <span class="puce-meta" style="cursor:pointer">${ic('m7 15 5 5 5-5M7 9l5-5 5 5')}Voir la conversation</span>
+      </div>
+    </div>
+    <div class="auteur"><span class="nom">${m.exp}</span><span class="adresse">à claire@courriel.fr</span></div>
+    <div class="corps">${m.corps.map(p => `<p>${p}</p>`).join('')}</div>
+    <div class="actions">
+      <button type="button" class="btn principal">${ic('m9 17-5-5 5-5M4 12h11a5 5 0 0 1 5 5v2')}Répondre</button>
+      <button type="button" class="btn">${ic('m11 17-5-5 5-5M17 17l-5-5 5-5')}Répondre à tous</button>
+      <button type="button" class="btn"><svg class="ic miroir" viewBox="0 0 24 24"><path d="m9 17-5-5 5-5M4 12h11a5 5 0 0 1 5 5v2"/></svg>Transférer</button>
+      <button type="button" class="btn">${ic('M21 8v13H3V8M1 3h22v5H1zM10 12h4')}Archiver</button>
+      <button type="button" class="btn">${ic('M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6')}Supprimer</button>
+    </div>`;
+}
+
+/* ---------- gestes ---------- */
+function ouvrirMessage(id){
+  const m = MESSAGES.find(x => x.id === id);
+  choisie = id;
+  lus.add(id); // mark_seen : le chemin est commun, seule la surface change
+  rendreListe();
+  if (mode === 3){
+    document.getElementById('voletLecture').innerHTML = `<div class="carte">${carteMessage(m)}</div>`;
+  } else {
+    document.getElementById('carte03').innerHTML = carteMessage(m);
+    document.getElementById('ecran03').classList.add('ouvert');
+  }
+}
+function fermerEcran03(){ document.getElementById('ecran03').classList.remove('ouvert'); }
+
+function ouvrirTiroir(){
+  document.getElementById('scrimTiroir').classList.add('ouvert');
+  document.getElementById('tiroir').classList.add('ouvert');
+  document.getElementById('btnTiroir').setAttribute('aria-expanded', 'true');
+}
+function fermerTiroir(){
+  document.getElementById('scrimTiroir').classList.remove('ouvert');
+  document.getElementById('tiroir').classList.remove('ouvert');
+  document.getElementById('btnTiroir').setAttribute('aria-expanded', 'false');
+}
+function clicNav(btn){
+  const conteneur = btn.closest('.nav, .contenu-tiroir');
+  conteneur.querySelectorAll('.rang').forEach(r => r.classList.remove('actif'));
+  btn.classList.add('actif');
+  if (conteneur.id === 'navTiroir') fermerTiroir(); // le geste accompli n’a plus besoin du panneau
+}
+
+function ouvrirReglages(){
+  document.getElementById('selVolets').value = String(mode);
+  document.getElementById('scrimReglages').classList.add('ouvert');
+}
+function fermerReglages(){ document.getElementById('scrimReglages').classList.remove('ouvert'); }
+
+/* ---------- la bascule ---------- */
+const BANDEAUX = {
+  3: '<b>3 volets — le défaut, l’existant.</b>&nbsp;Nav 236 · Liste 400 · Lecture. Le clic ouvre dans le volet. Qui ne touche à rien ne voit rien changer. <span class="ref">grille 236 / 400 / 1fr</span>',
+  2: '<b>2 volets — nav + liste pleine largeur.</b>&nbsp;La lecture s’ouvre en plein écran (écran 03) ; Échap rend la liste intacte. La ligne garde son gabarit, l’aperçu respire (V-D1 · V-D2 · V-D3). <span class="ref">grille 236 / 1fr</span>',
+  1: '<b>1 volet — la liste seule.</b>&nbsp;La nav vit en tiroir (bouton en tête) ; l’ouverture reste le plein écran. <span class="ref">grille 1fr · glyphe menu : police 43 → 44 (E2)</span>',
+};
+
+function setMode(n){
+  mode = n;
+  document.body.dataset.mode = String(n);
+  document.querySelectorAll('[data-seg]').forEach(b =>
+    b.setAttribute('aria-pressed', String(b.dataset.seg === String(n))));
+  document.getElementById('selVolets').value = String(n);
+  document.getElementById('bandeau').innerHTML = BANDEAUX[n];
+  fermerEcran03(); fermerTiroir();
+  if (mode === 3 && choisie){
+    const m = MESSAGES.find(x => x.id === choisie);
+    document.getElementById('voletLecture').innerHTML = `<div class="carte">${carteMessage(m)}</div>`;
+  }
+}
+
+/* ---------- clavier : Échap, dans l’ordre des surimpressions ---------- */
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (document.getElementById('scrimReglages').classList.contains('ouvert')) return fermerReglages();
+  if (document.getElementById('tiroir').classList.contains('ouvert')) return fermerTiroir();
+  if (document.getElementById('ecran03').classList.contains('ouvert')) return fermerEcran03();
+});
+
+/* ---------- réglages : le rail ---------- */
+document.getElementById('railReglages').innerHTML = [
+  ['Comptes', 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8'],
+  ['Thèmes', 'm19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2Z'],
+  ['Affichage', 'M2 3h20v14H2zM8 21h8M12 17v4', true],
+  ['Notifications', 'M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0'],
+  ['Raccourcis', 'M2 6h20v12H2zM6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10'],
+  ['À propos', 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M12 16v-4M12 8h.01'],
+].map(([nom, d, actif]) =>
+  `<button type="button" class="rang${actif ? ' actif' : ''}">${ic(d)}${nom}</button>`).join('');
+
+/* ---------- démarrage ---------- */
+rendreNav(document.getElementById('nav'));
+rendreNav(document.getElementById('navTiroir'));
+rendreListe();
+setMode(3);
+</script>
+</body>
+</html>

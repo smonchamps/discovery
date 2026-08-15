@@ -45,6 +45,10 @@
 
   const cle = (m) => `${m.account_id}/${m.mailbox}/${m.uid}`;
 
+  // Un écho local (PLAN-REACTIVITE E3) se reconnaît à sa boîte
+  // synthétique — son corps est local (echo_body), jamais de fil.
+  const estEcho = (m) => typeof m?.mailbox === 'string' && m.mailbox.startsWith('echo:');
+
   export async function ouvrir(nouvelle) {
     const mien = ++jeton;
     ligne = nouvelle;
@@ -52,6 +56,15 @@
     deplies = {};
     corps = {};
     pieces = {};
+    // V-D2 (PLAN-VOLETS) : sans fil — écho compris — l'écran 03 sert
+    // le MESSAGE SEUL : le fil est la ligne elle-même, le corps vient
+    // de message_body/echo_body (le repli de la Lecture). Une seule
+    // surface de lecture plein écran dans le produit.
+    if (nouvelle.thread_id == null) {
+      fil = [nouvelle];
+      basculer(nouvelle, true);
+      return;
+    }
     try {
       const messages = await appel('thread_messages', { threadId: nouvelle.thread_id });
       if (mien !== jeton) return;
@@ -76,18 +89,25 @@
     if (corps[k] === undefined) {
       corps[k] = '';
       try {
-        const vue = await appel('message_body', {
-          accountId: m.account_id,
-          mailbox: m.mailbox,
-          uid: m.uid,
-          showImages: false,
-        });
+        const vue = estEcho(m)
+          ? await appel('echo_body', {
+              id: Number(m.mailbox.slice(5)),
+              showImages: false,
+            })
+          : await appel('message_body', {
+              accountId: m.account_id,
+              mailbox: m.mailbox,
+              uid: m.uid,
+              showImages: false,
+            });
         corps[k] = vue.document;
       } catch (err) {
         console.error('message_body :', err);
       }
     }
-    if (m.attachment_count > 0 && pieces[k] === undefined) {
+    // Les pièces d'un écho n'ont pas de métadonnées par pièce pendant
+    // la fenêtre de réconciliation — même règle que la Lecture.
+    if (m.attachment_count > 0 && !estEcho(m) && pieces[k] === undefined) {
       pieces[k] = [];
       try {
         pieces[k] = await appel('message_attachments', {

@@ -213,6 +213,11 @@ export const FR = {
   'reglages.sombreAutoDesc': "Suivre le réglage sombre du système : « La nuit » s'affiche quand il est actif, le thème choisi revient dès qu'il s'éteint.",
   'reglages.langue': 'Langue',
   'reglages.langueDesc': "La langue de l'interface, appliquée immédiatement.",
+  'reglages.volets': 'Disposition',
+  'reglages.voletsDesc':
+    "Le nombre de volets de l'écran principal. En deux volets, la liste prend la largeur et la lecture s'ouvre en plein écran.",
+  'volets.3': 'Trois volets',
+  'volets.2': 'Deux volets',
   'reglages.bulles': "Bulles d'arrivée",
   'reglages.bullesDesc': "Une bulle système annonce les nouveaux messages à la synchronisation. La couper n'arrête jamais la synchronisation elle-même.",
   'reglages.noteRaccourcis': 'Dans un champ de saisie, les lettres redeviennent des lettres — seul Échap garde un sens.',

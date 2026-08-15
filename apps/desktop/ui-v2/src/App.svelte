@@ -1,12 +1,14 @@
 <script>
-  // Écran 02 du prototype (A6) : entête 60 px, grille 236/400/1fr,
-  // barre de statut 36 px. Données et actions RÉELLES par le port.
+  // Écran 02 du prototype (A6) : entête 60 px, grille 236/400/1fr
+  // (236/1fr en deux volets — PLAN-VOLETS), barre de statut 36 px.
+  // Données et actions RÉELLES par le port.
   // P5 : migration bloquante d'abord (ADR 0012), fente d'avis (au plus
   // UN), ligne de progression (au plus UNE), recherche câblée (D1),
   // raccourcis (D3).
   import { onMount } from 'svelte';
   import { appel } from './lib/transport.js';
   import { t } from './lib/texte.svelte.js';
+  import { voletsActuels } from './lib/volets.svelte.js';
   import { depuis } from './lib/quand.js';
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
@@ -56,6 +58,20 @@
   // La sélection courante, pour les raccourcis (D3) : r/f/e/Suppr
   // agissent sur elle.
   let selectionnee = $state(null);
+
+  // PLAN-VOLETS (V-D1) : le nombre de volets commande la grille ET la
+  // surface d'ouverture — 3 : le volet de lecture ; 2 : l'écran 03,
+  // plein écran (V-D2). La Lecture est DÉMONTÉE en deux volets, d'où
+  // les gardes `lecture?.` partout. Au retour en trois volets, la
+  // sélection courante rouvre son volet — l'écran ne revient pas vide
+  // quand une ligne est encore choisie.
+  const volets = $derived(voletsActuels());
+  let voletsAvant = voletsActuels();
+  $effect(() => {
+    const v = volets;
+    if (v === 3 && voletsAvant !== 3 && selectionnee) lecture?.ouvrir(selectionnee);
+    voletsAvant = v;
+  });
 
   // --- Fente d'avis (§6) : au plus UN, priorité décroissante ----------
   // Les brouillons n'y vivent plus (PLAN-BROUILLONS) : ils sont en
@@ -671,7 +687,7 @@
     if ('compte' in quoi) compte = quoi.compte;
     recherche = '';
     selectionnee = null;
-    lecture.fermer();
+    lecture?.fermer();
   }
   function surOnglet(id) {
     if (id === 'brouillons') {
@@ -681,7 +697,7 @@
     if (categorie === 'brouillons') categorie = 'reception';
     onglet = id;
     selectionnee = null;
-    lecture.fermer();
+    lecture?.fermer();
   }
 
   // --- Raccourcis (D3) : c / r / f / e / Suppr / « / » / Échap --------
@@ -811,14 +827,18 @@
     flash(t('toast.compteRetire'));
     if (compte === id) compte = null;
     selectionnee = null;
-    lecture.fermer();
+    lecture?.fermer();
     chargerNav();
     liste?.recharger();
   }
 
   function surSelection(ligne) {
     selectionnee = ligne;
-    lecture.ouvrir(ligne);
+    // V-D2 : en deux volets, l'ouverture EST l'écran 03 — qui sait
+    // servir un message sans fil (écho compris). Le marquage lu ne
+    // bouge pas : seule la surface de destination change.
+    if (volets === 3) lecture.ouvrir(ligne);
+    else conversation.ouvrir(ligne);
     if (ligne.thread_unseen > 0) {
       appel('mark_seen', {
         accountId: ligne.account_id,
@@ -843,7 +863,7 @@
         uid: ligne.uid,
       });
       flash(t('toast.archivee'));
-      lecture.fermer();
+      lecture?.fermer();
       // L'écho de destination est DÉJÀ en base (même transaction que le
       // geste, E3) : la resservie le montre en Archives < 1 s — le
       // serveur suit par la passe, en silence.
@@ -863,7 +883,7 @@
         uid: ligne.uid,
       });
       flash(t('toast.supprimee'));
-      lecture.fermer();
+      lecture?.fermer();
       // Même mécanique qu'archiver : l'écho est en base, la Corbeille
       // le montre tout de suite, la passe réconcilie derrière.
       liste.recharger();
@@ -912,17 +932,19 @@
   <FenteAvis {avis} />
 
   {#if prete}
-    <div class="colonnes">
+    <div class="colonnes" class:colonnes--2={volets === 2}>
       <Nav {comptes} {categorie} {compte} onchoisir={choisir} />
       <Liste bind:this={liste} {categorie} {compte} {onglet} {recherche}
              {brouillons} onreprendre={reprendreBrouillon}
              onselect={surSelection} ononglet={surOnglet}
              ontotal={(t) => (totalListe = t)}
              onresultats={(n) => (nResultats = n)} />
-      <Lecture bind:this={lecture} onarchiver={archiver} onsupprimer={supprimer}
-               onconversation={ouvrirConversation}
-               onrepondre={repondre} onrepondretous={repondreTous}
-               ontransferer={transferer} onflash={flash} />
+      {#if volets === 3}
+        <Lecture bind:this={lecture} onarchiver={archiver} onsupprimer={supprimer}
+                 onconversation={ouvrirConversation}
+                 onrepondre={repondre} onrepondretous={repondreTous}
+                 ontransferer={transferer} onflash={flash} />
+      {/if}
     </div>
 
     <div class="statut" data-testid="statut">
@@ -1029,6 +1051,9 @@
     flex:1; display:grid; grid-template-columns:236px 400px minmax(0,1fr);
     min-height:0;
   }
+  /* PLAN-VOLETS (V-D1) : en deux volets la liste prend la largeur —
+     gabarit de ligne inchangé (V-D3), l'aperçu respire. */
+  .colonnes--2 { grid-template-columns:236px minmax(0,1fr); }
 
   .statut {
     position:relative; height:36px; flex:none; background:var(--panel);
