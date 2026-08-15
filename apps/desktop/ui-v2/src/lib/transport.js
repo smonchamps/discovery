@@ -1,5 +1,5 @@
 // Port de transport UI <-> coeur (R0-S5) — module ES pour la v2.
-// Meme contrat que apps/desktop/ui/transport.js : une seule operation,
+// Le contrat hérité du transport v1 (retiré à B2) : une seule opération,
 // appel(commande, arguments) -> Promise. Succes = valeur JSON du coeur ;
 // echec = rejet portant le message (string) du Result<T, String>, tel
 // quel. Pas de canal d'evenements : la progression se lit par sondage.

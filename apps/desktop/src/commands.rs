@@ -102,14 +102,6 @@ pub struct MessageRow {
     pub sender_address: Option<String>,
 }
 
-#[tauri::command]
-pub fn startup_report(state: State<'_, AppState>) -> String {
-    format!(
-        "fenêtre utilisable en {} ms",
-        state.started_at.elapsed().as_millis()
-    )
-}
-
 /// Bilan d'une reconnexion : ce qui est revenu, et POURQUOI le reste ne
 /// l'est pas. Un compte muet est pire qu'un compte en erreur — sans cette
 /// liste, l'utilisateur voit une pastille manquer sans savoir quoi faire.
@@ -1531,27 +1523,6 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         thread_size: row.thread_size,
         thread_unseen: row.thread_unseen,
     }
-}
-
-/// Une page de la BOÎTE UNIFIÉE : tous les comptes fusionnés par date.
-/// L'UI ne matérialise que les lignes visibles (virtualisation).
-#[tauri::command]
-pub fn list_messages(app: AppHandle, offset: usize, limit: usize) -> Result<MessagePage, String> {
-    let timer = Instant::now();
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let total = store.unified_count().map_err(|err| err.to_string())?;
-    let rows = store
-        .unified_recent(offset, limit.min(LIST_LIMIT_MAX))
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .map(to_message_row)
-        .collect();
-    Ok(MessagePage {
-        total,
-        offset,
-        rows,
-        elapsed_us: timer.elapsed().as_micros() as u64,
-    })
 }
 
 /// Un compte de la nav v2 (écran 02), avec ses compteurs — dossiers

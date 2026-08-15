@@ -1,5 +1,17 @@
 # Plan de retrait de l'interface v1
 
+**SOLDÉ le 2026-08-15** — B2 exécuté sur GO du Chef Ingénieur, qui a
+clos la fenêtre d'observation trois jours avant l'échéance du 26/08 :
+motif consigné, les parcours v1 généraient des interférences dans les
+tests (le flake D-6 en était le symptôme visible) et v2 était jugée
+stable au quotidien (application installée, 0.1.3 → 0.1.4 par
+auto-update, aucun défaut critique acté depuis B1). Retiré :
+`apps/desktop/ui/`, les 4 specs v1 et `mesure.mjs`, `launchApp`/
+`construireV1` du harnais, les commandes orphelines `startup_report` et
+`list_messages` (le banc `diag-v2` porté sur `list_category`, le chemin
+réel de l'UI) ; les commandes D2 restent au cœur comme signé. D-6 rayée
+au registre. Revue de clôture : `docs/PHASE-REFONTE.md`.
+
 Le dernier acte de la refonte (PLAN-UI-V2 §P5, « gate de bascule »).
 Méthode shusa : chaque étape a sa gate chiffrée, la ligne s'arrête quand
 une gate casse, et le retour arrière reste UNE ligne jusqu'au retrait

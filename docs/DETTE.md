@@ -35,44 +35,16 @@ motivée.)
   l'essentiel.
 - **Rouvre si** : le terrain au lecteur d'écran le réclame.
 
-### D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)
-
-- **Fait (2026-08-13, gate E1 de PLAN-SYNCHRO)** : le test v1
-  « étoiler : “s” pose l'étoile » a échoué UNE passe sur trois de la
-  suite complète (la classe `flagged` n'apparaît pas dans les 15 s),
-  puis passé 12/12 en isolation et à la passe suivante. Chemin
-  (`mark_flagged`, UI v1) étranger au chantier synchro.
-- **Décision** : consigné, non instruit — v1 est dormante depuis B1 et
-  le test disparaît avec elle à B2 (PLAN-RETRAIT-V1).
-- **Rouvre si** : il retombe sur un parcours v2, ou si B2 est reporté.
-
-### D-7 · Les gestes interactifs se paient au débit du fond pendant une synchro
-
-- **Fait (terrain 0.1.4, 2026-08-14)** : pendant une passe de
-  synchronisation (session d'après-mise-à-jour, rattrapage en cours),
-  l'ouverture d'un message fraîchement reçu a mis **plus d'une minute**
-  à afficher son corps, et le rapatriement d'une pièce en transfert
-  **plus de 30 secondes** — les deux sont des allers-retours serveur
-  interactifs (`message_body`, `fetch_source_attachment`) sur leur
-  propre connexion, mais le MÊME compte Gmail servait en parallèle la
-  passe de fond à plein débit. Écarté à l'instruction : le verrou
-  d'écriture SQLite (busy_timeout 5 s — il aurait erré, pas attendu),
-  un sommeil ou martèlement dans le chemin de connexion (aucun).
-- **Hypothèse** : bridage par compte côté Gmail (bande passante et
-  commandes IMAP partagées entre la passe de fond et le geste).
-- **À instruire** : mesurer au terrain (chronologie `sync_activity`
-  contre l'horodatage du clic), puis un mécanisme de PRIORITÉ AU
-  GESTE — suspendre ou céder la passe de fond pendant un
-  aller-retour interactif (le rattrapage des corps sait déjà se
-  borner ; la passe d'en-têtes, moins). Chantier de synchronisation,
-  pas de pièces jointes — le composeur et la Lecture n'ont pas à
-  connaître la charge du compte.
-- **Corollaire du même terrain** : la puce 📎 de la ligne du volet
-  central n'apparaît qu'à la re-servie de la liste après le scan (~2
-  minutes observées PENDANT la contention) — se dissout avec la
-  cause ; à re-mesurer après D-7.
-
 ## Soldée
+
+### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15
+
+- **Fait (2026-08-13)** : flake une passe sur trois du test v1
+  « étoiler », chemin étranger aux chantiers en cours ; consigné, non
+  instruit — v1 dormante.
+- **Soldée à B2** (PLAN-RETRAIT-V1) : la spec `parcours-critiques` est
+  retirée avec l'interface v1, le flake meurt avec elle. Rouvrirait si
+  un symptôme équivalent touchait un parcours v2.
 
 ### ~~D-3 · Dates en jour de semaine (2 à 6 jours)~~ — soldée le 2026-08-12
 

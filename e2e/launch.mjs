@@ -20,7 +20,7 @@ import { spawn, execSync } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
-import { construireV1, construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
+import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const CDP_PORT = 9222;
@@ -29,34 +29,14 @@ const CDP_PORT = 9222;
 const READY_TIMEOUT_MS = 90_000;
 const POLL_MS = 500;
 
-export async function launchApp({
-  accounts = [{ email: 'e2e@exemple.fr', messages: 200 }],
-} = {}) {
-  // Depuis B1, la conf expédiée embarque ui-v2 : les parcours v1
-  // (observation jusqu'à B2) réembarquent la vieille interface le temps
-  // du build.
-  construireV1(root, { release: false });
-
-  const db = path.join(root, 'target', 'e2e', 'parcours.db');
-  rmSync(db, { force: true });
-  mkdirSync(path.dirname(db), { recursive: true });
-  for (const account of accounts) {
-    execSync(
-      `cargo run -p mail-core --example seed_inbox -- "${db}" ${account.messages} ${account.email}`,
-      { cwd: root, stdio: 'inherit' },
-    );
-  }
-  return attacher(db, accounts.map((account) => account.email));
-}
-
-// La refonte (PLAN-UI-V2) : même harnais, mais l'app embarque ui-v2 et
-// le décor est le jeu d'essai Clarity (seed_clarity). Les pièges du
-// rebuild (dist périmé, zombie, config à restaurer) vivent dans
+// L'app embarque ui-v2 (la seule interface depuis B2, PLAN-RETRAIT-V1) ;
+// le décor par défaut est le jeu d'essai Clarity (seed_clarity). Les
+// pièges du rebuild (dist périmé, zombie, cache) vivent dans
 // `rebuild-v2.mjs`, une fois.
 // `vierge: true` : base NEUVE et aucun compte factice — l'état « zéro
 // compte » qui doit montrer l'écran 01 (onboarding).
-// `comptes: [{email, messages}]` : le décor v1 (seed_inbox) porté sur
-// v2 — les parcours R2 rejouent les graines EXACTES des specs v1.
+// `comptes: [{email, messages}]` : le décor seed_inbox — les parcours
+// portés de v1 (R2) rejouent les graines EXACTES des specs d'origine.
 export async function launchAppV2({ vierge = false, comptes = null } = {}) {
   construireV2(root, { release: false });
 

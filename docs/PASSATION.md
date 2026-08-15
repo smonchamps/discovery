@@ -706,7 +706,7 @@ vrai.**
 | [`crates/mail-imap/src/convert.rs`](../crates/mail-imap/src/convert.rs) | Traduction IMAP → domaine ; découverte archive et envois |
 | [`crates/mail-auth/src/provider.rs`](../crates/mail-auth/src/provider.rs) | Fournisseurs OAuth décrits **en données** |
 | [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Commandes Tauri (IPC), boucle toutes-boîtes, garde disque, avancement |
-| [`apps/desktop/ui/app.js`](../apps/desktop/ui/app.js) | UI : liste virtualisée, composeur, bandeaux (avancement, rattrapage) |
+| [`apps/desktop/ui-v2/src/App.svelte`](../apps/desktop/ui-v2/src/App.svelte) | L'UI (Svelte 5, seule depuis B2/PLAN-RETRAIT-V1) : écrans 01-04, fente d'avis, cycle de synchro automatique |
 | [`e2e/README.md`](../e2e/README.md) | Harnais E2E déterministe (CDP) |
 | [`scripts/faire-release.ps1`](../scripts/faire-release.ps1) | Prépare le `latest.json` signé d'une version (ADR 0013) — sans BOM, URL au tag nu |
 | [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | Rédaction PURE d'un rapport de crash — écarte le message (PII) (ADR 0014) |

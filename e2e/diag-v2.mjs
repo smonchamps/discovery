@@ -69,7 +69,11 @@ try {
       const reps = [];
       for (let n = 0; n < 5; n++) {
         const t0 = performance.now();
-        const p = await appel('list_messages', { offset, limit: 200 });
+        // Le chemin que l'UI emprunte VRAIMENT (list_messages, v1, est
+        // retiré à B2) : la réception unifiée par catégorie.
+        const p = await appel('list_category', {
+          category: 'reception', accountId: null, nonLus: false, offset, limit: 200,
+        });
         reps.push({ mur: performance.now() - t0, coeur: p.elapsed_us / 1000 });
       }
       reps.sort((x, y) => x.mur - y.mur);

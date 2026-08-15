@@ -83,7 +83,6 @@ pub(crate) struct VolPasse {
 }
 
 pub(crate) struct AppState {
-    pub started_at: Instant,
     /// Sessions des comptes connectés, par email (multi-comptes).
     pub accounts: Mutex<HashMap<String, mail_auth::AccountSession>>,
     /// Sérialise les vidanges de la boîte d'envoi : deux pompes
@@ -131,7 +130,6 @@ fn main() {
         std::process::exit(1);
     }
     let state = AppState {
-        started_at: Instant::now(),
         accounts: Mutex::new(HashMap::new()),
         outbox_flush: Arc::new(Mutex::new(())),
         drafts_push: Arc::new(Mutex::new(())),
@@ -159,7 +157,6 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::startup_report,
             commands::connect_accounts,
             commands::add_account,
             commands::add_microsoft_account,
@@ -167,7 +164,6 @@ fn main() {
             commands::remove_account,
             commands::sync_inbox,
             commands::sync_inbox_light,
-            commands::list_messages,
             commands::nav_snapshot,
             commands::list_category,
             commands::preview_catchup,

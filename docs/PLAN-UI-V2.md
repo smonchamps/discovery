@@ -329,7 +329,16 @@ re-vérifié, thème `nuit` en premier) ; banc Clarity.
 **Objectif :** v2 devient l'UI expédiée — sans régression sur ce qui
 protège l'utilisateur.
 
-**État : dus livrés, en validation terrain.** Les cinq dus du §6 sont
+**État : ✓ CLOS le 2026-08-15 — B2 exécuté, v1 retirée.** Le cutover
+est complet : `apps/desktop/ui/` supprimé, e2e entièrement v2, revue de
+clôture à `docs/PHASE-REFONTE.md`. La fenêtre d'observation a été
+close par décision du Chef Ingénieur trois jours avant son échéance
+(interférences des parcours v1 dans les tests, v2 jugée stable —
+releases 0.1.3/0.1.4 installées, auto-update constaté). Détail
+d'exécution : PLAN-RETRAIT-V1, soldé. L'état antérieur, pour
+l'histoire :
+
+Les cinq dus du §6 sont Les cinq dus du §6 sont
 câblés (fente d'avis à cinq sources par priorité, ligne de progression
 dans la barre de statut, modale de migration bloquante avant tout accès
 base, garde d'images opt-in par message, puces de pièces jointes
