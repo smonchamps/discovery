@@ -7,7 +7,7 @@
   // raccourcis (D3).
   import { onMount } from 'svelte';
   import { appel } from './lib/transport.js';
-  import { t } from './lib/texte.svelte.js';
+  import { t, poserLangueDetectee } from './lib/texte.svelte.js';
   import { voletsActuels } from './lib/volets.svelte.js';
   import { depuis } from './lib/quand.js';
   import Nav from './Nav.svelte';
@@ -652,7 +652,15 @@
   // Le démarrage, dans l'ordre qui protège : migration d'abord (rien ne
   // touche la base avant), puis les boucles — et les contrôles uniques.
   onMount(async () => {
-    await modaleMigration.assurer();
+    const baseClaire = await modaleMigration.assurer();
+    // La langue détectée au premier lancement se pose ICI, pas avant :
+    // `lang_set` ouvre la base — avant la modale, il paierait l'adoption
+    // en silence (ADR 0012, A41). Et seulement si la sonde de migration
+    // a RÉPONDU : sinon cette écriture facultative serait elle-même la
+    // première ouverture pleine. Attendue, pas tirée : au premier
+    // lancement c'est elle qui crée le schéma — sérialisée avant la
+    // flotte des sondes, comme quand elle vivait avant le montage.
+    if (baseClaire) await poserLangueDetectee();
     prete = true;
     chargerNav();
     setInterval(chargerNav, 10000);

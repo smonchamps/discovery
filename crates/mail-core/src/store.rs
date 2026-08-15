@@ -408,6 +408,52 @@ impl Store {
         }
     }
 
+    /// Lit une préférence SANS ouvrir la base — sonde en **lecture
+    /// seule**, sœur de [`Store::pending_adoption`] : rien n'est
+    /// déclenché, rien n'est créé. C'est ce qui permet au desktop de
+    /// restaurer la langue AVANT l'écran de migration (ADR 0012) —
+    /// avec l'ouverture pleine, l'adoption d'une base héritée se payait
+    /// en silence au chargement de la langue, sans modale (constat
+    /// terrain 2026-08-15).
+    ///
+    /// Limite assumée (revue du même jour) : après un arrêt brutal, un
+    /// `-wal` chaud peut rendre l'ouverture en lecture seule impossible
+    /// — la sonde échoue alors au lieu de récupérer le journal comme le
+    /// ferait l'ouverture pleine. L'UI traite cet échec comme un repli
+    /// de SESSION (langue du système), jamais comme une absence de
+    /// préférence : rien ne se persiste sur la foi d'une sonde muette.
+    pub fn text_pref_readonly(path: &Path, key: &str) -> Result<Option<String>, Error> {
+        if !path.exists() {
+            // Première installation : rien à lire, et ouvrir créerait
+            // le fichier — une sonde ne laisse pas de trace.
+            return Ok(None);
+        }
+        let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        // Le même budget d'attente que l'ouverture pleine : une base
+        // héritée d'AVANT le WAL est en mode rollback, où un écrivain
+        // bloque les lecteurs — sans ce budget, la sonde mourrait en
+        // SQLITE_BUSY au premier essai (tard vaut mieux que mort).
+        conn.busy_timeout(std::time::Duration::from_secs(30))?;
+        // Une base d'avant les préférences peut ne pas avoir la table :
+        // la sonde doit répondre (« pas de préférence »), pas expliquer.
+        let has_prefs: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'prefs'",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_prefs == 0 {
+            return Ok(None);
+        }
+        let value = conn
+            .query_row(
+                "SELECT value FROM prefs WHERE key = ?1",
+                params![key],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(value)
+    }
+
     fn init(conn: Connection) -> Result<Self, Error> {
         Self::init_with(conn, &mut |_| ControlFlow::Continue(()))
     }
@@ -4025,6 +4071,88 @@ mod tests {
                 .unwrap();
             assert_eq!(version, 1, "la sonde n'a pas migré à notre place");
         }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// La langue se restaure AVANT le premier rendu, donc AVANT l'écran
+    /// de migration (constat terrain 2026-08-15) : sa lecture doit être
+    /// une sonde en lecture seule — avec l'ouverture pleine, l'adoption
+    /// d'une base héritée se payait en silence au chargement de la
+    /// langue, sans modale, sans avancement, sans annulation — tout ce
+    /// que l'ADR 0012 interdit. Le décor REMBOBINE une vraie base de
+    /// fichier (invariant §6.7) : le seul où la faute existe.
+    #[test]
+    fn la_langue_se_lit_sans_adopter_la_base() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-langue-sonde-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+
+        // Fichier absent : première installation — et la sonde ne doit
+        // PAS créer le fichier.
+        assert_eq!(Store::text_pref_readonly(&path, "lang").unwrap(), None);
+        assert!(!path.exists(), "une sonde ne laisse pas de trace");
+
+        {
+            let mut store = Store::open(&path).unwrap();
+            let account = store
+                .adopt_or_create_account("moi@exemple.fr", "gmail")
+                .unwrap();
+            let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            store
+                .upsert_envelopes(
+                    inbox,
+                    &[
+                        envelope(1, "Devis", 100, true),
+                        reply(2, "Re: Devis", 200, true, 1),
+                    ],
+                )
+                .unwrap();
+            store.set_text_pref("lang", "en").unwrap();
+        }
+        rembobine_au_schema_v1(&path);
+
+        // La préférence se lit…
+        assert_eq!(
+            Store::text_pref_readonly(&path, "lang").unwrap(),
+            Some("en".to_string())
+        );
+        // …et RIEN n'a été déclenché : la version n'a pas bougé, la
+        // modale trouvera l'adoption toujours en attente.
+        {
+            let conn = Connection::open(&path).unwrap();
+            let version: i64 = conn
+                .query_row("PRAGMA user_version", [], |row| row.get(0))
+                .unwrap();
+            assert_eq!(version, 1, "lire la langue n'a pas migré à notre place");
+        }
+        assert_eq!(
+            Store::pending_adoption(&path).unwrap(),
+            Some(2),
+            "l'écran de migration garde sa raison d'être"
+        );
+
+        // Une base héritée d'AVANT le WAL vit en mode rollback (delete) —
+        // c'est la forme réelle du terrain, pas celle que Store::open
+        // laisse derrière lui : la sonde doit y répondre aussi.
+        Connection::open(&path)
+            .unwrap()
+            .query_row("PRAGMA journal_mode = delete", [], |row| {
+                row.get::<_, String>(0)
+            })
+            .unwrap();
+        assert_eq!(
+            Store::text_pref_readonly(&path, "lang").unwrap(),
+            Some("en".to_string()),
+            "la sonde répond aussi sur une base en mode rollback"
+        );
+
+        // Une base d'avant les préférences (pas de table `prefs`) : la
+        // sonde répond « pas de préférence », elle n'échoue pas.
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch("DROP TABLE prefs")
+            .unwrap();
+        assert_eq!(Store::text_pref_readonly(&path, "lang").unwrap(), None);
         let _ = std::fs::remove_file(&path);
     }
 

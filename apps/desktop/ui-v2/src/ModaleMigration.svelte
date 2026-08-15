@@ -6,7 +6,11 @@
   // au prochain lancement, ou tout de suite par « Reprendre ».
   //
   // `assurer()` ne rend la main qu'une fois la base migrée (ou s'il n'y
-  // avait rien à faire) : l'App n'ouvre rien avant.
+  // avait rien à faire) : l'App n'ouvre rien avant. Elle rend `true`
+  // quand la base est CONFIRMÉE claire ; `false` quand la sonde n'a pas
+  // pu répondre — l'App s'interdit alors toute écriture facultative
+  // (la pose de la langue détectée), qui serait la première ouverture
+  // pleine, l'adoption silencieuse même (A41).
   import { appel } from './lib/transport.js';
   import { t } from './lib/texte.svelte.js';
 
@@ -25,9 +29,9 @@
     } catch {
       // Sonde impossible : l'ouverture normale le dira mieux qu'un écran
       // sans objet — on ne bloque pas le démarrage.
-      return;
+      return false;
     }
-    if (sonde.pending === null || sonde.pending === undefined) return;
+    if (sonde.pending === null || sonde.pending === undefined) return true;
     note = t('migration.note', { n: sonde.pending });
     visible = true;
     while (!(await unePasse())) {
@@ -36,6 +40,7 @@
       reprise = false;
     }
     visible = false;
+    return true;
   }
 
   async function unePasse() {

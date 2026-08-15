@@ -38,20 +38,45 @@ export function appliquerLangue(code) {
 }
 
 // Restaure AVANT le premier rendu (pas de flash) : la préférence en
-// base d'abord ; au premier lancement, la langue du système si elle
-// est couverte, sinon `fr` — et la clé se pose aussitôt, pour que le
-// shell la voie sans attendre un passage par les Réglages.
+// base d'abord — `lang_get` est une sonde en lecture seule, seule
+// commande permise avant `migration_check` (ADR 0012) ; au premier
+// lancement, la langue du système si elle est couverte, sinon `fr`.
+// La clé détectée ne se pose PAS ici : `lang_set` ouvre la base et
+// paierait l'adoption d'une base héritée en silence, sans modale
+// (terrain 2026-08-15) — elle se pose par `poserLangueDetectee()`,
+// que l'App appelle une fois la migration assurée.
+let aPoser = null;
+
 export async function restaurerLangue() {
   let code = null;
+  let repondu = false;
   try {
     code = await appel('lang_get');
-  } catch { /* hors Tauri : la détection ci-dessous décide */ }
+    repondu = true;
+  } catch { /* hors Tauri ou base illisible : repli de session ci-dessous */ }
   if (!code) {
     const systeme = (globalThis.navigator?.language ?? 'fr').toLowerCase();
     code = systeme.startsWith('en') ? 'en' : 'fr';
-    appel('lang_set', { lang: code }).catch(() => { /* hors Tauri : rien à poser */ });
+    // La détection ne s'arme À POSER que si la base a VRAIMENT répondu
+    // « aucune préférence ». Un échec de lecture n'est pas une absence
+    // (revue 2026-08-15) : poser après coup écraserait une préférence
+    // existante que la sonde n'a simplement pas pu lire.
+    if (repondu) aPoser = code;
   }
   appliquerLangue(code);
+}
+
+// La pose différée du premier lancement : APRÈS la modale de migration,
+// pour que le shell voie la clé sans attendre un passage par les
+// Réglages — et sans jamais toucher une base pas encore adoptée.
+// Rend la promesse : l'App l'attend pour que la création de schéma du
+// premier lancement reste SÉRIALISÉE avant la flotte des sondes.
+export function poserLangueDetectee() {
+  if (!aPoser) return Promise.resolve();
+  return appel('lang_set', { lang: aPoser })
+    .then(() => { aPoser = null; })
+    .catch(() => { /* hors Tauri ou échec d'écriture : la clé restera
+      absente, la détection se rejouera au prochain lancement */ });
 }
 
 // `t(cle, params)` : gabarits `{nom}` ; une barre `|` sépare le

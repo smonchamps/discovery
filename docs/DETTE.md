@@ -50,6 +50,32 @@ motivée.)
 - **Rouvre si** : le terrain désigne le coût (ventilateur, batterie,
   contention d'écriture, latence perçue des sondes).
 
+### D-9 · L'invariant A41 n'a pas de garde structurelle
+
+- **Fait (revue 2026-08-15, A41)** : « rien ne touche la base avant
+  `migration_check` » vit dans des commentaires et un test de sonde
+  (`la_langue_se_lit_sans_adopter_la_base`) — rien n'empêche une
+  future commande pré-modale d'ouvrir la base en plein
+  (`Store::open`) : toute la suite resterait verte, le bug se
+  redécouvrirait au terrain.
+- **Piste** : un drapeau `adopted` sur `MigrationShared` (ou un
+  helper d'ouverture partagé des 30+ `Store::open` de `commands.rs`)
+  qui fait échouer BRUYAMMENT toute ouverture pleine avant la sonde ;
+  à instruire en chantier, pas en voie rapide.
+- **Rouvre si** : une commande de démarrage s'ajoute avant la modale.
+
+### D-10 · La pose différée de la langue n'a pas de test UI
+
+- **Fait (revue 2026-08-15)** : la moitié Rust d'A41 est tenue par un
+  test qui rembobine une vraie base ; l'ordre côté UI (`assurer()`
+  avant `poserLangueDetectee()`, pose seulement si la sonde a
+  répondu) n'est asserté par aucun e2e — `refonte-langue.spec.js` ne
+  joue jamais le premier lancement sur base vierge.
+- **Piste** : spec e2e `vierge: true` qui asserte `prefs.lang` posée
+  après démarrage, et absente si `migration_check` échoue.
+- **Rouvre si** : un refactor d'`onMount` touche à l'ordre de
+  démarrage.
+
 ## Soldée
 
 ### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15

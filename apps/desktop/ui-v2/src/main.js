@@ -1,5 +1,6 @@
 // Montage v2 — thème ET langue restaurés AVANT le premier rendu (pas
-// de flash ; la langue est une lecture de base locale, sub-milliseconde),
+// de flash ; la langue est une SONDE en lecture seule, sub-milliseconde :
+// avant la modale de migration, rien ne doit ouvrir la base — ADR 0012),
 // crochets de mesure exposés pour le banc P1 (mesure-v2.mjs) et les e2e.
 import './systeme.css';
 import { mount } from 'svelte';

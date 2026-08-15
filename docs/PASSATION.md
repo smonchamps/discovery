@@ -334,6 +334,16 @@ Faciles à casser **en silence**. À vérifier à chaque revue.
    `un_message_hors_portee_ne_rejoint_pas_le_fil`. **La portée se déclare
    sur le compte AVANT que les boîtes existent** — la boucle de synchro
    les crée (`une_portee_declaree_avant_la_creation_de_la_boite_vaut_quand_meme`).
+10. **Rien ne touche la base avant `migration_check`** (ADR 0012, A41).
+    Toute commande jouée avant la modale de migration doit être une
+    sonde qui n'adopte pas (`Store::pending_adoption`,
+    `Store::text_pref_readonly`) ; une écriture différée ne part que si
+    la sonde de migration a répondu, et un échec de lecture vaut repli
+    de session — jamais une écriture. Tenu par
+    `la_langue_se_lit_sans_adopter_la_base` (base de fichier
+    rembobinée) ; l'ordre côté UI (`main.js` → `assurer()` →
+    `poserLangueDetectee()`) n'a pas de garde structurelle — à vérifier
+    à chaque commande de démarrage ajoutée.
 
 ---
 

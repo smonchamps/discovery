@@ -4193,12 +4193,18 @@ pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), String>
 
 /// Langue de l'interface (PLAN-LANGUES, A15) : la preference se LIT au
 /// demarrage — `None` tant qu'elle n'a jamais ete posee, l'UI detecte
-/// alors la langue du systeme et la pose aussitot…
+/// alors la langue du systeme et la pose apres la modale de migration.
+/// Sonde en LECTURE SEULE, pas `Store::open` : cette commande part
+/// AVANT `migration_check` (la langue se restaure avant le premier
+/// rendu), et l'ouverture pleine payait l'adoption d'une base heritee
+/// en silence — sans modale, contre l'ADR 0012 (terrain 2026-08-15).
+/// Et `hors_pompe` quand meme (ADR 0019) : la sonde porte un
+/// busy_timeout de 30 s — une base rollback sous ecrivain ferait geler
+/// la pompe autrement.
 #[tauri::command]
 pub async fn lang_get(app: AppHandle) -> Result<Option<String>, String> {
     hors_pompe(app, move |app| {
-        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        store.text_pref(PREF_LANG).map_err(|err| err.to_string())
+        Store::text_pref_readonly(&db_path(&app)?, PREF_LANG).map_err(|err| err.to_string())
     })
     .await
 }

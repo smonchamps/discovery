@@ -27,9 +27,12 @@ prototype RESTE la cible exacte du français.
   seul le web le lit ; la langue traverse la frontière, le shell la
   lit pour composer les notifications.
 - Défaut au premier lancement : la langue du système si couverte,
-  sinon `fr`. L'UI pose la clé au premier lancement
-  (`navigator.language`) ; le shell lit `prefs.lang`, défaut `fr`
-  tant que la clé n'existe pas.
+  sinon `fr` (`navigator.language`). L'UI pose la clé APRÈS la modale
+  de migration (A41, revue 2026-08-15) : `lang_get` est une sonde en
+  lecture seule et `lang_set` attend que la migration soit assurée —
+  avant, la pose payait l'adoption d'une base héritée en silence
+  (ADR 0012). Le shell lit `prefs.lang`, défaut `fr` tant que la clé
+  n'existe pas.
 - **Application immédiate**, sans redémarrage — le geste du thème.
 - Le réglage vit dans **Réglages > Affichage** : une rangée
   « Langue » — pas de groupe neuf pour une rangée (règle des groupes
@@ -153,7 +156,9 @@ Amendement **A15** inscrit au journal du Système ; ADR **0016** posée
   rangée « Langue » dans Réglages > Affichage (sélecteur natif à la
   grammaire des boutons), `lang_get`/`lang_set` au patron exact de
   `notif_pref` sur un `text_pref` neuf de mail-core (testé), défaut au
-  premier lancement = langue du système (posée aussitôt en base),
+  premier lancement = langue du système (posée en base après la modale
+  de migration depuis A41, revue 2026-08-15 — « aussitôt » d'origine
+  payait l'adoption en silence),
   bascule immédiate, `<html lang>` dynamique. Harnais e2e : locale du
   WebView épinglée `--lang=fr` (déterminisme par construction — sans
   elle, la suite dépendrait de la machine). Cible de build vite passée
