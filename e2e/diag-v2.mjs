@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
+import { purgerOAuth } from './isolation.mjs';
 import { allouerPortCdp } from './port-cdp.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -29,8 +30,7 @@ const env = {
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
   WEBVIEW2_USER_DATA_FOLDER: profile,
 };
-delete env.GOOGLE_CLIENT_ID;
-delete env.GOOGLE_CLIENT_SECRET;
+purgerOAuth(env);
 
 const app = spawn(path.join(root, 'target', 'release', 'wind-desktop.exe'), [], {
   env,
