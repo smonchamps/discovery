@@ -76,6 +76,21 @@ motivée.)
 - **Rouvre si** : un refactor d'`onMount` touche à l'ordre de
   démarrage.
 
+### D-11 · Le banc de bascule de thème est resté calibré à 7 thèmes
+
+- **Fait (revue 2026-08-16, PLAN-WADA-ELARGI)** : `e2e/mesure-v2.mjs`
+  garde 60 itérations et des commentaires « les 7 thèmes » alors
+  qu'A42 en livre 28 — l'échantillon par thème tombe de ~8 à ~2, le
+  chiffre « coût de bascule par thème » n'est plus comparable à la
+  ligne de base historique.
+- **Raison du report** : hors périmètre du chantier (fichier non
+  touché par le diff), et recalibrer sans re-mesurer une ligne de base
+  serait du travail sans mesure. Famille D-7 (chronos de réactivité).
+- **Piste** : à la prochaine passe de mesure, recalibrer (28 × N
+  itérations) et re-poser la ligne de base dans le même relevé.
+- **Rouvre si** : une passe de mesure compare la bascule de thème à
+  l'historique.
+
 ## Soldée
 
 ### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15

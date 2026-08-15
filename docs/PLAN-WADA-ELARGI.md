@@ -1,7 +1,15 @@
 # PLAN-WADA-ELARGI — 28 thèmes « Wada élargi » et sombre automatique par déclinaison (A42)
 
-**Implémentation livrée le 2026-08-16** (E1-E5 + revue §6) — en attente
-du verdict de la gate e2e puis du terrain CE (STOP 2).
+**CHANTIER SOLDÉ le 2026-08-16 — terrain complet.** GO CE du même jour
+sur les quatre décisions (D1-D4, toutes les recommandations, §5) ;
+livraison intégrale en un commit (`241cdb2`, A42) après revue à regard
+neuf (§6, 9 correctifs) et un constat terrain de passe 1 — le retour au
+clair ne suivait pas — instruit aux sondes et corrigé le jour même
+(racine : `prefers-color-scheme` mort dans le WebView2 de Tauri, §7).
+Passe terrain 2 validée par le CE (« tout ok »), CI verte
+(run 31913758538). Preuves : 28 × 25 paires de contraste vertes, 476
+valeurs de jetons concordantes, 75/75 e2e dont la bascule Windows
+réelle dans les deux sens.
 
 > Instruction CE du 2026-08-16 : appliquer le paquet
 > `docs/design/handoff/` (INSTRUCTIONS.md, AMENDEMENT-A42.md,

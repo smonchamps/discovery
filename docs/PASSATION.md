@@ -372,6 +372,18 @@ Bash). Syntaxes différentes.
   et `-shm`. Une copie à chaud doit prendre les trois.
 - **Un commit ne peut pas être chaîné avec `git --no-pager …`** : le hook
   `block-no-verify` bloque le préfixe `--no-`. Séparer les commandes.
+- **`prefers-color-scheme` est MORT dans le WebView2 de Tauri** : jamais
+  sombre, zéro événement, même sous une vraie bascule Windows (mesuré
+  aux sondes, terrain A42 du 2026-08-16). L'écoute du thème OS passe
+  par l'API fenêtre Tauri (`theme()` + `onThemeChanged`) ; `matchMedia`
+  n'est que le repli hors Tauri et la poignée du banc (emulateMedia).
+  Corollaires : `Set-ItemProperty` sur `AppsUseLightTheme` ne prévient
+  PERSONNE (pas de `WM_SETTINGCHANGE`) — une vérification terrain passe
+  par les Paramètres Windows ou `e2e/bascule-sombre.ps1` ; et le profil
+  WebView2 de la suite (`target/e2e/webview2`) PERSISTE entre les runs —
+  un test mort après avoir armé un réglage localStorage empoisonne les
+  relances locales (remède : purger le dossier ; la CI, elle, part
+  toujours propre).
 - **Une commande Tauri sans `async` s'exécute sur le THREAD PRINCIPAL**
   — celui de la pompe de messages : la fenêtre gèle pour toute sa durée
   (constat 2026-08-15, gels de 2 à 4,6 s au démarrage). Toute commande
