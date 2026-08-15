@@ -13,7 +13,10 @@ Déterminisme par construction ([launch.mjs](launch.mjs)) :
 - compte factice au **jeton invalide** (`WIND_E2E_ACCOUNT`) — hors
   ligne garanti : la boîte d'envoi journalise sans jamais rien envoyer ;
 - configuration OAuth retirée de l'environnement du processus testé —
-  aucun test ne peut toucher au vrai compte, même par accident.
+  aucun test ne peut toucher au vrai compte, même par accident. La liste
+  des variables vit dans [isolation-oauth.json](isolation-oauth.json)
+  (contrat unique, appliqué par [isolation.mjs](isolation.mjs)) : tout
+  lanceur — suite, banc de mesure, sonde — la purge en entier.
 
 ## Lancer
 

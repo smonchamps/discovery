@@ -21,6 +21,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
 import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
+import { purgerOAuth } from './isolation.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const CDP_PORT = 9222;
@@ -88,13 +89,7 @@ async function attacher(db, emails) {
   };
   if (emails.length > 0) env.WIND_E2E_ACCOUNT = emails.join(',');
   else delete env.WIND_E2E_ACCOUNT;
-  delete env.GOOGLE_CLIENT_ID;
-  delete env.GOOGLE_CLIENT_SECRET;
-  // Même isolation pour Microsoft : sans elle, un test qui touche la
-  // route OAuth ouvrirait le VRAI consentement navigateur sur un poste
-  // où la variable est posée — et resterait suspendu dessus.
-  delete env.MICROSOFT_CLIENT_ID;
-  delete env.MICROSOFT_CLIENT_SECRET;
+  purgerOAuth(env);
 
   const app = spawn(path.join(root, 'target', 'debug', 'wind-desktop.exe'), [], {
     env,
