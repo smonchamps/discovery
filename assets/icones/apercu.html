@@ -15,8 +15,8 @@
     font-display: block;
     src: url('material-symbols-rounded.subset.woff2') format('woff2');
   }
-  :root { --bg:#f0f2ef; --surface:#fff; --ink:#232725; --muted:#5c625e;
-    --border:#dadfda; --accent:#2f6e5b; --shadow:0 2px 8px rgba(35,39,37,.08); }
+  :root { --bg:#f2f0ea; --surface:#fff; --ink:#24272e; --muted:#575f6a;
+    --border:#cdc6b8; --accent:#1e7566; --shadow:0 2px 8px rgba(36,39,46,.08); }
   body { font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background:var(--bg); color:var(--ink); margin:0; padding:28px; }
   h1 { font-size:24px; font-weight:600; margin:0 0 6px; }
@@ -25,7 +25,7 @@
   .grille { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr));
     gap:8px; }
   .g { background:var(--surface); border:1px solid var(--border);
-    border-left:2px solid var(--accent); border-radius:10px; box-shadow:var(--shadow);
+    border-radius:10px; box-shadow:var(--shadow);
     padding:10px 12px; display:flex; align-items:center; gap:10px; min-width:0; }
   .g small { font-size:12px; color:var(--muted); overflow:hidden;
     text-overflow:ellipsis; white-space:nowrap; }
@@ -49,11 +49,11 @@ La première tuile montre l'état « dossier ouvert » (FILL 1, 600, accent).</p
 const NOMS = ['all_inbox','archive','arrow_back','attach_file','bookmark',
   'check_circle','close','delete','description','display_settings','drafts',
   'edit_note','edit_square','error','format_list_bulleted','format_quote',
-  'forum','group_add','hourglass_empty','inbox','info','keyboard','link',
-  'link_off','mark_email_unread','menu','notifications','open_in_new','person',
-  'person_add','reply','reply_all','report','search','send','settings',
-  'storage','sync','system_update_alt','unfold_more','visibility_off',
-  'volunteer_activism','warning','work'];
+  'forum','group_add','hourglass_empty','inbox','info','inventory_2',
+  'keyboard','link','link_off','mark_email_unread','menu','notifications',
+  'open_in_new','person','person_add','reply','reply_all','report','search',
+  'send','settings','storage','sync','system_update_alt','unfold_more',
+  'visibility_off','volunteer_activism','warning'];
 
 const grille = document.getElementById('grille');
 // Tuile témoin : inbox en état « dossier ouvert » (FILL 1, graisse 600).

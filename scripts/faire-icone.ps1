@@ -73,9 +73,9 @@ function New-Rendu([int]$taille, [bool]$pastille, [single]$fractionGlyphe, [sing
 }
 
 $rendus = @(
-    @{ taille = 256; pastille = $true;  fraction = (34.0 / 64.0); plancher = 0 },
-    @{ taille = 48;  pastille = $true;  fraction = (34.0 / 64.0); plancher = 0 },
-    @{ taille = 32;  pastille = $false; fraction = (34.0 / 64.0); plancher = 1.4 },
+    @{ taille = 256; pastille = $true;  fraction = (42.0 / 64.0); plancher = 0 },
+    @{ taille = 48;  pastille = $true;  fraction = (42.0 / 64.0); plancher = 0 },
+    @{ taille = 32;  pastille = $false; fraction = (42.0 / 64.0); plancher = 1.4 },
     @{ taille = 16;  pastille = $false; fraction = (42.0 / 64.0); plancher = 1.5 }
 )
 
