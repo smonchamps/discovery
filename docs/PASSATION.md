@@ -35,6 +35,7 @@ de bout en bout avec ses deux validations manuelles (plan, terrain),
 `/terrain` traite un constat terrain le jour même, `/gate` rejoue la
 gate complète, `/solde` clôt un chantier. L'agent `spike`
 (`.claude/agents/`) porte l'exploration set-based en worktree isolé.
+Le mode d'emploi complet : [WORKFLOW.md](WORKFLOW.md).
 
 Si le contexte est perdu malgré tout, l'ancien rituel reste valable :
 

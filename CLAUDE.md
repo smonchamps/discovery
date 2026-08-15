@@ -11,4 +11,5 @@ mesure.
 À la reprise, applique PASSATION §1. Les workflows standardisés vivent
 dans `.claude/skills/` : `/chantier` (bug ou feature de bout en bout),
 `/terrain` (constat terrain, correction le jour même), `/gate` (gate
-complète avant commit), `/solde` (clôture d'un chantier).
+complète avant commit), `/solde` (clôture d'un chantier). Mode
+d'emploi : [`docs/WORKFLOW.md`](docs/WORKFLOW.md).
