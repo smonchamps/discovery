@@ -418,7 +418,14 @@ impl Store {
     ) -> Result<Self, Error> {
         // Plusieurs commandes ouvrent chacune leur connexion : patienter
         // plutôt que d'échouer en SQLITE_BUSY sur une écriture concurrente.
-        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        // 30 s et non 5 (terrain 2026-08-15) : sous forte charge machine,
+        // un lot d'écriture de la synchronisation peut tenir le verrou
+        // au-delà de 5 s — un geste UI (`delete_draft` d'un brouillon
+        // vidé) mourait alors en BUSY et son échec, tu par l'UI d'époque,
+        // laissait un fantôme au dossier. En WAL les lectures ne
+        // patientent jamais ; seule une écriture derrière une écriture
+        // attend — tard vaut mieux que mort.
+        conn.busy_timeout(std::time::Duration::from_secs(30))?;
         // WAL (ADR 0011) : une lecture ne bloque plus jamais une écriture,
         // ni l'inverse. Le mode rollback tenait tant que les écritures
         // duraient quelques secondes ; la synchronisation intégrale
@@ -1283,11 +1290,15 @@ impl Store {
         html: &str,
         attachments: &[Attachment],
     ) -> Result<(), Error> {
+        // Même règle que le rattrapage des aperçus : le parsing HTML se
+        // paie AVANT d'ouvrir la transaction — jamais de CPU dans la
+        // fenêtre du verrou d'écriture.
+        let apercu = crate::body::extraire_apercu(html);
         let tx = self.0.unchecked_transaction()?;
         tx.execute(
             "INSERT OR REPLACE INTO bodies (mailbox_id, uid, html, scanned, preview)
              VALUES (?1, ?2, ?3, 1, ?4)",
-            params![mailbox_id, uid, html, crate::body::extraire_apercu(html)],
+            params![mailbox_id, uid, html, apercu],
         )?;
         // Remplacement intégral : un message re-téléchargé dont une pièce
         // aurait disparu ne doit pas garder l'ancienne ligne fantôme.
@@ -1390,11 +1401,25 @@ impl Store {
             })?
             .collect::<Result<_, _>>()?;
         if !lot.is_empty() {
+            // Le CPU HORS de la fenêtre du verrou (terrain 2026-08-15) :
+            // extraire les aperçus DANS la transaction tenait le verrou
+            // d'écriture pendant tout le parsing du lot (2 000 corps HTML
+            // au sondage du shell) — une écriture UI concurrente
+            // (`delete_draft` d'un brouillon vidé) expirait son
+            // busy_timeout et échouait en BUSY. On parse d'abord, la
+            // transaction ne fait plus qu'écrire — courte par
+            // construction.
+            let apercus: Vec<(i64, Uid, String)> = lot
+                .iter()
+                .map(|(mailbox_id, uid, html)| {
+                    (*mailbox_id, *uid, crate::body::extraire_apercu(html))
+                })
+                .collect();
             let tx = self.0.unchecked_transaction()?;
-            for (mailbox_id, uid, html) in &lot {
+            for (mailbox_id, uid, apercu) in &apercus {
                 tx.execute(
                     "UPDATE bodies SET preview = ?3 WHERE mailbox_id = ?1 AND uid = ?2",
-                    params![mailbox_id, uid, crate::body::extraire_apercu(html)],
+                    params![mailbox_id, uid, apercu],
                 )?;
             }
             tx.commit()?;
