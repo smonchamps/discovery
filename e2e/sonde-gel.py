@@ -28,6 +28,7 @@
 import collections
 import ctypes
 import ctypes.wintypes as w
+import json
 import os
 import subprocess
 import sys
@@ -74,16 +75,13 @@ env = dict(os.environ)
 env["WIND_DB_PATH"] = db
 env["WIND_E2E_ACCOUNT"] = "sonde@exemple.fr"  # jeton invalide : hors ligne garanti
 env["WEBVIEW2_USER_DATA_FOLDER"] = profil
-# Même purge OAuth que e2e/launch.mjs:91-97 (le contrat de référence —
-# toute variable ajoutée là-bas s'ajoute ici) : sans elle, une route
+# Purge OAuth : la LISTE vit dans isolation-oauth.json — contrat UNIQUE
+# partagé avec les lanceurs Node (isolation.mjs) : un fournisseur ajouté
+# à un seul endroit couvre tous les lanceurs. Sans la purge, une route
 # OAuth ouvrirait un vrai consentement navigateur et suspendrait la sonde.
-for cle in (
-    "GOOGLE_CLIENT_ID",
-    "GOOGLE_CLIENT_SECRET",
-    "MICROSOFT_CLIENT_ID",
-    "MICROSOFT_CLIENT_SECRET",
-):
-    env.pop(cle, None)
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "isolation-oauth.json"), encoding="utf-8") as contrat:
+    for cle in json.load(contrat):
+        env.pop(cle, None)
 
 t0 = time.perf_counter()
 proc = subprocess.Popen([exe], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
