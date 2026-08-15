@@ -72,6 +72,14 @@
   let brouillonId = null;
   let brouillonEpoch = null;
   let minuterie;
+  // La sauvegarde EN VOL : sa promesse, tant qu'elle court. Les
+  // sauvegardes sont SÉRIALISÉES derrière elle, et les gestes qui
+  // décident du sort du brouillon (fermer, envoyer) l'attendent —
+  // sans quoi une sauvegarde partie AVANT un « vider puis fermer »
+  // ressuscitait le brouillon que le geste venait de supprimer
+  // (fantôme au dossier, constaté deux fois par la suite e2e sous
+  // charge, toujours au même geste).
+  let volSauvegarde = null;
   let jeton = 0;
 
   let champA = $state(null);
@@ -256,8 +264,19 @@
 
   // Le filet : un crash ne coûte que les deux dernières secondes de
   // frappe. Rend le bilan, ou null s'il n'y avait rien à faire.
-  async function sauverMaintenant() {
+  // Une seule sauvegarde à la fois : chaque tour part derrière le vol
+  // précédent, et `volSauvegarde` porte toujours le dernier tour.
+  function sauverMaintenant() {
     clearTimeout(minuterie);
+    const tour = (volSauvegarde ?? Promise.resolve()).then(sauverSeul);
+    volSauvegarde = tour;
+    tour.finally(() => {
+      if (volSauvegarde === tour) volSauvegarde = null;
+    });
+    return tour;
+  }
+
+  async function sauverSeul() {
     if (!visible || vide() || !expediteur) return null;
     try {
       const bilan = await appel('save_draft', {
@@ -269,7 +288,8 @@
       if (!visible) {
         // Le panneau s'est fermé pendant la sauvegarde (envoi parti) :
         // ne pas ressusciter un brouillon déjà réglé.
-        await appel('delete_draft', { id: bilan.id }).catch(() => {});
+        await appel('delete_draft', { id: bilan.id })
+          .catch((err) => console.error('delete_draft (panneau fermé pendant la sauvegarde) :', err));
         onbrouillon();
         return null;
       }
@@ -298,9 +318,15 @@
   export async function fermer() {
     if (!visible) return;
     clearTimeout(minuterie);
+    // La sauvegarde en vol d'abord : elle peut porter un contenu
+    // d'AVANT le vidage et ressusciter ce que le geste supprime — on
+    // décide du sort du brouillon sur un sol immobile, jamais pendant
+    // qu'une écriture court.
+    if (volSauvegarde) await volSauvegarde;
     if (vide()) {
       if (brouillonId !== null) {
-        await appel('delete_draft', { id: brouillonId }).catch(() => {});
+        await appel('delete_draft', { id: brouillonId })
+          .catch((err) => console.error('delete_draft (brouillon vidé) :', err));
         onbrouillon();
       }
       visible = false;
@@ -333,6 +359,11 @@
       return;
     }
     envoiEnCours = true;
+    // Même règle que fermer : la sauvegarde en vol se pose avant le
+    // départ — le brouillon-ancre (`draftId`) doit être son id FINAL,
+    // pas celui d'avant une écriture encore en route.
+    clearTimeout(minuterie);
+    if (volSauvegarde) await volSauvegarde;
     try {
       await appel('queue_send', {
         accountId: expediteur.account_id,
@@ -357,7 +388,8 @@
     visible = false;
     onflash(t('toast.envoye'));
     if (regle !== null) {
-      await appel('delete_draft', { id: regle }).catch(() => {});
+      await appel('delete_draft', { id: regle })
+        .catch((err) => console.error('delete_draft (après envoi) :', err));
       onbrouillon();
     }
     // Vidange en arrière-plan ; hors ligne, la file attend — l'incident

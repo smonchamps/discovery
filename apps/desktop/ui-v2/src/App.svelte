@@ -457,9 +457,15 @@
   // sur les fils de la Réception ; le composeur la réveille à chaque
   // geste local (onbrouillon) pour que la liste ne traîne pas 10 s.
   let brouillons = $state([]);
+  // Jeton de fraîcheur : deux sondes peuvent voler ensemble (celle du
+  // geste et la périodique) — seule la DERNIÈRE émise a le droit de
+  // servir, sinon une réponse périmée ressert un brouillon supprimé.
+  let sondeBrouillons = 0;
   async function sonderBrouillons() {
+    const mienne = ++sondeBrouillons;
     try {
-      brouillons = await appel('list_drafts');
+      const lignes = await appel('list_drafts');
+      if (mienne === sondeBrouillons) brouillons = lignes;
     } catch { /* la prochaine sonde suffira */ }
   }
   function reprendreBrouillon(brouillon) {

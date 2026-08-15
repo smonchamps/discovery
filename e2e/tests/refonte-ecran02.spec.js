@@ -748,3 +748,43 @@ test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", 
   await expect(echo).toBeVisible();
   await dossier('reception').click();
 });
+
+// ——— La course « vider puis fermer » (constat terrain du 2026-08-15) ——
+// Une sauvegarde différée partie AVANT le vidage porte encore du
+// contenu : sans sérialisation, son bilan ressuscitait le brouillon
+// que fermer venait de supprimer (fantôme au dossier — vu deux fois
+// par la suite sous charge). La retenue du transport rend la course
+// déterministe : l'écriture est EN VOL quand le geste décide.
+test('vider puis fermer ne ressuscite jamais le brouillon — la sauvegarde en vol se pose avant', async () => {
+  await page.keyboard.press('c');
+  await page.locator('[data-testid="composition-objet"]').fill('Course E2E');
+  await page.locator('[data-testid="composition-corps"]').fill('Premier contenu.');
+  // Première sauvegarde COMPLÈTE : le brouillon a un id.
+  await page.waitForTimeout(2600);
+  // Deuxième écriture, puis retenue : la sauvegarde part et se BLOQUE.
+  await page.locator('[data-testid="composition-corps"]').fill('Contenu condamné.');
+  await page.evaluate(() => {
+    window.__e2eRetenue = new Promise((liberer) => {
+      window.__e2eLiberer = liberer;
+    });
+  });
+  await page.waitForTimeout(2300);
+  // Le vidage et le geste, pendant le vol.
+  await page.locator('[data-testid="composition-objet"]').fill('');
+  await page.locator('[data-testid="composition-corps"]').fill('');
+  await page.locator('[data-testid="composition-annuler"]').click();
+  await page.evaluate(() => {
+    window.__e2eLiberer?.();
+    delete window.__e2eRetenue;
+    delete window.__e2eLiberer;
+  });
+  // fermer a attendu le vol, puis supprimé : aucun fantôme.
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+  await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+  await expect(page.locator('[data-testid="dossier-brouillons"]')).toBeVisible();
+  await expect(
+    page.locator('[data-testid="ligne-brouillon"]', { hasText: 'Course E2E' }),
+  ).toHaveCount(0);
+  await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+});
