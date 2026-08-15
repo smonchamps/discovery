@@ -75,15 +75,15 @@
   --shadow:0 2px 12px rgba(0,0,0,0.40); --scrim:rgba(0,0,0,0.55);
 }
 
-/* Le trait hitofude (A28) — la signature du vent, deux emplacements
-   normés (marque, synchronisation). Boucle de 4 s pendant un cycle :
-   tracé 2 s, plein 1 s, fondu. Au repos le trait est plein et
-   immobile ; sous prefers-reduced-motion la règle A8 coupe tout —
-   le composant garde un dashoffset de base à 0, le trait reste plein. */
-@keyframes hitofudeDraw {
-  0% { stroke-dashoffset:115; } 50% { stroke-dashoffset:0; }
-  100% { stroke-dashoffset:0; }
-}
+/* Le trait hitofude (A28, A40) — la signature du vent, deux
+   emplacements normés (marque, synchronisation). Boucle de 4 s pendant
+   un cycle : tracé 2 s (SMIL, dans le composant — le chemin vit dans le
+   <mask>, sous-arbre non rendu où Chromium ne fait pas tourner les
+   animations CSS ; A40), plein, fondu (CSS, ci-dessous : le chemin
+   masqué, lui, est rendu). Au repos le trait est plein et immobile ;
+   sous prefers-reduced-motion la règle A8 coupe le fondu et le
+   composant ne rend pas l'<animate> (SMIL n'obéit pas au CSS) — le
+   dashoffset de base est 0, le trait reste plein. */
 @keyframes hitofudeFade {
   0% { opacity:0; } 10% { opacity:1; } 75% { opacity:1; }
   95% { opacity:0; } 100% { opacity:0; }

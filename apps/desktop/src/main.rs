@@ -116,6 +116,13 @@ pub(crate) struct AppState {
     /// Les passes d'après-geste en vol, par compte (E3) : un vol à la
     /// fois, les demandes pendant le vol se coalescent.
     pub passes_geste: Arc<Mutex<HashMap<String, VolPasse>>>,
+    /// Le verrou des commandes (PLAN-GELS) : les commandes bloquantes
+    /// s'exécutent hors de la pompe (`spawn_blocking`) MAIS une à la
+    /// fois, comme quand le thread principal les sérialisait — sans ce
+    /// verrou, deux paires lecture-décision-écriture se croiseraient
+    /// (état local vs file d'actions de `mark_flagged`, TOCTOU des
+    /// brouillons). La fenêtre reste libre ; la sérialisation reste.
+    pub commandes: Arc<Mutex<()>>,
 }
 
 fn main() {
@@ -143,6 +150,7 @@ fn main() {
         // premier rendu (P0-bis) — d'ici là, mieux vaut tenter que dormir.
         en_ligne: Arc::new(AtomicBool::new(true)),
         passes_geste: Arc::new(Mutex::new(HashMap::new())),
+        commandes: Arc::new(Mutex::new(())),
     };
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())

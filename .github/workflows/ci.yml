@@ -66,6 +66,8 @@ jobs:
         run: node e2e/contraste.mjs
       - name: Coherence du Systeme (DC-D6)
         run: node e2e/coherence-systeme.mjs
+      - name: Garde du thread principal (PLAN-GELS)
+        run: node e2e/garde-thread-principal.mjs
 
   audit:
     name: cargo audit (CVE des dépendances)

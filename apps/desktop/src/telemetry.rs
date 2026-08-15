@@ -193,68 +193,88 @@ fn now_iso8601() -> String {
 /// État du consentement pour l'UI : `unset` déclenche la demande opt-in,
 /// une seule fois. En E2E, toujours `disabled` — pas de bandeau en test.
 #[tauri::command]
-pub fn telemetry_consent_get(app: AppHandle) -> String {
-    if is_e2e() {
-        return "disabled".to_string();
-    }
-    let Ok(base) = base_dir(&app) else {
-        return "disabled".to_string();
-    };
-    match std::fs::read_to_string(consent_file(&base)) {
-        Ok(text) => match serde_json::from_str::<ConsentFile>(&text) {
-            Ok(c) if c.crash_reports => "enabled".to_string(),
-            Ok(_) => "disabled".to_string(),
+pub async fn telemetry_consent_get(app: AppHandle) -> String {
+    // Lecture de fichier : hors de la pompe (PLAN-GELS). Un échec de
+    // jonction vaut « disabled » — le bandeau opt-in ne s'invente pas.
+    crate::commands::hors_pompe(app, |app| {
+        if is_e2e() {
+            return Ok("disabled".to_string());
+        }
+        let Ok(base) = base_dir(&app) else {
+            return Ok("disabled".to_string());
+        };
+        Ok(match std::fs::read_to_string(consent_file(&base)) {
+            Ok(text) => match serde_json::from_str::<ConsentFile>(&text) {
+                Ok(c) if c.crash_reports => "enabled".to_string(),
+                Ok(_) => "disabled".to_string(),
+                Err(_) => "unset".to_string(),
+            },
             Err(_) => "unset".to_string(),
-        },
-        Err(_) => "unset".to_string(),
-    }
+        })
+    })
+    .await
+    .unwrap_or_else(|_| "disabled".to_string())
 }
 
 /// Pose le consentement (opt-in ou refus), et l'applique immédiatement au
 /// hook via l'atomique.
 #[tauri::command]
-pub fn telemetry_consent_set(app: AppHandle, enabled: bool) -> Result<(), String> {
+pub async fn telemetry_consent_set(app: AppHandle, enabled: bool) -> Result<(), String> {
+    // L'atomique d'abord (le hook doit suivre tout de suite), le fichier
+    // hors de la pompe (PLAN-GELS).
     ENABLED.store(enabled, Ordering::Relaxed);
-    let base = base_dir(&app)?;
-    std::fs::create_dir_all(&base).map_err(|err| err.to_string())?;
-    let json = serde_json::to_string(&ConsentFile {
-        crash_reports: enabled,
+    crate::commands::hors_pompe(app, move |app| {
+        let base = base_dir(&app)?;
+        std::fs::create_dir_all(&base).map_err(|err| err.to_string())?;
+        let json = serde_json::to_string(&ConsentFile {
+            crash_reports: enabled,
+        })
+        .map_err(|err| err.to_string())?;
+        std::fs::write(consent_file(&base), json).map_err(|err| err.to_string())
     })
-    .map_err(|err| err.to_string())?;
-    std::fs::write(consent_file(&base), json).map_err(|err| err.to_string())
+    .await
 }
 
 /// Combien de rapports attendent d'être envoyés.
 #[tauri::command]
-pub fn telemetry_pending(app: AppHandle) -> u32 {
-    if is_e2e() {
-        return 0;
-    }
-    let Ok(base) = base_dir(&app) else {
-        return 0;
-    };
-    std::fs::read_dir(crashes_dir(&base))
-        .map(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
-                .count() as u32
-        })
-        .unwrap_or(0)
+pub async fn telemetry_pending(app: AppHandle) -> u32 {
+    // Parcours de dossier : hors de la pompe (PLAN-GELS). Un échec de
+    // jonction vaut zéro rapport — même repli que le dossier illisible.
+    crate::commands::hors_pompe(app, |app| {
+        if is_e2e() {
+            return Ok(0);
+        }
+        let Ok(base) = base_dir(&app) else {
+            return Ok(0);
+        };
+        Ok(std::fs::read_dir(crashes_dir(&base))
+            .map(|entries| {
+                entries
+                    .filter_map(Result::ok)
+                    .filter(|e| e.path().extension().is_some_and(|ext| ext == "json"))
+                    .count() as u32
+            })
+            .unwrap_or(0))
+    })
+    .await
+    .unwrap_or(0)
 }
 
 /// Ouvre le dossier des rapports dans l'explorateur — de quoi les
 /// retrouver et les envoyer soi-même (destination locale, ADR 0014).
 #[tauri::command]
-pub fn telemetry_open_folder(app: AppHandle) -> Result<(), String> {
-    let base = base_dir(&app)?;
-    let dir = crashes_dir(&base);
-    std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
-    std::process::Command::new("explorer")
-        .arg(&dir)
-        .spawn()
-        .map_err(|err| err.to_string())?;
-    Ok(())
+pub async fn telemetry_open_folder(app: AppHandle) -> Result<(), String> {
+    crate::commands::hors_pompe(app, |app| {
+        let base = base_dir(&app)?;
+        let dir = crashes_dir(&base);
+        std::fs::create_dir_all(&dir).map_err(|err| err.to_string())?;
+        std::process::Command::new("explorer")
+            .arg(&dir)
+            .spawn()
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    })
+    .await
 }
 
 /// Provoque un panic pour VÉRIFIER la capture au terrain (ADR 0014 §5).

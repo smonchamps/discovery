@@ -18,6 +18,7 @@ Déterminisme par construction ([launch.mjs](launch.mjs)) :
 ## Lancer
 
 Prérequis : Node ≥ 20, Rust, WebView2 (présent sur Windows 11).
+La sonde de gel (`sonde-gel.py`, PLAN-GELS) exige en plus Python 3.
 
 ```powershell
 cd e2e

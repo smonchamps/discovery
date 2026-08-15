@@ -1,6 +1,6 @@
 ---
 name: gate
-description: Rejouer la gate complète de Wind (fmt, build ui-v2, contrastes, clippy, tests Rust, cohérence du Système, e2e) et rapporter les faits bruts. Obligatoire avant tout commit — jamais les tests seuls.
+description: Rejouer la gate complète de Wind (fmt, build ui-v2, contrastes, cohérence du Système, garde du thread principal, clippy, tests Rust, e2e) et rapporter les faits bruts. Obligatoire avant tout commit — jamais les tests seuls.
 ---
 
 # /gate — la gate complète, du plus rapide au plus lent
@@ -14,6 +14,7 @@ cargo fmt --all -- --check
 (cd apps/desktop/ui-v2 && npm run build)        # zéro avertissement exigé
 node e2e/contraste.mjs                          # paires WCAG (A8)
 node e2e/coherence-systeme.mjs                  # Système ↔ systeme.css, valeur pour valeur
+node e2e/garde-thread-principal.mjs             # aucune commande bloquante sur la pompe (PLAN-GELS)
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace --all-targets            # --all-targets n'est PAS décoratif (examples/)
 cargo test --workspace --doc

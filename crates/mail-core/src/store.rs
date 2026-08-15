@@ -686,11 +686,26 @@ impl Store {
     /// mesure qu'on les decouvre — le denominateur grandissant plus vite
     /// que le numerateur. Un avancement qui recule est pire que pas
     /// d'avancement du tout.
+    ///
+    /// Le denominateur s'ajuste des DEPARTS EN ATTENTE de rejeu
+    /// (archive, suppression, deplacement — `pending_actions`) : le
+    /// geste retire la ligne locale immediatement (echo, E3) mais
+    /// `remote_total` date du dernier SELECT — sans l'ajustement, un
+    /// seul triage figeait l'avancement a 99 % (jamais 100 tant que
+    /// local < remote) et le trait de la barre d'etat avec lui, pour
+    /// toute la duree du rejeu (terrain 2026-08-15, PLAN-GELS). Les
+    /// marquages (lu, etoile) ne retirent rien : ils ne touchent pas le
+    /// denominateur. Borne a zero par boite : un `remote_total` en
+    /// retard ne fait pas reculer les autres.
     pub fn sync_progress(&self) -> Result<(u64, u64), Error> {
         let (local, remote): (i64, i64) = self.0.query_row(
             "SELECT COALESCE(SUM(
                         (SELECT COUNT(*) FROM envelopes e WHERE e.mailbox_id = m.id)), 0),
-                    COALESCE(SUM(m.remote_total), 0)
+                    COALESCE(SUM(MAX(0, m.remote_total -
+                        (SELECT COUNT(*) FROM pending_actions p
+                          WHERE p.mailbox_id = m.id
+                            AND (p.kind IN ('archive', 'delete')
+                                 OR p.kind LIKE 'move_to:%')))), 0)
              FROM mailboxes m WHERE m.remote_total > 0",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
@@ -2186,6 +2201,52 @@ mod tests {
         assert_eq!(store.remote_uidnext(mailbox).unwrap(), Some(101));
         assert_eq!(store.envelope_count(mailbox).unwrap(), 0);
         assert!(!store.has_pending_actions(mailbox).unwrap());
+    }
+
+    /// Un départ en attente de rejeu (archive, suppression, déplacement)
+    /// ne compte plus dans le dénominateur de l'avancement : le geste
+    /// retire la ligne locale immédiatement (écho, PLAN-REACTIVITE E3)
+    /// mais `remote_total` date du dernier SELECT — sans l'ajustement,
+    /// UN SEUL triage suffisait à figer l'avancement à 99 % et le trait
+    /// hitofude de la barre d'état avec lui (terrain 2026-08-15,
+    /// PLAN-GELS : 5 archives + 1 suppression en attente = 99 % pour
+    /// toute la durée du rejeu). Le vrai chemin du geste est appelé
+    /// (`geste_avec_echo`), jamais une simulation.
+    #[test]
+    fn un_depart_en_attente_ne_compte_plus_dans_le_denominateur() {
+        let (mut store, id) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "reste", 100, true),
+                    envelope(2, "part en archive", 200, true),
+                    envelope(3, "reste aussi", 300, false),
+                ],
+            )
+            .unwrap();
+        store.record_remote_total(id, 3).unwrap();
+        assert_eq!(store.sync_progress().unwrap(), (3, 3));
+        // Le triage : l'écho retire la ligne, l'action attend son rejeu.
+        store
+            .geste_avec_echo(id, 2, Action::Archive, Some("archives"))
+            .unwrap();
+        assert_eq!(
+            store.sync_progress().unwrap(),
+            (2, 2),
+            "le message archivé localement ne doit plus être attendu"
+        );
+        // Un marquage en attente ne retire rien de la boîte : il ne
+        // touche pas le dénominateur.
+        store.enqueue_action(id, 1, Action::MarkSeen).unwrap();
+        assert_eq!(store.sync_progress().unwrap(), (2, 2));
+        // Un déplacement retire aussi ; et le dénominateur ne descend
+        // jamais sous zéro même si `remote_total` est en retard.
+        store
+            .geste_avec_echo(id, 3, Action::MoveTo("Factures".into()), None)
+            .unwrap();
+        store.record_remote_total(id, 1).unwrap();
+        assert_eq!(store.sync_progress().unwrap(), (1, 0));
     }
 
     /// Le pendant texte : jamais posée -> `None` (le défaut appartient à

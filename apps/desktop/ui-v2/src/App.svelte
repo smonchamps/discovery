@@ -262,9 +262,17 @@
     toastMinuterie = setTimeout(() => (toast = null), 2200);
   }
 
+  // Garde de génération (même motif que Liste.svelte) : deux instantanés
+  // en vol peuvent se résoudre dans le désordre depuis que les commandes
+  // vivent hors de la pompe (PLAN-GELS) — sans elle, le plus VIEUX
+  // écraserait le frais et la pastille de non-lus remonterait seule.
+  let jetonNav = 0;
   async function chargerNav() {
+    const jeton = ++jetonNav;
     try {
-      comptes = await appel('nav_snapshot');
+      const instantane = await appel('nav_snapshot');
+      if (jeton !== jetonNav) return;
+      comptes = instantane;
       navPrete = true;
     } catch (err) {
       console.error('nav_snapshot :', err);
@@ -274,14 +282,17 @@
   // Rattrapage des aperçus pour les corps écrits avant la colonne
   // `preview` : par lots, jamais sur le chemin d'ouverture ni au
   // défilement. Converge puis se tait ; la liste se rafraîchit une fois
-  // la passe soldée pour montrer les aperçus rattrapés.
+  // la passe soldée pour montrer les aperçus rattrapés. Lot de 500
+  // (PLAN-GELS D2) : à 2 000 corps (~130 Mo lus, mesure du 2026-08-15)
+  // la transaction d'écriture s'allongeait — le verrou court protège les
+  // gestes UI concurrents du BUSY (leçon delete_draft).
   async function rattraperApercus() {
     try {
-      let restants = await appel('preview_catchup', { limit: 2000 });
+      let restants = await appel('preview_catchup', { limit: 500 });
       rattrapageApercus = restants > 0;
       while (restants > 0) {
         await new Promise((r) => setTimeout(r, 250));
-        restants = await appel('preview_catchup', { limit: 2000 });
+        restants = await appel('preview_catchup', { limit: 500 });
       }
       liste?.recharger();
     } catch (err) {

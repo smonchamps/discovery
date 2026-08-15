@@ -1482,14 +1482,17 @@ pub struct MessagePage {
 /// avaient été livrés en interrogeant le serveur — inutilisables dès la
 /// première coupure.
 #[tauri::command]
-pub fn thread_messages(app: AppHandle, thread_id: i64) -> Result<Vec<MessageRow>, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    Ok(store
-        .thread_messages(thread_id)
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .map(to_message_row)
-        .collect())
+pub async fn thread_messages(app: AppHandle, thread_id: i64) -> Result<Vec<MessageRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .thread_messages(thread_id)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(to_message_row)
+            .collect())
+    })
+    .await
 }
 
 /// Mapping partagé entre la boîte unifiée et les résultats de recherche.
@@ -1545,37 +1548,40 @@ pub struct NavAccount {
 /// L'état complet de la nav en UN appel : comptes et compteurs par
 /// catégorie. « Toutes les boîtes » s'agrège côté UI.
 #[tauri::command]
-pub fn nav_snapshot(app: AppHandle) -> Result<Vec<NavAccount>, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let mut sortie = Vec::new();
-    for compte in store.accounts().map_err(|err| err.to_string())? {
-        let dossiers = store
-            .canonical_folders(compte.id)
-            .map_err(|err| err.to_string())?;
-        let compteurs = store
-            .nav_counts(compte.id, &dossiers)
-            .map_err(|err| err.to_string())?;
-        sortie.push(NavAccount {
-            account_id: compte.id,
-            email: compte.email,
-            reception_total: compteurs.reception_total,
-            reception_non_lues: compteurs.reception_non_lues,
-            envoyes: compteurs.envoyes,
-            brouillons: compteurs.brouillons,
-            indesirables_total: compteurs.indesirables_total,
-            indesirables_non_lus: compteurs.indesirables_non_lus,
-            archives: compteurs.archives,
-            corbeille: compteurs.corbeille,
-        });
-    }
-    Ok(sortie)
+pub async fn nav_snapshot(app: AppHandle) -> Result<Vec<NavAccount>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let mut sortie = Vec::new();
+        for compte in store.accounts().map_err(|err| err.to_string())? {
+            let dossiers = store
+                .canonical_folders(compte.id)
+                .map_err(|err| err.to_string())?;
+            let compteurs = store
+                .nav_counts(compte.id, &dossiers)
+                .map_err(|err| err.to_string())?;
+            sortie.push(NavAccount {
+                account_id: compte.id,
+                email: compte.email,
+                reception_total: compteurs.reception_total,
+                reception_non_lues: compteurs.reception_non_lues,
+                envoyes: compteurs.envoyes,
+                brouillons: compteurs.brouillons,
+                indesirables_total: compteurs.indesirables_total,
+                indesirables_non_lus: compteurs.indesirables_non_lus,
+                archives: compteurs.archives,
+                corbeille: compteurs.corbeille,
+            });
+        }
+        Ok(sortie)
+    })
+    .await
 }
 
 /// Une page d'une catégorie de la nav, bornée ou non à un compte.
 /// `reception` = la boîte unifiée (conversations) ; les autres = les
 /// messages des boîtes canoniques résolues, fusionnés par date.
 #[tauri::command]
-pub fn list_category(
+pub async fn list_category(
     app: AppHandle,
     category: String,
     account_id: Option<i64>,
@@ -1583,104 +1589,113 @@ pub fn list_category(
     offset: usize,
     limit: usize,
 ) -> Result<MessagePage, String> {
-    let timer = Instant::now();
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let limit = limit.min(LIST_LIMIT_MAX);
-    if category == "reception" {
-        let total = store
-            .unified_count_scoped(account_id, non_lus)
+    hors_pompe(app, move |app| {
+        let timer = Instant::now();
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let limit = limit.min(LIST_LIMIT_MAX);
+        if category == "reception" {
+            let total = store
+                .unified_count_scoped(account_id, non_lus)
+                .map_err(|err| err.to_string())?;
+            let rows = store
+                .unified_recent_scoped(account_id, non_lus, offset, limit)
+                .map_err(|err| err.to_string())?
+                .into_iter()
+                .map(to_message_row)
+                .collect();
+            return Ok(MessagePage {
+                total,
+                offset,
+                rows,
+                elapsed_us: timer.elapsed().as_micros() as u64,
+            });
+        }
+        let comptes: Vec<i64> = match account_id {
+            Some(id) => vec![id],
+            None => store
+                .accounts()
+                .map_err(|err| err.to_string())?
+                .into_iter()
+                .map(|compte| compte.id)
+                .collect(),
+        };
+        let mut boites = Vec::new();
+        // Les Archives d'une INTÉGRALE Gmail (« Tous les messages ») privent
+        // la catégorie des messages vivant dans une autre canonique — sinon
+        // elle montre toute la boîte (défaut terrain, 2026-08-12).
+        let mut exclure = Vec::new();
+        for compte in &comptes {
+            let dossiers = store
+                .canonical_folders(*compte)
+                .map_err(|err| err.to_string())?;
+            if let Some(nom) = dossiers.boite(&category)
+                && let Some(state) = store
+                    .sync_state(*compte, &nom)
+                    .map_err(|err| err.to_string())?
+            {
+                boites.push(state.mailbox_id);
+                if category == "archives" && dossiers.archives_integrale {
+                    exclure.extend(
+                        store
+                            .canoniques_hors_archives(*compte, &dossiers)
+                            .map_err(|err| err.to_string())?,
+                    );
+                }
+            }
+        }
+        // E3 (PLAN-REACTIVITE) : les échos locaux des destinations de geste
+        // entrent dans la page et le total — la Corbeille montre la
+        // suppression, Envoyés l'envoi, à la seconde du geste.
+        let echos = mail_core::DESTINATIONS_ECHO
+            .contains(&category.as_str())
+            .then_some((category.as_str(), comptes.as_slice()));
+        let (tous, jamais_lus) = store
+            .category_totals(&boites, &exclure, echos)
             .map_err(|err| err.to_string())?;
+        let total = if non_lus { jamais_lus } else { tous };
         let rows = store
-            .unified_recent_scoped(account_id, non_lus, offset, limit)
+            .category_page(&boites, non_lus, &exclure, echos, offset, limit)
             .map_err(|err| err.to_string())?
             .into_iter()
             .map(to_message_row)
             .collect();
-        return Ok(MessagePage {
+        Ok(MessagePage {
             total,
             offset,
             rows,
             elapsed_us: timer.elapsed().as_micros() as u64,
-        });
-    }
-    let comptes: Vec<i64> = match account_id {
-        Some(id) => vec![id],
-        None => store
-            .accounts()
-            .map_err(|err| err.to_string())?
-            .into_iter()
-            .map(|compte| compte.id)
-            .collect(),
-    };
-    let mut boites = Vec::new();
-    // Les Archives d'une INTÉGRALE Gmail (« Tous les messages ») privent
-    // la catégorie des messages vivant dans une autre canonique — sinon
-    // elle montre toute la boîte (défaut terrain, 2026-08-12).
-    let mut exclure = Vec::new();
-    for compte in &comptes {
-        let dossiers = store
-            .canonical_folders(*compte)
-            .map_err(|err| err.to_string())?;
-        if let Some(nom) = dossiers.boite(&category)
-            && let Some(state) = store
-                .sync_state(*compte, &nom)
-                .map_err(|err| err.to_string())?
-        {
-            boites.push(state.mailbox_id);
-            if category == "archives" && dossiers.archives_integrale {
-                exclure.extend(
-                    store
-                        .canoniques_hors_archives(*compte, &dossiers)
-                        .map_err(|err| err.to_string())?,
-                );
-            }
-        }
-    }
-    // E3 (PLAN-REACTIVITE) : les échos locaux des destinations de geste
-    // entrent dans la page et le total — la Corbeille montre la
-    // suppression, Envoyés l'envoi, à la seconde du geste.
-    let echos = mail_core::DESTINATIONS_ECHO
-        .contains(&category.as_str())
-        .then_some((category.as_str(), comptes.as_slice()));
-    let (tous, jamais_lus) = store
-        .category_totals(&boites, &exclure, echos)
-        .map_err(|err| err.to_string())?;
-    let total = if non_lus { jamais_lus } else { tous };
-    let rows = store
-        .category_page(&boites, non_lus, &exclure, echos, offset, limit)
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .map(to_message_row)
-        .collect();
-    Ok(MessagePage {
-        total,
-        offset,
-        rows,
-        elapsed_us: timer.elapsed().as_micros() as u64,
+        })
     })
+    .await
 }
 
 /// Rattrape l'aperçu des corps écrits avant la colonne `preview`, par
 /// lots bornés — l'UI l'appelle au fil de son sondage jusqu'à zéro,
 /// jamais sur le chemin d'ouverture. Rend le nombre restant.
 #[tauri::command]
-pub fn preview_catchup(app: AppHandle, limit: usize) -> Result<u64, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store.preview_catchup(limit).map_err(|err| err.to_string())
+pub async fn preview_catchup(app: AppHandle, limit: usize) -> Result<u64, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.preview_catchup(limit).map_err(|err| err.to_string())
+    })
+    .await
 }
 
 /// Recherche plein-texte sur tous les comptes. Le déclenchement à partir
 /// de 3 caractères et le debounce sont de la responsabilité de l'UI.
 #[tauri::command]
-pub fn search_messages(app: AppHandle, query: String) -> Result<Vec<MessageRow>, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let rows = store
-        .search(&query, SEARCH_LIMIT)
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .map(to_message_row)
-        .collect();
-    Ok(rows)
+pub async fn search_messages(app: AppHandle, query: String) -> Result<Vec<MessageRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let rows = store
+            .search(&query, SEARCH_LIMIT)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(to_message_row)
+            .collect();
+        Ok(rows)
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -1784,25 +1799,28 @@ pub struct AttachmentRow {
 /// réseau. Vide tant que le corps n'a pas été rapatrié : même condition
 /// que la recherche dans le texte, et le rattrapage la lève.
 #[tauri::command]
-pub fn message_attachments(
+pub async fn message_attachments(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
 ) -> Result<Vec<AttachmentRow>, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let found = store
-        .attachments(account_id, &mailbox, uid)
-        .map_err(|err| err.to_string())?;
-    Ok(found
-        .into_iter()
-        .map(|attachment| AttachmentRow {
-            index: attachment.index,
-            size: attachment.human_size(),
-            name: attachment.name,
-            mime: attachment.mime,
-        })
-        .collect())
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let found = store
+            .attachments(account_id, &mailbox, uid)
+            .map_err(|err| err.to_string())?;
+        Ok(found
+            .into_iter()
+            .map(|attachment| AttachmentRow {
+                index: attachment.index,
+                size: attachment.human_size(),
+                name: attachment.name,
+                mime: attachment.mime,
+            })
+            .collect())
+    })
+    .await
 }
 
 /// Enregistre une pièce jointe dans le dossier Téléchargements et
@@ -1916,13 +1934,16 @@ fn unique_path(directory: &Path, name: &str) -> PathBuf {
 /// Archive : disparition locale immédiate + journalisation, le serveur
 /// du compte suivra au prochain sync.
 #[tauri::command]
-pub fn archive_message(
+pub async fn archive_message(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
 ) -> Result<(), String> {
-    queue_removal(&app, account_id, mailbox, uid, Action::Archive)
+    hors_pompe(app, move |app| {
+        queue_removal(&app, account_id, mailbox, uid, Action::Archive)
+    })
+    .await
 }
 
 /// Un dossier proposé à l'utilisateur.
@@ -1944,48 +1965,57 @@ pub struct FolderRow {
 /// La boîte courante est exclue : « déplacer vers INBOX » depuis INBOX
 /// n'a pas de sens, et certains serveurs le refusent.
 #[tauri::command]
-pub fn list_folders(app: AppHandle, account_id: i64) -> Result<Vec<FolderRow>, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    Ok(store
-        .folders(account_id)
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .filter(|folder| folder.selectable && folder.wire != MAILBOX)
-        .map(|folder| FolderRow {
-            wire: folder.wire,
-            display: folder.display,
-        })
-        .collect())
+pub async fn list_folders(app: AppHandle, account_id: i64) -> Result<Vec<FolderRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .folders(account_id)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .filter(|folder| folder.selectable && folder.wire != MAILBOX)
+            .map(|folder| FolderRow {
+                wire: folder.wire,
+                display: folder.display,
+            })
+            .collect())
+    })
+    .await
 }
 
 /// Déplace un message : disparition locale immédiate + journalisation,
 /// le serveur suivra au prochain sync — même boucle qu'archiver.
 #[tauri::command]
-pub fn move_message(
+pub async fn move_message(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
     folder: String,
 ) -> Result<(), String> {
-    // Le nom vient de l'UI, qui le tient de `list_folders` : il est déjà
-    // en forme réseau. Le décoder ici ferait échouer le rejeu.
-    if folder.trim().is_empty() {
-        return Err("dossier de destination manquant".to_string());
-    }
-    queue_removal(&app, account_id, mailbox, uid, Action::MoveTo(folder))
+    hors_pompe(app, move |app| {
+        // Le nom vient de l'UI, qui le tient de `list_folders` : il est déjà
+        // en forme réseau. Le décoder ici ferait échouer le rejeu.
+        if folder.trim().is_empty() {
+            return Err("dossier de destination manquant".to_string());
+        }
+        queue_removal(&app, account_id, mailbox, uid, Action::MoveTo(folder))
+    })
+    .await
 }
 
 /// Suppression : disparition locale immédiate + journalisation, mise à
 /// la corbeille du serveur du compte au prochain sync.
 #[tauri::command]
-pub fn delete_message(
+pub async fn delete_message(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
 ) -> Result<(), String> {
-    queue_removal(&app, account_id, mailbox, uid, Action::Delete)
+    hors_pompe(app, move |app| {
+        queue_removal(&app, account_id, mailbox, uid, Action::Delete)
+    })
+    .await
 }
 
 fn queue_removal(
@@ -2023,88 +2053,97 @@ fn queue_removal(
 /// le texte d'envoi est déjà échappé mais repasse par la même porte).
 /// Purement local — un écho n'a rien à demander au serveur.
 #[tauri::command]
-pub fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<BodyView, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let (html, attachment_count) = store
-        .echo_vue(id)
-        .map_err(|err| err.to_string())?
-        .ok_or_else(|| "écho déjà réconcilié".to_string())?;
-    let policy = if show_images {
-        mail_render::ImagePolicy::AllowRemote
-    } else {
-        mail_render::ImagePolicy::BlockRemote
-    };
-    let sanitized = mail_render::sanitize_with(&html, policy);
-    Ok(BodyView {
-        document: mail_render::email_document(&sanitized.html, policy),
-        remote_images_blocked: sanitized.remote_images_blocked,
-        attachment_count,
+pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<BodyView, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let (html, attachment_count) = store
+            .echo_vue(id)
+            .map_err(|err| err.to_string())?
+            .ok_or_else(|| "écho déjà réconcilié".to_string())?;
+        let policy = if show_images {
+            mail_render::ImagePolicy::AllowRemote
+        } else {
+            mail_render::ImagePolicy::BlockRemote
+        };
+        let sanitized = mail_render::sanitize_with(&html, policy);
+        Ok(BodyView {
+            document: mail_render::email_document(&sanitized.html, policy),
+            remote_images_blocked: sanitized.remote_images_blocked,
+            attachment_count,
+        })
     })
+    .await
 }
 
 /// Marque lu/non-lu : application locale immédiate (optimisme UI) +
 /// journalisation — la prochaine synchro du compte rejoue vers le serveur.
 #[tauri::command]
-pub fn mark_seen(
+pub async fn mark_seen(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
     seen: bool,
 ) -> Result<(), String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let Some(state) = store
-        .sync_state(account_id, &mailbox)
-        .map_err(|err| err.to_string())?
-    else {
-        return Ok(());
-    };
-    let changed = store
-        .set_seen_local(state.mailbox_id, uid, seen)
-        .map_err(|err| err.to_string())?;
-    if changed {
-        let action = if seen {
-            Action::MarkSeen
-        } else {
-            Action::MarkUnseen
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let Some(state) = store
+            .sync_state(account_id, &mailbox)
+            .map_err(|err| err.to_string())?
+        else {
+            return Ok(());
         };
-        store
-            .enqueue_action(state.mailbox_id, uid, action)
+        let changed = store
+            .set_seen_local(state.mailbox_id, uid, seen)
             .map_err(|err| err.to_string())?;
-    }
-    Ok(())
+        if changed {
+            let action = if seen {
+                Action::MarkSeen
+            } else {
+                Action::MarkUnseen
+            };
+            store
+                .enqueue_action(state.mailbox_id, uid, action)
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    })
+    .await
 }
 
 /// Étoile/désétoile : même contrat que lu/non-lu, même file rejouable.
 #[tauri::command]
-pub fn mark_flagged(
+pub async fn mark_flagged(
     app: AppHandle,
     account_id: i64,
     mailbox: String,
     uid: u32,
     flagged: bool,
 ) -> Result<(), String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let Some(state) = store
-        .sync_state(account_id, &mailbox)
-        .map_err(|err| err.to_string())?
-    else {
-        return Ok(());
-    };
-    let changed = store
-        .set_flagged_local(state.mailbox_id, uid, flagged)
-        .map_err(|err| err.to_string())?;
-    if changed {
-        let action = if flagged {
-            Action::MarkFlagged
-        } else {
-            Action::MarkUnflagged
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let Some(state) = store
+            .sync_state(account_id, &mailbox)
+            .map_err(|err| err.to_string())?
+        else {
+            return Ok(());
         };
-        store
-            .enqueue_action(state.mailbox_id, uid, action)
+        let changed = store
+            .set_flagged_local(state.mailbox_id, uid, flagged)
             .map_err(|err| err.to_string())?;
-    }
-    Ok(())
+        if changed {
+            let action = if flagged {
+                Action::MarkFlagged
+            } else {
+                Action::MarkUnflagged
+            };
+            store
+                .enqueue_action(state.mailbox_id, uid, action)
+                .map_err(|err| err.to_string())?;
+        }
+        Ok(())
+    })
+    .await
 }
 
 // ---------------------------------------------------------------------
@@ -2324,7 +2363,7 @@ fn quote_date(envelope: &mail_core::Envelope) -> Option<String> {
 // Les arguments d'une commande Tauri sont NOMMÉS à l'appel (objet JS) :
 // l'interversion silencieuse que vise le lint ne peut pas s'y produire.
 #[allow(clippy::too_many_arguments)]
-pub fn queue_send(
+pub async fn queue_send(
     app: AppHandle,
     account_id: i64,
     to: String,
@@ -2334,35 +2373,38 @@ pub fn queue_send(
     reply_to_uid: Option<u32>,
     draft_id: Option<i64>,
 ) -> Result<(), String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let from = account_email(&store, account_id)?;
-    // Sans la boîte, on ne résout RIEN — on ne devine pas.
-    //
-    // Un UID seul ne désigne plus un message depuis que le compte en a
-    // deux (ADR 0009) : le n°1 d'INBOX et le n°1 d'« Envoyés » sont deux
-    // messages. Deviner produirait un `In-Reply-To` pointant sur un
-    // inconnu, donc une réponse greffée sur la conversation de quelqu'un
-    // d'autre. L'omettre coupe un fil — « un fil coupé en deux est
-    // réparable et honnête ; deux messages étrangers réunis ne le sont
-    // pas » (ADR 0008 §2).
-    let in_reply_to = reply_to_uid
-        .zip(reply_to_mailbox)
-        .and_then(|(uid, mailbox)| store.envelope(account_id, &mailbox, uid).ok().flatten())
-        .and_then(|envelope| envelope.message_id);
-    let draft = mail_core::compose(&from, &to, &subject, &body, in_reply_to.as_deref())
-        .map_err(|err| err.to_string())?;
-    // Avec un brouillon-ancre, ses pièces rejoignent le journal dans la
-    // MÊME transaction (PJ-D2) ; sans lui (composition jamais sauvée,
-    // donc sans pièce possible), le chemin historique suffit.
-    match draft_id {
-        Some(draft_id) => store
-            .enqueue_outbox_from_draft(account_id, &draft, draft_id)
-            .map_err(|err| err.to_string())?,
-        None => store
-            .enqueue_outbox(account_id, &draft)
-            .map_err(|err| err.to_string())?,
-    };
-    Ok(())
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let from = account_email(&store, account_id)?;
+        // Sans la boîte, on ne résout RIEN — on ne devine pas.
+        //
+        // Un UID seul ne désigne plus un message depuis que le compte en a
+        // deux (ADR 0009) : le n°1 d'INBOX et le n°1 d'« Envoyés » sont deux
+        // messages. Deviner produirait un `In-Reply-To` pointant sur un
+        // inconnu, donc une réponse greffée sur la conversation de quelqu'un
+        // d'autre. L'omettre coupe un fil — « un fil coupé en deux est
+        // réparable et honnête ; deux messages étrangers réunis ne le sont
+        // pas » (ADR 0008 §2).
+        let in_reply_to = reply_to_uid
+            .zip(reply_to_mailbox)
+            .and_then(|(uid, mailbox)| store.envelope(account_id, &mailbox, uid).ok().flatten())
+            .and_then(|envelope| envelope.message_id);
+        let draft = mail_core::compose(&from, &to, &subject, &body, in_reply_to.as_deref())
+            .map_err(|err| err.to_string())?;
+        // Avec un brouillon-ancre, ses pièces rejoignent le journal dans la
+        // MÊME transaction (PJ-D2) ; sans lui (composition jamais sauvée,
+        // donc sans pièce possible), le chemin historique suffit.
+        match draft_id {
+            Some(draft_id) => store
+                .enqueue_outbox_from_draft(account_id, &draft, draft_id)
+                .map_err(|err| err.to_string())?,
+            None => store
+                .enqueue_outbox(account_id, &draft)
+                .map_err(|err| err.to_string())?,
+        };
+        Ok(())
+    })
+    .await
 }
 
 /// Vide les boîtes d'envoi de TOUS les comptes connectés — chacun par
@@ -2833,48 +2875,57 @@ fn run_flush_all(
 /// L'état de la boîte d'envoi pour l'UI : tout ce qui n'est pas parti,
 /// tous comptes confondus.
 #[tauri::command]
-pub fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let mut status = OutboxStatus {
-        queued: 0,
-        interrupted: 0,
-        rejected: 0,
-        entries: Vec::new(),
-    };
-    for message in store.outbox().map_err(|err| err.to_string())? {
-        match message.state {
-            OutboxState::Sent => continue,
-            OutboxState::Queued | OutboxState::Sending => status.queued += 1,
-            OutboxState::Interrupted => status.interrupted += 1,
-            OutboxState::Rejected => status.rejected += 1,
+pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let mut status = OutboxStatus {
+            queued: 0,
+            interrupted: 0,
+            rejected: 0,
+            entries: Vec::new(),
+        };
+        for message in store.outbox().map_err(|err| err.to_string())? {
+            match message.state {
+                OutboxState::Sent => continue,
+                OutboxState::Queued | OutboxState::Sending => status.queued += 1,
+                OutboxState::Interrupted => status.interrupted += 1,
+                OutboxState::Rejected => status.rejected += 1,
+            }
+            status.entries.push(OutboxEntry {
+                id: message.id,
+                subject: message.subject,
+                to: message.to.join(", "),
+                state: message.state.as_str().to_string(),
+                attempts: message.attempts,
+                error: message.last_error,
+                pieces: message.attachments.len(),
+            });
         }
-        status.entries.push(OutboxEntry {
-            id: message.id,
-            subject: message.subject,
-            to: message.to.join(", "),
-            state: message.state.as_str().to_string(),
-            attempts: message.attempts,
-            error: message.last_error,
-            pieces: message.attachments.len(),
-        });
-    }
-    Ok(status)
+        Ok(status)
+    })
+    .await
 }
 
 /// Renvoi d'un envoi en quarantaine ou refusé : LA décision explicite
 /// de l'utilisateur qu'exige la règle « jamais d'envoi fantôme ».
 #[tauri::command]
-pub fn outbox_requeue(app: AppHandle, id: i64) -> Result<(), String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store.requeue_outbox(id).map_err(|err| err.to_string())
+pub async fn outbox_requeue(app: AppHandle, id: i64) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.requeue_outbox(id).map_err(|err| err.to_string())
+    })
+    .await
 }
 
 /// Abandon d'un envoi (décision utilisateur) ; l'historique `sent`
 /// est préservé par le noyau.
 #[tauri::command]
-pub fn outbox_delete(app: AppHandle, id: i64) -> Result<(), String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store.delete_outbox(id).map_err(|err| err.to_string())
+pub async fn outbox_delete(app: AppHandle, id: i64) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.delete_outbox(id).map_err(|err| err.to_string())
+    })
+    .await
 }
 
 // ---------------------------------------------------------------------
@@ -2930,60 +2981,69 @@ pub struct DraftContentArg {
 }
 
 #[tauri::command]
-pub fn save_draft(
+pub async fn save_draft(
     app: AppHandle,
     account_id: i64,
     id: Option<i64>,
     base_epoch: Option<i64>,
     content: DraftContentArg,
 ) -> Result<DraftSavedRow, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let saved = store
-        .save_draft(
-            account_id,
-            id,
-            base_epoch,
-            mail_core::DraftContent {
-                to_raw: &content.to,
-                subject: &content.subject,
-                body: &content.body,
-                reply_to_uid: content.reply_to_uid,
-                reply_to_mailbox: content.reply_to_mailbox.as_deref(),
-            },
-        )
-        .map_err(|err| err.to_string())?;
-    Ok(DraftSavedRow {
-        id: saved.id,
-        updated_epoch: saved.updated_epoch,
-        forked: saved.forked,
-    })
-}
-
-#[tauri::command]
-pub fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    Ok(store
-        .drafts()
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .map(|draft| DraftRow {
-            updated_epoch: draft.updated_epoch,
-            id: draft.id,
-            account_id: draft.account_id,
-            to: draft.to_raw,
-            subject: draft.subject,
-            body: draft.body,
-            reply_to_uid: draft.reply_to_uid,
-            reply_to_mailbox: draft.reply_to_mailbox,
-            thread_id: draft.thread_id,
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let saved = store
+            .save_draft(
+                account_id,
+                id,
+                base_epoch,
+                mail_core::DraftContent {
+                    to_raw: &content.to,
+                    subject: &content.subject,
+                    body: &content.body,
+                    reply_to_uid: content.reply_to_uid,
+                    reply_to_mailbox: content.reply_to_mailbox.as_deref(),
+                },
+            )
+            .map_err(|err| err.to_string())?;
+        Ok(DraftSavedRow {
+            id: saved.id,
+            updated_epoch: saved.updated_epoch,
+            forked: saved.forked,
         })
-        .collect())
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn delete_draft(app: AppHandle, id: i64) -> Result<(), String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store.delete_draft(id).map_err(|err| err.to_string())
+pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .drafts()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|draft| DraftRow {
+                updated_epoch: draft.updated_epoch,
+                id: draft.id,
+                account_id: draft.account_id,
+                to: draft.to_raw,
+                subject: draft.subject,
+                body: draft.body,
+                reply_to_uid: draft.reply_to_uid,
+                reply_to_mailbox: draft.reply_to_mailbox,
+                thread_id: draft.thread_id,
+            })
+            .collect())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn delete_draft(app: AppHandle, id: i64) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.delete_draft(id).map_err(|err| err.to_string())
+    })
+    .await
 }
 
 // ---------------------------------------------------------------------
@@ -3073,80 +3133,84 @@ fn mime_for_name(name: &str) -> &'static str {
 /// `draft_id: None` : le brouillon-ancre est créé, vide de texte —
 /// l'autosave du composeur le remplira avec l'id et l'epoch rendus ici.
 #[tauri::command]
-pub fn attach_files(
+pub async fn attach_files(
     app: AppHandle,
     account_id: i64,
     draft_id: Option<i64>,
     paths: Vec<String>,
 ) -> Result<AttachReport, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let cree = draft_id.is_none();
-    let draft_id = match draft_id {
-        Some(id) => id,
-        None => {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let cree = draft_id.is_none();
+        let draft_id = match draft_id {
+            Some(id) => id,
+            None => {
+                store
+                    .save_draft(
+                        account_id,
+                        None,
+                        None,
+                        mail_core::DraftContent {
+                            to_raw: "",
+                            subject: "",
+                            body: "",
+                            reply_to_uid: None,
+                            reply_to_mailbox: None,
+                        },
+                    )
+                    .map_err(|err| err.to_string())?
+                    .id
+            }
+        };
+        let mut updated_epoch = None;
+        let mut refused = Vec::new();
+        for path in &paths {
+            // Échec de lecture = échec franc du geste : les fichiers déjà
+            // entrés restent (l'UI relit les puces), celui-ci a un problème
+            // que l'utilisateur doit voir, pas un silence.
+            let bytes =
+                std::fs::read(path).map_err(|err| format!("lecture de {path:?} : {err}"))?;
+            let name = std::path::Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+            match store.add_draft_attachment(draft_id, &name, mime_for_name(&name), &bytes) {
+                Ok(saved) => updated_epoch = Some(saved.updated_epoch),
+                Err(mail_core::Error::AttachmentOverBudget {
+                    name, remaining, ..
+                }) => refused.push(RefusedPiece {
+                    name,
+                    remaining: mail_core::human_size(remaining),
+                }),
+                Err(err) => return Err(err.to_string()),
+            }
+        }
+        // L'ancre créée pour rien (tout refusé) est reprise sur-le-champ :
+        // pas de brouillon vide fantôme au dossier.
+        if cree && updated_epoch.is_none() {
             store
-                .save_draft(
-                    account_id,
-                    None,
-                    None,
-                    mail_core::DraftContent {
-                        to_raw: "",
-                        subject: "",
-                        body: "",
-                        reply_to_uid: None,
-                        reply_to_mailbox: None,
-                    },
-                )
+                .delete_draft(draft_id)
+                .map_err(|err| err.to_string())?;
+            return Ok(AttachReport {
+                draft_id: None,
+                updated_epoch: None,
+                pieces: Vec::new(),
+                refused,
+            });
+        }
+        Ok(AttachReport {
+            draft_id: Some(draft_id),
+            updated_epoch,
+            pieces: store
+                .draft_attachments_meta(draft_id)
                 .map_err(|err| err.to_string())?
-                .id
-        }
-    };
-    let mut updated_epoch = None;
-    let mut refused = Vec::new();
-    for path in &paths {
-        // Échec de lecture = échec franc du geste : les fichiers déjà
-        // entrés restent (l'UI relit les puces), celui-ci a un problème
-        // que l'utilisateur doit voir, pas un silence.
-        let bytes = std::fs::read(path).map_err(|err| format!("lecture de {path:?} : {err}"))?;
-        let name = std::path::Path::new(path)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| path.clone());
-        match store.add_draft_attachment(draft_id, &name, mime_for_name(&name), &bytes) {
-            Ok(saved) => updated_epoch = Some(saved.updated_epoch),
-            Err(mail_core::Error::AttachmentOverBudget {
-                name, remaining, ..
-            }) => refused.push(RefusedPiece {
-                name,
-                remaining: mail_core::human_size(remaining),
-            }),
-            Err(err) => return Err(err.to_string()),
-        }
-    }
-    // L'ancre créée pour rien (tout refusé) est reprise sur-le-champ :
-    // pas de brouillon vide fantôme au dossier.
-    if cree && updated_epoch.is_none() {
-        store
-            .delete_draft(draft_id)
-            .map_err(|err| err.to_string())?;
-        return Ok(AttachReport {
-            draft_id: None,
-            updated_epoch: None,
-            pieces: Vec::new(),
+                .into_iter()
+                .map(piece_row)
+                .collect(),
             refused,
-        });
-    }
-    Ok(AttachReport {
-        draft_id: Some(draft_id),
-        updated_epoch,
-        pieces: store
-            .draft_attachments_meta(draft_id)
-            .map_err(|err| err.to_string())?
-            .into_iter()
-            .map(piece_row)
-            .collect(),
-        refused,
+        })
     })
+    .await
 }
 
 /// Bilan du rapatriement d'UNE pièce du message d'origine (transfert,
@@ -3258,23 +3322,32 @@ pub async fn fetch_source_attachment(
 /// Retire une pièce. Rend le nouvel `updated_epoch` du brouillon, ou
 /// `None` si la pièce n'existait plus (double-clic) — rien n'a bougé.
 #[tauri::command]
-pub fn detach_file(app: AppHandle, attachment_id: i64) -> Result<Option<i64>, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store
-        .remove_draft_attachment(attachment_id)
-        .map_err(|err| err.to_string())
+pub async fn detach_file(app: AppHandle, attachment_id: i64) -> Result<Option<i64>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .remove_draft_attachment(attachment_id)
+            .map_err(|err| err.to_string())
+    })
+    .await
 }
 
 /// Les pièces d'un brouillon — la reprise redessine ses puces.
 #[tauri::command]
-pub fn draft_attachments(app: AppHandle, draft_id: i64) -> Result<Vec<DraftPieceRow>, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    Ok(store
-        .draft_attachments_meta(draft_id)
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .map(piece_row)
-        .collect())
+pub async fn draft_attachments(
+    app: AppHandle,
+    draft_id: i64,
+) -> Result<Vec<DraftPieceRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .draft_attachments_meta(draft_id)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(piece_row)
+            .collect())
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -3606,6 +3679,36 @@ fn reposer_sessions(
     Ok(())
 }
 
+/// Exécute un travail bloquant HORS de la pompe de messages et SOUS le
+/// verrou global des commandes (PLAN-GELS).
+///
+/// Les deux moitiés sont indissociables : `spawn_blocking` libère la
+/// pompe (une commande `async` sans lui bloquerait un worker tokio — le
+/// gel quitterait la fenêtre pour réapparaître dans la file IPC sur une
+/// machine à deux cœurs) ; le verrou restaure la sérialisation que le
+/// thread principal offrait gratuitement — sans lui, les paires
+/// lecture-décision-écriture des commandes se croiseraient (état local
+/// contre file d'actions de `mark_flagged`, TOCTOU des brouillons,
+/// `SQLITE_BUSY_SNAPSHOT` que le `busy_timeout` ne couvre pas). Un
+/// verrou empoisonné se récupère (même choix que `verrou_compte`) : le
+/// travail sous verrou n'a pas d'invariant en mémoire partagée.
+pub(crate) async fn hors_pompe<T, F>(app: AppHandle, travail: F) -> Result<T, String>
+where
+    F: FnOnce(AppHandle) -> Result<T, String> + Send + 'static,
+    T: Send + 'static,
+{
+    let verrou = app.state::<AppState>().commandes.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _garde = match verrou.lock() {
+            Ok(garde) => garde,
+            Err(poison) => poison.into_inner(),
+        };
+        travail(app)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
 pub(crate) fn db_path(app: &AppHandle) -> Result<PathBuf, String> {
     // Crochet E2E : base isolée fournie par le pilote de test — la vraie
     // base de l'utilisateur ne doit jamais être touchée par un test.
@@ -3665,22 +3768,31 @@ pub struct SyncProgress {
 /// en boucle pendant qu'une synchronisation tourne, sans lui coûter un
 /// seul aller-retour.
 #[tauri::command]
-pub fn sync_progress(app: AppHandle, state: State<'_, AppState>) -> Result<SyncProgress, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
-    // Un horodatage illisible (pref corrompue) vaut « jamais » : la barre
-    // d'état retombe sur le texte sans date plutôt que d'afficher n'importe quoi.
-    let derniere = store
-        .text_pref(PREF_DERNIERE_SYNCHRO)
-        .map_err(|err| err.to_string())?
-        .and_then(|valeur| valeur.parse::<i64>().ok());
-    Ok(SyncProgress {
-        local,
-        remote,
-        percent: mail_core::sync_percent(local, remote),
-        derniere,
-        generation: state.sync_cycle.generation.load(Ordering::Relaxed),
+pub async fn sync_progress(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<SyncProgress, String> {
+    // `State` ne traverse pas le `spawn_blocking` (durée de vie) : on
+    // emporte l'Arc du cycle, pas l'état.
+    let cycle = state.sync_cycle.clone();
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let (local, remote) = store.sync_progress().map_err(|err| err.to_string())?;
+        // Un horodatage illisible (pref corrompue) vaut « jamais » : la barre
+        // d'état retombe sur le texte sans date plutôt que d'afficher n'importe quoi.
+        let derniere = store
+            .text_pref(PREF_DERNIERE_SYNCHRO)
+            .map_err(|err| err.to_string())?
+            .and_then(|valeur| valeur.parse::<i64>().ok());
+        Ok(SyncProgress {
+            local,
+            remote,
+            percent: mail_core::sync_percent(local, remote),
+            derniere,
+            generation: cycle.generation.load(Ordering::Relaxed),
+        })
     })
+    .await
 }
 
 /// P0-bis + E4 : l'UI remonte l'état réseau de l'OS (`navigator.onLine`).
@@ -3759,11 +3871,14 @@ pub struct BackfillStatus {
 /// État du rattrapage, sans rien télécharger — de quoi afficher
 /// « N messages sans corps » avant même de commencer.
 #[tauri::command]
-pub fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    Ok(BackfillStatus {
-        remaining: pending_total(&store)?,
+pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(BackfillStatus {
+            remaining: pending_total(&store)?,
+        })
     })
+    .await
 }
 
 // ---------------------------------------------------------------------
@@ -3786,10 +3901,13 @@ pub struct MigrationCheck {
 
 /// Sonde en lecture seule : rien n'est déclenché, rien n'est créé.
 #[tauri::command]
-pub fn migration_check(app: AppHandle) -> Result<MigrationCheck, String> {
-    Ok(MigrationCheck {
-        pending: Store::pending_adoption(&db_path(&app)?).map_err(|err| err.to_string())?,
+pub async fn migration_check(app: AppHandle) -> Result<MigrationCheck, String> {
+    hors_pompe(app, move |app| {
+        Ok(MigrationCheck {
+            pending: Store::pending_adoption(&db_path(&app)?).map_err(|err| err.to_string())?,
+        })
     })
+    .await
 }
 
 #[derive(Serialize)]
@@ -4049,42 +4167,54 @@ pub fn open_link(url: String) -> Result<(), String> {
 
 /// Bulles d'arrivee : la preference se LIT pour l'afficher…
 #[tauri::command]
-pub fn notif_pref_get(app: AppHandle) -> Result<bool, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store
-        .bool_pref(PREF_ARRIVAL_BUBBLES, true)
-        .map_err(|err| err.to_string())
+pub async fn notif_pref_get(app: AppHandle) -> Result<bool, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .bool_pref(PREF_ARRIVAL_BUBBLES, true)
+            .map_err(|err| err.to_string())
+    })
+    .await
 }
 
 /// …et se POSE depuis le groupe Notifications des Reglages. Persistee en
 /// base (PLAN-REGLAGES, R-D2) : c'est le shell Rust qui emet les bulles,
 /// localStorage lui serait invisible.
 #[tauri::command]
-pub fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store
-        .set_bool_pref(PREF_ARRIVAL_BUBBLES, enabled)
-        .map_err(|err| err.to_string())
+pub async fn notif_pref_set(app: AppHandle, enabled: bool) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .set_bool_pref(PREF_ARRIVAL_BUBBLES, enabled)
+            .map_err(|err| err.to_string())
+    })
+    .await
 }
 
 /// Langue de l'interface (PLAN-LANGUES, A15) : la preference se LIT au
 /// demarrage — `None` tant qu'elle n'a jamais ete posee, l'UI detecte
 /// alors la langue du systeme et la pose aussitot…
 #[tauri::command]
-pub fn lang_get(app: AppHandle) -> Result<Option<String>, String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store.text_pref(PREF_LANG).map_err(|err| err.to_string())
+pub async fn lang_get(app: AppHandle) -> Result<Option<String>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store.text_pref(PREF_LANG).map_err(|err| err.to_string())
+    })
+    .await
 }
 
 /// …et se POSE depuis Reglages > Affichage. En base (pas localStorage),
 /// meme raison que les bulles : le shell composera les notifications
 /// dans cette langue (E2).
 #[tauri::command]
-pub fn lang_set(app: AppHandle, lang: String) -> Result<(), String> {
-    let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-    store
-        .set_text_pref(PREF_LANG, &lang)
-        .map_err(|err| err.to_string())
+pub async fn lang_set(app: AppHandle, lang: String) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .set_text_pref(PREF_LANG, &lang)
+            .map_err(|err| err.to_string())
+    })
+    .await
 }
 
 /// Telecharge, verifie la signature, installe, puis redemarre.

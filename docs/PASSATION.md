@@ -219,6 +219,7 @@ Re-mesurés le 2026-07-26 après l'ADR 0010, sur les bases du gate 3
 | RAM (working set **privé**) | < 200 Mo | 95,5 Mo · 7 processus ✅ |
 | Taille de la base | **levé** (ADR 0010 §2) | garde d'espace disque à ~50 ko/message |
 | Perte de données | 0, prouvé par crash-récup | ✅ |
+| **Gel de la pompe de messages** | aucun gel > 150 ms (fenêtre toujours déplaçable) | 0 gel sur 40 s, décor 251 k enveloppes (PLAN-GELS, `e2e/sonde-gel.py`) ✅ |
 | **Recherche** | < 100 ms | **113–210 ms ❌** (levier ×1,8–2,9 validé, tranché en bêta) |
 | **Adoption d'une base héritée** | < 1 s | **3,66 s — assumé** (ADR 0012 : une seule fois, visible, annulable, rembobinable) |
 
@@ -360,6 +361,13 @@ Bash). Syntaxes différentes.
   et `-shm`. Une copie à chaud doit prendre les trois.
 - **Un commit ne peut pas être chaîné avec `git --no-pager …`** : le hook
   `block-no-verify` bloque le préfixe `--no-`. Séparer les commandes.
+- **Une commande Tauri sans `async` s'exécute sur le THREAD PRINCIPAL**
+  — celui de la pompe de messages : la fenêtre gèle pour toute sa durée
+  (constat 2026-08-15, gels de 2 à 4,6 s au démarrage). Toute commande
+  qui ouvre la base, touche un fichier ou le keyring est `async fn` ;
+  la gate `e2e/garde-thread-principal.mjs` le tient (exemption nommée
+  pour les pures d'état). Mesure du symptôme :
+  `python e2e/sonde-gel.py <base.db>` (base HORS dépôt).
 
 ### 7.2 Les notifications exigent l'application INSTALLÉE
 
@@ -393,7 +401,10 @@ cargo tauri build
 ```
 
 Mesures : `node e2e/mesure.mjs` (démarrage, page, RAM — `MESURE_DB`,
-`MESURE_COMPTES`, `MESURE_REUTILISER`), `e2e/mesure-ram.ps1`.
+`MESURE_COMPTES`, `MESURE_REUTILISER`), `e2e/mesure-ram.ps1`, et
+`python e2e/sonde-gel.py <base.db>` (gel de la pompe de messages,
+budget « aucun gel > 150 ms », PLAN-GELS — exige Python 3, seul outil
+du dépôt à le demander).
 
 ⚠️ **La base de mesure se place HORS du dépôt** (OneDrive perturberait la
 mesure). Les trois bases du gate 3 (`gate3.db`, `gate3-corps.db`,
@@ -480,6 +491,13 @@ bandeau. La recherche gagne en profondeur à mesure.
 
 ### Reports assumés
 
+- **Requêtes chères des sondes périodiques** (PLAN-GELS D4, famille
+  D-7) : hors de la pompe elles ne gèlent plus rien, mais leur coût CPU
+  reste réel — `nav_snapshot` **865 ms** par compte Gmail (compteur
+  Archives d'une intégrale, exclusion par `message_id`, 87 k lignes,
+  toutes les 10 s) ; `pending_total` **575 ms** (COUNT par boîte,
+  NOT EXISTS sur `bodies`, à chaque génération de courrier). À rouvrir
+  sur constat terrain (ventilateur, batterie, contention d'écriture).
 - **Doublons multi-boîtes dans la recherche** (nouveau, ADR 0010) : le
   même message copié dans plusieurs boîtes remonte plusieurs fois dans
   les résultats. À observer en bêta avant de décider d'un dédoublonnage.
@@ -686,6 +704,21 @@ l'installation renvoyait 404. **Le chemin entre `cargo tauri build` et
 l'app de l'utilisateur est du terrain lui aussi ; il se diagnostique en
 regardant les vrais assets publiés (API GitHub), pas en supposant.** Les
 deux sont désormais tenus par `scripts/faire-release.ps1`.
+
+### Le thread d'une commande est une décision, pas un détail
+
+Dans Tauri 2, une commande sans `async` s'exécute sur le thread
+principal — la pompe de messages. Trente-quatre commandes ouvraient la
+base depuis ce thread ; tout allait bien tant qu'elles restaient sous
+~100 ms, puis un lot de rattrapage de 130 Mo a gelé la fenêtre 4,6 s
+d'un tenant (constat CE du 2026-08-15 : « la fenêtre ne peut pas être
+déplacée »). Le coût des requêtes n'était pas la racine — leur PLACE
+l'était : 865 ms sont acceptables sur un thread de fond, inacceptables
+sur la pompe. Remède à la racine : toute commande bloquante est
+`async`, une gate le tient (exemption nommée et justifiée pour les
+pures d'état), et le symptôme a son instrument — `sonde-gel.py` mesure
+la pompe comme Windows la juge (`SendMessageTimeout`). Avant/après sur
+le même décor : 25,2 s de gels cumulés → zéro.
 
 ### Un panic sur le thread principal fait DEUX panics
 

@@ -110,6 +110,25 @@ test('le bouton de relève vit dans la barre — « Réessayer » sur échec (E3
   await expect(bouton).toBeEnabled();
 });
 
+test('pendant un cycle, le trait hitofude de la barre porte son animation SMIL (A40)', async () => {
+  // Constat terrain 2026-08-15 (PLAN-GELS) : le trait restait fixe
+  // pendant la synchronisation. Le chemin animé vit dans le <mask>,
+  // sous-arbre non rendu où Chromium ne fait PAS tourner les
+  // animations CSS — la boucle était morte-née (playState `idle`,
+  // prouvé sur la vraie fenêtre). Depuis A40 le tracé est SMIL
+  // (<animate>, qui tourne dans un mask). Le cycle du décor est bref
+  // (comptes sans serveur) : on s'assert sur la PRÉSENCE de l'<animate>
+  // dans le trait `vague` attrapé pendant la fenêtre — c'est elle que
+  // la régression (retour au CSS) ferait disparaître ; la vie de
+  // l'horloge SMIL est une garantie moteur, pas un comportement à nous.
+  const bouton = page.locator('[data-testid="btn-releve"]');
+  await expect(bouton).toBeEnabled();
+  await bouton.click();
+  await expect(
+    page.locator('[data-testid="statut"] path.boucle animate'),
+  ).toBeAttached({ timeout: 8000 });
+});
+
 test('sélectionner ouvre le volet, lit le corps, et le non-lu tombe', async () => {
   await page.locator('[data-testid="ligne"]').first().click();
   await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(
