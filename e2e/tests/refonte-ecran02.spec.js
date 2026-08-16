@@ -47,6 +47,36 @@ test('la nav porte les pastilles de non-lus du décor Clarity (A29, W2-D4)', asy
   await expect(page.locator('[data-testid="nav-boite"]').first()).not.toContainText('non lus');
 });
 
+test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bouton (UI v3, E1)', async () => {
+  // Verdict CE du 2026-08-16 (ANNOTATIONS-V3 §3) : le bandeau de la
+  // maquette Classique entre, SANS « Tout marquer lu » — le titre seul.
+  const titre = page.locator('[data-testid="liste-titre"]');
+  await expect(titre).toHaveText('Boîte de réception');
+  await expect(titre.locator('button')).toHaveCount(0);
+  // Le bandeau suit la boîte courante.
+  await dossier('archives').click();
+  await expect(titre).toHaveText('Archives');
+  // Retour à l'état de départ : la suite est sérielle.
+  await dossier('reception').click();
+  await expect(titre).toHaveText('Boîte de réception');
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+});
+
+test("la ligne de liste porte l'avatar aux initiales — visuel seul (UI v3, E2)", async () => {
+  // Verdict CE du 2026-08-16 (ANNOTATIONS-V3 §4, décision D2) :
+  // l'avatar 28 px de la maquette entre au gabarit, SANS geste — la
+  // sélection en lot est une feature à part, différée.
+  const premiere = page.locator('[data-testid="ligne"]').first();
+  const avatar = premiere.locator('[data-testid="avatar"]');
+  await expect(avatar).toBeVisible();
+  // Les initiales disent l'expéditeur de la rangée (deux lettres).
+  const exp = (await premiere.locator('.exp').innerText()).trim();
+  const attendu = exp.split(/\s+/).slice(0, 2).map((m) => m[0]).join('').toUpperCase();
+  await expect(avatar).toHaveText(attendu);
+  // Visuel seul : jamais un bouton, rien à activer.
+  expect(await avatar.evaluate((el) => el.tagName)).not.toBe('BUTTON');
+});
+
 test('recharger garde les lignes servies — jamais de squelette (PLAN-REACTIVITE E1)', async () => {
   // La recharge que le cycle et les gestes déclenchent en rafale ne
   // doit JAMAIS repasser par les lignes d'attente : le transport est
@@ -132,7 +162,7 @@ test('pendant un cycle, le trait hitofude de la barre porte son animation SMIL (
 
 test('sélectionner ouvre le volet, lit le corps, et le non-lu tombe', async () => {
   await page.locator('[data-testid="ligne"]').first().click();
-  await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(
+  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toHaveText(
     'Relecture du contrat Vantis',
   );
   // Le corps vit dans l'iframe sandbox — invariant S1.
@@ -211,14 +241,37 @@ test('archiver agit sur le coeur et confirme par le toast', async () => {
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
+test('le volet de lecture montre le FIL en cartes — anciens repliés, dernier déplié (UI v3, E3)', async () => {
+  // Verdict CE du 2026-08-16 (ANNOTATIONS-V3 §6, décision D4) : le
+  // volet et l'écran 03 sont deux cadres du MÊME objet (Fil) — ici le
+  // cadre volet : titre, cartes repliées une ligne, dernière dépliée
+  // dans sa propre iframe sandbox (S1 intact).
+  await page.locator('[data-testid="ligne"]').first().click();
+  const volet = page.locator('[data-testid="volet-lecture"]');
+  await expect(volet.locator('[data-testid="fil-sujet"]')).toHaveText(
+    'Relecture du contrat Vantis',
+  );
+  await expect(volet.locator('[data-testid="message-replie"]')).toHaveCount(2);
+  await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(1);
+  await expect(
+    volet.frameLocator('[data-testid="message-deplie"] iframe').locator('body'),
+  ).toContainText('Bonjour Paul');
+  // Les fichiers joints du dernier message, dans le volet.
+  await expect(volet.locator('[data-testid="message-deplie"]')).toContainText(
+    'Contrat_Vantis_v4.pdf',
+  );
+});
+
 // ——— Écran 03 : la conversation plein écran (P3) ————————————————————
 
 test('voir la conversation ouvre le fil plein écran, dernier message déplié', async () => {
   await page.locator('[data-testid="ligne"]').first().click();
   await page.locator('[data-testid="voir-conversation"]').click();
-  await expect(page.locator('[data-testid="conversation-sujet"]')).toHaveText(
+  await expect(page.locator('[data-testid="conversation"] [data-testid="fil-sujet"]')).toHaveText(
     'Relecture du contrat Vantis',
   );
+  // Exclusivité des cadres (D4, revue v3) : UN SEUL Fil monté.
+  await expect(page.locator('[data-testid="fil-sujet"]')).toHaveCount(1);
   await expect(page.locator('[data-testid="message-replie"]')).toHaveCount(2);
   await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(1);
   // Le corps du déplié vit dans SA propre iframe sandbox (S1).
@@ -242,7 +295,7 @@ test("le retour rend la boîte intacte, sélection comprise", async () => {
   await page.locator('[data-testid="retour-boite"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
-  await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(
+  await expect(page.locator('[data-testid="fil-sujet"]')).toHaveText(
     'Relecture du contrat Vantis',
   );
 });
@@ -280,14 +333,14 @@ test('« Répondre à tous » se tient entre Répondre et Transférer (A14)', as
     .locator('[data-testid="conversation"] .actions button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
   expect(barreConv).toEqual([
-    'conv-repondre',
-    'conv-repondre-tous',
-    'conv-transferer',
-    'conv-archiver',
-    'conv-supprimer',
+    'repondre',
+    'repondre-tous',
+    'transferer',
+    'archiver',
+    'supprimer',
   ]);
   await page.locator('[data-testid="retour-boite"]').click();
-  await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(
+  await expect(page.locator('[data-testid="fil-sujet"]')).toHaveText(
     'Relecture du contrat Vantis',
   );
 });
@@ -499,7 +552,7 @@ test("le clavier active ce que le clic active (A8) : nav, rangée, onglet", asyn
   // Une ligne de liste, à Espace.
   await page.locator('[data-testid="ligne"]').first().focus();
   await page.keyboard.press(' ');
-  await expect(page.locator('[data-testid="lecture-sujet"]')).not.toBeEmpty();
+  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).not.toBeEmpty();
   // Retour réception par le clavier.
   await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').focus();
   await page.keyboard.press('Enter');
@@ -869,7 +922,7 @@ test("supprimer se voit en Corbeille à l'instant — hors ligne compris (E3)", 
 
   // L'écho s'ouvre en LOCAL (echo_body) — le volet porte le sujet.
   await echo.click();
-  await expect(page.locator('[data-testid="lecture-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toContainText(
     'Facture 2026-0841',
   );
   // Un geste sur l'écho attend la réconciliation — et le dit.
@@ -921,7 +974,7 @@ test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38
   const choisie = page.locator('[data-testid="ligne"].choisie');
   await expect(choisie).toHaveCount(1);
   await expect(choisie.locator('.objet')).toHaveText(dessous);
-  await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(dessous);
+  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toHaveText(dessous);
   // La liste FRAÎCHE d'abord (stale-while-revalidate : les lignes
   // servies restent affichées un instant) — la ligne archivée partie,
   // la capture de la prochaine ligne dessous est sûre.
@@ -937,7 +990,7 @@ test('le triage clavier avance : e/Suppr sélectionnent la ligne du dessous (A38
     'Conversation supprimée.',
   );
   await expect(choisie.locator('.objet')).toHaveText(suivante);
-  await expect(page.locator('[data-testid="lecture-sujet"]')).toHaveText(suivante);
+  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toHaveText(suivante);
 });
 
 // ——— La course « vider puis fermer » (constat terrain du 2026-08-15) ——
@@ -978,4 +1031,31 @@ test('vider puis fermer ne ressuscite jamais le brouillon — la sauvegarde en v
   ).toHaveCount(0);
   await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+});
+
+// ——— Revue v3 : exclusivité des cadres (joué en fin de chaîne — il archive) ———
+
+test("archiver au raccourci depuis l'écran 03 ferme le cadre — jamais de plein écran fantôme (revue v3)", async () => {
+  // Revue v3 : trois booléens réconciliés à la main laissaient
+  // `visible` armé quand `e` archivait depuis le plein écran — le
+  // prochain clic de liste rouvrait l'écran 03 non demandé, avec DEUX
+  // Fil montés. Depuis, l'exclusivité vit au store (fil.cadre).
+  await page.locator('[data-testid="ligne"]').first().click();
+  await page.locator('[data-testid="voir-conversation"]').click();
+  await expect(page.locator('[data-testid="conversation"]')).toBeVisible();
+  await page.keyboard.press('e');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archivée.');
+  // Le cadre plein écran est tombé avec le fil.
+  await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
+  // Le clic suivant ouvre le VOLET, jamais l'écran 03 ressuscité —
+  // et l'objet reste unique.
+  await page.locator('[data-testid="ligne"]').first().click();
+  await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="fil-sujet"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).not.toBeEmpty();
+  // Le triage clavier (A38) est VIVANT après coup : e avance encore.
+  const objet = await page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]').innerText();
+  await page.keyboard.press('e');
+  await expect(page.locator('[data-testid="toast"]')).toContainText('Conversation archivée.');
+  await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).not.toHaveText(objet);
 });

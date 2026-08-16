@@ -21,6 +21,7 @@
   import ModaleMigration from './ModaleMigration.svelte';
   import Toast from './Toast.svelte';
   import Hitofude from './Hitofude.svelte';
+  import { fil, fermerFil, reduireFil, estEcho } from './lib/fil.svelte.js';
 
   let liste = $state(null);
   let lecture = $state(null);
@@ -71,7 +72,7 @@
   let voletsAvant = voletsActuels();
   $effect(() => {
     const v = volets;
-    if (v === 3 && voletsAvant !== 3 && selectionnee) lecture?.ouvrir(selectionnee);
+    if (v === 3 && voletsAvant !== 3 && selectionnee && fil.cadre !== 'plein') lecture?.ouvrir(selectionnee);
     // Quitter le mode un volet emporte le tiroir — il n'a plus de sens.
     if (v !== 1) tiroirOuvert = false;
     voletsAvant = v;
@@ -731,7 +732,7 @@
     if ('compte' in quoi) compte = quoi.compte;
     recherche = '';
     selectionnee = null;
-    lecture?.fermer();
+    fermerFil();
   }
   function surOnglet(id) {
     if (id === 'brouillons') {
@@ -741,7 +742,7 @@
     if (categorie === 'brouillons') categorie = 'reception';
     onglet = id;
     selectionnee = null;
-    lecture?.fermer();
+    fermerFil();
   }
 
   // --- Raccourcis (D3) : c / r / f / e / Suppr / « / » / Échap --------
@@ -796,9 +797,6 @@
   // synchronisation — le geste dessus attend la réconciliation (une
   // fenêtre de quelques secondes), et le toast le dit au lieu d'un
   // échec silencieux. La ligne se reconnaît à sa boîte synthétique.
-  function estEcho(ligne) {
-    return typeof ligne?.mailbox === 'string' && ligne.mailbox.startsWith('echo:');
-  }
   function gesteSurEcho(ligne) {
     if (!estEcho(ligne)) return false;
     flash(t('toast.echoAttente'));
@@ -822,10 +820,12 @@
   }
 
   function ouvrirConversation(ligne) {
+    // D4 (UI v3) : l'exclusivité des cadres vit au store (fil.cadre) —
+    // agrandir est un changement de taille, jamais un rechargement.
     conversation.ouvrir(ligne);
   }
   function retourBoite() {
-    conversation.fermer();
+    reduireFil(volets === 3);
   }
 
   function ecrire() {
@@ -872,7 +872,7 @@
     flash(t('toast.compteRetire'));
     if (compte === id) compte = null;
     selectionnee = null;
-    lecture?.fermer();
+    fermerFil();
     chargerNav();
     liste?.recharger();
   }
@@ -912,7 +912,7 @@
         uid: ligne.uid,
       });
       flash(t('toast.archivee'));
-      lecture?.fermer();
+      fermerFil();
       // L'écho de destination est DÉJÀ en base (même transaction que le
       // geste, E3) : la resservie le montre en Archives < 1 s — le
       // serveur suit par la passe, en silence.
@@ -934,7 +934,7 @@
         uid: ligne.uid,
       });
       flash(t('toast.supprimee'));
-      lecture?.fermer();
+      fermerFil();
       // Même mécanique qu'archiver : l'écho est en base, la Corbeille
       // le montre tout de suite, la passe réconcilie derrière.
       liste.recharger();
@@ -1032,7 +1032,8 @@
              ontotal={(t) => (totalListe = t)}
              onresultats={(n) => (nResultats = n)} />
       {#if volets === 3}
-        <Lecture bind:this={lecture} onarchiver={archiver} onsupprimer={supprimer}
+        <Lecture bind:this={lecture} {brouillons} onreprendre={reprendreBrouillon}
+                 onarchiver={archiver} onsupprimer={supprimer}
                  onconversation={ouvrirConversation}
                  onrepondre={repondre} onrepondretous={repondreTous}
                  ontransferer={transferer} onflash={flash} />
@@ -1122,11 +1123,13 @@
     display:flex; flex-direction:column; height:100vh; position:relative;
     background:var(--bg); overflow:hidden;
   }
-  /* A30 : l'entête au jeton des panneaux, la recherche sur blanc. */
+  /* A30 : l'entête au jeton des panneaux, la recherche sur blanc.
+     UI v3, E4 (verdict CE 2026-08-16) : le gabarit de la maquette
+     Classique — 52 px, gouttières 14/12, recherche bornée à 520 px. */
   .entete {
-    height:60px; flex:none; background:var(--panel);
+    height:52px; flex:none; background:var(--panel);
     border-bottom:1px solid var(--border); display:flex;
-    align-items:center; gap:20px; padding:0 24px;
+    align-items:center; gap:12px; padding:0 14px;
   }
   .marque {
     font-size:18px; font-weight:600; width:212px; color:var(--ink);
@@ -1135,7 +1138,7 @@
   /* Le trait de la marque : décalé de 3 px sous la ligne de base (A28). */
   .marque :global(svg), .tete-tiroir :global(svg) { margin-top:3px; }
   .recherche {
-    flex:1; height:32px; display:flex; align-items:center; gap:10px;
+    flex:1; max-width:520px; height:32px; display:flex; align-items:center; gap:10px;
     padding:0 14px; font-size:13px; color:var(--ink2);
     background:var(--surface); border:1px solid var(--border);
     border-radius:6px;
@@ -1146,6 +1149,9 @@
     background:transparent; min-width:0;
   }
   .recherche input::placeholder { color:var(--ink2); }
+  /* La recherche est bornée (520 px) : les gestes d'entête tiennent la
+     droite, comme au gabarit de la maquette. */
+  .entete [data-testid="ecrire"] { margin-left:auto; }
   .vider {
     height:22px; width:22px; padding:0; display:inline-flex; flex:none;
     align-items:center; justify-content:center; color:var(--muted);

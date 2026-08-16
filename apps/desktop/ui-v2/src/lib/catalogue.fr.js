@@ -129,9 +129,7 @@ export const FR = {
   // --- Volet de lecture -------------------------------------------------
   'lecture.aria': 'Message',
   'lecture.vide': 'Sélectionnez un message pour le lire.',
-  'lecture.dernier': 'Dernier message · {quand}',
   'lecture.voirConversation': 'Voir la conversation',
-  'lecture.a': 'à {adresse}',
   'lecture.imagesBloquees': '{n} image distante bloquée pour protéger votre vie privée.|{n} images distantes bloquées pour protéger votre vie privée.',
   'lecture.afficherImages': 'Afficher les images',
   'lecture.corps': 'Contenu du message',
@@ -326,7 +324,6 @@ export const FR = {
     'Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi',
   ],
   'quand.hier': 'Hier',
-  'quand.aujourdhui': "Aujourd'hui",
   'quand.premier': '1ᵉʳ',
   'quand.dansAnnee': '{jour} {mois}',
   'quand.auDela': '{jour} {mois} {annee}',

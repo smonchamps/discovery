@@ -45,7 +45,7 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(page.locator('[data-testid="fente-avis"]')).toHaveCount(0);
 
     await page.locator('[data-testid="ligne"]').first().click();
-    await expect(page.locator('[data-testid="lecture-sujet"]')).toContainText('n°200');
+    await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toContainText('n°200');
     await expect(
       page.frameLocator('[data-testid="volet-lecture"] iframe').locator('body'),
     ).toContainText('Corps du message n°200');
@@ -119,10 +119,12 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(porteur).not.toContainText('fichier');
 
     await porteur.click();
-    await expect(page.locator('[data-testid="lecture-sujet"]')).toContainText('n°190');
-    await expect(page.locator('[data-testid="volet-lecture"]')).toContainText(
-      '2 messages · 1 fichier',
-    );
+    await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toContainText('n°190');
+    // UI v3 : le volet montre le fil — deux puces séparées au gabarit
+    // de la maquette (« 2 messages » · « 1 fichier »), plus la puce
+    // composée d'antan.
+    await expect(page.locator('[data-testid="volet-lecture"]')).toContainText('2 messages');
+    await expect(page.locator('[data-testid="volet-lecture"]')).toContainText('1 fichier');
   });
 
   test('conversations : une ligne par fil, compteur, échange navigable plein écran', async () => {
@@ -131,7 +133,7 @@ test.describe('décor v1 : un compte, 200 messages', () => {
       page.locator('[data-testid="ligne"]', { hasText: 'n°189' }),
     ).toHaveCount(0);
     await page.locator('[data-testid="voir-conversation"]').click();
-    await expect(page.locator('[data-testid="conversation-sujet"]')).toContainText('n°190');
+    await expect(page.locator('[data-testid="conversation"] [data-testid="fil-sujet"]')).toContainText('n°190');
     await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="message-replie"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="message-deplie"]')).toContainText('facture-190.pdf');

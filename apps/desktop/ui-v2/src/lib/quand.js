@@ -8,18 +8,6 @@
 // Epoch 0 = date inconnue -> vide.
 import { t } from './texte.svelte.js';
 
-// La forme longue du volet de lecture : « Aujourd'hui, 09:12 »,
-// « Hier, 16:30 », « 5 août, 10:12 » — celle du prototype.
-export function quandLong(epoch) {
-  if (!epoch) return '';
-  const date = new Date(epoch * 1000);
-  const heure = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-  const court = quand(epoch);
-  if (court === heure) return `${t('quand.aujourdhui')}, ${heure}`;
-  if (court === t('quand.hier')) return `${t('quand.hier')}, ${heure}`;
-  return `${court}, ${heure}`;
-}
-
 // « il y a 2 minutes » — la forme exacte du prototype pour la barre
 // d'état (PLAN-SYNCHRO E1). `maintenant` (ms) vient de l'appelant : un
 // `$state` re-cadencé toutes les 30 s, pour que « il y a N minutes »
@@ -44,8 +32,7 @@ export function quand(epoch) {
     return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   }
   if (ecartJours === 1) return t('quand.hier');
-  // La semaine glissante du prototype : « Lundi, 18:20 » — le jour nu
-  // ici, quandLong ajoute l'heure.
+  // La semaine glissante du prototype : « Lundi, 18:20 ».
   if (ecartJours >= 2 && ecartJours <= 6) return t('quand.jours')[date.getDay()];
   const quantieme = date.getDate() === 1 ? t('quand.premier') : String(date.getDate());
   const mois = t('quand.mois')[date.getMonth()];

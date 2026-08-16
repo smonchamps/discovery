@@ -64,7 +64,7 @@ test("en deux volets, l'ouverture est l'écran 03 — Échap rend la liste intac
   const avant = await lignes.count();
   await lignes.filter({ hasText: 'Relecture du contrat Vantis' }).first().click();
   // Plein écran : la conversation, PAS le volet.
-  await expect(page.locator('[data-testid="conversation-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="fil-sujet"]')).toContainText(
     'Relecture du contrat Vantis',
   );
   await expect(page.locator('[data-testid="volet-lecture"]')).toHaveCount(0);
@@ -83,7 +83,7 @@ test("un message SANS fil s'ouvre en plein écran — le repli du message seul (
   await page
     .locator('[data-testid="ligne"]', { hasText: 'Compte rendu du 4 août' })
     .click();
-  await expect(page.locator('[data-testid="conversation-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="fil-sujet"]')).toContainText(
     'Compte rendu du 4 août',
   );
   // Le fil servi est la ligne elle-même : UN message, déplié, avec ses
@@ -104,18 +104,18 @@ test("un écho local s'ouvre en plein écran — corps local, geste différé di
     .locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' })
     .first()
     .click();
-  await page.locator('[data-testid="conv-supprimer"]').click();
+  await page.locator('[data-testid="supprimer"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
   await dossier('corbeille').click();
   const echo = page.locator('[data-testid="ligne"]', { hasText: 'Facture 2026-0841' });
   await echo.click();
-  await expect(page.locator('[data-testid="conversation-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="fil-sujet"]')).toContainText(
     'Facture 2026-0841',
   );
   await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(1);
   // Un geste sur l'écho attend la réconciliation — et le dit, ici
   // aussi ; le retour à la boîte est joué par le câblage existant.
-  await page.locator('[data-testid="conv-supprimer"]').click();
+  await page.locator('[data-testid="supprimer"]').click();
   await expect(page.locator('[data-testid="toast"]')).toContainText(
     'Copie en cours de synchronisation',
   );
@@ -185,7 +185,7 @@ test('la préférence survit au relancement — et le retour à trois volets res
     .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
     .first()
     .click();
-  await expect(page.locator('[data-testid="lecture-sujet"]')).toContainText(
+  await expect(page.locator('[data-testid="fil-sujet"]')).toContainText(
     'Relecture du contrat Vantis',
   );
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);

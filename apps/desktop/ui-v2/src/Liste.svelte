@@ -191,6 +191,18 @@
     sondees = true;
   }
 
+  // UI v3, E2 (décision D2) : l'avatar aux initiales, VISUEL seul —
+  // jamais un bouton, la sélection en lot est une feature différée.
+  // Deux lettres au plus, des deux premiers mots ; un nom vide (rare :
+  // brouillon sans destinataire) rend un tiret, jamais un blanc.
+  function initiales(nom) {
+    const lettres = (nom ?? '').trim().split(/\s+/, 2)
+      .map((mot) => mot[0])
+      .join('')
+      .toUpperCase();
+    return lettres || '—';
+  }
+
   const cle = (l) => `${l.account_id}/${l.mailbox}/${l.uid}`;
   function choisir(l) {
     selection = cle(l);
@@ -311,10 +323,17 @@
 </script>
 
 <section class="colonne" aria-label={t('liste.aria')} data-testid="liste">
+  <!-- UI v3, E1 (verdict CE 2026-08-16) : le bandeau de la maquette
+       Classique — le nom de la boîte courante, SEUL (« Tout marquer
+       lu » écarté). Les clés boite.* sont celles de la nav. -->
+  <header class="bandeau" data-testid="liste-titre">
+    <h1>{t(`boite.${categorie}`)}</h1>
+  </header>
   <div class="cadre" bind:this={cadre} onscroll={surDefilement}>
     {#if !sondees}
       <div class="sondes" aria-hidden="true">
         <article class="ligne" use:sonder>
+          <span class="avatar" aria-hidden="true">SO</span>
           <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
@@ -340,6 +359,7 @@
              choisir(ligne);
            }}
            onkeydown={activation(() => choisir(ligne))}>
+        <span class="avatar" data-testid="avatar" aria-hidden="true">{initiales(ligne.sender)}</span>
         <div class="l1">
           <span class="exp">{ligne.sender}</span>
           <span class="heure">{quand(ligne.epoch)}</span>
@@ -379,6 +399,7 @@
                role="button" tabindex="0"
                onclick={() => onreprendre(b)}
                onkeydown={activation(() => onreprendre(b))}>
+            <span class="avatar" aria-hidden="true">{initiales(b.to)}</span>
             <div class="l1">
               <span class="exp" class:sans={!b.to}>
                 {b.to ? t('brouillons.a', { a: b.to }) : t('brouillons.sansDestinataire')}</span>
@@ -400,6 +421,7 @@
               {@render rangee(ligne)}
             {:else}
               <article class="ligne attente" data-testid="ligne-attente">
+                <span class="avatar" aria-hidden="true"></span>
                 <div class="l1"><span class="exp">…</span><span class="heure"></span></div>
                 <p class="objet">…</p>
                 <p class="apercu"></p>
@@ -430,6 +452,13 @@
     display:flex; flex-direction:column; min-height:0;
     background:var(--bg); border-right:1px solid var(--border);
   }
+  /* Le bandeau (UI v3, E1) : gabarit de la maquette — 16 px, 600. */
+  .bandeau { flex:none; padding:12px 16px 8px; }
+  .bandeau h1 {
+    margin:0; font-size:16px; font-weight:600; line-height:1.3;
+    color:var(--ink);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
   .cadre { flex:1; overflow:auto; position:relative; }
   .espace { position:relative; }
   .fenetre {
@@ -450,11 +479,22 @@
      sélection en teinte + liseré d'accent de 2 px — jamais d'ombre ni
      de surface blanche (A29). Le liseré est réservé en transparent :
      la sélection ne déplace pas le contenu. */
+  /* UI v3, E2 : la grille de la maquette — l'avatar en première
+     colonne, enjambant les trois rangs ; le reste du dessin des
+     pistes (filet, états, graisses) ne bouge pas. */
   .ligne {
     padding:13px 16px; border-top:1px solid var(--border);
     border-left:2px solid transparent;
-    display:flex; flex-direction:column; gap:3px; cursor:pointer;
+    display:grid; grid-template-columns:auto 1fr; column-gap:10px;
+    row-gap:3px; align-items:start; cursor:pointer;
   }
+  .avatar {
+    grid-row:1 / span 3; width:28px; height:28px; border-radius:50%;
+    background:var(--panel); border:1px solid var(--border);
+    display:grid; place-items:center;
+    font-size:11px; font-weight:600; color:var(--ink2);
+  }
+  .l1, .objet, .apercu { grid-column:2; min-width:0; }
   .ligne:hover { background:var(--hover); }
   .ligne.choisie {
     background:var(--sel); border-left-color:var(--accent);

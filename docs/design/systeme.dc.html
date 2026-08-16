@@ -737,9 +737,10 @@
     </div>
     <div data-screen-label="02 Boîte de réception" style="width:1440px; height:900px; background:#f2f0ea; border:1px solid #cdc6b8; border-radius:10px; overflow:hidden; display:flex; flex-direction:column">
 
-      <div style="height:60px; flex:none; background:#e9e6dd; border-bottom:1px solid #cdc6b8; display:flex; align-items:center; gap:20px; padding:0 24px">
+      <div style="height:52px; flex:none; background:#e9e6dd; border-bottom:1px solid #cdc6b8; display:flex; align-items:center; gap:12px; padding:0 14px">
         <span style="font-size:18px; font-weight:600; width:212px; display:flex; align-items:center; gap:10px">Wind<svg width="52" height="10" viewBox="0 0 110 20" fill="#1e7566" aria-hidden="true" style="margin-top:3px; flex:none"><path d="M2 14 Q30 4 60 7 Q88 9.5 108 3 Q90 13 60 14 Q32 15 10 18 Q4 19 2 14 Z"></path></svg></span>
-        <span style="flex:1; height:32px; display:flex; align-items:center; gap:10px; padding:0 14px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true" style="color:#4a505a">search</span>Chercher un message, une personne, un fichier</span>
+        <span style="flex:1; max-width:520px; height:32px; display:flex; align-items:center; gap:10px; padding:0 14px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true" style="color:#4a505a">search</span>Chercher un message, une personne, un fichier</span>
+        <span style="flex:1"></span>
         <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#1e7566; border:1px solid #1e7566; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">edit_square</span>Écrire</span>
         <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#24272e; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">settings</span>Réglages</span>
       </div>
@@ -784,7 +785,9 @@
 
         <section aria-label="Liste des messages" style="background:#f2f0ea; border-right:1px solid #cdc6b8; display:flex; flex-direction:column; min-height:0">
           <div style="flex:1; overflow:hidden; display:flex; flex-direction:column">
-            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:#cddcd2; border-left:2px solid #1e7566; display:flex; flex-direction:column; gap:3px">
+            <div style="flex:none; padding:12px 16px 8px"><span style="font-size:16px; font-weight:600; color:#24272e">Boîte de réception</span></div>
+            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:#cddcd2; border-left:2px solid #1e7566; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+              <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">CR</span>
               <div style="display:flex; align-items:baseline; gap:10px">
                 <span style="flex:1; font-size:14px; font-weight:400; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Camille Rousseau</span>
                 <span style="font-size:12px; color:#575f6a; flex:none">09:12</span>
@@ -792,7 +795,8 @@
               <span style="font-size:14px; font-weight:400; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Relecture du contrat Vantis</span>
               <span style="font-size:13px; color:#4a505a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"><span style="color:#9e3a2c; font-weight:600">Brouillon : </span>Bonjour Camille, merci pour la v4, je penche pour la reconduction tacite…</span>
             </div>
-            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px">
+            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+              <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">YB</span>
               <div style="display:flex; align-items:baseline; gap:10px">
                 <span style="flex:1; font-size:14px; font-weight:700; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Yanis Belkacem</span>
                 <span style="font-size:12px; color:#575f6a; flex:none">08:40</span>
@@ -800,7 +804,8 @@
               <span style="font-size:14px; font-weight:700; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Planning de la semaine 33</span>
               <span style="font-size:13px; color:#4a505a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Deux créneaux se chevauchent mardi après-midi, je propose de décaler.</span>
             </div>
-            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px">
+            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+              <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">LF</span>
               <div style="display:flex; align-items:baseline; gap:10px">
                 <span style="flex:1; font-size:14px; font-weight:700; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Léa Fontaine</span>
                 <span style="font-size:12px; color:#575f6a; flex:none">Hier</span>
@@ -808,7 +813,8 @@
               <span style="font-size:14px; font-weight:700; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Compte rendu du 4 août</span>
               <span style="font-size:13px; color:#4a505a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Trois décisions actées, une question ouverte sur le calendrier.</span>
             </div>
-            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px">
+            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+              <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">SC</span>
               <div style="display:flex; align-items:baseline; gap:10px">
                 <span style="flex:1; font-size:14px; font-weight:400; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Service comptabilité</span>
                 <span style="font-size:12px; color:#575f6a; flex:none">5 août</span>
@@ -816,7 +822,8 @@
               <span style="font-size:14px; font-weight:400; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Facture 2026-0841 réglée</span>
               <span style="font-size:13px; color:#4a505a; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Le virement a été émis le 6 août, réception sous deux jours ouvrés.</span>
             </div>
-            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px">
+            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+              <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">SN</span>
               <div style="display:flex; align-items:baseline; gap:10px">
                 <span style="flex:1; font-size:14px; font-weight:400; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Sofia Nardi</span>
                 <span style="font-size:12px; color:#575f6a; flex:none">4 août</span>
@@ -834,22 +841,47 @@
 
         <main aria-label="Message" style="background:#f2f0ea; padding:20px; min-width:0; display:flex; flex-direction:column">
           <div style="flex:1; background:#ffffff; border:1px solid #cdc6b8; border-radius:10px; box-shadow:0 2px 8px rgba(36,39,46,0.08); display:flex; flex-direction:column; min-height:0; overflow:hidden">
-            <div style="padding:26px 30px 22px; border-bottom:1px solid #cdc6b8; display:flex; flex-direction:column; gap:14px">
+            <div style="padding:22px 26px 16px; border-bottom:1px solid #cdc6b8; display:flex; flex-direction:column; gap:12px">
               <h3 style="margin:0; font-size:24px; font-weight:600; line-height:1.2; letter-spacing:-.01em">Relecture du contrat Vantis</h3>
-              <div style="display:flex; align-items:center; gap:10px">
-                <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px">3 messages · 2 fichiers</span>
-                <span style="font-size:12px; color:#575f6a">Dernier message aujourd'hui, 09:12</span>
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+                <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true">forum</span>3 messages</span>
+                <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true">attach_file</span>2 fichiers</span>
+                <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true">unfold_more</span>Voir la conversation</span>
+                <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true">unfold_more</span>Tout déplier</span>
               </div>
             </div>
-            <div style="padding:26px 30px; display:flex; flex-direction:column; gap:18px; min-height:0">
-              <div style="display:flex; flex-direction:column; gap:4px">
-                <span style="font-size:15px; font-weight:600">Camille Rousseau</span>
-                <span style="font-size:13px; color:#575f6a">c.rousseau@atelier-nord.fr · à Paul Mérand</span>
+            <div style="padding:14px 26px; display:flex; flex-direction:column; gap:10px; min-height:0; overflow:hidden">
+              <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:#ffffff; border:1px solid #cdc6b8; border-radius:10px; font-size:13px">
+                <span style="font-weight:600; color:#24272e; flex:none">Paul Mérand</span>
+                <span style="flex:1; min-width:0; color:#575f6a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Merci, je regarde ça ce soir et je te réponds demain.</span>
+                <span style="color:#575f6a; font-size:12px; flex:none">Lundi</span>
               </div>
-              <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Bonjour Paul, j'ai repris les articles 4 et 7 après notre échange de lundi. Il reste la clause de renouvellement à trancher : reconduction tacite de douze mois, ou renégociation annuelle.</p>
-              <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Si tu peux me dire d'ici jeudi, je transmets la version finale au cabinet vendredi matin. La version annotée est lisible sur <span style="color:#0b57d0; text-decoration:underline">l'espace partagé</span>.</p>
+              <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; background:#ffffff; border:1px solid #cdc6b8; border-radius:10px; font-size:13px">
+                <span style="font-weight:600; color:#24272e; flex:none">Sofia Nardi</span>
+                <span style="flex:1; min-width:0; color:#575f6a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">J'ajoute la grille tarifaire mise à jour au fil.</span>
+                <span style="color:#575f6a; font-size:12px; flex:none">Mardi</span>
+              </div>
+              <div style="background:#ffffff; border:1px solid #cdc6b8; border-radius:10px; box-shadow:0 2px 8px rgba(36,39,46,0.08); display:flex; flex-direction:column">
+                <div style="display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid #cdc6b8; font-size:13px">
+                  <span style="font-weight:600; color:#24272e; flex:1">Camille Rousseau</span>
+                  <span style="color:#575f6a; font-size:12px; flex:none">09:12</span>
+                </div>
+                <div style="padding:14px 16px 16px; display:flex; flex-direction:column; gap:12px">
+                  <dl style="margin:0; display:grid; grid-template-columns:auto 1fr; column-gap:16px; row-gap:6px; font-size:13px">
+                    <dt style="color:#575f6a">De</dt><dd style="margin:0; color:#4a505a">Camille Rousseau &lt;c.rousseau@atelier-nord.fr&gt;</dd>
+                    <dt style="color:#575f6a">À</dt><dd style="margin:0; color:#4a505a">paul.merand@atelier-nord.fr</dd>
+                    <dt style="color:#575f6a">Objet</dt><dd style="margin:0; color:#4a505a">Relecture du contrat Vantis</dd>
+                  </dl>
+                  <p style="margin:0; font-size:15px; line-height:1.65; max-width:68ch">Bonjour Paul, j'ai repris les articles 4 et 7 après notre échange de lundi. Il reste la clause de renouvellement à trancher : reconduction tacite de douze mois, ou renégociation annuelle.</p>
+                  <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">Fichiers joints</p>
+                  <div style="display:flex; gap:8px; flex-wrap:wrap">
+                    <span style="height:28px; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true">description</span>Contrat_Vantis_v4.pdf</span>
+                    <span style="height:28px; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true">storage</span>1,2 Mo</span>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div style="margin-top:auto; padding:18px 30px; border-top:1px solid #cdc6b8; display:flex; gap:12px">
+            <div style="margin-top:auto; padding:14px 26px; border-top:1px solid #cdc6b8; display:flex; gap:12px">
               <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#1e7566; border:1px solid #1e7566; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">reply</span>Répondre</span>
               <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#24272e; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">reply_all</span>Répondre à tous</span>
               <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#24272e; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true" style="display:inline-block; transform:scaleX(-1)">reply</span>Transférer</span>
@@ -867,6 +899,8 @@
       </div>
     </div>
 
+    <p style="margin:0; font-size:15px; line-height:1.65; color:#4a505a; max-width:88ch"><b>UI v3 (A43).</b> L'en-tête tient <b>52 px</b> (gouttières 14/12, recherche bornée à 520 px, gestes à droite). Le volet liste s'ouvre sur un <b>bandeau de titre</b> — le nom de la boîte courante, 16 px 600, sans aucun bouton. Chaque ligne porte un <b>avatar de 28 px</b> aux initiales de l'expéditeur (panneau, filet, 11 px 600), <b>visuel seul</b> — aucun geste, la sélection en lot n'existe pas. Le volet de lecture montre le <b>fil en cartes</b> : titre 24 px, puces méta séparées (« n messages », « n fichiers »), « Voir la conversation » (l'agrandissement) et « Tout déplier » ; messages anciens <b>repliés une ligne</b> (nom · aperçu · heure), dernier <b>déplié</b> (De/À/Objet, corps en iframe sandbox par message, fichiers joints) ; barre des <b>cinq gestes directs</b> (Répondre accent, Répondre à tous, Transférer, Archiver, Supprimer) — jamais de menu « Plus ». Le volet et l'écran 03 sont <b>deux cadres du même objet</b> (composant Fil, état partagé) : agrandir ne recharge rien, dépliage et corps survivent. La garde d'images distantes est <b>par message</b>.</p>
+
     <p style="margin:0; font-size:15px; line-height:1.65; color:#4a505a; max-width:88ch">Un fil avec un <b>brouillon en cours</b> le dit dans son aperçu (variante B, validée le 2026-08-13) : préfixe <b>« Brouillon : »</b> (13 px, 600, alerte) suivi du corps du brouillon, comme si le brouillon était le dernier email du fil. La première ligne ne change pas : expéditeur du fil et heure du dernier message <b>reçu</b>. La place dans la liste, l'état non-lu du fil et le clic (ouverture de la conversation) restent inchangés. Le gabarit de ligne est celui du prototype de pistes (A29) : objet <b>14 px</b>, non-lus en graisse 700 ; A9 (objet 16 px) est amendé.</p>
 
     <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:20px; width:1440px">
@@ -874,7 +908,8 @@
         <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">Le dossier Brouillons : reprise au clic</p>
         <div style="width:400px; background:#f2f0ea; border:1px solid #cdc6b8; border-radius:10px; overflow:hidden">
           <div style="padding:12px; display:flex; flex-direction:column; gap:8px">
-            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; display:flex; flex-direction:column; gap:3px">
+            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+              <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">C</span>
               <div style="display:flex; align-items:baseline; gap:12px">
                 <span style="font-size:13px; color:#4a505a; flex:1">À : c.rousseau@atelier-nord.fr</span>
                 <span style="font-size:12px; color:#575f6a">14:32</span>
@@ -882,7 +917,8 @@
               <p style="margin:0; font-size:14px; font-weight:600; line-height:1.4; letter-spacing:-.01em; color:#4a505a">Re : Relecture du contrat Vantis</p>
               <p style="margin:0; font-size:13px; line-height:1.45; color:#575f6a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Bonjour Camille, merci pour la v4, je penche pour la recond…</p>
             </div>
-            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; display:flex; flex-direction:column; gap:3px">
+            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+              <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">L</span>
               <div style="display:flex; align-items:baseline; gap:12px">
                 <span style="font-size:13px; color:#4a505a; flex:1">À : l.fontaine@atelier-nord.fr</span>
                 <span style="font-size:12px; color:#575f6a">09:15</span>
@@ -890,7 +926,8 @@
               <p style="margin:0; font-size:14px; font-weight:600; line-height:1.4; letter-spacing:-.01em; color:#4a505a">Merci pour le compte rendu</p>
               <p style="margin:0; font-size:13px; line-height:1.45; color:#575f6a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Bonjour Léa, bien reçu, merci, je relis le calendrier de li…</p>
             </div>
-            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; display:flex; flex-direction:column; gap:3px">
+            <div style="padding:13px 16px; border-top:1px solid #cdc6b8; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+              <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">—</span>
               <div style="display:flex; align-items:baseline; gap:12px">
                 <span style="font-size:13px; color:#575f6a; font-style:italic; flex:1">(sans destinataire)</span>
                 <span style="font-size:12px; color:#575f6a">lun.</span>
@@ -908,7 +945,7 @@
       </div>
       <div style="background:#ffffff; border:1px solid #cdc6b8; border-radius:10px; padding:28px; display:flex; flex-direction:column; gap:14px">
         <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">Les règles du dossier</p>
-        <p style="margin:0; font-size:13px; line-height:1.6; color:#4a505a; max-width:60ch">Même gabarit de ligne, servi par les <b>brouillons locaux</b> plutôt que par le dossier IMAP : les brouillons hors ligne y figurent, et <b>le clic rouvre le composeur</b> (objet, corps, destinataire restitués tels quels, sans marquage lu). L'expéditeur devient le <b>destinataire</b> (« À : … ») ; sans destinataire ou sans objet, la mention en atténué italique remplace le blanc. Pas de mention « Brouillon » par ligne : tout le dossier en est. L'heure est celle de la dernière édition ; tri du plus récent au plus ancien. Le compteur du rail de navigation compte les mêmes brouillons locaux que le dossier. La barre de statut garde sa forme : « Brouillons · 3 messages ».</p>
+        <p style="margin:0; font-size:13px; line-height:1.6; color:#4a505a; max-width:60ch">Même gabarit de ligne, servi par les <b>brouillons locaux</b> plutôt que par le dossier IMAP : les brouillons hors ligne y figurent, et <b>le clic rouvre le composeur</b> (objet, corps, destinataire restitués tels quels, sans marquage lu). L'expéditeur devient le <b>destinataire</b> (« À : … ») — l'avatar aussi : ses initiales, un tiret quand il n'y en a pas ; sans destinataire ou sans objet, la mention en atténué italique remplace le blanc. Pas de mention « Brouillon » par ligne : tout le dossier en est. L'heure est celle de la dernière édition ; tri du plus récent au plus ancien. Le compteur du rail de navigation compte les mêmes brouillons locaux que le dossier. La barre de statut garde sa forme : « Brouillons · 3 messages ».</p>
       </div>
       <div style="background:#ffffff; border:1px solid #cdc6b8; border-radius:10px; padding:28px; display:flex; flex-direction:column; gap:14px">
         <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">La liste sous recharge</p>
@@ -1009,7 +1046,7 @@
     <div data-screen-label="03 Lecture" style="width:1440px; height:900px; background:#f2f0ea; border:1px solid #cdc6b8; border-radius:10px; overflow:hidden; padding:28px; display:flex">
       <div style="flex:1; background:#ffffff; border:1px solid #cdc6b8; border-radius:10px; box-shadow:0 2px 8px rgba(36,39,46,0.08); display:flex; flex-direction:column; overflow:hidden">
 
-        <div style="padding:28px 36px 24px; border-bottom:1px solid #cdc6b8; display:flex; flex-direction:column; gap:14px">
+        <div style="padding:22px 26px 16px; border-bottom:1px solid #cdc6b8; display:flex; flex-direction:column; gap:12px">
           <h3 style="margin:0; font-size:24px; font-weight:600; line-height:1.2; letter-spacing:-.01em">Relecture du contrat Vantis</h3>
           <div style="display:flex; align-items:center; gap:10px">
             <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true">forum</span>3 messages</span>
@@ -1018,27 +1055,27 @@
           </div>
         </div>
 
-        <div style="flex:1; padding:24px 36px; display:flex; flex-direction:column; gap:12px; min-height:0; overflow:auto">
+        <div style="flex:1; padding:14px 26px; display:flex; flex-direction:column; gap:10px; min-height:0; overflow:auto">
 
-          <div style="border:1px solid #cdc6b8; border-radius:10px; padding:14px 20px; display:flex; align-items:center; gap:14px; background:#f2f0ea">
+          <div style="border:1px solid #cdc6b8; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:12px; background:#ffffff">
             <span style="font-size:13px; font-weight:600; flex:1">Paul Mérand</span>
             <span style="font-size:13px; color:#4a505a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40ch">Merci, je regarde ça ce soir et je te réponds demain.</span>
             <span style="font-size:12px; color:#575f6a">Lundi, 18:20</span>
           </div>
 
-          <div style="border:1px solid #cdc6b8; border-radius:10px; padding:14px 20px; display:flex; align-items:center; gap:14px; background:#f2f0ea">
+          <div style="border:1px solid #cdc6b8; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:12px; background:#ffffff">
             <span style="font-size:13px; font-weight:600; flex:1">Sofia Nardi</span>
             <span style="font-size:13px; color:#4a505a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:40ch">J'ajoute la grille tarifaire mise à jour au fil.</span>
             <span style="font-size:12px; color:#575f6a">Mardi, 11:05</span>
           </div>
 
           <div style="flex:none; border:1px solid #cdc6b8; border-radius:10px; background:#ffffff; box-shadow:0 2px 8px rgba(36,39,46,0.08); overflow:hidden">
-            <div style="padding:20px 24px; display:flex; align-items:center; gap:14px; border-bottom:1px solid #cdc6b8">
-              <span style="font-size:15px; font-weight:600; flex:1">Camille Rousseau</span>
-              <span style="height:32px; flex:none; white-space:nowrap; padding:0 12px; display:inline-flex; align-items:center; gap:8px; font-size:13px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true">attach_file</span>2 fichiers</span>
+            <div style="padding:12px 16px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #cdc6b8">
+              <span style="font-size:13px; font-weight:600; flex:1">Camille Rousseau</span>
+              <span style="height:26px; flex:none; white-space:nowrap; padding:0 9px; display:inline-flex; align-items:center; gap:8px; font-size:12px; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px"><span class="ms" aria-hidden="true">attach_file</span>2 fichiers</span>
               <span style="font-size:12px; color:#575f6a">Aujourd'hui, 09:12</span>
             </div>
-            <div style="padding:22px 24px 26px; display:flex; flex-direction:column; gap:20px">
+            <div style="padding:14px 16px 16px; display:flex; flex-direction:column; gap:12px">
               <dl style="margin:0; display:grid; grid-template-columns:auto 1fr; column-gap:16px; row-gap:6px; font-size:13px">
                 <dt style="color:#575f6a">De</dt>
                 <dd style="margin:0; color:#4a505a">Camille Rousseau &lt;c.rousseau@atelier-nord.fr&gt;</dd>
@@ -1065,15 +1102,15 @@
             </div>
           </div>
 
-          <div style="border:1px dashed #1e7566; border-radius:10px; padding:14px 20px; display:flex; align-items:center; gap:14px; background:#f2f0ea">
+          <div style="border:1.5px dashed #1e7566; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:12px; background:none">
             <span style="display:inline-flex; align-items:center; gap:5px; flex:none; font-size:12.5px; font-weight:600; color:#9e3a2c"><span class="ms" aria-hidden="true" style="font-size:13px">edit_note</span>Brouillon</span>
             <span style="font-size:13px; color:#4a505a; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">Bonjour Camille, merci pour la v4, je penche pour la reconduction tacite…</span>
             <span style="font-size:12px; color:#575f6a">14:32</span>
-            <span style="height:26px; flex:none; padding:0 12px; display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; color:#4a505a; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px">Reprendre</span>
+            <span style="flex:none; font-size:13px; font-weight:600; color:#1e7566">Reprendre</span>
           </div>
         </div>
 
-        <div style="padding:20px 36px; border-top:1px solid #cdc6b8; display:flex; gap:12px">
+        <div style="padding:14px 26px; border-top:1px solid #cdc6b8; display:flex; gap:12px">
           <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; font-weight:600; color:#ffffff; background:#1e7566; border:1px solid #1e7566; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">reply</span>Répondre</span>
           <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#24272e; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true">reply_all</span>Répondre à tous</span>
           <span style="height:32px; flex:none; white-space:nowrap; padding:0 16px; display:inline-flex; align-items:center; font-size:13px; color:#24272e; background:#ffffff; border:1px solid #cdc6b8; border-radius:6px; display:inline-flex; align-items:center; gap:8px;"><span class="ms" aria-hidden="true" style="display:inline-block; transform:scaleX(-1)">reply</span>Transférer</span>
@@ -1084,7 +1121,7 @@
     </div>
       <div style="background:#ffffff; border:1px solid #cdc6b8; border-radius:10px; padding:24px 26px; display:flex; flex-direction:column; gap:10px">
       <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">Règles de transmission (amendement A1)</p>
-      <p style="margin:0; font-size:15px; line-height:1.65; color:#4a505a; max-width:88ch">Le corps du message est à 20 px du bord de sa carte, comme l'en-tête. Le texte brut converti se lit en colonne de 68 caractères ; la mise en page d'un expéditeur n'est pas bridée. En thème sombre, le chrome bascule mais le corps HTML reste sur surface claire : les mails sont composés pour un fond clair.</p>
+      <p style="margin:0; font-size:15px; line-height:1.65; color:#4a505a; max-width:88ch">Le corps du message est à 16 px du bord de sa carte, comme l'en-tête (UI v3). Le texte brut converti se lit en colonne de 68 caractères ; la mise en page d'un expéditeur n'est pas bridée. Depuis la revue A42, le document bake l'encre et le fond du thème actif (mail-render, palette validée) : en thème sombre le corps suit — un expéditeur qui fixe ses propres couleurs les garde.</p>
     </div>
       <div style="background:#ffffff; border:1px solid #cdc6b8; border-radius:10px; padding:24px 26px; display:flex; flex-direction:column; gap:10px">
       <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">Le brouillon du fil, en dernière position</p>
@@ -1280,7 +1317,8 @@ bloquante au démarrage. Rien d'autre ne bloque jamais. Et <b>rien ne touche la 
     <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:20px; background:#f2f0ea">
       <div style="display:flex; flex-direction:column; gap:12px">
         <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">Lu, au repos</p>
-        <div style="padding:13px 16px; border-top:1px solid #cdc6b8; border-bottom:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px">
+        <div style="padding:13px 16px; border-top:1px solid #cdc6b8; border-bottom:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+          <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">SN</span>
           <div style="display:flex; align-items:baseline; gap:10px">
             <span style="flex:1; font-size:14px; font-weight:400; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Sofia Nardi</span>
             <span style="font-size:12px; color:#575f6a; flex:none">4 août</span>
@@ -1291,7 +1329,8 @@ bloquante au démarrage. Rien d'autre ne bloque jamais. Et <b>rien ne touche la 
       </div>
       <div style="display:flex; flex-direction:column; gap:12px">
         <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">Non lu</p>
-        <div style="padding:13px 16px; border-top:1px solid #cdc6b8; border-bottom:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px">
+        <div style="padding:13px 16px; border-top:1px solid #cdc6b8; border-bottom:1px solid #cdc6b8; background:transparent; border-left:2px solid transparent; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+          <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">YB</span>
           <div style="display:flex; align-items:baseline; gap:10px">
             <span style="flex:1; font-size:14px; font-weight:700; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Yanis Belkacem</span>
             <span style="font-size:12px; color:#575f6a; flex:none">08:40</span>
@@ -1302,7 +1341,8 @@ bloquante au démarrage. Rien d'autre ne bloque jamais. Et <b>rien ne touche la 
       </div>
       <div style="display:flex; flex-direction:column; gap:12px">
         <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">Survol</p>
-        <div style="padding:13px 16px; border-top:1px solid #cdc6b8; border-bottom:1px solid #cdc6b8; background:#e4ded1; border-left:2px solid transparent; display:flex; flex-direction:column; gap:3px">
+        <div style="padding:13px 16px; border-top:1px solid #cdc6b8; border-bottom:1px solid #cdc6b8; background:#e4ded1; border-left:2px solid transparent; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+          <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">LF</span>
           <div style="display:flex; align-items:baseline; gap:10px">
             <span style="flex:1; font-size:14px; font-weight:400; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Léa Fontaine</span>
             <span style="font-size:12px; color:#575f6a; flex:none">Hier</span>
@@ -1313,7 +1353,8 @@ bloquante au démarrage. Rien d'autre ne bloque jamais. Et <b>rien ne touche la 
       </div>
       <div style="display:flex; flex-direction:column; gap:12px">
         <p style="margin:0; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:#575f6a; font-weight:600">Sélectionné</p>
-        <div style="padding:13px 16px; border-top:1px solid #cdc6b8; border-bottom:1px solid #cdc6b8; background:#cddcd2; border-left:2px solid #1e7566; display:flex; flex-direction:column; gap:3px">
+        <div style="padding:13px 16px; border-top:1px solid #cdc6b8; border-bottom:1px solid #cdc6b8; background:#cddcd2; border-left:2px solid #1e7566; display:grid; grid-template-columns:auto 1fr; column-gap:10px; row-gap:3px">
+          <span style="grid-row:1 / span 3; width:28px; height:28px; border-radius:50%; background:#e9e6dd; border:1px solid #cdc6b8; display:grid; place-items:center; font-size:11px; font-weight:600; color:#4a505a">CR</span>
           <div style="display:flex; align-items:baseline; gap:10px">
             <span style="flex:1; font-size:14px; font-weight:400; color:#24272e; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">Camille Rousseau</span>
             <span style="font-size:12px; color:#575f6a; flex:none">09:12</span>
@@ -1551,6 +1592,11 @@ bloquante au démarrage. Rien d'autre ne bloque jamais. Et <b>rien ne touche la 
           <td style="padding:12px 20px; font-size:13px; color:#4a505a; white-space:nowrap">2026-08-16</td>
           <td style="padding:12px 20px; font-size:13px; color:#24272e; font-weight:600; white-space:nowrap">A42</td>
           <td style="padding:12px 20px; font-size:13px; color:#4a505a"><b>« Wada élargi » : 28 thèmes et sombre automatique par déclinaison</b> (paquet handoff du projet Design, PLAN-WADA-ELARGI). La table des jetons passe de 7 à 28 thèmes — 14 clairs composés à la manière de Sanzo Wada (huit ton sur ton : l'hortensia, le coquelicot, le chaume, la bruyère, la source, le bleuet, la lavande, la rosée ; cinq polychromes : l'iris, la moisson, la grenade, le safran, l'estampe) et leurs 14 déclinaisons sombres suffixées <code>-nuit</code>, les 17 rôles inchangés. Les anciens thèmes l'air, le feu, l'eau, les astres et la terre sont retirés ; « la nuit » est renommée <code>nature-nuit</code> (verbatim, remèdes A8/A19/A35 compris ; migration du choix persisté <code>nuit</code> → <code>nature-nuit</code>). <code>--alert</code> commun : #9e3a2c (clairs) / #ea9a90 (sombres). « Sombre automatique » affiche désormais la déclinaison <code>-nuit</code> du thème CHOISI (D6 réécrit) : le thème de base est la seule valeur persistée, le suffixe est un état dérivé, jamais enregistré ; un thème <code>-nuit</code> choisi à la main reste en paix. Les 28 fiches sont choisissables aux Réglages (D1). Au banc avant livraison : le paquet livrait <code>--ink2:undefined</code> sur les 28 thèmes (générateur) — les 26 valeurs neuves dérivées ici (mélange ink→muted t=0,72, grammaire de la paire nature) ; et les paires sur <code>--sel</code>/<code>--hover</code> (A35) n'étaient pas pré-vérifiées — <code>--muted</code> ajusté sur 18 thèmes et <code>--sel</code> de grenade-nuit assombri, même teinte, luminosité minimale (le remède A8). Les deux gates étendues aux identifiants à trait d'union (<code>[a-z-]+</code>) : sans cela, les 14 sombres passaient sans AUCUNE mesure, en silence. Jetons de marque toujours hors table (W-D3). Constat terrain du même jour (point 4 de la passe CE) : <code>prefers-color-scheme</code> est mort dans le WebView2 de Tauri — jamais sombre, zéro événement, même sous une vraie bascule (registre + diffusion WM_SETTINGCHANGE), mesuré aux sondes ; l'écoute du système passe par l'API fenêtre Tauri (<code>theme()</code> + <code>onThemeChanged</code>, qui a tiré dans les deux sens), <code>matchMedia</code> restant le repli hors Tauri et la poignée du banc e2e (emulateMedia). Revue du même jour (huit angles, dix constats) : la coche du sélecteur suit désormais la fiche <b>affichée</b>, pas le choix persisté — sous suivi OS + OS sombre, l'œil voit la déclinaison <code>-nuit</code>, la coche aussi (sinon le clic de « correction » enfermait dans le sombre permanent) ; le corps de message bake l'encre et le fond du thème actif (<code>mail-render</code>, palette validée <code>#rrggbb</code>, l'iframe passe au jeton <code>--surface</code> — le blanc dur faisait dalle sur les 14 sombres) ; la description de « Sombre automatique » dit l'exception (« Un thème nuit choisi à la main reste tel quel ») ; la gate contraste n'imprime plus que les écarts ; la gate de cohérence vérifie aussi que chaque thème livré a son libellé aux deux catalogues.</td>
+        </tr>
+        <tr style="border-top:1px solid #cdc6b8">
+          <td style="padding:12px 20px; font-size:13px; color:#4a505a; white-space:nowrap">2026-08-16</td>
+          <td style="padding:12px 20px; font-size:13px; color:#24272e; font-weight:600; white-space:nowrap">A43</td>
+          <td style="padding:12px 20px; font-size:13px; color:#4a505a"><b>UI v3 — les verdicts d'annotation du prototype Classique appliqués à l'écran 02</b> (séance CE du 2026-08-16, <code>docs/design/ANNOTATIONS-V3.md</code>, PLAN-UI-V3). Quatre changements et des refus. (1) <b>Bandeau de liste</b> : le volet liste s'ouvre sur le nom de la boîte courante (16 px 600) — « Tout marquer lu » explicitement écarté. (2) <b>Avatar de ligne</b> : 28 px aux initiales de l'expéditeur, visuel seul (D2 — la sélection en lot est une feature à part, différée) ; le rang de puces de la maquette est différé jusqu'aux features qui le rempliraient (D3). (3) <b>Le volet de lecture montre le fil en cartes</b> : anciens repliés une ligne, dernier déplié (De/À/Objet, iframe sandbox par message — S1 intact), fichiers joints, « Tout déplier », cinq gestes directs sans menu « Plus » (D5, exception b) ; ni note privée de fil (exception a). Le volet et l'écran 03 sont <b>deux cadres du même objet</b> (D4 : composant <code>Fil.svelte</code>, état partagé <code>lib/fil.svelte.js</code>) — agrandir ne recharge rien ; un seul cadre monté à la fois ; la garde d'images distantes devient <b>par message</b> (elle manquait au plein écran). (4) <b>En-tête au gabarit maquette</b> : 52 px, gouttières 14/12, recherche bornée à 520 px, gestes tenus à droite. Nav et onglets de filtre v2 conservés tels quels (verdicts 1 et 5). Réservoir ORGANIZED toujours fermé. <b>Normes amendées</b> : A29 (« la ligne est nue ») — la ligne porte désormais l'avatar, ses autres règles (filet, états, graisses, puces au volet) tiennent ; V-D2 (« une seule surface de lecture plein écran ») — le volet montre AUSSI le fil, l'écran 03 reste l'unique plein écran, les deux étant le même objet. L'avatar dit l'expéditeur en boîte, le <b>destinataire</b> au dossier Brouillons (tiret sans destinataire). Revue du même jour (huit angles, dix constats) : l'exclusivité des cadres vit au store (<code>fil.cadre</code> — trois booléens réconciliés à la main se désynchronisaient au raccourci d'archivage) ; chaque ouverture recharge le fil (jamais de mémoïsation — la propre réponse manquait au fil rouvert) ; le compte de pièces d'après-scan est retenu par message (terrain 2026-08-14 rejoué) ; le jeton anti-course garde chaque écriture de corps (l'opt-in d'images ne survit pas à la sélection) ; « Répondre » cible le dernier message d'<b>autrui</b> (répondre à sa propre copie composait vers soi) ; « Voir la conversation » redevient inerte sur un message sans fil (V-D2) ; le chrono d'ouverture mesure sélection → corps posé, pièces hors chrono (sa définition inclut désormais thread_messages — série P1 re-basée).</td>
         </tr>
       </tbody>
     </table>
