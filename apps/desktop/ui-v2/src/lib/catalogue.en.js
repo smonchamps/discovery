@@ -116,6 +116,7 @@ export const EN = {
   'liste.aucunResultat': 'No results.',
   'liste.vide': 'No messages here.',
   'liste.prefixeBrouillon': 'Draft: ',
+  'liste.dest': 'To: {a}',
   'brouillons.a': 'To: {a}',
   'brouillons.sansDestinataire': '(no recipient)',
   'brouillons.sansObjet': '(no subject)',

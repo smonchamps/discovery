@@ -179,6 +179,8 @@ fn main() -> Result<(), mail_core::Error> {
                 .single(),
             seen: uid % 3 != 0,
             flagged: uid.is_multiple_of(7),
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
         });
         if batch.len() == BATCH {
             store.upsert_envelopes(mailbox_id, &batch)?;

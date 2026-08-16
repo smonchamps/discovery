@@ -80,7 +80,16 @@
   // pour un message d'autrui, notre nom vient de notre propre copie du
   // fil (Envoyés) ; sans elle, l'adresse du compte — le fait honnête.
   const propre = (m) => fil.ligne && m.sender_address === fil.ligne.account_email;
+  // R4 (PLAN-RETOURS-MAIL) : pour NOTRE message, le destinataire stocké
+  // (`to_addrs`, tiré de la même ENVELOPE à la synchro) dit à qui il est
+  // parti — un envoi ISOLÉ n'a personne d'autre à deviner dans le fil, et
+  // le repli sur l'adresse du compte affichait « à soi-même » (le cas
+  // « Test PJ 3 »). Ordre : la donnée stockée d'abord, puis l'ancienne
+  // heuristique (autre correspondant du fil), enfin l'adresse du compte.
   function destinataire(m) {
+    if (propre(m) && (m.to_addrs?.length ?? 0) > 0) {
+      return m.to_addrs.join(', ');
+    }
     const vise = propre(m)
       ? fil.messages.find((x) => x.sender_address && x.sender_address !== m.sender_address)
       : fil.messages.find((x) => propre(x));

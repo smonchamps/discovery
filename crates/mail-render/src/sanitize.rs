@@ -41,6 +41,12 @@ pub fn sanitize_with(html: &str, policy: ImagePolicy) -> Sanitized {
     let styles_counter = Arc::clone(&styles_cleaned);
 
     let clean = ammonia::Builder::default()
+        // R3 : `ammonia` retire une balise interdite mais DÉBALLE son texte
+        // (défaut). Un email dont le `<head><title>` répète l'objet le
+        // faisait fuir en tête de corps, dupliqué. On retire le CONTENU du
+        // `<title>` (script/style le sont déjà par défaut) — comme tout
+        // client mûr qui jette le `<head>`.
+        .add_clean_content_tags(["title"])
         .add_tags(["font"])
         .add_tag_attributes("font", ["color", "face", "size"])
         .add_generic_attributes([
@@ -142,6 +148,32 @@ mod tests {
         assert!(!out.html.contains("script"));
         assert!(!out.html.contains("alert"));
         assert!(out.html.contains("contenu"));
+    }
+
+    /// R3 (PLAN-RETOURS-MAIL) : une infolettre porte son objet dans
+    /// `<head><title>…</title>`. `ammonia` retire la balise `<title>` mais
+    /// DÉBALLE son texte par défaut — l'objet fuyait alors en tête de corps,
+    /// dupliqué (terrain CE : Gmail, lui, jette le `<head>`). Son contenu
+    /// doit disparaître, tag ET texte.
+    #[test]
+    fn drops_head_title_content_entirely() {
+        let out = sanitize(
+            "<html><head><title>Objet de l'infolettre</title></head>\
+             <body><h1>Objet de l'infolettre</h1><p>corps</p></body></html>",
+        );
+        assert!(
+            !out.html.contains("<title"),
+            "la balise title doit partir : {}",
+            out.html
+        );
+        // Le corps garde SON titre (h1) ; seul le texte du <title> fuyait.
+        assert_eq!(
+            out.html.matches("Objet de l'infolettre").count(),
+            1,
+            "le texte du <title> ne doit plus doubler le corps : {}",
+            out.html
+        );
+        assert!(out.html.contains("corps"));
     }
 
     #[test]

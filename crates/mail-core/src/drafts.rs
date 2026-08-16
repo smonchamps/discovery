@@ -1611,6 +1611,8 @@ mod tests_fil {
             date: Some(chrono::Utc.timestamp_opt(1_700_000_000, 0).unwrap()),
             seen: true,
             flagged: false,
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
         }
     }
 

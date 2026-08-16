@@ -51,6 +51,8 @@ fn message(
         date,
         seen: lu,
         flagged: false,
+        to_addrs: Vec::new(),
+        cc_addrs: Vec::new(),
     }
 }
 

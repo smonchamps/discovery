@@ -6,7 +6,7 @@
 
 use chrono::Utc;
 use imap_proto::types::{Address, Envelope as ProtoEnvelope};
-use mail_core::{Envelope, Uid};
+use mail_core::{Envelope, Uid, unescape_imap_quoted};
 
 /// Rôle spécial d'un dossier (RFC 6154), réduit à ce qui décide de
 /// l'archivage.
@@ -221,6 +221,15 @@ pub(crate) fn envelope_from_parts(
         subject,
         sender: from.and_then(sender_display),
         sender_address: from.and_then(address_literal),
+        // À / Cc viennent de la MÊME ENVELOPE (R4) : stockés à la synchro,
+        // ils évitent la relève serveur du « Répondre à tous » et donnent
+        // au dossier d'envois son vrai destinataire.
+        to_addrs: proto
+            .map(|envelope| address_list(envelope.to.as_deref()))
+            .unwrap_or_default(),
+        cc_addrs: proto
+            .map(|envelope| address_list(envelope.cc.as_deref()))
+            .unwrap_or_default(),
         message_id,
         in_reply_to,
         date,
@@ -341,15 +350,21 @@ fn address_literal(address: &Address<'_>) -> Option<String> {
     let host = address.host.as_deref()?;
     Some(format!(
         "{}@{}",
-        String::from_utf8_lossy(mailbox),
-        String::from_utf8_lossy(host)
+        String::from_utf8_lossy(&unescape_imap_quoted(mailbox)),
+        String::from_utf8_lossy(&unescape_imap_quoted(host))
     ))
 }
 
-/// En-tête textuel brut (Message-ID) : ASCII en pratique, jamais encodé
-/// RFC 2047 — pas de décodage, juste un nettoyage.
+/// En-tête textuel brut (Message-ID, In-Reply-To) : ASCII en pratique,
+/// jamais encodé RFC 2047 — pas de décodage, juste un nettoyage. On retire
+/// tout de même les escapes `quoted-string` d'IMAP (comme `decode_header`,
+/// R2) : un serveur qui transmet un Message-ID en chaîne échappée le
+/// garderait sinon avec ses backslashes, et le même id reçu ailleurs sous
+/// forme d'atome ne s'y rattacherait plus (fil cassé). Rarissime, mais la
+/// cohérence avec le décodage des objets ne coûte rien.
 fn text_header(raw: &[u8]) -> Option<String> {
-    let value = String::from_utf8_lossy(raw);
+    let raw = unescape_imap_quoted(raw);
+    let value = String::from_utf8_lossy(&raw);
     let trimmed = value.trim();
     if trimmed.is_empty() {
         None
@@ -546,8 +561,12 @@ fn fallback_name(mime: &str) -> String {
 }
 
 /// Décode un en-tête RFC 2047 en le présentant à `mail-parser` comme un
-/// message synthétique. Retourne `None` pour un en-tête vide.
+/// message synthétique. Retourne `None` pour un en-tête vide. Les escapes
+/// de la couche `quoted-string` IMAP sont retirés AVANT la passe RFC 2047
+/// (un objet peut mêler `\"` et encoded-words).
 fn decode_header(raw: &[u8]) -> Option<String> {
+    let raw = unescape_imap_quoted(raw);
+    let raw = raw.as_ref();
     let synthetic = [b"Subject: ".as_slice(), raw, b"\r\n\r\n".as_slice()].concat();
     let decoded = mail_parser::MessageParser::new()
         .parse(&synthetic)
@@ -659,6 +678,71 @@ mod tests {
         let proto = proto_envelope(b"sujet", address(None, Some(b"seb"), Some(b"example.com")));
         let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
         assert_eq!(envelope.sender.as_deref(), Some("seb@example.com"));
+    }
+
+    /// R2 (PLAN-RETOURS-MAIL) : `imap-proto` rend le contenu d'une
+    /// `quoted-string` IMAP en gardant les backslash-escapes (guillemets
+    /// externes retirés, contenu brut — prouvé par ses tests `core.rs`).
+    /// Un objet réel `Test "Envoyés"` arrive donc `Test \"Envoyés\"` :
+    /// il faut le dé-échapper avant tout.
+    #[test]
+    fn unescapes_imap_quoted_quotes_in_subject() {
+        let proto = proto_envelope(
+            br#"Test \"Envoyes\""#,
+            address(None, Some(b"seb"), Some(b"example.com")),
+        );
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
+        assert_eq!(envelope.subject.as_deref(), Some(r#"Test "Envoyes""#));
+    }
+
+    /// `\\` est la seconde (et dernière) séquence valide RFC 3501 :
+    /// un backslash littéral d'objet arrive doublé.
+    #[test]
+    fn unescapes_imap_quoted_backslash_in_subject() {
+        let proto = proto_envelope(
+            br"chemin C:\\temp",
+            address(None, Some(b"seb"), Some(b"example.com")),
+        );
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
+        assert_eq!(envelope.subject.as_deref(), Some(r"chemin C:\temp"));
+    }
+
+    /// Le dé-échappement précède la passe RFC 2047 : le `"` échappé de la
+    /// couche IMAP et l'encoded-word cohabitent dans le même objet.
+    #[test]
+    fn unescape_precedes_rfc2047_decoding() {
+        let proto = proto_envelope(
+            br#"\"cite\" =?UTF-8?Q?r=C3=A9pond?="#,
+            address(None, Some(b"seb"), Some(b"example.com")),
+        );
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
+        assert_eq!(envelope.subject.as_deref(), Some("\"cite\" r\u{e9}pond"));
+    }
+
+    /// Même défaut sur le nom d'affichage de l'expéditeur.
+    #[test]
+    fn unescapes_imap_quoted_quotes_in_sender_name() {
+        let proto = proto_envelope(
+            b"sujet",
+            address(
+                Some(br#"Societe \"ACME\""#),
+                Some(b"info"),
+                Some(b"acme.fr"),
+            ),
+        );
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
+        assert_eq!(envelope.sender.as_deref(), Some(r#"Societe "ACME""#));
+    }
+
+    /* Un objet ordinaire, sans escape, traverse intact — pas de régression. */
+    #[test]
+    fn plain_subject_without_escapes_is_unchanged() {
+        let proto = proto_envelope(
+            b"Reunion de demain",
+            address(None, Some(b"seb"), Some(b"example.com")),
+        );
+        let envelope = envelope_from_parts(1, Some(&proto), None, false, false);
+        assert_eq!(envelope.subject.as_deref(), Some("Reunion de demain"));
     }
 
     #[test]

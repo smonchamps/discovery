@@ -16,6 +16,7 @@ mod drafts;
 mod echo;
 mod envelope;
 mod error;
+mod imap_quoted;
 mod nav;
 mod notify;
 mod outbox;
@@ -33,7 +34,7 @@ pub use address::EmailAddress;
 pub use attachment::{Attachment, human_size};
 pub use backfill::{
     BACKFILL_BATCH, BackfillReport, NO_HORIZON, THREAD_HEADER_BATCH, backfill_bodies,
-    backfill_thread_headers,
+    backfill_recipients, backfill_thread_headers,
 };
 pub use body::load_body;
 pub use compose::{
@@ -48,6 +49,7 @@ pub use drafts::{
 pub use echo::DESTINATIONS_ECHO;
 pub use envelope::{Envelope, Uid};
 pub use error::Error;
+pub use imap_quoted::{unescape_imap_quoted, unescape_imap_quoted_str};
 pub use nav::{CanonicalFolders, NavCounts};
 pub use notify::{Lang, Notification, arrivals_to_notify, notification_for};
 pub use outbox::{OutboxAttachment, OutboxMessage, OutboxReport, OutboxState, flush_outbox};

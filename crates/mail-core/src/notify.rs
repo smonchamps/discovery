@@ -136,6 +136,8 @@ mod tests {
             date: None,
             seen: false,
             flagged: false,
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
         }
     }
 

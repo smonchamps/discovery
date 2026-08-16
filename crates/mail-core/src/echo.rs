@@ -369,6 +369,8 @@ mod tests {
             date: Some(Utc.timestamp_opt(epoch, 0).unwrap()),
             seen: true,
             flagged: false,
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
         }
     }
 

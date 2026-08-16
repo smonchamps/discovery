@@ -476,7 +476,10 @@ impl Store {
                    UNION ALL
                    SELECT a.id, a.email, 0, ec.subject, ec.sender, ec.sender_address,
                         ec.message_id, ec.date_epoch, 1, 0, ec.attachment_count,
-                        NULL, NULL, 'echo:' || ec.id, ec.preview, 1, 0,
+                        NULL, NULL, 'echo:' || ec.id, ec.preview,
+                        -- R4 : un echo est NOTRE copie d'un envoi — sa
+                        -- destination EST le destinataire a afficher.
+                        ec.destination, NULL, 1, 0,
                         page.date_epoch AS tri_date, page.uid AS tri_uid,
                         page.mailbox_id AS tri_boite
                    FROM page
@@ -524,6 +527,8 @@ mod tests {
             date: Some(Utc.timestamp_opt(epoch, 0).unwrap()),
             seen,
             flagged: false,
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
         }
     }
 

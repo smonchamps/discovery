@@ -70,6 +70,15 @@ impl FakeServer {
         self.references.insert(uid, references.to_string());
     }
 
+    /// Pose les destinataires À/Cc que l'ENVELOPE du serveur portera pour
+    /// ce message — ce que le rattrapage des envois relit (R4).
+    pub(crate) fn set_envelope_recipients(&mut self, uid: Uid, to: &[&str], cc: &[&str]) {
+        if let Some((envelope, _)) = self.messages.get_mut(&uid) {
+            envelope.to_addrs = to.iter().map(|s| s.to_string()).collect();
+            envelope.cc_addrs = cc.iter().map(|s| s.to_string()).collect();
+        }
+    }
+
     pub(crate) fn add(&mut self, uid: Uid, subject: &str) {
         self.modseq += 1;
         let envelope = Envelope {
@@ -86,6 +95,8 @@ impl FakeServer {
             ),
             seen: false,
             flagged: false,
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
         };
         self.messages.insert(uid, (envelope, self.modseq));
     }

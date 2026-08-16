@@ -118,6 +118,7 @@ export const FR = {
   'liste.aucunResultat': 'Aucun résultat.',
   'liste.vide': 'Aucun message ici.',
   'liste.prefixeBrouillon': 'Brouillon : ',
+  'liste.dest': 'À : {a}',
   'brouillons.a': 'À : {a}',
   'brouillons.sansDestinataire': '(sans destinataire)',
   'brouillons.sansObjet': '(sans objet)',

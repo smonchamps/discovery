@@ -18,6 +18,13 @@ pub struct Envelope {
     /// Adresse brute de l'expéditeur (`mailbox@host`) — pour répondre,
     /// là où `sender` est la chaîne d'affichage (nom décodé).
     pub sender_address: Option<String>,
+    /// Destinataires bruts À / Cc (`mailbox@host` chacun), tirés de la
+    /// MÊME ENVELOPE que l'expéditeur — gratuits, jamais un octet de plus
+    /// sur le réseau (R4, PLAN-RETOURS-MAIL). Ils servent à afficher « à X »
+    /// dans un dossier d'envois (l'expéditeur y est SOI) et à « Répondre à
+    /// tous » hors ligne. Vides quand l'ENVELOPE n'en porte pas.
+    pub to_addrs: Vec<String>,
+    pub cc_addrs: Vec<String>,
     /// `Message-ID` RFC 5322 — pour répondre dans le fil (`In-Reply-To`).
     pub message_id: Option<String>,
     /// `In-Reply-To` : l'ancêtre direct, tel que l'annonce l'expéditeur.

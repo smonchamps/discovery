@@ -38,6 +38,15 @@
   const PAGE = 200;
   const OVER = 8;
 
+  // R4 (PLAN-RETOURS-MAIL) : dans le dossier d'envois, l'expéditeur est
+  // SOI — répéter son nom sur chaque ligne n'apprend rien. La colonne
+  // dit le DESTINATAIRE (« À : X »), tiré de `to_addrs` stocké à la
+  // synchro. À défaut (ancien envoi non encore rattrapé) on garde le nom
+  // d'expéditeur d'avant — jamais de ligne muette.
+  const versEnvoi = (ligne) => categorie === 'envoyes' && (ligne.to_addrs?.length ?? 0) > 0;
+  const correspondant = (ligne) =>
+    versEnvoi(ligne) ? ligne.to_addrs.join(', ') : ligne.sender;
+
   let cadre = $state(null);
   let total = $state(0);
   let premier = $state(0);
@@ -410,9 +419,9 @@
              choisir(ligne);
            }}
            onkeydown={activation(() => choisir(ligne))}>
-        <span class="avatar" data-testid="avatar" aria-hidden="true">{initiales(ligne.sender)}</span>
+        <span class="avatar" data-testid="avatar" aria-hidden="true">{initiales(correspondant(ligne))}</span>
         <div class="l1">
-          <span class="exp">{ligne.sender}</span>
+          <span class="exp">{#if versEnvoi(ligne)}{t('liste.dest', { a: correspondant(ligne) })}{:else}{ligne.sender}{/if}</span>
           <span class="heure">{quand(ligne.epoch)}</span>
         </div>
         <p class="objet">{ligne.subject}</p>

@@ -72,6 +72,12 @@ CREATE TABLE IF NOT EXISTS envelopes (
     subject        TEXT,
     sender         TEXT,
     sender_address TEXT,
+    -- Destinataires A / Cc, un par saut de ligne, NULL quand l'ENVELOPE
+    -- n'en porte pas (R4, PLAN-RETOURS-MAIL). Ils viennent de la MEME
+    -- ENVELOPE que l'expediteur : dans un dossier d'envois l'expediteur
+    -- est SOI, seul le destinataire dit a qui le message est parti.
+    to_addrs       TEXT,
+    cc_addrs       TEXT,
     message_id     TEXT,
     -- Les deux en-tetes du regroupement en fils. `in_reply_to` vient de
     -- l'ENVELOPE (gratuit) ; `refs` vient d'une passe separee sur les
@@ -310,12 +316,13 @@ pub struct UnifiedRow {
 // remplace l'ancien EXISTS : la puce du prototype dit « 2 fichiers »,
 // pas « des fichiers ». Les deux ne s'exécutent que sur les lignes
 // RETENUES par la pagination (gate P1).
-pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, (SELECT COUNT(*) FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name, b.preview";
+pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject, e.sender, e.sender_address, e.message_id, e.date_epoch, e.seen, e.flagged, (SELECT COUNT(*) FROM attachments att WHERE att.mailbox_id = e.mailbox_id AND att.uid = e.uid), e.thread_id, e.in_reply_to, m.name, b.preview, e.to_addrs, e.cc_addrs";
 
 /// Le SELECT de la liste groupée : les colonnes ci-dessus, plus l'agrégat
 /// du fil. Il exige la jointure sur `threads` (alias `t`), que la
 /// recherche n'a pas — un résultat de recherche est UN message, pas une
-/// conversation.
+/// conversation. Vient APRÈS `to_addrs`/`cc_addrs` de [`SELECT_UNIFIED`] :
+/// `t.size`/`t.unseen` sont donc aux index 17/18.
 pub(crate) const THREAD_AGGREGATE: &str = ", t.size, t.unseen";
 
 pub struct Store(Connection);
@@ -1033,8 +1040,8 @@ impl Store {
             let mut stmt = tx.prepare(
                 "INSERT INTO envelopes
                  (mailbox_id, uid, subject, sender, sender_address, message_id,
-                  in_reply_to, date_epoch, seen, flagged)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                  in_reply_to, date_epoch, seen, flagged, to_addrs, cc_addrs)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
                  ON CONFLICT (mailbox_id, uid) DO UPDATE SET
                      subject = excluded.subject,
                      sender = excluded.sender,
@@ -1043,7 +1050,9 @@ impl Store {
                      in_reply_to = excluded.in_reply_to,
                      date_epoch = excluded.date_epoch,
                      seen = excluded.seen,
-                     flagged = excluded.flagged",
+                     flagged = excluded.flagged,
+                     to_addrs = excluded.to_addrs,
+                     cc_addrs = excluded.cc_addrs",
             )?;
             let mut body_stmt =
                 tx.prepare("SELECT html FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
@@ -1061,6 +1070,8 @@ impl Store {
                     envelope.date.map(|d| d.timestamp()),
                     envelope.seen,
                     envelope.flagged,
+                    join_addrs(&envelope.to_addrs),
+                    join_addrs(&envelope.cc_addrs),
                 ])?;
 
                 // Les `References` déjà acquises comptent dans le
@@ -1539,7 +1550,7 @@ impl Store {
     ) -> Result<Vec<Envelope>, Error> {
         let mut statement = self.0.prepare(
             "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
-                    e.date_epoch, e.seen, e.flagged, e.in_reply_to
+                    e.date_epoch, e.seen, e.flagged, e.in_reply_to, e.to_addrs, e.cc_addrs
              FROM envelopes e
              JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
@@ -1630,6 +1641,68 @@ impl Store {
         Ok(uids)
     }
 
+    /// Les messages d'une boîte dont les destinataires n'ont pas encore
+    /// été lus, du plus récent au plus ancien (R4, rattrapage des envois
+    /// D2).
+    ///
+    /// `to_addrs IS NULL` = jamais lu. Un message sans À reçoit `""`
+    /// (chaîne vide, PAS NULL) et sort définitivement de cette liste —
+    /// même sentinelle que `refs` pour les en-têtes de fil, sans quoi la
+    /// pompe le redemanderait indéfiniment (enseignement de convergence,
+    /// PASSATION §9).
+    pub fn recipients_to_backfill(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        limit: usize,
+    ) -> Result<Vec<Uid>, Error> {
+        let mut stmt = self.0.prepare(
+            "SELECT e.uid
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2
+               AND e.to_addrs IS NULL
+             ORDER BY e.date_epoch DESC, e.uid DESC
+             LIMIT ?3",
+        )?;
+        let uids = stmt
+            .query_map(params![account_id, mailbox, limit as i64], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(uids)
+    }
+
+    /// Combien d'envois attendent encore leurs destinataires.
+    pub fn recipients_pending_count(&self, account_id: i64, mailbox: &str) -> Result<u64, Error> {
+        let count: i64 = self.0.query_row(
+            "SELECT COUNT(*)
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2 AND e.to_addrs IS NULL",
+            params![account_id, mailbox],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
+    /// Écrit les destinataires À/Cc d'un message déjà stocké (rattrapage
+    /// des envois). Écrit `""` — jamais NULL — quand la liste est vide :
+    /// c'est la marque « lu, aucun » qui fait converger la pompe. Ne
+    /// touche à AUCUNE autre colonne (ni fil, ni refs).
+    pub fn set_recipients(
+        &self,
+        mailbox_id: i64,
+        uid: Uid,
+        to: &[String],
+        cc: &[String],
+    ) -> Result<(), Error> {
+        self.0.execute(
+            "UPDATE envelopes SET to_addrs = ?3, cc_addrs = ?4
+             WHERE mailbox_id = ?1 AND uid = ?2",
+            params![mailbox_id, uid, to.join("\n"), cc.join("\n")],
+        )?;
+        Ok(())
+    }
+
     /// Combien de messages attendent encore leurs en-têtes de fil.
     pub fn thread_headers_pending_count(
         &self,
@@ -1685,7 +1758,7 @@ impl Store {
     ) -> Result<Vec<Envelope>, Error> {
         let mut stmt = self.0.prepare(
             "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
-                    e.date_epoch, e.seen, e.flagged, e.in_reply_to
+                    e.date_epoch, e.seen, e.flagged, e.in_reply_to, e.to_addrs, e.cc_addrs
              FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
              WHERE m.account_id = ?1 AND m.name = ?2
              ORDER BY e.date_epoch DESC, e.uid DESC
@@ -1772,7 +1845,7 @@ impl Store {
             .0
             .query_row(
                 "SELECT e.uid, e.subject, e.sender, e.sender_address, e.message_id,
-                        e.date_epoch, e.seen, e.flagged, e.in_reply_to
+                        e.date_epoch, e.seen, e.flagged, e.in_reply_to, e.to_addrs, e.cc_addrs
                  FROM envelopes e JOIN mailboxes m ON m.id = e.mailbox_id
                  WHERE m.account_id = ?1 AND m.name = ?2 AND e.uid = ?3",
                 params![account_id, mailbox, uid],
@@ -1927,6 +2000,11 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
             // NULL = « pas encore rattaché ». C'est ce que
             // `thread::migrate_threads` cherche, plus bas.
             ("thread_id", "INTEGER"),
+            // R4 : les destinataires arrivent NULL sur l'existant — le
+            // rattrapage des envois (D2) les peuple, la synchro les ecrit
+            // desormais sur tout message neuf.
+            ("to_addrs", "TEXT"),
+            ("cc_addrs", "TEXT"),
         ],
     )?;
     add_missing_columns(
@@ -2012,6 +2090,57 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
             "DELETE FROM bodies WHERE html LIKE '%' || char(65533) || '%';
              INSERT INTO reparations (nom) VALUES ('corps-fffd');",
         )?;
+    }
+    // R2 (PLAN-RETOURS-MAIL) : les enveloppes synchronisées AVANT le
+    // correctif portent les backslash-escapes des `quoted-string` IMAP que
+    // `imap-proto` laisse dans le contenu (objet « Test \"Envoyés\" », nom
+    // d'expéditeur, adresse). Le décodage neuf les retire à la synchro,
+    // mais l'existant reste parasité : on le répare UNE fois. Le contenu
+    // stocké est déjà RFC 2047-décodé ; il ne reste que la couche d'escape
+    // IMAP, donc dé-échapper la valeur stockée équivaut au nouveau décodage
+    // (un encoded-word ne porte ni `"` ni `\`). L'index FTS n'a pas à
+    // bouger : son tokeniseur écarte déjà le backslash, la recherche
+    // donnait les mêmes résultats. char(92) = `\`.
+    let deja_faite: bool = conn
+        .prepare("SELECT 1 FROM reparations WHERE nom = 'objets-escapes'")?
+        .exists([])?;
+    if !deja_faite {
+        let mut stmt = conn.prepare(
+            "SELECT mailbox_id, uid, subject, sender, sender_address FROM envelopes
+                 WHERE instr(subject, char(92)) > 0
+                    OR instr(sender, char(92)) > 0
+                    OR instr(sender_address, char(92)) > 0",
+        )?;
+        #[allow(clippy::type_complexity)]
+        let parasites: Vec<(i64, u32, Option<String>, Option<String>, Option<String>)> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })?
+            .filter_map(Result::ok)
+            .collect();
+        drop(stmt);
+        for (mailbox_id, uid, subject, sender, sender_address) in parasites {
+            let propre =
+                |v: Option<String>| v.map(|s| crate::unescape_imap_quoted_str(&s).into_owned());
+            conn.execute(
+                "UPDATE envelopes SET subject = ?3, sender = ?4, sender_address = ?5
+                     WHERE mailbox_id = ?1 AND uid = ?2",
+                params![
+                    mailbox_id,
+                    uid,
+                    propre(subject),
+                    propre(sender),
+                    propre(sender_address),
+                ],
+            )?;
+        }
+        conn.execute_batch("INSERT INTO reparations (nom) VALUES ('objets-escapes');")?;
     }
     add_missing_columns(
         conn,
@@ -2118,8 +2247,30 @@ fn add_missing_columns(
     Ok(())
 }
 
+/// Destinataires stockés sur une ligne — un par `\n`, NULL quand vide
+/// (R4). `join`/`split` sont réciproques ; une adresse ne contient jamais
+/// de retour ligne (c'est `mailbox@host`).
+fn join_addrs(addrs: &[String]) -> Option<String> {
+    if addrs.is_empty() {
+        None
+    } else {
+        Some(addrs.join("\n"))
+    }
+}
+
+fn split_addrs(raw: Option<String>) -> Vec<String> {
+    raw.map(|s| {
+        s.split('\n')
+            .filter(|part| !part.is_empty())
+            .map(str::to_string)
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
 /// Mapping partagé par toutes les lectures d'enveloppes — l'ordre des
-/// colonnes est celui des SELECT ci-dessus.
+/// colonnes est celui des SELECT ci-dessus (`to_addrs`/`cc_addrs` en
+/// queue, index 9/10).
 fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
     Ok(Envelope {
         uid: row.get(0)?,
@@ -2133,6 +2284,8 @@ fn row_to_envelope(row: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
         seen: row.get(6)?,
         flagged: row.get(7)?,
         in_reply_to: row.get(8)?,
+        to_addrs: split_addrs(row.get(9)?),
+        cc_addrs: split_addrs(row.get(10)?),
     })
 }
 
@@ -2155,6 +2308,8 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
             seen: row.get(8)?,
             flagged: row.get(9)?,
             in_reply_to: row.get(12)?,
+            to_addrs: split_addrs(row.get(15)?),
+            cc_addrs: split_addrs(row.get(16)?),
         },
         mailbox: row.get(13)?,
         has_attachment: attachment_count > 0,
@@ -2173,8 +2328,9 @@ pub(crate) fn row_to_unified(row: &rusqlite::Row<'_>) -> rusqlite::Result<Unifie
 /// fil ajouté par [`THREAD_AGGREGATE`].
 pub(crate) fn row_to_threaded(row: &rusqlite::Row<'_>) -> rusqlite::Result<UnifiedRow> {
     Ok(UnifiedRow {
-        thread_size: row.get(15)?,
-        thread_unseen: row.get(16)?,
+        // `to_addrs`/`cc_addrs` ont repoussé l'agrégat aux index 17/18.
+        thread_size: row.get(17)?,
+        thread_unseen: row.get(18)?,
         ..row_to_unified(row)?
     })
 }
@@ -2196,6 +2352,8 @@ mod tests {
             date: Some(Utc.timestamp_opt(epoch, 0).unwrap()),
             seen,
             flagged: uid.is_multiple_of(2),
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
         }
     }
 
@@ -2216,6 +2374,25 @@ mod tests {
         store
             .recent(test_account(store), "INBOX", offset, limit)
             .unwrap()
+    }
+
+    /// R4 : les destinataires À/Cc écrits à la synchro se relisent tels
+    /// quels — c'est ce que le dossier d'envois affiche (l'expéditeur y
+    /// est SOI) et ce que « Répondre à tous » relit hors ligne. Le cas
+    /// « Test PJ 3 » : un envoi à une adresse tierce.
+    #[test]
+    fn upsert_persiste_les_destinataires() {
+        let (mut store, id) = store_with_mailbox();
+        let mut env = envelope(1, "Test PJ 3", 1_700_000_000, true);
+        env.to_addrs = vec!["sebastien.monchamps@gmail.com".to_string()];
+        env.cc_addrs = vec![
+            "copie1@exemple.fr".to_string(),
+            "copie2@exemple.fr".to_string(),
+        ];
+        store
+            .upsert_envelopes(id, std::slice::from_ref(&env))
+            .unwrap();
+        assert_eq!(recent(&store, 0, 10), vec![env]);
     }
 
     /// Une préférence jamais posée répond le défaut demandé ; posée, elle
@@ -2330,6 +2507,8 @@ mod tests {
             date: None,
             seen: false,
             flagged: false,
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
         };
         store
             .upsert_envelopes(id, std::slice::from_ref(&bare))
@@ -2462,6 +2641,8 @@ mod tests {
             date: None,
             seen: false,
             flagged: false,
+            to_addrs: Vec::new(),
+            cc_addrs: Vec::new(),
         };
         store
             .upsert_envelopes(id, std::slice::from_ref(&sans_date))
@@ -3025,6 +3206,66 @@ mod tests {
             !rows[0].flagged,
             "étoile absente par défaut après migration"
         );
+
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// R2 (PLAN-RETOURS-MAIL) : une enveloppe synchronisée AVANT le
+    /// correctif porte les backslash-escapes IMAP dans son objet et le nom
+    /// de son expéditeur ; la migration les retire une fois. Le cas terrain
+    /// « Test \"Envoyés\" ».
+    #[test]
+    fn migration_retire_les_escapes_imap_des_objets_existants() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-escapes-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE mailboxes (
+                    id             INTEGER PRIMARY KEY,
+                    name           TEXT NOT NULL UNIQUE,
+                    uid_validity   INTEGER NOT NULL,
+                    last_uid       INTEGER NOT NULL DEFAULT 0,
+                    highest_modseq INTEGER
+                );
+                CREATE TABLE envelopes (
+                    mailbox_id     INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+                    uid            INTEGER NOT NULL,
+                    subject        TEXT,
+                    sender         TEXT,
+                    sender_address TEXT,
+                    date_epoch     INTEGER,
+                    seen           INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (mailbox_id, uid)
+                );
+                INSERT INTO mailboxes (id, name, uid_validity) VALUES (1, 'INBOX', 1);",
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO envelopes
+                    (mailbox_id, uid, subject, sender, sender_address, date_epoch, seen)
+                 VALUES (1, 7, ?1, ?2, ?3, 100, 1)",
+                params![r#"Test \"Envoyes\""#, r#"Societe \"ACME\""#, "info@acme.fr"],
+            )
+            .unwrap();
+            // Un objet propre, sans escape : il doit traverser intact.
+            conn.execute(
+                "INSERT INTO envelopes (mailbox_id, uid, subject, sender, date_epoch, seen)
+                 VALUES (1, 8, 'Reunion de demain', 'Alice', 90, 1)",
+                [],
+            )
+            .unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        let rows = recent(&store, 0, 10);
+        let sept = rows.iter().find(|e| e.uid == 7).unwrap();
+        assert_eq!(sept.subject.as_deref(), Some(r#"Test "Envoyes""#));
+        assert_eq!(sept.sender.as_deref(), Some(r#"Societe "ACME""#));
+        let huit = rows.iter().find(|e| e.uid == 8).unwrap();
+        assert_eq!(huit.subject.as_deref(), Some("Reunion de demain"));
 
         drop(store);
         let _ = std::fs::remove_file(&path);

@@ -112,6 +112,69 @@ pub fn backfill_bodies(
 /// dépense qui compte ici est l'aller-retour, pas les octets.
 pub const THREAD_HEADER_BATCH: usize = 200;
 
+/// Rapatrie les destinataires (À/Cc) manquants d'un dossier d'envois, du
+/// plus récent au plus ancien (R4, rattrapage des envois — D2,
+/// PLAN-RETOURS-MAIL).
+///
+/// Même forme bornée/reprenable/groupée que [`backfill_bodies`], mais elle
+/// relit l'ENVELOPE — où À/Cc voyagent gratuitement avec l'expéditeur, sans
+/// un octet de corps — et n'écrit QUE ces deux colonnes (jamais le fil ni
+/// `refs`). Dans un dossier d'envois l'expéditeur est SOI : sans le
+/// destinataire, ni la liste ni le volet ne peuvent dire à qui le message
+/// est parti. La passe d'en-têtes ayant convergé, les envois déjà
+/// synchronisés n'ont aucun destinataire en base — c'est cette pompe qui
+/// les rattrape.
+pub fn backfill_recipients(
+    server: &mut dyn MailServer,
+    store: &mut Store,
+    account_id: i64,
+    mailbox: &str,
+    budget: usize,
+) -> Result<BackfillReport, Error> {
+    let Some(state) = store.sync_state(account_id, mailbox)? else {
+        return Ok(BackfillReport {
+            fetched: 0,
+            remaining: 0,
+        });
+    };
+
+    let mut fetched = 0usize;
+    // Les UIDs déjà tentés dans CE passage — un message que le serveur ne
+    // sert plus ne doit pas faire tourner la pompe sans fin (même garde
+    // que [`backfill_bodies`]).
+    let mut attempted: HashSet<Uid> = HashSet::new();
+
+    while fetched < budget {
+        let window =
+            (budget - fetched + attempted.len()).min(THREAD_HEADER_BATCH + attempted.len());
+        let candidates = store.recipients_to_backfill(account_id, mailbox, window)?;
+        let batch: Vec<Uid> = candidates
+            .into_iter()
+            .filter(|uid| !attempted.contains(uid))
+            .take((budget - fetched).min(THREAD_HEADER_BATCH))
+            .collect();
+        if batch.is_empty() {
+            break;
+        }
+        attempted.extend(batch.iter().copied());
+
+        for envelope in server.fetch_envelopes(mailbox, &batch)? {
+            store.set_recipients(
+                state.mailbox_id,
+                envelope.uid,
+                &envelope.to_addrs,
+                &envelope.cc_addrs,
+            )?;
+            fetched += 1;
+        }
+    }
+
+    Ok(BackfillReport {
+        fetched,
+        remaining: store.recipients_pending_count(account_id, mailbox)?,
+    })
+}
+
 /// Rapatrie les en-têtes de fil manquants, du plus récent au plus ancien,
 /// et recolle les conversations au passage.
 ///
@@ -213,6 +276,38 @@ mod tests {
             1,
             "le corps rapatrié doit être indexé"
         );
+    }
+
+    /// R4, rattrapage des envois (D2) : un envoi déjà synchronisé sans
+    /// destinataire en base (l'ancien schéma) reçoit, après la passe, l'À
+    /// et le Cc que l'ENVELOPE du serveur portait. La pompe CONVERGE : un
+    /// second passage ne redemande rien.
+    #[test]
+    fn backfill_recipients_remplit_les_envois_sans_destinataire() {
+        let (mut server, mut store, account) = synced(3);
+        // L'ENVELOPE complète vit sur le serveur ; la base, elle, n'a rien
+        // (état hérité — `synced` n'écrit aucun destinataire).
+        server.set_envelope_recipients(2, &["sebastien.monchamps@gmail.com"], &["copie@x.fr"]);
+        assert_eq!(
+            store.recipients_pending_count(account, "INBOX").unwrap(),
+            3,
+            "les trois envois attendent leurs destinataires"
+        );
+
+        let report = backfill_recipients(&mut server, &mut store, account, "INBOX", 100).unwrap();
+        assert_eq!(report.fetched, 3);
+        assert_eq!(report.remaining, 0);
+
+        let relu = store.recent(account, "INBOX", 0, 10).unwrap();
+        let m2 = relu.iter().find(|e| e.uid == 2).unwrap();
+        assert_eq!(m2.to_addrs, vec!["sebastien.monchamps@gmail.com"]);
+        assert_eq!(m2.cc_addrs, vec!["copie@x.fr"]);
+
+        // Convergence : le second passage ne redemande rien (le message
+        // sans destinataire porte désormais la marque vide, pas NULL).
+        let second = backfill_recipients(&mut server, &mut store, account, "INBOX", 100).unwrap();
+        assert_eq!(second.fetched, 0);
+        assert_eq!(second.remaining, 0);
     }
 
     /// Le cœur du gain mesuré : une commande pour tout le lot, pas un

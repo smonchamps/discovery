@@ -36,6 +36,11 @@ const BACKFILL_BUDGET: usize = 200;
 /// message entier. Sur la boîte de l'utilisateur (~2 700 messages), deux
 /// synchronisations suffisent à regrouper la boîte entière.
 const THREAD_HEADER_BUDGET: usize = 2_000;
+/// Destinataires rattrapés par compte et par synchronisation (R4/R1),
+/// budget PARTAGÉ entre INBOX et Envoyés. Même dépense qu'un en-tête (une
+/// ENVELOPE), et la portée est celle, déjà convergée, de la passe de fils :
+/// la passe rattrape en quelques cycles, puis se tait.
+const RECIPIENTS_BUDGET: usize = 2_000;
 /// Arrivees remontees par compte pour les notifications. Au-dela, seul
 /// le NOMBRE compte — la bulle resume de toute facon.
 const NOTIFY_MAX_ARRIVALS: usize = 50;
@@ -100,6 +105,13 @@ pub struct MessageRow {
     /// Adresse brute de l'expéditeur — la ligne « De » de l'écran 03
     /// (`Nom <adresse>`). `sender` reste la chaîne d'affichage.
     pub sender_address: Option<String>,
+    /// Destinataires À / Cc bruts (R4). Dans un dossier d'envois — ou pour
+    /// nos propres messages d'un fil — l'expéditeur est SOI : c'est le
+    /// destinataire qui dit à qui le message est parti. Vides quand
+    /// l'ENVELOPE n'en portait pas (anciens envois non rattrapés, reçus
+    /// dont l'À n'a pas été stocké).
+    pub to_addrs: Vec<String>,
+    pub cc_addrs: Vec<String>,
 }
 
 /// Bilan d'une reconnexion : ce qui est revenu, et POURQUOI le reste ne
@@ -1303,6 +1315,33 @@ fn run_sync(
         }
     }
 
+    // R4/R1 (PLAN-RETOURS-MAIL) : rattrapage des DESTINATAIRES. La passe
+    // d'en-têtes a convergé — les messages déjà synchronisés n'ont aucun
+    // À/Cc en base. Deux besoins : dans un dossier d'envois, l'expéditeur
+    // est SOI et seul le destinataire dit à qui le message est parti
+    // (affichage R4) ; et « Répondre à tous » lit ces mêmes À/Cc pour être
+    // instantané, hors ligne (R1 — l'ancienne relève serveur au clic
+    // coûtait >10 s). On relit l'ENVELOPE (À/Cc gratuits, avec
+    // l'expéditeur) sur la connexion ouverte, borné, reprenable et à budget
+    // PARTAGÉ, sur la MÊME portée INBOX + Envoyés que la passe de fils.
+    // Best effort : un échec se consigne, il ne fait pas échouer la relève.
+    let mut budget_dest = RECIPIENTS_BUDGET;
+    for boite in std::iter::once(MAILBOX).chain(sent.as_deref()) {
+        if budget_dest == 0 {
+            break;
+        }
+        match mail_core::backfill_recipients(
+            &mut server,
+            &mut store,
+            account_id,
+            boite,
+            budget_dest,
+        ) {
+            Ok(report) => budget_dest = budget_dest.saturating_sub(report.fetched),
+            Err(err) => problems.push(format!("destinataires manquants : {err}")),
+        }
+    }
+
     let duree_fils = chrono.elapsed();
     // Le tirage des brouillons profite lui aussi de la connexion ouverte.
     // Il ne peut PAS vivre dans le cycle de poussée : celui-ci s'arrête
@@ -1502,6 +1541,8 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         attachment_count: row.attachment_count,
         preview: row.preview,
         sender_address: row.envelope.sender_address.clone(),
+        to_addrs: row.envelope.to_addrs.clone(),
+        cc_addrs: row.envelope.cc_addrs.clone(),
         has_attachment: row.has_attachment,
         account_id: row.account_id,
         account_email: row.account_email,
@@ -2263,11 +2304,17 @@ pub async fn reply_context(
 }
 
 /// Pré-remplissage d'un « Répondre à tous » : expéditeur + À + Cc du
-/// message d'origine, sans doublon ni sa propre adresse. L'enveloppe
-/// stockée ne porte que l'expéditeur : la liste se relit sur le serveur
-/// au moment du clic — hors ligne, l'échec est FRANC, un « à tous »
-/// amputé enverrait à moins de monde que promis. La citation, elle,
-/// reste un confort : corps inaccessible = on répond sans elle.
+/// message d'origine, sans doublon ni sa propre adresse.
+///
+/// Les destinataires À/Cc sont désormais STOCKÉS dans l'enveloppe (R4,
+/// depuis la même ENVELOPE que l'expéditeur) : on les lit d'abord —
+/// instantané, hors ligne compris (R1, PLAN-RETOURS-MAIL). Le terrain a
+/// montré la cause du « À » vide pendant >10 s : l'ancien chemin ouvrait
+/// une connexion IMAP authentifiée À CHAQUE clic. On n'y retombe que
+/// lorsque le message n'a pas encore ses destinataires en base (envoi
+/// ancien non rattrapé) ; là, l'échec reste FRANC — un « à tous » amputé
+/// enverrait à moins de monde que promis. La citation reste un confort :
+/// corps inaccessible = on répond sans elle.
 #[tauri::command]
 pub async fn reply_all_context(
     app: AppHandle,
@@ -2282,17 +2329,25 @@ pub async fn reply_all_context(
         let store = Store::open(&path).map_err(|err| err.to_string())?;
         account_email(&store, account_id)?
     };
-    let session = auth_for(&path, &state, account_id)?;
-    let boite = mailbox.clone();
-    let recipients = tauri::async_runtime::spawn_blocking(move || {
-        fetch_recipients_remote(&session, &boite, uid)
-    })
-    .await
-    .map_err(|err| err.to_string())??;
+    // Destinataires connus en base : chemin instantané, aucun réseau. Non
+    // vide = « lu » (un reçu porte toujours au moins soi en À) ; vide =
+    // pas encore rattrapé, on relit le serveur une fois.
+    let (to_list, cc_list) = if !envelope.to_addrs.is_empty() || !envelope.cc_addrs.is_empty() {
+        (envelope.to_addrs.clone(), envelope.cc_addrs.clone())
+    } else {
+        let session = auth_for(&path, &state, account_id)?;
+        let boite = mailbox.clone();
+        let recipients = tauri::async_runtime::spawn_blocking(move || {
+            fetch_recipients_remote(&session, &boite, uid)
+        })
+        .await
+        .map_err(|err| err.to_string())??;
+        (recipients.to, recipients.cc)
+    };
     let mut to = mail_core::reply_all_recipients(
         envelope.sender_address.as_deref(),
-        &recipients.to,
-        &recipients.cc,
+        &to_list,
+        &cc_list,
         &own,
     );
     if to.is_empty() {
