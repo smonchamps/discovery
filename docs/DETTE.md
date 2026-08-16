@@ -120,6 +120,42 @@ motivée.)
   index partiel `WHERE to_addrs IS NULL`.
 - **Rouvre si** : le terrain désigne le coût (avec D-8).
 
+### D-17 · Rattrapage des corps aveugle à un bridage Gmail
+
+- **Fait (analyse 2026-08-17)** : sur le chemin du rattrapage des corps,
+  une erreur serveur Gmail (bridage : `[OVERQUOTA]`, « bandwidth
+  exceeded », rejet de login / « web login required ») est **capturée
+  puis jetée**. `run_backfill_all` la pousse bien dans
+  `BackfillSummary.errors` (`commands.rs:4135` au connect, `:4158` en
+  plein FETCH), mais la boucle UI ne lit JAMAIS `bilan.errors`
+  (`App.svelte:391-417`) : elle ne regarde que `remaining` et `fetched`,
+  et casse en silence sur `fetched === 0`. Symptôme au terrain :
+  « Rattrapage des messages · N restants » se fige sans un mot — le pire
+  cas pour diagnostiquer un bridage. Le rattrapage est le seul des trois
+  à ignorer son canal d'erreurs (la synchro, elle, remonte via
+  `synchroEchec`, `App.svelte:181`).
+- **Second défaut couplé** : `is_connection_error` (`mail-imap`,
+  `lib.rs:897`) ne reconnaît QUE nos erreurs préfixées `"connexion "`.
+  Une réponse serveur Gmail tombe donc dans le `Err(_)` de
+  `connect_imap` (`commands.rs:3666`) et est traitée comme « jeton
+  mort » → `authenticate_silent` + reconnexion. Le garde anti-martèlement
+  du commentaire (`commands.rs:3660-3664`) ne protège que le cas panne
+  réseau : un bridage déclenche justement le refresh + reconnexion qu'il
+  cherche à éviter.
+- **Raison du report** : aucun bridage observé au terrain à ce jour — la
+  méthode interdit d'optimiser contre un problème non mesuré. Mais la
+  cécité, elle, est structurelle : le jour où ça mord, rien ne le dira.
+- **Piste** : (1) dans la boucle UI, si `fetched === 0` et
+  `bilan.errors.length > 0`, poser un avis dans la fente (mécanisme déjà
+  là, `App.svelte:552-558`) au lieu de casser muet ; (2) reconnaître le
+  bridage (élargir `is_connection_error` ou garde dédiée) pour qu'un
+  `[OVERQUOTA]` / rejet de login ne déclenche PAS de refresh —
+  « laisser respirer » le compte, pas « jeton mort ».
+- **Rouvre si** : le terrain rapporte un rattrapage qui se fige sans
+  explication, ou un compte Gmail bridé/verrouillé après une grosse
+  synchro initiale. Commencer par (1) — rendre l'erreur visible est le
+  préalable à tout diagnostic.
+
 ## Soldée
 
 ### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15
