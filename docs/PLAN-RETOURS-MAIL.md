@@ -1,11 +1,14 @@
 # PLAN-RETOURS-MAIL — quatre retours CE sur le courrier réel
 
-**Statut : les quatre retours traités, terrain validé — en attente du
-commit et de la CI.** Ouvert le 2026-08-16 à la suite de quatre retours
-terrain du Chef Ingénieur sur ses vrais comptes. GO CE au STOP 1 le
-2026-08-16 (verdicts §6) ; 1re passe terrain (R4 OK, R2/R1 corrigés le
-jour même, R3 remonté à la racine par capture) ; 2e passe terrain :
-**R1 OK, R2 OK, R4 OK** ; R3 corrigé (fuite du `<title>`).
+**CHANTIER SOLDÉ le 2026-08-16 — terrain complet.** Commit `19ea16a`,
+CI verte ([run 31972909869](https://github.com/smonchamps/wind/actions/runs/31972909869)).
+Ouvert le 2026-08-16 à la suite de quatre retours terrain du Chef
+Ingénieur sur ses vrais comptes. GO CE au STOP 1 le 2026-08-16
+(verdicts §6). Deux passes terrain le même jour : 1re — **R4 OK**,
+R2/R1 corrigés le jour même, R3 remonté à sa racine par capture
+Gmail-vs-Wind ; 2e — **R1 OK, R2 OK** ; R3 corrigé (fuite du `<title>`)
+puis **R3 OK** confirmé au terrain. Journal du Système : **A48**.
+Reports assumés au §7.
 
 Les quatre retours, dans l'ordre du CE :
 
@@ -281,6 +284,24 @@ Racines mesurées et corrigées le jour même :
   garde son propre `<h1>`. L'hypothèse « préheader démasqué » du plan
   initial était fausse — le `display:none` inline est bien conservé ;
   seule la capture terrain a désigné la vraie cause (genchi genbutsu).
+
+## 7. Reports assumés
+
+- **Reply-all hors ligne sur l'existant** : le champ « À » est instantané
+  dès que le message a ses destinataires en base — immédiat pour le
+  courrier neuf, et au fil du rattrapage (INBOX + Envoyés, borné par
+  cycle) pour l'ancien. Avant que le rattrapage l'ait couvert, un ancien
+  message retombe UNE fois sur la relève serveur (lente). Transitoire,
+  converge — pas une dette permanente.
+- **D-15** (DETTE.md) : l'affichage « À : X » de la liste est cadré sur
+  la catégorie Envoyés ; un envoi vu par navigation de dossier montre
+  encore l'expéditeur. Le volet de lecture est correct partout.
+- **D-16** (DETTE.md) : la sonde de reliquat du rattrapage n'est pas
+  indexée (famille D-8, sondes périodiques hors pompe).
+- **Marqueur de convergence `''` ≠ NULL** (documenté au code
+  `set_recipients`) : le rattrapage écrit `''` pour « lu, aucun
+  destinataire », NULL restant « pas encore lu ». Intentionnel, pas une
+  dette — mais à connaître pour toute requête future sur `to_addrs`.
 
 ## 6. Verdicts CE
 

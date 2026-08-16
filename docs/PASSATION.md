@@ -72,6 +72,19 @@ terrain** par le Chef Ingénieur : la chaîne de mise à jour signée
 de la ligne sont soldés ; la publication a suivi le protocole (tag nu
 `0.1.7`, `latest.json` sans BOM à l'URL nue, gate rejouée au pré-push).
 
+**Dernier chantier soldé : PLAN-RETOURS-MAIL** (2026-08-16, `19ea16a`,
+A48, terrain complet). Quatre retours du CE sur le courrier réel :
+objets/noms débarrassés des escapes `quoted-string` d'IMAP que
+`imap-proto` laisse (correctif + migration de l'existant), dossier
+« Envoyés » qui dit enfin le vrai destinataire, « Répondre à tous »
+instantané, et le `<head><title>` de certaines infolettres qui ne fuit
+plus en tête de corps. **Fait d'état à retenir : l'enveloppe stockée
+porte désormais les destinataires** (`envelopes.to_addrs`/`cc_addrs`,
+tirés de la même ENVELOPE que l'expéditeur) — le « l'enveloppe ne porte
+que l'expéditeur » d'avant est renversé ; `reply_all_context` les lit
+d'abord (hors ligne), la relève serveur n'est qu'un repli. Reports :
+DETTE D-15/D-16.
+
 ### 1.1 L'état du terrain — chiffres du 2026-07-26, boîte réelle
 
 La synchronisation intégrale (ADR 0010) a tout ramené : **256 312
@@ -825,6 +838,33 @@ second écrasait le premier (le seul utile). Corrigé par un compteur dans
 le nom de fichier et un filtre du panic secondaire. **Le comportement de
 l'environnement au moment d'un crash ne se voit qu'en crashant pour de
 vrai.**
+
+### Une bibliothèque tierce livre ce qu'elle livre, pas ce qu'on suppose
+
+PLAN-RETOURS-MAIL a payé deux hypothèses fausses sur des bibliothèques,
+et une capture terrain a tranché la troisième. `imap-proto` retire les
+guillemets d'une `quoted-string` IMAP mais **laisse les backslash-escapes
+dans le contenu** (`\"`, `\\`) — prouvé par ses propres tests ; nos
+objets à guillemets s'affichaient parasités. `ammonia`, lui, retire une
+balise interdite mais **déballe son texte** par défaut (hors
+`clean_content_tags`) : le `<head><title>` d'une infolettre fuyait en
+tête de corps. Aucune des deux ne se devine — elles se **lisent dans la
+source de la crate** (ou son comportement mesuré). Et sur le doublon
+d'objet, mes deux premières hypothèses (le `<h1>` du corps, le préheader
+démasqué) étaient fausses : c'est la **capture Gmail-vs-Wind du CE** qui
+a désigné le vrai coupable, le `<title>`. **Quand un rendu diffère d'un
+client de référence, la capture comparée vaut dix hypothèses.**
+
+### Un correctif de décodage ne répare pas les données déjà décodées
+
+Le dé-échappement neuf ne nettoyait que les enveloppes NEUVES ; les
+objets déjà en base gardaient leurs escapes (la synchro incrémentale ne
+relit pas l'existant). Comme pour les aperçus (D-5) et les fils, **un
+changement de décodage exige une passe sur l'existant** — ici une
+migration qui dé-échappe la valeur stockée (équivalente au nouveau
+décodage : le contenu est déjà RFC 2047-décodé, seule reste la couche
+d'escape IMAP). Le réflexe des quatre pièges d'adoption (§6.7), sous une
+autre forme.
 
 ---
 

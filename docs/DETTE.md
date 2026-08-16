@@ -91,6 +91,35 @@ motivée.)
 - **Rouvre si** : une passe de mesure compare la bascule de thème à
   l'historique.
 
+### D-15 · Affichage « À : destinataire » cadré sur la catégorie Envoyés
+
+- **Fait (2026-08-16, PLAN-RETOURS-MAIL R4)** : dans la liste, la bascule
+  vers « À : X » (au lieu de l'expéditeur = SOI) est gardée par
+  `categorie === 'envoyes'` (`Liste.svelte`). Un envoi consulté par une
+  autre voie que la catégorie Envoyés — navigation par dossier — montre
+  encore l'expéditeur. Le volet de lecture, lui, est correct partout (il
+  se cale sur `propre(m)`, pas sur la catégorie).
+- **Raison du report** : le retour terrain visait le dossier Envoyés ;
+  une détection par ligne (« ce message est de moi ») basculerait aussi
+  des lignes de la Réception où NOTRE dernière réponse est en tête, un
+  changement de comportement plus large que le retour.
+- **Rouvre si** : le terrain consulte des envois hors de la catégorie
+  Envoyés et l'expéditeur affiché gêne.
+
+### D-16 · Rattrapage des destinataires : sonde de reliquat non indexée
+
+- **Fait (2026-08-16, PLAN-RETOURS-MAIL)** : `backfill_recipients`
+  appelle `recipients_pending_count` (scan `to_addrs IS NULL`, sans
+  index) à chaque cycle, INBOX + Envoyés — même après convergence à
+  zéro. Même classe que D-8 (sondes périodiques hors pompe : coût CPU
+  réel, aucun gel).
+- **Raison du report** : aligné sur le motif existant de la passe
+  d'en-têtes (`thread_headers_pending_count`, même coût, accepté) ;
+  l'optimiser sans constat serait du travail sans mesure. Famille D-8.
+- **Piste** : sauter la sonde quand le passage n'a rien rapporté, ou un
+  index partiel `WHERE to_addrs IS NULL`.
+- **Rouvre si** : le terrain désigne le coût (avec D-8).
+
 ## Soldée
 
 ### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15
