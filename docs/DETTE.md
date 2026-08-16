@@ -121,3 +121,28 @@ motivée.)
   les octets ne sont pas de l'UTF-8 valide, et réparation une-fois des
   corps mutilés (purge marquée, retéléchargement au rattrapage, aperçu
   et index refaits au passage).
+
+### D-12 · Ouverture du fil : cascade `thread_messages` → corps, série P1 à re-baser
+
+- **Fait (UI v3, revue du 2026-08-16)** : la sélection ouvre désormais
+  le FIL — `thread_messages` puis le corps du dernier, en série (deux
+  allers-retours là où v2 n'en faisait qu'un), et le chrono P1
+  « ouverture » a changé de définition (sélection → fil affiché,
+  pièces exclues). La série historique (< 50 ms, ADR 0015) n'est plus
+  comparable.
+- **Report assumé** : paralléliser le corps de la ligne de tête avec la
+  liste du fil (un fetch perdu dans le cas rare d'une tête plus
+  fraîche), et re-baser le banc `mesure-v2` sur la nouvelle définition.
+  Reporté pour garder le commit v3 sur les verdicts CE ; à instruire
+  avec D-7/D-11 (famille bancs).
+
+### D-13 · Agrandir/réduire remonte les iframes du fil
+
+- **Fait (revue v3)** : le changement de cadre démonte puis remonte les
+  iframes `srcdoc` des messages dépliés — le réseau ne rejoue rien
+  (état partagé), mais le rendu re-parse chaque document et perd le
+  défilement interne. Sensible sur un long fil « tout déplié ».
+- **Report assumé** : garder les deux cadres montés (`display:none` +
+  `inert`) coûterait des testids dupliqués — exactement ce que la
+  revue v3 a corrigé ; le remède demande de re-scoper la suite e2e
+  d'abord. À instruire si le terrain le sent.

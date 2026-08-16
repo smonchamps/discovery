@@ -1,5 +1,14 @@
 # PLAN-UI-V3 — la revue d'annotation CE du 2026-08-16 appliquée à l'écran 02
 
+> **CHANTIER SOLDÉ le 2026-08-16 — terrain complet.** GO CE au STOP 1
+> le 2026-08-16 (D1-D5 consignées §4) ; livré en un commit UI
+> `16f06e6` (A43), CI verte (run 31940303485) ; terrain CE validé 6/6
+> le jour même, aucune retouche. La revue à regard neuf (§6, dix
+> constats) est corrigée DANS le commit. Reports en dette : D-12
+> (cascade thread_messages→corps, re-base P1), D-13 (remontage des
+> iframes à l'agrandissement). Le sort DC-D4 des quatre maquettes non
+> suivies de `docs/design/` reste une décision CE ouverte.
+
 > Instruction CE du 2026-08-16 : appliquer les verdicts de la séance
 > d'annotation de `prototype-classique.html`
 > (`docs/design/ANNOTATIONS-V3.md`) sur l'UI v2. Nav et filtres

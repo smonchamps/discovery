@@ -384,6 +384,20 @@ Bash). Syntaxes différentes.
   un test mort après avoir armé un réglage localStorage empoisonne les
   relances locales (remède : purger le dossier ; la CI, elle, part
   toujours propre).
+- **Le fil de lecture est UN objet, DEUX cadres** (UI v3, A43,
+  2026-08-16) : `Fil.svelte` + état module `lib/fil.svelte.js`, et
+  l'exclusivité des cadres vit au store (`fil.cadre` :
+  null/volet/plein) — jamais de booléen local de visibilité dans un
+  cadre (trois booléens réconciliés à la main se sont désynchronisés
+  au premier chemin oublié, revue v3). Corollaires : toute purge passe
+  par `fermerFil()` (importable partout — `lecture?.fermer()` était un
+  no-op en 1-2 volets) ; chaque `ouvrirFil` RECHARGE (la mémoïsation
+  cachait la propre réponse envoyée) ; le chrono P1 « ouverture »
+  mesure désormais sélection → fil affiché (thread_messages compris,
+  pièces exclues) — série d'avant v3 non comparable. Leçon de banc :
+  un `sed` de testids peut DÉSARMER des assertions discriminantes —
+  re-scoper au cadre (`[data-testid="volet-lecture"] …`) et asserter
+  l'unicité (`toHaveCount(1)`).
 - **Une commande Tauri sans `async` s'exécute sur le THREAD PRINCIPAL**
   — celui de la pompe de messages : la fenêtre gèle pour toute sa durée
   (constat 2026-08-15, gels de 2 à 4,6 s au démarrage). Toute commande
