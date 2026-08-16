@@ -61,24 +61,28 @@ commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
-**Dernière version livrée : 0.1.7** (2026-08-16). La refonte entière est
-au poste — le Système v2 « Wada » et son élargissement (28 thèmes,
-PLAN-WADA / PLAN-WADA-ELARGI), l'UI v3 et les retours CE (A44-A47,
-PLAN-UI-V3 / PLAN-RETOURS-V3), les trois modes d'affichage (PLAN-VOLETS),
-l'interface v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle
-plus (PLAN-GELS, ADR 0019). L'auto-update **0.1.6 → 0.1.7 est confirmé au
-terrain** par le Chef Ingénieur : la chaîne de mise à jour signée
-(ADR 0013) est prouvée vivante à l'échelle de la refonte. Tous les plans
-de la ligne sont soldés ; la publication a suivi le protocole (tag nu
-`0.1.7`, `latest.json` sans BOM à l'URL nue, gate rejouée au pré-push).
+**Dernière version livrée : 0.1.8** (publiée 2026-08-16, auto-update
+**0.1.7 → 0.1.8 confirmé au terrain le 2026-08-17**, base intacte — la
+chaîne signée ADR 0013 reste prouvée vivante). La 0.1.8 porte les quatre
+correctifs courrier de PLAN-RETOURS-MAIL (ci-dessous) ; la publication a
+suivi le protocole (tag nu `0.1.8`, `latest.json` sans BOM à l'URL nue,
+marquée Latest, gate rejouée au pré-push).
+
+**La 0.1.7** (2026-08-16) reste la ligne de la refonte entière — le
+Système v2 « Wada » et son élargissement (28 thèmes, PLAN-WADA /
+PLAN-WADA-ELARGI), l'UI v3 et les retours CE (A44-A47, PLAN-UI-V3 /
+PLAN-RETOURS-V3), les trois modes d'affichage (PLAN-VOLETS), l'interface
+v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
+(PLAN-GELS, ADR 0019) ; auto-update 0.1.6 → 0.1.7 confirmé au terrain.
+Tous les plans de cette ligne sont soldés.
 
 **Dernier chantier soldé : PLAN-RETOURS-MAIL** (2026-08-16, `19ea16a`,
-A48, terrain complet). Quatre retours du CE sur le courrier réel :
-objets/noms débarrassés des escapes `quoted-string` d'IMAP que
-`imap-proto` laisse (correctif + migration de l'existant), dossier
-« Envoyés » qui dit enfin le vrai destinataire, « Répondre à tous »
-instantané, et le `<head><title>` de certaines infolettres qui ne fuit
-plus en tête de corps. **Fait d'état à retenir : l'enveloppe stockée
+A48, terrain complet, livré en 0.1.8). Quatre retours du CE sur le
+courrier réel : objets/noms débarrassés des escapes `quoted-string`
+d'IMAP que `imap-proto` laisse (correctif + migration de l'existant),
+dossier « Envoyés » qui dit enfin le vrai destinataire, « Répondre à
+tous » instantané, et le `<head><title>` de certaines infolettres qui ne
+fuit plus en tête de corps. **Fait d'état à retenir : l'enveloppe stockée
 porte désormais les destinataires** (`envelopes.to_addrs`/`cc_addrs`,
 tirés de la même ENVELOPE que l'expéditeur) — le « l'enveloppe ne porte
 que l'expéditeur » d'avant est renversé ; `reply_all_context` les lit
