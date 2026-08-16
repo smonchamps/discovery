@@ -61,6 +61,17 @@ commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
+**Dernière version livrée : 0.1.7** (2026-08-16). La refonte entière est
+au poste — le Système v2 « Wada » et son élargissement (28 thèmes,
+PLAN-WADA / PLAN-WADA-ELARGI), l'UI v3 et les retours CE (A44-A47,
+PLAN-UI-V3 / PLAN-RETOURS-V3), les trois modes d'affichage (PLAN-VOLETS),
+l'interface v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle
+plus (PLAN-GELS, ADR 0019). L'auto-update **0.1.6 → 0.1.7 est confirmé au
+terrain** par le Chef Ingénieur : la chaîne de mise à jour signée
+(ADR 0013) est prouvée vivante à l'échelle de la refonte. Tous les plans
+de la ligne sont soldés ; la publication a suivi le protocole (tag nu
+`0.1.7`, `latest.json` sans BOM à l'URL nue, gate rejouée au pré-push).
+
 ### 1.1 L'état du terrain — chiffres du 2026-07-26, boîte réelle
 
 La synchronisation intégrale (ADR 0010) a tout ramené : **256 312
@@ -531,7 +542,10 @@ exercée en pleine passe à l'échelle du gate 3.
 ### Le chantier fait : installeur NSIS + mise à jour signée (ADR 0013)
 
 Terminé et **validé au terrain** le 2026-07-26 : la boucle 0.1.1 → 0.1.2
-s'applique sur l'app installée, base intacte. NSIS (**pas MSIX** — il
+s'applique sur l'app installée, base intacte. **Re-validé le 2026-08-16 à
+l'échelle de la refonte** : l'auto-update 0.1.6 → 0.1.7 (la refonte
+entière) s'applique sur l'app installée, chaîne signée prouvée vivante.
+NSIS (**pas MSIX** — il
 virtualiserait `%APPDATA%` et orphelinerait la base) ; updater Tauri
 signé minisign, piloté depuis Rust (capabilities au minimum) ; signature
 de code Windows reportée à la bêta. Publication d'une version :
