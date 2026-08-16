@@ -111,12 +111,23 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   });
 
-  test('pièces jointes : la ligne est nue, le volet de lecture dit les pièces (A29/A2)', async () => {
-    // n°190 (fil 189+190, pièce sur le 190). Depuis A29 les puces
-    // fil/fichiers vivent au volet de lecture, JAMAIS dans la ligne —
-    // le porteur se reconnaît au volet, pas à la liste.
+  test('pièces jointes : la ligne porte ses puces, le volet de lecture dit les pièces (PLAN-RETOURS-V3 R1)', async () => {
+    // n°190 (fil 189+190, pièce sur le 190). La « ligne nue » d'A29 est
+    // RENVERSÉE (verdict CE 2026-08-16, D1/D2) : la ligne porte le rang
+    // de puces du prototype — les règles de la tête du Fil (« N
+    // messages » si le fil en a plus d'un, « N fichiers » si pièces),
+    // à HAUTEUR AU CONTENU (terrain CE du même jour, renverse D1) : le
+    // rang n'existe que sur les porteurs et agrandit leur ligne.
     const porteur = page.locator('[data-testid="ligne"]', { hasText: 'n°190' }).first();
-    await expect(porteur).not.toContainText('fichier');
+    await expect(porteur.locator('[data-testid="puces-ligne"]')).toContainText('2 messages');
+    await expect(porteur.locator('[data-testid="puces-ligne"]')).toContainText('1 fichier');
+    // Une ligne SANS puces n'a pas de rang du tout — elle est plus
+    // basse : deux gabarits, la mécanique de fenêtrage d'avant A29.
+    const nue = page.locator('[data-testid="ligne"]', { hasText: 'n°198' }).first();
+    await expect(nue.locator('[data-testid="puces-ligne"]')).toHaveCount(0);
+    expect(await nue.evaluate((el) => el.offsetHeight)).toBeLessThan(
+      await porteur.evaluate((el) => el.offsetHeight),
+    );
 
     await porteur.click();
     await expect(page.locator('[data-testid="volet-lecture"] [data-testid="fil-sujet"]')).toContainText('n°190');

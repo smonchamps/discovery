@@ -129,14 +129,33 @@ pub fn email_document(sanitized_html: &str, policy: ImagePolicy, palette: &Palet
         ImagePolicy::AllowRemote => "data: cid: https: http:",
     };
     let Palette { encre, fond } = palette;
+    // A44 (PLAN-RETOURS-V3 R4) : les barres du document sont natives en
+    // surimpression — la poignée suit `color-scheme`, dérivé du fond
+    // baké. Sans lui, un fond -nuit garde une poignée claire… sombre,
+    // invisible : le « corps insdéroulable » qui avait ouvert A7.
+    let scheme = scheme_du_fond(fond);
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\">\
          <meta http-equiv=\"Content-Security-Policy\" \
          content=\"default-src 'none'; img-src {img_sources}; style-src 'unsafe-inline'\">\
-         <style>body{{font-family:system-ui,sans-serif;margin:12px;color:{encre};\
+         <style>:root{{color-scheme:{scheme}}}\
+         body{{font-family:system-ui,sans-serif;margin:12px;color:{encre};\
          background:{fond};overflow-wrap:break-word}}</style>\
          </head><body>{sanitized_html}</body></html>"
     )
+}
+
+/// `dark` ou `light` d'après la luminance du fond (Rec. 601). Le fond
+/// sort de [`teinte_sure`] : toujours `#rrggbb` — le repli couvre
+/// l'impossible sans paniquer (zéro `unwrap` en prod).
+fn scheme_du_fond(fond: &str) -> &'static str {
+    let v = u32::from_str_radix(fond.get(1..).unwrap_or(""), 16).unwrap_or(0xff_ff_ff);
+    let (r, g, b) = ((v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff);
+    if 299 * r + 587 * g + 114 * b < 128_000 {
+        "dark"
+    } else {
+        "light"
+    }
 }
 
 #[cfg(test)]
@@ -210,6 +229,21 @@ mod tests {
         let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &palette);
         assert!(document.contains("color:#edefed"), "{document}");
         assert!(document.contains("background:#2b3034"), "{document}");
+    }
+
+    #[test]
+    fn email_document_declare_le_color_scheme_du_fond() {
+        // A44 (PLAN-RETOURS-V3 R4) : les barres du document iframe sont
+        // natives en surimpression — leur poignée suit `color-scheme`.
+        // Sans déclaration, le document est en schéma clair et la
+        // poignée (sombre) disparaît sur les fonds -nuit. Le schéma se
+        // dérive du FOND baké : sombre → dark, clair → light.
+        let sombre = Palette::new(Some("#edefed"), Some("#2b3034"));
+        let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &sombre);
+        assert!(document.contains("color-scheme:dark"), "{document}");
+        let clair = Palette::default();
+        let document = email_document("<p>x</p>", ImagePolicy::BlockRemote, &clair);
+        assert!(document.contains("color-scheme:light"), "{document}");
     }
 
     #[test]

@@ -7,10 +7,12 @@ import { mount } from 'svelte';
 import { appliquerTheme, restaurerTheme, THEMES } from './lib/theme.js';
 import { restaurerLangue } from './lib/texte.svelte.js';
 import { restaurerVolets } from './lib/volets.svelte.js';
+import { restaurerLargeurs } from './lib/largeurs.svelte.js';
 import App from './App.svelte';
 
 restaurerTheme();
 restaurerVolets();
+restaurerLargeurs();
 await restaurerLangue();
 
 const app = mount(App, { target: document.getElementById('app') });

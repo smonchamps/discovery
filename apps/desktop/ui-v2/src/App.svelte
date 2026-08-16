@@ -9,6 +9,14 @@
   import { appel } from './lib/transport.js';
   import { t, poserLangueDetectee } from './lib/texte.svelte.js';
   import { voletsActuels } from './lib/volets.svelte.js';
+  import {
+    largeurActuelle,
+    reglerLargeur,
+    persisterLargeurs,
+    appliquerLargeur,
+    defautLargeur,
+    BORNES,
+  } from './lib/largeurs.svelte.js';
   import { depuis } from './lib/quand.js';
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
@@ -70,6 +78,54 @@
   // quand une ligne est encore choisie.
   const volets = $derived(voletsActuels());
   let voletsAvant = voletsActuels();
+
+  // PLAN-RETOURS-V3 R3 (verdict CE D3) : les frontières de la grille se
+  // règlent à la souris — nav|liste et liste|fil en trois volets,
+  // nav|liste seule en deux. La poignée capture le pointeur : le
+  // glissement suit hors de sa surface, l'iframe du fil ne l'avale
+  // jamais ; le double-clic rend le défaut ; les flèches font le même
+  // geste au clavier (A8), 16 px par pas. Les bornes vivent au module ;
+  // le PLAFOND vit ici (la fenêtre est une connaissance d'UI) : en
+  // trois volets, une frontière ne monte jamais au point d'écraser le
+  // fil sous RESERVE_FIL — les bornes maximales cumulées (400 + 640)
+  // dépassent la fenêtre par défaut, et une poignée poussée hors écran
+  // serait irrécupérable (revue 2026-08-16). Le glissement RÈGLE (état
+  // seul) ; le relâchement PERSISTE — jamais une écriture par
+  // pointermove. La saisie se défait aussi sur pointercancel et
+  // lostpointercapture (tactile, stylet, démontage du bloc en cours de
+  // geste) : sans quoi elle resterait armée et le prochain survol
+  // redimensionnerait sans bouton pressé.
+  const lNav = $derived(largeurActuelle('nav'));
+  const lListe = $derived(largeurActuelle('liste'));
+  const RESERVE_FIL = 120;
+  const plafondPoignee = (volet) =>
+    volets === 3
+      ? window.innerWidth -
+        largeurActuelle(volet === 'nav' ? 'liste' : 'nav') -
+        RESERVE_FIL
+      : Infinity;
+  let saisiePoignee = null; // { volet, x0, l0 } — hors $state : seul l'état du module bouge
+  function saisirPoignee(volet, e) {
+    if (e.button !== 0) return; // le bouton principal seul saisit
+    saisiePoignee = { volet, x0: e.clientX, l0: largeurActuelle(volet) };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function glisserPoignee(e) {
+    if (!saisiePoignee) return;
+    const { volet, x0, l0 } = saisiePoignee;
+    reglerLargeur(volet, l0 + (e.clientX - x0), plafondPoignee(volet));
+  }
+  function relacherPoignee() {
+    if (!saisiePoignee) return;
+    saisiePoignee = null;
+    persisterLargeurs();
+  }
+  function toucherPoignee(volet, e) {
+    const pas = e.key === 'ArrowLeft' ? -16 : e.key === 'ArrowRight' ? 16 : 0;
+    if (!pas) return;
+    e.preventDefault();
+    appliquerLargeur(volet, largeurActuelle(volet) + pas, plafondPoignee(volet));
+  }
   $effect(() => {
     const v = volets;
     if (v === 3 && voletsAvant !== 3 && selectionnee && fil.cadre !== 'plein') lecture?.ouvrir(selectionnee);
@@ -984,7 +1040,17 @@
   let startup = $state('');
 </script>
 
-<svelte:window onkeydown={surTouche} />
+<!-- Au rétrécissement de la fenêtre, la LISTE cède : des largeurs
+     posées sur un grand écran ne doivent jamais écraser le fil sous sa
+     réserve ni pousser une poignée hors de l'écran (revue 2026-08-16,
+     même racine que le plafond des poignées). -->
+<svelte:window onkeydown={surTouche}
+               onresize={() => {
+                 if (volets === 3) {
+                   reglerLargeur('liste', lListe, plafondPoignee('liste'));
+                   persisterLargeurs();
+                 }
+               }} />
 
 <div class="ecran">
   <header class="entete" data-testid="entete">
@@ -1022,7 +1088,8 @@
 
   {#if prete}
     <div class="colonnes" class:colonnes--2={volets === 2}
-         class:colonnes--1={volets === 1}>
+         class:colonnes--1={volets === 1}
+         style="--l-nav:{lNav}px; --l-liste:{lListe}px">
       {#if volets !== 1}
         <Nav {comptes} {categorie} {compte} onchoisir={choisir} />
       {/if}
@@ -1037,6 +1104,32 @@
                  onconversation={ouvrirConversation}
                  onrepondre={repondre} onrepondretous={repondreTous}
                  ontransferer={transferer} onflash={flash} />
+      {/if}
+      <!-- Les poignées (R3) : posées SUR les frontières de la grille,
+           hors flux — la grille ne gagne pas de colonne. Le motif ARIA
+           est le « window splitter » : separator focalisable,
+           aria-valuenow — la règle Svelte ne le connaît pas. UN seul
+           gabarit (revue 2026-08-16) : tout durcissement du geste vaut
+           pour les deux frontières par construction. -->
+      {#snippet poignee(volet, libelle, gauche)}
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
+        <div class="poignee" data-testid="poignee-{volet}" role="separator"
+             aria-orientation="vertical" aria-label={libelle}
+             tabindex="0" aria-valuemin={BORNES[volet][0]}
+             aria-valuemax={BORNES[volet][1]} aria-valuenow={largeurActuelle(volet)}
+             style="left:{gauche}px"
+             onpointerdown={(e) => saisirPoignee(volet, e)}
+             onpointermove={glisserPoignee} onpointerup={relacherPoignee}
+             onpointercancel={relacherPoignee}
+             onlostpointercapture={relacherPoignee}
+             ondblclick={() => defautLargeur(volet)}
+             onkeydown={(e) => toucherPoignee(volet, e)}></div>
+      {/snippet}
+      {#if volets !== 1}
+        {@render poignee('nav', t('volets.poigneeNav'), lNav - 3)}
+      {/if}
+      {#if volets === 3}
+        {@render poignee('liste', t('volets.poigneeListe'), lNav + lListe - 3)}
       {/if}
     </div>
 
@@ -1170,16 +1263,32 @@
   }
   .principal:hover { background:var(--accentH); border-color:var(--accentH); }
 
-  /* A29 : la nav des pistes vit à 248 px (236 avant la v2). */
+  /* A29 : la nav des pistes vit à 248 px (236 avant la v2) — depuis
+     R3 (PLAN-RETOURS-V3), 248 et 400 sont les DÉFAUTS : les largeurs
+     vivent en variables, réglées à la poignée, bornées au module. */
   .colonnes {
-    flex:1; display:grid; grid-template-columns:248px 400px minmax(0,1fr);
-    min-height:0;
+    flex:1; display:grid;
+    grid-template-columns:var(--l-nav, 248px) var(--l-liste, 400px) minmax(0,1fr);
+    min-height:0; position:relative;
   }
   /* PLAN-VOLETS (V-D1) : en deux volets la liste prend la largeur —
      gabarit de ligne inchangé (V-D3), l'aperçu respire. En un volet
      (E2) la liste est seule : son filet droit n'a plus de voisin. */
-  .colonnes--2 { grid-template-columns:248px minmax(0,1fr); }
+  .colonnes--2 { grid-template-columns:var(--l-nav, 248px) minmax(0,1fr); }
   .colonnes--1 { grid-template-columns:minmax(0,1fr); }
+  /* La poignée (R3) : 7 px à cheval sur le filet, hors flux ; au
+     survol, à la saisie et au focus clavier, un trait d'accent de 2 px
+     dit la frontière — la grille, elle, ne bouge pas d'un pixel. */
+  .poignee {
+    position:absolute; top:0; bottom:0; width:7px; z-index:1;
+    cursor:col-resize; touch-action:none;
+  }
+  .poignee::after {
+    content:''; position:absolute; top:0; bottom:0; left:2px; width:2px;
+    background:transparent;
+  }
+  .poignee:hover::after, .poignee:active::after,
+  .poignee:focus-visible::after { background:var(--accent); }
   .colonnes--1 > :global(.colonne) { border-right:none; }
 
   /* Le bouton du tiroir (E2) : 32 px, la grammaire des boutons

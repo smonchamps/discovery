@@ -22,7 +22,7 @@
 //
 // Le remède est toujours le même : amender le Système dans le commit
 // fautif (DC-D2) — jamais tordre la gate.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { lireThemes, NOMBRE_ATTENDU } from './jetons.mjs';
 
@@ -144,6 +144,35 @@ for (const langue of ['fr', 'en']) {
     if (!themesCss[id]) {
       echec(`catalogue.${langue} : theme.${id}.nom sans thème livré dans systeme.css`);
     }
+  }
+}
+
+// --- 5. Aucune règle de barre de défilement (A44) --------------------
+// Les barres sont NATIVES en surimpression (OverlayScrollbar) : UNE
+// seule règle `::-webkit-scrollbar` / `scrollbar-width` /
+// `scrollbar-color` fait retomber l'élément sur le chemin classique et
+// lui rend ~15 px de gouttière — la régression est silencieuse à
+// l'œil des tests. Les commentaires sont retirés avant l'examen (le
+// commentaire d'A44 dans systeme.css nomme précisément ces règles).
+const srcUi = path.join(root, 'apps', 'desktop', 'ui-v2', 'src');
+const fichiersUi = (dossier) =>
+  readdirSync(dossier, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory()
+      ? fichiersUi(path.join(dossier, e.name))
+      : /\.(css|svelte)$/.test(e.name)
+        ? [path.join(dossier, e.name)]
+        : [],
+  );
+for (const fichier of fichiersUi(srcUi)) {
+  const sansCommentaires = readFileSync(fichier, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  const interdit = sansCommentaires.match(
+    /::-webkit-scrollbar|scrollbar-width\s*:|scrollbar-color\s*:/,
+  );
+  if (interdit) {
+    echec(`${path.relative(root, fichier)} : règle « ${interdit[0]} » — les barres sont natives en surimpression (A44), cette règle rend l'élément au chemin classique (~15 px de gouttière)`);
   }
 }
 

@@ -219,6 +219,8 @@ export const FR = {
   'volets.1': 'Un volet',
   'nav.ouvrirTiroir': 'Ouvrir la navigation',
   'nav.fermerTiroir': 'Fermer la navigation',
+  'volets.poigneeNav': 'Régler la largeur de la navigation',
+  'volets.poigneeListe': 'Régler la largeur de la liste',
   'reglages.bulles': "Bulles d'arrivée",
   'reglages.bullesDesc': "Une bulle système annonce les nouveaux messages à la synchronisation. La couper n'arrête jamais la synchronisation elle-même.",
   'reglages.noteRaccourcis': 'Dans un champ de saisie, les lettres redeviennent des lettres ; seul Échap garde un sens.',

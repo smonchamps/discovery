@@ -53,6 +53,24 @@ test('le volet liste porte son bandeau de titre — le nom de la boîte, sans bo
   const titre = page.locator('[data-testid="liste-titre"]');
   await expect(titre).toHaveText('Boîte de réception');
   await expect(titre.locator('button')).toHaveCount(0);
+  // PLAN-RETOURS-V3 R2 : le bandeau du haut au MÊME format visuel que
+  // le bandeau de filtre du bas — même hauteur (52 px), même fond
+  // (--panel), un filet le sépare de la liste comme le filet du bas.
+  const gabarit = (loc) =>
+    loc.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { h: el.offsetHeight, fond: s.backgroundColor };
+    });
+  const haut = await gabarit(titre);
+  const bas = await gabarit(page.locator('[data-testid="onglets"]'));
+  expect(haut.h).toBe(bas.h);
+  expect(haut.fond).toBe(bas.fond);
+  // La valeur calculée est arrondie au pixel MACHINE (0.666667px à
+  // l'échelle 150 %) : on asserte l'existence du filet, pas sa cote.
+  const filet = await titre.evaluate(
+    (el) => parseFloat(getComputedStyle(el).borderBottomWidth),
+  );
+  expect(filet).toBeGreaterThan(0);
   // Le bandeau suit la boîte courante.
   await dossier('archives').click();
   await expect(titre).toHaveText('Archives');

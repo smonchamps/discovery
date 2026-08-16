@@ -320,22 +320,22 @@
   }
 }
 
-/* Barres de défilement (A7) : discrètes, sans flèches, poignée au rayon
-   des contrôles, pilotées par les jetons — la barre suit le thème.
-   `::-webkit-scrollbar` et non `scrollbar-width`/`scrollbar-color` :
-   Chromium IGNORE le premier dès que les propriétés standard sont
-   posées, et seules les règles webkit donnent le rayon et la piste
-   transparente que demande A7. */
-::-webkit-scrollbar { width:10px; height:10px; }
-::-webkit-scrollbar-track { background:transparent; }
-::-webkit-scrollbar-thumb {
-  background:var(--border); border-radius:6px;
-  background-clip:padding-box; border:2px solid transparent;
-}
-::-webkit-scrollbar-thumb:hover,
-::-webkit-scrollbar-thumb:active { background-color:var(--muted); }
-::-webkit-scrollbar-button { display:none; }
-::-webkit-scrollbar-corner { background:transparent; }
+/* Barres de défilement (A7, amendé A44 — PLAN-RETOURS-V3 R4) : la
+   barre NATIVE en surimpression, celle du prototype Classique — fine,
+   sans piste ni flèches, posée SUR le contenu, visible au défilement
+   et au survol seulement. Le trait Chromium `OverlayScrollbar` est
+   activé par la conf Tauri (`additionalBrowserArgs`) et repris par le
+   lanceur e2e ; mesure du 2026-08-16 : épaisseur réservée 0 px (15 px
+   en classique, 10 px sous les anciennes règles webkit A7, retirées à
+   ce commit). La poignée ne lit pas les jetons : elle suit
+   `color-scheme` — les deux règles ci-dessous, à côté des jetons, la
+   font claire sur les 14 thèmes -nuit et sombre sur les 14 clairs,
+   pour TOUT chemin qui pose data-theme, sans JS. Toute règle webkit de
+   barre (ou scrollbar-width/scrollbar-color posée) ferait retomber
+   l'élément hors du chemin overlay : ne pas en poser — la gate de
+   cohérence y veille. */
+:root { color-scheme:light; }
+:root[data-theme$="-nuit"] { color-scheme:dark; }
 
 * { box-sizing:border-box; }
 html, body { margin:0; padding:0; height:100%; }

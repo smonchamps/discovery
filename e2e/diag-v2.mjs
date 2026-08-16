@@ -11,6 +11,7 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 import { purgerOAuth } from './isolation.mjs';
 import { allouerPortCdp } from './port-cdp.mjs';
+import { argsNavigateur } from './args-navigateur.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const db = process.env.MESURE_DB || path.join(root, 'target', 'e2e', 'mesure-v2.db');
@@ -27,7 +28,11 @@ const env = {
   ...process.env,
   WIND_DB_PATH: db,
   WIND_E2E_ACCOUNT: 'mesure@exemple.fr',
-  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+  // Les arguments de PRODUCTION + le port CDP (revue 2026-08-16) :
+  // la variable écrase la conf Tauri au niveau du loader WebView2 —
+  // sans reprise, le banc mesurerait une géométrie à barre classique
+  // (~15 px réservés) que l'utilisateur ne voit pas (overlay A44).
+  WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: argsNavigateur(root, port),
   WEBVIEW2_USER_DATA_FOLDER: profile,
 };
 purgerOAuth(env);

@@ -21,14 +21,20 @@ test.beforeAll(async () => {
   ({ app, browser, page } = await launchAppV2());
   // Un run précédent interrompu a pu laisser un mode : repartir du
   // défaut AVANT toute assertion.
-  await page.evaluate(() => localStorage.removeItem('wind-volets'));
+  await page.evaluate(() => {
+    localStorage.removeItem('wind-volets');
+    localStorage.removeItem('wind-largeurs');
+  });
   await page.reload();
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
 test.afterAll(async () => {
   await page
-    .evaluate(() => localStorage.removeItem('wind-volets'))
+    .evaluate(() => {
+      localStorage.removeItem('wind-volets');
+      localStorage.removeItem('wind-largeurs');
+    })
     .catch(() => { /* la fenêtre est peut-être déjà morte : le beforeAll des autres suites ne lit pas ce profil-là */ });
   await closeApp({ app, browser });
 });
@@ -189,4 +195,53 @@ test('la préférence survit au relancement — et le retour à trois volets res
     'Relecture du contrat Vantis',
   );
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
+});
+
+test('les volets se redimensionnent à la souris — bornes, persistance, double-clic (PLAN-RETOURS-V3 R3)', async () => {
+  // Verdict CE 2026-08-16 (D3) : poignées sur les DEUX frontières en
+  // trois volets ; bornes nav 180-400, liste 300-640 ; largeurs
+  // persistées ; double-clic = retour au défaut.
+  const largeur = (testid) =>
+    page
+      .locator(`[data-testid="${testid}"]`)
+      .evaluate((el) => Math.round(el.getBoundingClientRect().width));
+  const saisir = async (testid, dx) => {
+    const boite = await page.locator(`[data-testid="${testid}"]`).boundingBox();
+    const x = boite.x + boite.width / 2;
+    const y = boite.y + boite.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + dx, y, { steps: 4 });
+    await page.mouse.up();
+  };
+
+  expect(await largeur('liste')).toBe(400);
+  // La nav d'abord, bornée en bas à 180 — elle libère le plafond de la
+  // liste (fenêtre 1000 : 1000 - 180 - 120 de réserve du fil = 700).
+  await saisir('poignee-nav', -500);
+  expect(await largeur('nav')).toBe(180);
+  await saisir('poignee-liste', 120);
+  expect(await largeur('liste')).toBe(520);
+  // La borne haute retient la poignée : 640, jamais au-delà.
+  await saisir('poignee-liste', 500);
+  expect(await largeur('liste')).toBe(640);
+  // Le PLAFOND de la fenêtre retient l'autre frontière (revue
+  // 2026-08-16) : nav max 400 écraserait le fil sous sa réserve —
+  // 1000 - 640 - 120 = 240, jamais au-delà, la poignée liste reste
+  // saisissable à l'écran.
+  await saisir('poignee-nav', 500);
+  expect(await largeur('nav')).toBe(240);
+
+  // Persistance : la page rechargée restaure les largeurs AVANT le
+  // premier rendu — écrites au RELÂCHEMENT, jamais par pointermove.
+  await page.reload();
+  await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  expect(await largeur('liste')).toBe(640);
+  expect(await largeur('nav')).toBe(240);
+
+  // Double-clic : chaque frontière rend son défaut.
+  await page.locator('[data-testid="poignee-liste"]').dblclick();
+  expect(await largeur('liste')).toBe(400);
+  await page.locator('[data-testid="poignee-nav"]').dblclick();
+  expect(await largeur('nav')).toBe(248);
 });

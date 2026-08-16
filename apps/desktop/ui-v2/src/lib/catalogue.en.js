@@ -217,6 +217,8 @@ export const EN = {
   'volets.1': 'One pane',
   'nav.ouvrirTiroir': 'Open navigation',
   'nav.fermerTiroir': 'Close navigation',
+  'volets.poigneeNav': 'Resize the navigation pane',
+  'volets.poigneeListe': 'Resize the list pane',
   'reglages.bulles': 'Arrival notifications',
   'reglages.bullesDesc': 'A system notification announces new messages at sync. Turning it off never stops the sync itself.',
   'reglages.noteRaccourcis': 'In a text field, letters are letters again; only Esc keeps a meaning.',

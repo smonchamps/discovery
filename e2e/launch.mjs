@@ -23,6 +23,7 @@ import { chromium } from '@playwright/test';
 import { construireV2, purgerCacheHttp } from './rebuild-v2.mjs';
 import { purgerOAuth } from './isolation.mjs';
 import { allouerPortCdp } from './port-cdp.mjs';
+import { argsNavigateur } from './args-navigateur.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 // Un premier démarrage WebView2 sur machine froide (CI : pas de cache,
@@ -95,7 +96,18 @@ async function attacher(db, emails) {
     // (navigator.language, PLAN-LANGUES) lit la locale du WebView — sans
     // cette épingle, la suite dépendrait de la langue de la machine.
     // Le français reste la langue canonique des parcours (L-6).
-    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port} --lang=fr`,
+    // Les arguments de PRODUCTION (tauri.conf.json) + le port CDP + la
+    // langue épinglée, composés par args-navigateur.mjs — la variable
+    // ÉCRASE la conf au niveau du loader WebView2, elle doit donc la
+    // reprendre pour que l'e2e voie le navigateur livré (revue
+    // 2026-08-16). WIND_E2E_ARGS_EXTRA : passe-plat des bancs de mesure
+    // (E4, mesure-scrollbar.mjs) — un flag posé dans l'environnement du
+    // parent n'atteindrait jamais le WebView2 sans lui.
+    WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: argsNavigateur(
+      root,
+      port,
+      process.env.WIND_E2E_ARGS_EXTRA ?? '',
+    ),
     WEBVIEW2_USER_DATA_FOLDER: profile,
   };
   if (emails.length > 0) env.WIND_E2E_ACCOUNT = emails.join(',');

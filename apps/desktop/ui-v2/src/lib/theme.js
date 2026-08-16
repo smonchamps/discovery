@@ -98,6 +98,9 @@ function osSombre() {
 function poser(nom) {
   if (nom === 'nature') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = nom;
+  // A44 : le `color-scheme` des barres natives ne se pose PAS ici —
+  // il vit en CSS, à côté des jetons (`:root[data-theme$="-nuit"]`,
+  // systeme.css) : tout chemin qui pose data-theme l'obtient, sans JS.
   // Revue A42 : la coche de Réglages suit la fiche AFFICHÉE — le
   // signal dit « le thème posé vient de changer », quel qu'en soit le
   // chemin (choix, bascule du suivi, événement OS en cours de session).

@@ -1,9 +1,14 @@
 <script>
   // Liste fenêtrée de l'écran 02 — lignes continues séparées au filet,
-  // le dessin des pistes (A29/A30) : UN gabarit déterministe (les puces
-  // fil/fichiers vivent au volet de lecture depuis A29 — la ligne est
-  // nue, A2), servie par `list_category` : la source est (catégorie,
-  // compte, non-lus), les onglets vivent dans le pied de cette colonne.
+  // le dessin des pistes (A29/A30), servie par `list_category` : la
+  // source est (catégorie, compte, non-lus), les onglets vivent dans le
+  // pied de cette colonne. Depuis A44 (PLAN-RETOURS-V3, renverse la
+  // « ligne nue » d'A29/A2 ; terrain du 2026-08-16 : hauteur AU
+  // CONTENU, pas de rang réservé) une ligne qui a quelque chose à dire
+  // porte le rang de puces du prototype et s'en agrandit : DEUX
+  // gabarits (h1 nue, h2 porteuse), la mécanique de fenêtrage d'avant
+  // A29 — chipsParPage, extraPuce, correction itérative — reprend du
+  // service, à l'identique de ce qu'elle était (848f286~1).
   //
   // Changement de source = nouvelle génération : les pages en vol de la
   // source précédente sont jetées à l'arrivée, jamais mélangées.
@@ -37,12 +42,14 @@
   let premier = $state(0);
   let version = $state(0);
   let h1 = $state(90);
+  let h2 = $state(117);
   let sondees = $state(false);
   let selection = $state(null);
   let premierePageMs = $state(null);
 
   let generation = 0;
   let pages = new Map();
+  let chipsParPage = new Map();
   let pending = new Map();
   // Stale-while-revalidate (PLAN-REACTIVITE E1) : la génération à
   // laquelle chaque page a été servie. Une recharge bump `generation`
@@ -50,18 +57,49 @@
   // page ne se resert que si sa génération est dépareillée.
   let servieA = new Map();
 
-  // Un seul gabarit depuis A29 (lignes continues, sans puces ni
-  // marges) : la géométrie du fenêtrage est une multiplication.
-  const pitch = $derived(h1);
+  // Deux gabarits (A44, terrain : hauteur au contenu) : h1 la ligne
+  // nue, h2 la porteuse — la géométrie corrige la multiplication par
+  // le compte de porteuses AVANT l'index, tenu par page.
+  const aPuces = (l) => l.thread_size > 1 || l.attachment_count > 0;
+  const extraPuce = $derived(h2 - h1);
 
+  function chipsAvant(i) {
+    let extra = 0;
+    const pleine = Math.floor(i / PAGE);
+    for (const [p, n] of chipsParPage) {
+      if (p < pleine) extra += n;
+    }
+    const page = pages.get(pleine);
+    if (page) {
+      const borne = i - pleine * PAGE;
+      for (let k = 0; k < borne && k < page.length; k++) {
+        if (aPuces(page[k])) extra += 1;
+      }
+    }
+    return extra;
+  }
   function decalage(i) {
-    return i * pitch;
+    return i * h1 + chipsAvant(i) * extraPuce;
   }
 
-  const hauteurEspace = $derived(total === 0 ? 0 : total * pitch);
+  const hauteurEspace = $derived.by(() => {
+    void version;
+    if (total === 0) return 0;
+    let extra = 0;
+    for (const n of chipsParPage.values()) extra += n;
+    return total * h1 + extra * extraPuce;
+  });
 
   function indexPour(scrollTop) {
-    const i = Math.max(0, Math.floor(scrollTop / pitch));
+    let i = Math.max(0, Math.floor(scrollTop / h1));
+    for (let tour = 0; tour < 4; tour++) {
+      const corrige = Math.max(
+        0,
+        Math.floor((scrollTop - chipsAvant(i) * extraPuce) / h1),
+      );
+      if (corrige === i) break;
+      i = corrige;
+    }
     return Math.min(i, Math.max(0, total - 1));
   }
 
@@ -81,14 +119,28 @@
       offset: p * PAGE,
       limit: PAGE,
     })
-      .then((page) => {
+      .then(async (page) => {
         if (nee !== generation) return; // source changée : page périmée
         total = page.total;
+        // Le delta de puces, pas le compte brut : une page REMPLACÉE
+        // affichait déjà les siennes — l'ancrage du défilement ne doit
+        // bouger que de la différence (première servie : avant = 0).
+        const avant = chipsParPage.get(p) ?? 0;
         pages.set(p, page.rows);
         servieA.set(p, nee);
+        let n = 0;
+        for (const l of page.rows) if (aPuces(l)) n += 1;
+        chipsParPage.set(p, n);
         pending.delete(p);
         if (premierePageMs === null) premierePageMs = performance.now() - t0;
-        version += 1;
+        const delta = n - avant;
+        if (delta !== 0 && (p + 1) * PAGE <= premier && cadre) {
+          version += 1;
+          await tick();
+          cadre.scrollTop += delta * extraPuce;
+        } else {
+          version += 1;
+        }
       })
       .catch((err) => {
         pending.delete(p);
@@ -108,6 +160,7 @@
     untrack(() => {
       generation += 1;
       pages = new Map();
+      chipsParPage = new Map();
       servieA = new Map();
       pending = new Map();
       total = 0;
@@ -120,7 +173,7 @@
   });
 
   const visibles = $derived(
-    cadre ? Math.ceil(cadre.clientHeight / pitch) + 1 : 12,
+    cadre ? Math.ceil(cadre.clientHeight / h1) + 1 : 12,
   );
   const debut = $derived(Math.max(0, premier - OVER));
   const fin = $derived(Math.min(total, premier + visibles + OVER));
@@ -186,8 +239,10 @@
     untrack(() => ontotal(n));
   });
 
-  function sonder(el) {
-    h1 = el.offsetHeight;
+  function sonder(el, avecPuces) {
+    const h = el.offsetHeight;
+    if (avecPuces) h2 = h;
+    else h1 = h;
     sondees = true;
   }
 
@@ -262,7 +317,7 @@
     return performance.now() - t0;
   }
   export function etat() {
-    return { total, premier, h1, premierePageMs };
+    return { total, premier, h1, h2, premierePageMs };
   }
   export function ligneA(index) {
     const page = pages.get(Math.floor(index / PAGE));
@@ -332,11 +387,18 @@
   <div class="cadre" bind:this={cadre} onscroll={surDefilement}>
     {#if !sondees}
       <div class="sondes" aria-hidden="true">
-        <article class="ligne" use:sonder>
+        <article class="ligne" use:sonder={false}>
           <span class="avatar" aria-hidden="true">SO</span>
           <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
           <p class="objet">Sonde</p>
           <p class="apercu">Sonde</p>
+        </article>
+        <article class="ligne" use:sonder={true}>
+          <span class="avatar" aria-hidden="true">SO</span>
+          <div class="l1"><span class="exp">Sonde</span><span class="heure">00:00</span></div>
+          <p class="objet">Sonde</p>
+          <p class="apercu">Sonde</p>
+          <div class="puces"><span class="puce"><span class="ms" aria-hidden="true">forum</span>2</span></div>
         </article>
       </div>
     {/if}
@@ -373,8 +435,30 @@
         {:else}
           <p class="apercu">{ligne.preview ?? ''}</p>
         {/if}
-        <!-- Les puces fil/fichiers vivent au volet de lecture (A29/A2) :
-             la ligne est nue, le non-lu se lit à la graisse. -->
+        <!-- PLAN-RETOURS-V3 R1 (verdict CE 2026-08-16, D1/D2) : la
+             « ligne nue » d'A29 est renversée — le rang de puces du
+             prototype revient à la ligne, aux règles de la tête du Fil
+             (« N messages » si le fil en a plus d'un, « N fichiers »
+             si pièces). Hauteur AU CONTENU (terrain CE 2026-08-16,
+             renverse D1) : le rang n'existe que sur les porteurs et
+             agrandit leur ligne — deux gabarits, le fenêtrage corrige
+             par chipsAvant. En
+             RECHERCHE, un résultat est un message, pas une conversation
+             (le coeur sert thread_size=1 sans joindre threads) : la
+             puce de fil n'y figure pas, par construction. Le compte de
+             pièces est celui d'AVANT lecture du corps : 0 tant que le
+             corps n'est pas rapatrié — la puce apparaît au fil du
+             rattrapage, jamais à tort. -->
+        {#if aPuces(ligne)}
+          <div class="puces" data-testid="puces-ligne">
+            {#if ligne.thread_size > 1}
+              <span class="puce"><span class="ms" aria-hidden="true">forum</span>{t('puce.messages', { n: ligne.thread_size })}</span>
+            {/if}
+            {#if ligne.attachment_count > 0}
+              <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: ligne.attachment_count })}</span>
+            {/if}
+          </div>
+        {/if}
       </div>
     {/snippet}
     {#if resultats !== null}
@@ -452,11 +536,17 @@
     display:flex; flex-direction:column; min-height:0;
     background:var(--bg); border-right:1px solid var(--border);
   }
-  /* Le bandeau (UI v3, E1) : gabarit de la maquette — 16 px, 600. */
-  .bandeau { flex:none; padding:12px 16px 8px; }
+  /* Le bandeau (UI v3, E1 — reformé PLAN-RETOURS-V3 R2) : le MÊME
+     format visuel que le bandeau de filtre du bas — 52 px, fond
+     --panel, filet vers la liste ; le titre 16 px 600 ne bouge pas. */
+  .bandeau {
+    flex:none; height:52px; display:flex; align-items:center;
+    padding:0 16px; background:var(--panel);
+    border-bottom:1px solid var(--border);
+  }
   .bandeau h1 {
     margin:0; font-size:16px; font-weight:600; line-height:1.3;
-    color:var(--ink);
+    color:var(--ink); flex:1; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
   .cadre { flex:1; overflow:auto; position:relative; }
@@ -480,8 +570,11 @@
      de surface blanche (A29). Le liseré est réservé en transparent :
      la sélection ne déplace pas le contenu. */
   /* UI v3, E2 : la grille de la maquette — l'avatar en première
-     colonne, enjambant les trois rangs ; le reste du dessin des
-     pistes (filet, états, graisses) ne bouge pas. */
+     colonne, enjambant les trois rangs du contenu ; le reste du dessin
+     des pistes (filet, états, graisses) ne bouge pas. Le rang de puces
+     (A44, terrain : hauteur au contenu) n'existe que sur les lignes
+     porteuses, en 4e rang de colonne 2 — hors de l'avatar, comme au
+     prototype ; les DEUX hauteurs sont sondées (h1/h2). */
   .ligne {
     padding:13px 16px; border-top:1px solid var(--border);
     border-left:2px solid transparent;
@@ -494,7 +587,20 @@
     display:grid; place-items:center;
     font-size:11px; font-weight:600; color:var(--ink2);
   }
-  .l1, .objet, .apercu { grid-column:2; min-width:0; }
+  .l1, .objet, .apercu, .puces { grid-column:2; min-width:0; }
+  /* Le rang de puces (PLAN-RETOURS-V3 R1) : le gabarit 24 px du
+     prototype Classique — présent sur les seules lignes porteuses. */
+  .puces {
+    height:24px; display:flex; align-items:center; gap:6px;
+    overflow:hidden;
+  }
+  .puce {
+    display:inline-flex; align-items:center; gap:5px; height:24px;
+    padding:0 9px; font-size:12px; color:var(--ink2);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; white-space:nowrap;
+  }
+  .puce .ms { font-size:14px; }
   .ligne:hover { background:var(--hover); }
   .ligne.choisie {
     background:var(--sel); border-left-color:var(--accent);
