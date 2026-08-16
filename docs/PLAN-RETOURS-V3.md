@@ -1,6 +1,10 @@
 # PLAN-RETOURS-V3 — quatre retours CE sur l'UI v3
 
-Statut : **GO** (STOP 1 validé le 2026-08-16, verdicts au §4). Ouvert le 2026-08-16, à la
+**CHANTIER SOLDÉ le 2026-08-16 — terrain complet.** Commit f7c63e7
+(A44), CI verte (run 31944140314). GO CE au STOP 1 le 2026-08-16
+(verdicts D1-D4 au §4) ; terrain en deux passes le même jour : 2/3/4
+OK d'emblée, le point 1 corrigé le jour même (hauteur au contenu, §6)
+puis « C'est bon ». Statut antérieur : GO. Ouvert le 2026-08-16, à la
 suite de la clôture de PLAN-UI-V3 (A43, 16f06e6) — les « retours
 d'interface du CE » annoncés à la session de clôture.
 

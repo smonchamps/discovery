@@ -398,6 +398,30 @@ Bash). Syntaxes différentes.
   un `sed` de testids peut DÉSARMER des assertions discriminantes —
   re-scoper au cadre (`[data-testid="volet-lecture"] …`) et asserter
   l'unicité (`toHaveCount(1)`).
+- **Les barres de défilement sont NATIVES en surimpression** (A44,
+  2026-08-16) : trait Chromium `OverlayScrollbar`, posé par
+  `additionalBrowserArgs` de tauri.conf.json — ce champ s'épelle SANS
+  « uments », et sa pose REMPLACE les `--disable-features` par défaut
+  de wry (repris dans la valeur). Trois pièges mesurés : la variable
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` ÉCRASE la conf au niveau du
+  loader — tout lanceur qui la pose doit reprendre les args de prod
+  (`e2e/args-navigateur.mjs`, source unique : launch, mesure-v2,
+  diag-v2) ; un `--enable-features` RÉPÉTÉ n'est pas fusionné, le
+  dernier gagne ; `scrollbar-width:auto` ne désarme PAS des règles
+  webkit (valeur par défaut — il faut une valeur non-défaut pour
+  sonder le chemin natif). UNE règle `::-webkit-scrollbar` /
+  `scrollbar-width` / `scrollbar-color` quelque part fait retomber
+  l'élément au chemin classique (~15 px de gouttière) — la garde n°5
+  de `coherence-systeme.mjs` le bloque ; le `color-scheme` (poignée
+  claire en -nuit) vit en CSS à côté des jetons ET baké dans l'iframe
+  du corps (mail-render, luminance du fond).
+- **La liste est à DEUX gabarits depuis A44** (terrain 2026-08-16 :
+  hauteur au contenu — le rang de puces n'existe que sur les lignes
+  porteuses) : la mécanique de fenêtrage d'avant A29 est de retour
+  (h1/h2 sondés, `chipsParPage`, `chipsAvant`, index itératif, ancrage
+  au delta d'une page resservie). Toute variante de rangée neuve doit
+  entrer dans les DEUX sondes, et le banc P1 se lit avec h1 ET h2
+  (D-14 : re-base).
 - **Une commande Tauri sans `async` s'exécute sur le THREAD PRINCIPAL**
   — celui de la pompe de messages : la fenêtre gèle pour toute sa durée
   (constat 2026-08-15, gels de 2 à 4,6 s au démarrage). Toute commande

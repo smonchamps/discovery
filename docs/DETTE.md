@@ -146,3 +146,19 @@ motivée.)
   `inert`) coûterait des testids dupliqués — exactement ce que la
   revue v3 a corrigé ; le remède demande de re-scoper la suite e2e
   d'abord. À instruire si le terrain le sent.
+
+### D-14 · Re-baser le banc P1 sur la géométrie A44
+
+- **Fait (PLAN-RETOURS-V3, 2026-08-16)** : deux changements de
+  géométrie dans le même chantier — les barres overlay rendent ~10 px
+  de largeur à chaque volet défilant (0 px réservé contre 10 px
+  webkit), et la liste est à deux gabarits (h1 nue / h2 porteuse,
+  ~+27 px par ligne à puces) : `visibles`, le nombre de lignes rendues
+  par saut et le coût d'un reflow ont bougé. Les percentiles « page »
+  du banc `mesure-v2` ne sont plus comparables à la série d'avant A44.
+- **Report assumé** : re-mesurer et re-baser les budgets P1 sur la
+  géométrie livrée, en une passe dédiée — à instruire avec la famille
+  des bancs (D-7/D-11/D-12), pour ne pas mélanger une re-base de
+  budgets avec un chantier de features. Les bancs mesurent DÉJÀ la
+  bonne géométrie (args-navigateur.mjs) ; seule la série de référence
+  date.
