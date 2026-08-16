@@ -9,6 +9,25 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.1.8] - 2026-08-16
+
+Quatre correctifs sur le courrier réel, remontés au terrain.
+
+### Corrigé
+
+- Les objets et les noms d'expéditeur ne montrent plus les antislashs
+  parasites des chaînes IMAP entre guillemets (ex. `Test \"Envoyés\"`) ;
+  les messages déjà synchronisés sont réparés au premier lancement.
+- Le dossier « Envoyés » affiche enfin le vrai destinataire (« À : … »),
+  dans la liste comme à la lecture, au lieu de répéter votre propre
+  adresse ; l'information est rattrapée sur les envois déjà synchronisés.
+- « Répondre à tous » pré-remplit « À » instantanément, à partir des
+  destinataires stockés, sans plus attendre une relève du serveur à
+  chaque clic.
+- L'objet ne s'affiche plus en double en tête du corps de certaines
+  infolettres (le titre de leur en-tête HTML ne fuit plus dans le
+  message).
+
 ## [0.1.7] - 2026-08-16
 
 La refonte entière au poste : le Système v2 « Wada » et son élargissement,
@@ -111,6 +130,7 @@ l'UI v3 et ses retours CE, sur une fenêtre qui ne gèle plus.
 - Première version publiée (discovery) : installeur NSIS et mise à jour
   signée minisign, pilotée depuis Rust (ADR 0013).
 
+[0.1.8]: https://github.com/smonchamps/wind/releases/tag/0.1.8
 [0.1.7]: https://github.com/smonchamps/wind/releases/tag/0.1.7
 [0.1.6]: https://github.com/smonchamps/wind/releases/tag/0.1.6
 [0.1.5]: https://github.com/smonchamps/wind/releases/tag/0.1.5
