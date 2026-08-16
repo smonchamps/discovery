@@ -280,6 +280,71 @@ test('le volet de lecture montre le FIL en cartes — anciens repliés, dernier 
   );
 });
 
+test('le fil au dessin exact de la maquette — avatars, adresse · destinataire, heure longue (terrain A45)', async () => {
+  // Retour CE du 2026-08-16 (captures du volet du prototype Classique,
+  // ANNOTATIONS-V3 §6) : puces d'inventaire à gauche — n messages
+  // TOUJOURS dit, fichiers SOMMÉS sur le fil —, boutons nus à droite,
+  // cartes aux avatars, en-tête déplié « adresse · à destinataire »,
+  // heure longue ; le bloc De/À/Objet a disparu.
+  await page.locator('[data-testid="ligne"]').first().click();
+  const volet = page.locator('[data-testid="volet-lecture"]');
+  const puces = volet.locator('[data-testid="fil-puces"]');
+  // 3 messages, et 3 fichiers = la somme du fil sur CE décor (PDF +
+  // XLSX de Camille, après-scan, + XLSX de Sofia) — la ligne seule
+  // n'en portait qu'un. La somme se stabilise quand message_body a
+  // servi le compte d'après-scan du dernier message (2, pas 1) :
+  // asserter 2 attrapait la valeur d'avant-scan, par course.
+  await expect(puces).toContainText('3 messages');
+  await expect(puces).toContainText('3 fichiers');
+  // Les boutons de droite sont NUS (bouton, sans bordure ni fond).
+  for (const testid of ['voir-conversation', 'tout-deplier']) {
+    const bouton = volet.locator(`[data-testid="${testid}"]`);
+    await expect(bouton).toHaveClass(/nu/);
+    expect(await bouton.evaluate((el) => el.tagName)).toBe('BUTTON');
+  }
+  // Les cartes portent l'avatar aux initiales, comme la liste (E2).
+  const replies = volet.locator('[data-testid="message-replie"]');
+  await expect(replies.nth(0).locator('.avatar')).toHaveText('PM');
+  await expect(replies.nth(1).locator('.avatar')).toHaveText('SN');
+  const deplie = volet.locator('[data-testid="message-deplie"]');
+  await expect(deplie.locator('.avatar')).toHaveText('CR');
+  // L'en-tête déplié : « adresse · à destinataire » — le nom du compte
+  // vient de notre propre copie du fil (Envoyés) — et l'heure longue.
+  await expect(deplie.locator('.adr')).toHaveText(
+    'c.rousseau@atelier-nord.fr · à Paul Mérand',
+  );
+  await expect(deplie.locator('.tete-message .quand')).toHaveText(/^Aujourd'hui, 09:12$/);
+  await expect(replies.nth(0).locator('.quand')).toHaveText(/, 18:20$/);
+  await expect(replies.nth(1).locator('.quand')).toHaveText(/, 11:05$/);
+  // Le bloc De/À/Objet n'existe plus (la maquette dit tout en tête).
+  await expect(deplie.locator('dl')).toHaveCount(0);
+});
+
+test('le fil au message seul dit « 1 message » — et garde Tout déplier (terrain A45)', async () => {
+  // La seconde capture CE : un fil d'un message garde le rang complet.
+  // Le test « archiver » a rangé Planning aux Archives — on l'y suit.
+  await dossier('archives').click();
+  await page
+    .locator('[data-testid="ligne"]', { hasText: 'Planning de la semaine 33' })
+    .first()
+    .click();
+  const volet = page.locator('[data-testid="volet-lecture"]');
+  const puces = volet.locator('[data-testid="fil-puces"]');
+  await expect(puces).toContainText('1 message');
+  await expect(puces).not.toContainText('fichier');
+  await expect(volet.locator('[data-testid="tout-deplier"]')).toBeVisible();
+  const deplie = volet.locator('[data-testid="message-deplie"]');
+  await expect(deplie.locator('.avatar')).toHaveText('YB');
+  // Sans copie à nous dans le fil, le destinataire est l'adresse du
+  // compte — le fait honnête, le cœur ne connaît pas notre nom.
+  await expect(deplie.locator('.adr')).toHaveText(
+    'y.belkacem@atelier-nord.fr · à paul.merand@atelier-nord.fr',
+  );
+  await expect(deplie.locator('.tete-message .quand')).toHaveText(/^Aujourd'hui, 08:40$/);
+  await dossier('reception').click();
+  await page.locator('[data-testid="ligne"]').first().click();
+});
+
 // ——— Écran 03 : la conversation plein écran (P3) ————————————————————
 
 test('voir la conversation ouvre le fil plein écran, dernier message déplié', async () => {

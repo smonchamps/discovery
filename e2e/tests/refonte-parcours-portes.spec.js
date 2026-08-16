@@ -149,10 +149,14 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(page.locator('[data-testid="message-replie"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="message-deplie"]')).toContainText('facture-190.pdf');
 
-    // Déplier le plus ancien sans quitter le fil.
+    // Déplier le plus ancien sans quitter le fil. La preuve vit dans le
+    // CORPS (iframe S1) : depuis A45 l'en-tête de carte ne répète plus
+    // l'objet — le bloc De/À/Objet de la carte a disparu (maquette).
     await page.locator('[data-testid="message-replie"]').click();
     await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(2);
-    await expect(page.locator('[data-testid="message-deplie"]').first()).toContainText('n°189');
+    await expect(
+      page.locator('[data-testid="message-deplie"]').first().frameLocator('iframe').locator('body'),
+    ).toContainText('n°189');
     await page.locator('[data-testid="retour-boite"]').click();
   });
 

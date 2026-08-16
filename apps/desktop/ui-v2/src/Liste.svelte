@@ -15,6 +15,7 @@
   import { tick, untrack } from 'svelte';
   import { appel } from './lib/transport.js';
   import { quand } from './lib/quand.js';
+  import { initiales } from './lib/initiales.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
 
@@ -244,18 +245,6 @@
     if (avecPuces) h2 = h;
     else h1 = h;
     sondees = true;
-  }
-
-  // UI v3, E2 (décision D2) : l'avatar aux initiales, VISUEL seul —
-  // jamais un bouton, la sélection en lot est une feature différée.
-  // Deux lettres au plus, des deux premiers mots ; un nom vide (rare :
-  // brouillon sans destinataire) rend un tiret, jamais un blanc.
-  function initiales(nom) {
-    const lettres = (nom ?? '').trim().split(/\s+/, 2)
-      .map((mot) => mot[0])
-      .join('')
-      .toUpperCase();
-    return lettres || '—';
   }
 
   const cle = (l) => `${l.account_id}/${l.mailbox}/${l.uid}`;

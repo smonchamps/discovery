@@ -1,9 +1,12 @@
 <script>
   // Le FIL en cartes — l'objet unique de lecture (UI v3, verdict CE du
-  // 2026-08-16, décision D4) : titre, puces méta, « Tout déplier »,
-  // messages repliés une ligne / dépliés en carte, fichiers joints,
+  // 2026-08-16, décision D4 ; dessin au trait de la maquette depuis le
+  // terrain A45) : titre, puces d'inventaire, boutons nus à droite,
+  // cartes aux avatars — repliées une ligne, dépliées en carte pleine
+  // (« adresse · à destinataire », heure longue) —, fichiers joints,
   // brouillon du fil, barre des cinq gestes directs (D5 — jamais de
-  // menu « Plus », exception b des annotations). Le volet de lecture
+  // menu « Plus », exception b des annotations ; le « ⋯ » par message
+  // de la maquette attend ses actions). Le volet de lecture
   // et l'écran 03 le montent TEL QUEL : deux cadres, un objet — l'état
   // vit dans lib/fil.svelte.js et survit au changement de cadre.
   //
@@ -15,7 +18,8 @@
   } from './lib/fil.svelte.js';
   import { appel } from './lib/transport.js';
   import { brancherLiens } from './lib/liens.js';
-  import { quand } from './lib/quand.js';
+  import { quand, quandLong } from './lib/quand.js';
+  import { initiales } from './lib/initiales.js';
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
 
@@ -55,17 +59,27 @@
     return retenu;
   });
 
+  // Les puces d'inventaire de la maquette (terrain A45) : n messages
+  // TOUJOURS dit — « 1 message » compris —, fichiers SOMMÉS sur le fil
+  // (la ligne ne porte que le compte de SON message).
+  const nbMessages = $derived(fil.messages.length || fil.ligne?.thread_size || 1);
+  const totalPieces = $derived(
+    fil.messages.length
+      ? fil.messages.reduce((n, m) => n + (nbPiecesDe(m) || 0), 0)
+      : (fil.ligne ? nbPiecesDe(fil.ligne) : 0),
+  );
+
   // « À » n'est pas stocké par le cœur : la règle du prototype —
   // message de soi → premier autre correspondant, sinon le compte.
+  // Depuis A45 l'en-tête déplié dit « adresse · à NOM » (maquette) :
+  // pour un message d'autrui, notre nom vient de notre propre copie du
+  // fil (Envoyés) ; sans elle, l'adresse du compte — le fait honnête.
   const propre = (m) => fil.ligne && m.sender_address === fil.ligne.account_email;
-  const ligneDe = (m) =>
-    m.sender_address ? `${m.sender} <${m.sender_address}>` : m.sender;
-  function ligneA(m) {
-    if (!propre(m)) return fil.ligne?.account_email ?? '';
-    const autre = fil.messages.find(
-      (x) => x.sender_address && x.sender_address !== m.sender_address,
-    );
-    return autre ? `${autre.sender} <${autre.sender_address}>` : (fil.ligne?.account_email ?? '');
+  function destinataire(m) {
+    const vise = propre(m)
+      ? fil.messages.find((x) => x.sender_address && x.sender_address !== m.sender_address)
+      : fil.messages.find((x) => propre(x));
+    return vise ? vise.sender : (fil.ligne?.account_email ?? '');
   }
 
   // En-vol transitoire : local au composant, rien à partager entre
@@ -95,29 +109,26 @@
   <div class="objet-fil">
     <div class="tete">
       <h3 class="titre" data-testid="fil-sujet">{fil.ligne.subject}</h3>
-      <div class="puces">
-        {#if fil.ligne.thread_size > 1}
-          <span class="puce"><span class="ms" aria-hidden="true">forum</span>{t('puce.messages', { n: fil.ligne.thread_size })}</span>
+      <!-- Le rang de la maquette (terrain A45) : puces d'inventaire à
+           gauche, boutons NUS à droite — « Tout déplier » au bord. -->
+      <div class="puces" data-testid="fil-puces">
+        <span class="puce"><span class="ms" aria-hidden="true">forum</span>{t('puce.messages', { n: nbMessages })}</span>
+        {#if totalPieces > 0}
+          <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: totalPieces })}</span>
         {/if}
-        {#if nbPiecesDe(fil.ligne) > 0}
-          <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: nbPiecesDe(fil.ligne) })}</span>
-        {/if}
+        <span class="essor"></span>
         {#if onagrandir}
           <!-- V-D2 : un message SEUL n'a pas de conversation à ouvrir
-               — la puce reste, inerte et dite telle (revue v3 :
-               aria-disabled/tabindex avaient sauté à l'extraction). -->
-          <span class="puce bouton" data-testid="voir-conversation"
-                class:inerte={fil.ligne.thread_id == null}
-                role="button" tabindex={fil.ligne.thread_id != null ? 0 : -1}
-                aria-disabled={fil.ligne.thread_id == null}
-                onclick={() => fil.ligne.thread_id != null && onagrandir(fil.ligne)}
-                onkeydown={activation(() => fil.ligne.thread_id != null && onagrandir(fil.ligne))}>
-            <span class="ms" aria-hidden="true">unfold_more</span>{t('lecture.voirConversation')}</span>
+               — le bouton reste, inerte et dit tel. -->
+          <button type="button" class="nu" data-testid="voir-conversation"
+                  class:inerte={fil.ligne.thread_id == null}
+                  aria-disabled={fil.ligne.thread_id == null}
+                  tabindex={fil.ligne.thread_id != null ? 0 : -1}
+                  onclick={() => fil.ligne.thread_id != null && onagrandir(fil.ligne)}>
+            <span class="ms" aria-hidden="true">unfold_more</span>{t('lecture.voirConversation')}</button>
         {/if}
-        <span class="puce bouton" data-testid="tout-deplier"
-              role="button" tabindex="0"
-              onclick={toutDeplier} onkeydown={activation(toutDeplier)}>
-          <span class="ms" aria-hidden="true">unfold_more</span>{t('conv.toutDeplier')}</span>
+        <button type="button" class="nu" data-testid="tout-deplier" onclick={toutDeplier}>
+          <span class="ms" aria-hidden="true">unfold_more</span>{t('conv.toutDeplier')}</button>
       </div>
     </div>
 
@@ -126,21 +137,20 @@
         {@const k = cleMsg(m)}
         {#if fil.deplies[k]}
           <article class="deplie" data-testid="message-deplie">
+            <!-- L'en-tête de la maquette (A45) : avatar, nom sur
+                 l'adresse · destinataire, heure longue — le bloc
+                 De/À/Objet a disparu, la tête dit tout. -->
             <div class="tete-message" role="button" tabindex="0"
                  aria-expanded="true"
                  onclick={() => basculerMessage(m)} onkeydown={activation(() => basculerMessage(m))}>
-              <span class="auteur">{m.sender}</span>
-              {#if nbPiecesDe(m) > 0}
-                <span class="puce"><span class="ms" aria-hidden="true">attach_file</span>{t('puce.fichiers', { n: nbPiecesDe(m) })}</span>
-              {/if}
-              <span class="heure">{quand(m.epoch)}</span>
+              <span class="avatar" aria-hidden="true">{initiales(m.sender)}</span>
+              <span class="qui">
+                <span class="auteur">{m.sender}</span>
+                <span class="adr">{t('conv.adrDest', { adr: m.sender_address || m.sender, qui: destinataire(m) })}</span>
+              </span>
+              <span class="quand">{quandLong(m.epoch)}</span>
             </div>
             <div class="contenu">
-              <dl class="adresses">
-                <dt>{t('conv.de')}</dt><dd>{ligneDe(m)}</dd>
-                <dt>{t('conv.a')}</dt><dd>{ligneA(m)}</dd>
-                <dt>{t('conv.objet')}</dt><dd>{m.subject}</dd>
-              </dl>
               {#if (fil.imagesBloquees[k] ?? 0) > 0}
                 <div class="garde-images" data-testid="garde-images">
                   <span class="ms" aria-hidden="true">visibility_off</span>
@@ -174,9 +184,10 @@
           <div class="replie" data-testid="message-replie"
                role="button" tabindex="0" aria-expanded="false"
                onclick={() => basculerMessage(m)} onkeydown={activation(() => basculerMessage(m))}>
+            <span class="avatar petit" aria-hidden="true">{initiales(m.sender)}</span>
             <span class="auteur">{m.sender}</span>
             <span class="apercu">{m.preview ?? ''}</span>
-            <span class="heure">{quand(m.epoch)}</span>
+            <span class="quand">{quandLong(m.epoch)}</span>
           </div>
         {/if}
       {/each}
@@ -187,7 +198,7 @@
              onkeydown={activation(() => onreprendre(brouillonDuFil))}>
           <span class="mention"><span class="ms" aria-hidden="true">edit_note</span>{t('conv.brouillon')}</span>
           <span class="apercu">{brouillonDuFil.body}</span>
-          <span class="heure">{quand(Math.floor(brouillonDuFil.updated_epoch / 1000))}</span>
+          <span class="quand">{quand(Math.floor(brouillonDuFil.updated_epoch / 1000))}</span>
           <span class="reprendre">{t('action.reprendre')}</span>
         </div>
       {/if}
@@ -232,12 +243,30 @@
   }
   .puce.bouton { cursor:pointer; }
   .puce.bouton:hover { background:var(--sel); }
-  .puce.bouton.inerte { cursor:default; opacity:.55; }
-  .puce.bouton.inerte:hover { background:var(--surface); }
+  /* Les boutons NUS de la maquette (A45) : bordure et fond effacés,
+     gabarit mini 26 px — « Tout déplier », « Voir la conversation ». */
+  .essor { flex:1; }
+  .nu {
+    height:26px; padding:0 9px; display:inline-flex; align-items:center;
+    gap:6px; font-size:12px; color:var(--ink2); background:none;
+    border:1px solid transparent; border-radius:6px; cursor:pointer;
+    white-space:nowrap;
+  }
+  .nu:hover { background:var(--sel); }
+  .nu.inerte { cursor:default; opacity:.55; }
+  .nu.inerte:hover { background:none; }
+  /* L'avatar aux initiales des cartes (A45) — le dessin de la liste
+     (E2) : 28 px déplié, 26 px replié. */
+  .avatar {
+    width:28px; height:28px; border-radius:50%; background:var(--panel);
+    border:1px solid var(--border); display:grid; place-items:center;
+    font-size:11px; font-weight:600; color:var(--ink2); flex:none;
+  }
+  .avatar.petit { width:26px; height:26px; }
   .fil { flex:1; overflow-y:auto; padding:14px 26px; min-height:0; }
   .replie {
-    display:flex; align-items:center; gap:12px; padding:12px 16px;
-    margin-bottom:10px; background:var(--surface);
+    display:flex; align-items:center; gap:10px; padding:12px 20px;
+    margin-bottom:12px; background:var(--surface);
     border:1px solid var(--border); border-radius:10px; cursor:pointer;
     font-size:13px;
   }
@@ -247,7 +276,7 @@
     flex:1; min-width:0; color:var(--muted);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .replie .heure { color:var(--muted); font-size:12px; flex:none; }
+  .quand { margin-left:auto; color:var(--muted); font-size:12px; flex:none; white-space:nowrap; }
   .replie.brouillon { border:1.5px dashed var(--accent); background:none; }
   .replie.brouillon .mention {
     color:var(--alert); font-weight:600; display:inline-flex;
@@ -256,23 +285,24 @@
   .replie.brouillon .reprendre { color:var(--accent); font-weight:600; flex:none; }
   .deplie {
     background:var(--surface); border:1px solid var(--border);
-    border-radius:10px; box-shadow:var(--shadow); margin-bottom:10px;
+    border-radius:10px; box-shadow:var(--shadow); margin-bottom:12px;
     display:flex; flex-direction:column;
   }
+  /* L'en-tête de la maquette : avatar · (nom / adresse · à X) · quand. */
   .tete-message {
-    display:flex; align-items:center; gap:12px; padding:12px 16px;
-    border-bottom:1px solid var(--border); cursor:pointer; font-size:13px;
+    display:flex; align-items:center; gap:10px; padding:12px 20px;
+    border-bottom:1px solid var(--border); cursor:pointer;
   }
-  .tete-message .auteur { font-weight:600; color:var(--ink); flex:1; min-width:0; }
-  .tete-message .heure { color:var(--muted); font-size:12px; flex:none; }
-  .tete-message .puce { height:26px; padding:0 9px; font-size:12px; }
-  .contenu { padding:14px 16px 16px; display:flex; flex-direction:column; gap:12px; }
-  .adresses {
-    margin:0; display:grid; grid-template-columns:auto 1fr;
-    column-gap:16px; row-gap:6px; font-size:13px;
+  .tete-message .qui { min-width:0; display:flex; flex-direction:column; }
+  .tete-message .auteur {
+    font-size:15px; font-weight:600; color:var(--ink);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .adresses dt { color:var(--muted); }
-  .adresses dd { margin:0; color:var(--ink2); }
+  .tete-message .adr {
+    font-size:12px; color:var(--muted);
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .contenu { padding:14px 20px 18px; display:flex; flex-direction:column; gap:12px; }
   .garde-images {
     padding:10px 14px; display:flex; align-items:center; gap:10px;
     font-size:13px; color:var(--ink2); background:var(--panel);
@@ -288,8 +318,8 @@
   .garde-images button:hover { background:var(--sel); }
   .corps {
     /* Déborde de 12 px : la gouttière interne du document assaini
-       (mail-render) ramène le texte au fil des De/À/Objet. Le fond au
-       jeton — le document bake la même valeur (revue A42). */
+       (mail-render) ramène le texte au fil du padding de la carte. Le
+       fond au jeton — le document bake la même valeur (revue A42). */
     border:none; background:var(--surface);
     margin-left:-12px; width:calc(100% + 24px);
     height:clamp(220px, 45vh, 520px);

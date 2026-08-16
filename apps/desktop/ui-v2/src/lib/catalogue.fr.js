@@ -138,6 +138,7 @@ export const FR = {
   // --- Conversation (écran 03) ------------------------------------------
   'conv.toutDeplier': 'Tout déplier',
   'conv.brouillon': 'Brouillon',
+  'conv.adrDest': '{adr} · à {qui}',
   'conv.de': 'De',
   'conv.a': 'À',
   'conv.objet': 'Objet',
@@ -326,6 +327,8 @@ export const FR = {
     'Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi',
   ],
   'quand.hier': 'Hier',
+  'quand.aujourdhui': "Aujourd'hui",
+  'quand.long': '{jour}, {heure}',
   'quand.premier': '1ᵉʳ',
   'quand.dansAnnee': '{jour} {mois}',
   'quand.auDela': '{jour} {mois} {annee}',

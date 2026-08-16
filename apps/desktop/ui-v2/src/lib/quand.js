@@ -22,6 +22,19 @@ export function depuis(epoch, maintenant) {
   return t('depuis.jours', { n: Math.floor(heures / 24) });
 }
 
+// La forme longue des cartes du fil : « Aujourd'hui, 09:12 »,
+// « Hier, 16:30 », « Lundi, 18:20 », « 5 août, 10:12 » — celle de la
+// maquette Classique (terrain A45 ; la forme d'avant v3, ressuscitée
+// par la langue : jour et gabarit viennent du catalogue).
+export function quandLong(epoch) {
+  if (!epoch) return '';
+  const date = new Date(epoch * 1000);
+  const heure = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  const court = quand(epoch);
+  const jour = court === heure ? t('quand.aujourdhui') : court;
+  return t('quand.long', { jour, heure });
+}
+
 export function quand(epoch) {
   if (!epoch) return '';
   const date = new Date(epoch * 1000);
