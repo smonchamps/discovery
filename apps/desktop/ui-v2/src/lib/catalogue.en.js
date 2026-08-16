@@ -134,8 +134,8 @@ export const EN = {
   'lecture.enregistrer': 'Save to Downloads',
 
   // --- Conversation (écran 03) ------------------------------------------
-  'conv.deplier': 'Expand',
-  'conv.replier': 'Collapse',
+  'conv.deplier': 'Expand all',
+  'conv.replier': 'Collapse all',
   'conv.brouillon': 'Draft',
   'conv.adrDest': '{adr} · to {qui}',
   'conv.de': 'From',

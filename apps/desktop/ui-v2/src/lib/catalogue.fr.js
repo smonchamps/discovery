@@ -136,8 +136,8 @@ export const FR = {
   'lecture.enregistrer': 'Enregistrer dans Téléchargements',
 
   // --- Conversation (écran 03) ------------------------------------------
-  'conv.deplier': 'Déplier',
-  'conv.replier': 'Replier',
+  'conv.deplier': 'Tout déplier',
+  'conv.replier': 'Tout replier',
   'conv.brouillon': 'Brouillon',
   'conv.adrDest': '{adr} · à {qui}',
   'conv.de': 'De',

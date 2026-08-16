@@ -63,6 +63,11 @@
   // TOUJOURS dit — « 1 message » compris —, fichiers SOMMÉS sur le fil
   // (la ligne ne porte que le compte de SON message).
   const nbMessages = $derived(fil.messages.length || fil.ligne?.thread_size || 1);
+  // La bascule se DÉRIVE de l'état réel (terrain A47) : tout déplié →
+  // « Tout replier » — un fil d'un message s'ouvre donc dessus.
+  const tousDeplies = $derived(
+    fil.messages.length > 0 && fil.messages.every((m) => fil.deplies[cleMsg(m)]),
+  );
   const totalPieces = $derived(
     fil.messages.length
       ? fil.messages.reduce((n, m) => n + (nbPiecesDe(m) || 0), 0)
@@ -80,6 +85,39 @@
       ? fil.messages.find((x) => x.sender_address && x.sender_address !== m.sender_address)
       : fil.messages.find((x) => propre(x));
     return vise ? vise.sender : (fil.ligne?.account_email ?? '');
+  }
+
+  // La hauteur du corps suit le CONTENU (terrain A47), jamais un
+  // gabarit fixe : l'iframe est same-origin SANS scripts (S1) — le
+  // parent mesure le document assaini et pose la hauteur. Re-mesure au
+  // chargement (srcdoc posé, images accordées) et au changement de
+  // LARGEUR seulement (re-flow du texte) — jamais sur sa propre pose
+  // de hauteur, pour ne pas boucler l'observateur.
+  function corpsAuto(iframe) {
+    let largeur = 0;
+    const mesurer = () => {
+      const doc = iframe.contentDocument;
+      if (!doc?.documentElement) return;
+      iframe.style.height = '0';
+      iframe.style.height = `${doc.documentElement.scrollHeight}px`;
+    };
+    const surLoad = () => {
+      largeur = iframe.offsetWidth;
+      mesurer();
+    };
+    iframe.addEventListener('load', surLoad);
+    const observateur = new ResizeObserver(() => {
+      if (iframe.offsetWidth === largeur) return;
+      largeur = iframe.offsetWidth;
+      mesurer();
+    });
+    observateur.observe(iframe);
+    return {
+      destroy() {
+        observateur.disconnect();
+        iframe.removeEventListener('load', surLoad);
+      },
+    };
   }
 
   // En-vol transitoire : local au composant, rien à partager entre
@@ -132,9 +170,10 @@
                   onclick={() => fil.ligne.thread_id != null && onagrandir(fil.ligne)}>
             <span class="ms" aria-hidden="true">open_in_full</span>{t('lecture.ouvrir')}</button>
         {/if}
-        <!-- La bascule (A46) : « Déplier » tout ouvre et devient
-             « Replier », qui tout referme — le dernier compris. -->
-        {#if fil.tousDeplies}
+        <!-- La bascule (A46, dérivée depuis A47) : « Tout replier »
+             quand TOUT est déplié — fil d'un message compris —, sinon
+             « Tout déplier » ; les dépliages manuels la font suivre. -->
+        {#if tousDeplies}
           <button type="button" class="nu" data-testid="tout-replier" onclick={toutReplier}>
             <span class="ms" aria-hidden="true">unfold_less</span>{t('conv.replier')}</button>
         {:else}
@@ -173,7 +212,7 @@
                 </div>
               {/if}
               <iframe class="corps" sandbox="allow-same-origin" srcdoc={fil.corps[k] ?? ''}
-                      title={t('lecture.corps')}
+                      title={t('lecture.corps')} use:corpsAuto
                       onload={(ev) => brancherLiens(ev.currentTarget)}></iframe>
               {#if nbPiecesDe(m) > 0}
                 <div class="fichiers" data-testid="lecture-fichiers">
@@ -331,10 +370,11 @@
   .corps {
     /* Déborde de 12 px : la gouttière interne du document assaini
        (mail-render) ramène le texte au fil du padding de la carte. Le
-       fond au jeton — le document bake la même valeur (revue A42). */
-    border:none; background:var(--surface);
-    margin-left:-12px; width:calc(100% + 24px);
-    height:clamp(220px, 45vh, 520px);
+       fond au jeton — le document bake la même valeur (revue A42).
+       La HAUTEUR n'est pas ici : elle suit le contenu, posée par
+       corpsAuto (A47) — jamais de gabarit fixe. */
+    border:none; background:var(--surface); display:block;
+    margin-left:-12px; width:calc(100% + 24px); height:0;
   }
   .titre-fichiers {
     margin:0 0 8px; font-size:12px; font-weight:600; letter-spacing:.1em;

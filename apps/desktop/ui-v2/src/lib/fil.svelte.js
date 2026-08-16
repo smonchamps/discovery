@@ -25,10 +25,6 @@ const VIDE = () => ({
   nbPieces: {},
   imagesBloquees: {},
   imagesVoulues: {},
-  // La bascule « Déplier »/« Replier » (terrain A46) : armée par le
-  // GESTE seul — jamais dérivée des dépliages manuels — et remise à
-  // zéro à chaque ouverture (VIDE).
-  tousDeplies: false,
 });
 
 export const fil = $state({
@@ -159,13 +155,15 @@ export function basculerMessage(m, valeur = null) {
 }
 
 export function toutDeplier() {
-  fil.tousDeplies = true;
   for (const m of fil.messages) basculerMessage(m, true);
 }
 
 // Le geste inverse (terrain A46) : TOUT se replie, le dernier compris.
+// La bascule « Tout déplier »/« Tout replier » n'est PAS un drapeau :
+// elle se DÉRIVE de l'état réel des dépliages (terrain A47 — un fil
+// d'un message s'ouvre déplié, le bouton dit « Tout replier » ; les
+// dépliages manuels la font suivre).
 export function toutReplier() {
-  fil.tousDeplies = false;
   for (const m of fil.messages) basculerMessage(m, false);
 }
 

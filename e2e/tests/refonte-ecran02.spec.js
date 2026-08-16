@@ -320,7 +320,7 @@ test('le fil au dessin exact de la maquette — avatars, adresse · destinataire
   await expect(deplie.locator('dl')).toHaveCount(0);
 });
 
-test('le fil au message seul dit « 1 message » — et garde Tout déplier (terrain A45)', async () => {
+test('le fil au message seul dit « 1 message » — et s\'ouvre sur « Tout replier » (terrains A45/A47)', async () => {
   // La seconde capture CE : un fil d'un message garde le rang complet.
   // Le test « archiver » a rangé Planning aux Archives — on l'y suit.
   await dossier('archives').click();
@@ -332,7 +332,9 @@ test('le fil au message seul dit « 1 message » — et garde Tout déplier (ter
   const puces = volet.locator('[data-testid="fil-puces"]');
   await expect(puces).toContainText('1 message');
   await expect(puces).not.toContainText('fichier');
-  await expect(volet.locator('[data-testid="tout-deplier"]')).toBeVisible();
+  // A47 : le message seul s'ouvre DÉPLIÉ — la bascule, dérivée de
+  // l'état, dit donc « Tout replier » dès l'ouverture.
+  await expect(volet.locator('[data-testid="tout-replier"]')).toBeVisible();
   const deplie = volet.locator('[data-testid="message-deplie"]');
   await expect(deplie.locator('.avatar')).toHaveText('YB');
   // Sans copie à nous dans le fil, le destinataire est l'adresse du
@@ -349,16 +351,15 @@ test("le volet est à plat, « Ouvrir » et « Déplier » à leur glyphe propre
   // Retours CE du 2026-08-16 : le volet ne s'enferme plus dans une
   // élévation — il défile en un seul flot, la tête du fil sans filet
   // (dessin .voletLecture du prototype) ; « Voir la conversation »
-  // devient « Ouvrir » (open_in_full — une icône, un sens, A3) et
-  // « Tout déplier » devient « Déplier ».
+  // devient « Ouvrir » (open_in_full — une icône, un sens, A3) ; les
+  // libellés de bascule sont « Tout déplier »/« Tout replier » (A47).
   await page.locator('[data-testid="ligne"]').first().click();
   const volet = page.locator('[data-testid="volet-lecture"]');
   const ouvrir = volet.locator('[data-testid="voir-conversation"]');
   await expect(ouvrir).toContainText('Ouvrir');
   await expect(ouvrir.locator('.ms')).toHaveText('open_in_full');
   const deplier = volet.locator('[data-testid="tout-deplier"]');
-  await expect(deplier).toContainText('Déplier');
-  await expect(deplier).not.toContainText('Tout');
+  await expect(deplier).toContainText('Tout déplier');
   await expect(deplier.locator('.ms')).toHaveText('unfold_more');
   // À plat : le volet lui-même défile, la tête ne porte aucun filet.
   expect(await volet.evaluate((el) => getComputedStyle(el).overflowY)).toBe('auto');
@@ -367,20 +368,24 @@ test("le volet est à plat, « Ouvrir » et « Déplier » à leur glyphe propre
   ).toBe('0px');
 });
 
-test("« Déplier » devient « Replier », qui referme tout — le dernier compris (terrain A46)", async () => {
+test("la bascule « Tout déplier »/« Tout replier » SUIT l'état réel des dépliages (terrain A47)", async () => {
   const volet = page.locator('[data-testid="volet-lecture"]');
   await volet.locator('[data-testid="tout-deplier"]').click();
   await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(3);
   await expect(volet.locator('[data-testid="tout-deplier"]')).toHaveCount(0);
   const replier = volet.locator('[data-testid="tout-replier"]');
-  await expect(replier).toContainText('Replier');
+  await expect(replier).toContainText('Tout replier');
   await expect(replier.locator('.ms')).toHaveText('unfold_less');
-  // Replier un message à la MAIN ne désarme pas la bascule (le geste
-  // seul la tient, A46).
+  // Dérivée de l'état (A47, renverse le « geste seul » d'A46) :
+  // replier un message à la MAIN la fait retomber sur « Tout
+  // déplier »…
   await volet.locator('[data-testid="message-deplie"]').first().locator('.tete-message').click();
   await expect(volet.locator('[data-testid="message-replie"]')).toHaveCount(1);
+  await expect(volet.locator('[data-testid="tout-deplier"]')).toBeVisible();
+  // …et le redéplier à la main la remet sur « Tout replier ».
+  await volet.locator('[data-testid="message-replie"]').click();
   await expect(replier).toBeVisible();
-  // « Replier » referme TOUT et redevient « Déplier ».
+  // « Tout replier » referme TOUT — le dernier compris.
   await replier.click();
   await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(0);
   await expect(volet.locator('[data-testid="message-replie"]')).toHaveCount(3);
@@ -388,6 +393,33 @@ test("« Déplier » devient « Replier », qui referme tout — le dernier comp
   // Remettre le fil dans l'état d'ouverture : le dernier déplié.
   await volet.locator('[data-testid="message-replie"]').last().click();
   await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(1);
+});
+
+test('la hauteur du corps suit le contenu — jamais de gabarit fixe (terrain A47)', async () => {
+  // Le corps de Camille est court : l'iframe colle à son document
+  // (l'ancien plancher figeait 220 px), à l'épaisseur d'un filet près.
+  const volet = page.locator('[data-testid="volet-lecture"]');
+  const corps = volet.locator('[data-testid="message-deplie"] iframe');
+  await expect(
+    volet.frameLocator('[data-testid="message-deplie"] iframe').locator('body'),
+  ).toContainText('Bonjour Paul');
+  // La preuve NON circulaire : le contenu se mesure iframe à zéro
+  // (scrollHeight ≥ hauteur posée sinon), puis on compare à la
+  // hauteur posée — elles coïncident, au filet près.
+  const mesure = () =>
+    corps.evaluate((el) => {
+      const posee = el.offsetHeight;
+      el.style.height = '0';
+      const brut = el.contentDocument.documentElement.scrollHeight;
+      el.style.height = `${posee}px`;
+      return { posee, brut };
+    });
+  await expect
+    .poll(async () => {
+      const { posee, brut } = await mesure();
+      return posee > 60 && Math.abs(posee - brut) <= 2;
+    })
+    .toBe(true);
 });
 
 test("l'entête de composition ne répète plus l'objet, « De » colle à l'entête (terrain A46)", async () => {
