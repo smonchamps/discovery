@@ -56,8 +56,11 @@ Le CE n'a que **quatre gestes** ; tout le reste est porté par la session.
    Aucun code n'existe avant ce GO.
 3. **⛔ STOP 2 — valider au terrain.** La session remet une checklist :
    gestes à jouer sur les vrais comptes, chiffres attendus, budgets à
-   re-mesurer. Dire ce qui est vu — un constat déclenche la correction
-   le jour même, dans la même session.
+   re-mesurer. Elle fournit **systématiquement, à ce moment, les
+   commandes PowerShell nécessaires à la réalisation du test terrain**
+   (lancement de l'app, build, préparation des comptes, mesures) —
+   prêtes à copier, une par bloc. Dire ce qui est vu — un constat
+   déclenche la correction le jour même, dans la même session.
 4. **Fournir les mesures que la session ne peut pas prendre** : rappel
    PASSATION §7.1, elle ne lit pas la base réelle ni le bandeau. Quand
    la Phase 0 a besoin d'un chiffre du terrain, elle le demande et

@@ -30,5 +30,8 @@ A37/A38).
    mécanisme et le remède au corps du message), push, `gh run watch`
    jusqu'à CI verte.
 6. **Clôture** : proposer au CE de re-jouer le geste au terrain pour
-   confirmer, et mettre à jour la mémoire si le constat clôt ou rouvre
-   un chantier.
+   confirmer — en fournissant **systématiquement les commandes
+   PowerShell nécessaires à ce test terrain** (lancement de l'app,
+   build, préparation des comptes, mesures), prêtes à copier, une par
+   bloc. Mettre à jour la mémoire si le constat clôt ou rouvre un
+   chantier.

@@ -70,9 +70,12 @@ avec la date. **Aucun code de production avant le GO.**
 
 Remettre au CE une **checklist de terrain** : quoi regarder, gestes à
 jouer, chiffres attendus, budgets à re-mesurer (PASSATION §3 — un
-budget dépassé arrête la ligne). Attendre le verdict. Un constat
-terrain → correction **le jour même**, dans la même session, puis
-re-gate et nouvelle passe terrain.
+budget dépassé arrête la ligne). Fournir **systématiquement, à ce
+moment, les commandes PowerShell nécessaires à la réalisation du test
+terrain** (lancement de l'app, build, préparation des comptes,
+mesures) — prêtes à copier, une par bloc. Attendre le verdict. Un
+constat terrain → correction **le jour même**, dans la même session,
+puis re-gate et nouvelle passe terrain.
 
 ## Phase 4 — Documentation
 
