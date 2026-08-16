@@ -14,7 +14,7 @@
   // allow-scripts par message déplié, corps servi par le cœur,
   // liens interceptés (lib/liens.js).
   import {
-    fil, cleMsg, basculerMessage, toutDeplier, afficherImages,
+    fil, cleMsg, basculerMessage, toutDeplier, toutReplier, afficherImages,
   } from './lib/fil.svelte.js';
   import { appel } from './lib/transport.js';
   import { brancherLiens } from './lib/liens.js';
@@ -106,7 +106,11 @@
 </script>
 
 {#if fil.ligne}
-  <div class="objet-fil">
+  <!-- Le cadre volet est À PLAT (terrain A46, dessin du prototype :
+       .voletLecture) : pas d'élévation englobante, pas de filets —
+       seules les cartes de message s'élèvent, et TOUT défile en flot,
+       barre d'actions comprise. L'écran 03 garde sa carte pleine. -->
+  <div class="objet-fil" class:volet={fil.cadre === 'volet'}>
     <div class="tete">
       <h3 class="titre" data-testid="fil-sujet">{fil.ligne.subject}</h3>
       <!-- Le rang de la maquette (terrain A45) : puces d'inventaire à
@@ -119,16 +123,24 @@
         <span class="essor"></span>
         {#if onagrandir}
           <!-- V-D2 : un message SEUL n'a pas de conversation à ouvrir
-               — le bouton reste, inerte et dit tel. -->
+               — le bouton reste, inerte et dit tel. « Ouvrir » porte
+               son propre glyphe (A46) : une icône, un sens (A3). -->
           <button type="button" class="nu" data-testid="voir-conversation"
                   class:inerte={fil.ligne.thread_id == null}
                   aria-disabled={fil.ligne.thread_id == null}
                   tabindex={fil.ligne.thread_id != null ? 0 : -1}
                   onclick={() => fil.ligne.thread_id != null && onagrandir(fil.ligne)}>
-            <span class="ms" aria-hidden="true">unfold_more</span>{t('lecture.voirConversation')}</button>
+            <span class="ms" aria-hidden="true">open_in_full</span>{t('lecture.ouvrir')}</button>
         {/if}
-        <button type="button" class="nu" data-testid="tout-deplier" onclick={toutDeplier}>
-          <span class="ms" aria-hidden="true">unfold_more</span>{t('conv.toutDeplier')}</button>
+        <!-- La bascule (A46) : « Déplier » tout ouvre et devient
+             « Replier », qui tout referme — le dernier compris. -->
+        {#if fil.tousDeplies}
+          <button type="button" class="nu" data-testid="tout-replier" onclick={toutReplier}>
+            <span class="ms" aria-hidden="true">unfold_less</span>{t('conv.replier')}</button>
+        {:else}
+          <button type="button" class="nu" data-testid="tout-deplier" onclick={toutDeplier}>
+            <span class="ms" aria-hidden="true">unfold_more</span>{t('conv.deplier')}</button>
+        {/if}
       </div>
     </div>
 
@@ -345,4 +357,18 @@
     border-color:var(--accent);
   }
   .actions .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+
+  /* Le cadre VOLET, à plat (A46) — la géométrie du prototype
+     (.voletLecture / .lecture) : le volet défile en un seul flot, les
+     filets et l'élévation appartiennent aux seules cartes ; le titre
+     colle au dessin (.titreFil margin 2/4, sousTitre à 10 px des
+     cartes), la barre d'actions suit le flot (barreActions, 14 px). */
+  .objet-fil.volet { flex:none; min-height:100%; }
+  .volet .tete { padding:0; border-bottom:none; gap:0; }
+  .volet .titre { margin:2px 0 4px; }
+  .volet .puces { margin:0 0 10px; }
+  .volet .fil { flex:none; overflow-y:visible; padding:0; }
+  .volet .replie, .volet .deplie { margin-bottom:0; margin-top:12px; }
+  .volet .replie.brouillon { margin-top:12px; }
+  .volet .actions { padding:14px 0 0; border-top:none; }
 </style>

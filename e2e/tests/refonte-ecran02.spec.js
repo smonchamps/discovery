@@ -345,6 +345,72 @@ test('le fil au message seul dit « 1 message » — et garde Tout déplier (ter
   await page.locator('[data-testid="ligne"]').first().click();
 });
 
+test("le volet est à plat, « Ouvrir » et « Déplier » à leur glyphe propre (terrain A46)", async () => {
+  // Retours CE du 2026-08-16 : le volet ne s'enferme plus dans une
+  // élévation — il défile en un seul flot, la tête du fil sans filet
+  // (dessin .voletLecture du prototype) ; « Voir la conversation »
+  // devient « Ouvrir » (open_in_full — une icône, un sens, A3) et
+  // « Tout déplier » devient « Déplier ».
+  await page.locator('[data-testid="ligne"]').first().click();
+  const volet = page.locator('[data-testid="volet-lecture"]');
+  const ouvrir = volet.locator('[data-testid="voir-conversation"]');
+  await expect(ouvrir).toContainText('Ouvrir');
+  await expect(ouvrir.locator('.ms')).toHaveText('open_in_full');
+  const deplier = volet.locator('[data-testid="tout-deplier"]');
+  await expect(deplier).toContainText('Déplier');
+  await expect(deplier).not.toContainText('Tout');
+  await expect(deplier.locator('.ms')).toHaveText('unfold_more');
+  // À plat : le volet lui-même défile, la tête ne porte aucun filet.
+  expect(await volet.evaluate((el) => getComputedStyle(el).overflowY)).toBe('auto');
+  expect(
+    await volet.locator('.tete').evaluate((el) => getComputedStyle(el).borderBottomWidth),
+  ).toBe('0px');
+});
+
+test("« Déplier » devient « Replier », qui referme tout — le dernier compris (terrain A46)", async () => {
+  const volet = page.locator('[data-testid="volet-lecture"]');
+  await volet.locator('[data-testid="tout-deplier"]').click();
+  await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(3);
+  await expect(volet.locator('[data-testid="tout-deplier"]')).toHaveCount(0);
+  const replier = volet.locator('[data-testid="tout-replier"]');
+  await expect(replier).toContainText('Replier');
+  await expect(replier.locator('.ms')).toHaveText('unfold_less');
+  // Replier un message à la MAIN ne désarme pas la bascule (le geste
+  // seul la tient, A46).
+  await volet.locator('[data-testid="message-deplie"]').first().locator('.tete-message').click();
+  await expect(volet.locator('[data-testid="message-replie"]')).toHaveCount(1);
+  await expect(replier).toBeVisible();
+  // « Replier » referme TOUT et redevient « Déplier ».
+  await replier.click();
+  await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(0);
+  await expect(volet.locator('[data-testid="message-replie"]')).toHaveCount(3);
+  await expect(volet.locator('[data-testid="tout-deplier"]')).toBeVisible();
+  // Remettre le fil dans l'état d'ouverture : le dernier déplié.
+  await volet.locator('[data-testid="message-replie"]').last().click();
+  await expect(volet.locator('[data-testid="message-deplie"]')).toHaveCount(1);
+});
+
+test("l'entête de composition ne répète plus l'objet, « De » colle à l'entête (terrain A46)", async () => {
+  // Reprendre le brouillon du fil Vantis : la fenêtre s'ouvre comme
+  // avant — mais l'entête ne porte plus le rappel d'objet (le champ
+  // Objet le dit dessous), et l'écart entête → « De » est celui du
+  // composeur du prototype (6 px).
+  await page.locator('[data-testid="conv-brouillon"]').click();
+  const compo = page.locator('[data-testid="composition"]');
+  await expect(compo).toBeVisible();
+  await expect(compo.locator('[data-testid="composition-kicker"]')).toBeVisible();
+  // L'objet du brouillon ne vit que dans SON champ (valeur d'input,
+  // hors textContent) — aucun rappel en texte dans la fenêtre.
+  await expect(compo).not.toContainText('Relecture du contrat Vantis');
+  expect(
+    await compo
+      .locator('[data-testid="composition-de"]')
+      .evaluate((el) => getComputedStyle(el.closest('.champs')).paddingTop),
+  ).toBe('6px');
+  await page.locator('[data-testid="composition-annuler"]').click();
+  await expect(compo).toHaveCount(0);
+});
+
 // ——— Écran 03 : la conversation plein écran (P3) ————————————————————
 
 test('voir la conversation ouvre le fil plein écran, dernier message déplié', async () => {

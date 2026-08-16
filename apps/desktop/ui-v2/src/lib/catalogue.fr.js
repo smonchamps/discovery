@@ -129,14 +129,15 @@ export const FR = {
   // --- Volet de lecture -------------------------------------------------
   'lecture.aria': 'Message',
   'lecture.vide': 'Sélectionnez un message pour le lire.',
-  'lecture.voirConversation': 'Voir la conversation',
+  'lecture.ouvrir': 'Ouvrir',
   'lecture.imagesBloquees': '{n} image distante bloquée pour protéger votre vie privée.|{n} images distantes bloquées pour protéger votre vie privée.',
   'lecture.afficherImages': 'Afficher les images',
   'lecture.corps': 'Contenu du message',
   'lecture.enregistrer': 'Enregistrer dans Téléchargements',
 
   // --- Conversation (écran 03) ------------------------------------------
-  'conv.toutDeplier': 'Tout déplier',
+  'conv.deplier': 'Déplier',
+  'conv.replier': 'Replier',
   'conv.brouillon': 'Brouillon',
   'conv.adrDest': '{adr} · à {qui}',
   'conv.de': 'De',

@@ -127,14 +127,15 @@ export const EN = {
   // --- Volet de lecture -------------------------------------------------
   'lecture.aria': 'Message',
   'lecture.vide': 'Select a message to read it.',
-  'lecture.voirConversation': 'View conversation',
+  'lecture.ouvrir': 'Open',
   'lecture.imagesBloquees': '{n} remote image blocked to protect your privacy.|{n} remote images blocked to protect your privacy.',
   'lecture.afficherImages': 'Show images',
   'lecture.corps': 'Message content',
   'lecture.enregistrer': 'Save to Downloads',
 
   // --- Conversation (écran 03) ------------------------------------------
-  'conv.toutDeplier': 'Expand all',
+  'conv.deplier': 'Expand',
+  'conv.replier': 'Collapse',
   'conv.brouillon': 'Draft',
   'conv.adrDest': '{adr} · to {qui}',
   'conv.de': 'From',

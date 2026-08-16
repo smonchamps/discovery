@@ -34,28 +34,24 @@
 
 <main aria-label={t('lecture.aria')} data-testid="volet-lecture">
   {#if fil.cadre === 'volet' && fil.ligne}
-    <div class="carte">
-      <Fil {brouillons} {onreprendre} {onarchiver} {onsupprimer}
-           {onrepondre} {onrepondretous} {ontransferer} {onflash}
-           onagrandir={onconversation} />
-    </div>
+    <Fil {brouillons} {onreprendre} {onarchiver} {onsupprimer}
+         {onrepondre} {onrepondretous} {ontransferer} {onflash}
+         onagrandir={onconversation} />
   {:else if fil.cadre !== 'plein'}
     <p class="vide">{t('lecture.vide')}</p>
   {/if}
 </main>
 
 <style>
+  /* Le volet est À PLAT (terrain A46, .voletLecture du prototype) :
+     un panneau qui défile en un seul flot — l'élévation appartient aux
+     cartes de message, jamais au volet entier. */
   main {
-    background:var(--bg); padding:12px 20px 20px; min-width:0;
-    display:flex; flex-direction:column; min-height:0;
+    background:var(--bg); padding:18px 22px; min-width:0;
+    display:flex; flex-direction:column; min-height:0; overflow-y:auto;
   }
   .vide {
     margin:auto; font-size:13px; line-height:1.5; color:var(--muted);
     text-align:center; padding:40px;
-  }
-  .carte {
-    flex:1; background:var(--surface); border:1px solid var(--border);
-    border-radius:10px; box-shadow:var(--shadow);
-    display:flex; flex-direction:column; min-height:0; overflow:hidden;
   }
 </style>

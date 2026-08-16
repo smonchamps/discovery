@@ -559,9 +559,11 @@
 {#if visible}
   <div class="scrim" data-testid="composition">
     <div class="carte" role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
+      <!-- Terrain A46 : l'entête ne répète plus l'objet — le champ
+           Objet le dit, juste dessous. -->
       <div class="tete">
         <span class="kicker" data-testid="composition-kicker">{t(KICKERS[mode])}</span>
-        <span class="rappel">{objet}</span>
+        <span class="essor"></span>
         <span class="puce"><span class="ms" aria-hidden="true">open_in_new</span>{t('compo.independante')}</span>
         <button type="button" class="fermer" aria-label={t('action.fermer')} onclick={fermer}>
           <span class="ms" aria-hidden="true">close</span></button>
@@ -688,10 +690,7 @@
     font-size:12px; letter-spacing:.1em; text-transform:uppercase;
     color:var(--muted); font-weight:600; white-space:nowrap;
   }
-  .rappel {
-    font-size:13px; color:var(--muted); flex:1; overflow:hidden;
-    text-overflow:ellipsis; white-space:nowrap;
-  }
+  .essor { flex:1; }
   .puce {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
@@ -706,7 +705,9 @@
   }
   .fermer:hover { background:var(--sel); }
 
-  .champs { padding:18px 22px 0; display:flex; flex-direction:column; }
+  /* A46 : l'écart entête → « De » au dessin du composeur du prototype
+     (.ccorps : 6 px), plus les 18 px d'antan. */
+  .champs { padding:6px 22px 0; display:flex; flex-direction:column; }
   .rang {
     height:44px; display:flex; align-items:center; gap:14px;
     border-bottom:1px solid var(--border);

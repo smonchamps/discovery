@@ -1,6 +1,6 @@
 # Icônes vendorisées — sous-ensemble Material Symbols Rounded (R0-S3)
 
-**44 glyphes**, **21 292 octets** (20,8 Kio) woff2, servis depuis le dépôt.
+**46 glyphes**, **21 500 octets** (21,0 Kio) woff2, servis depuis le dépôt.
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
@@ -29,16 +29,19 @@ des sources (`grep` des noms utilisés), pas de mémoire. PLAN-VOLETS E2
 volet). PLAN-WADA E1 (2026-08-15, A32) ajoute `inventory_2` (dossier
 Archives de la nav au dessin des pistes, W2-D3) et retire `work` au
 balayage (patron A13 : plus employé nulle part — la tuile de la boîte
-en cours porte `person`, W2-D5/D7) ; le compte reste à 44.
+en cours porte `person`, W2-D5/D7) ; le compte reste à 44. Terrain A46
+(2026-08-16) ajoute `open_in_full` (« Ouvrir » — le volet vers l'écran
+03 ; `unfold_more` servait DEUX sens, contraire à A3) et `unfold_less`
+(« Replier », la bascule du fil) ; le compte passe à 46.
 
 `all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
 `check_circle` `close` `delete` `description` `display_settings`
 `drafts` `edit_note` `edit_square` `error` `format_list_bulleted`
 `format_quote` `forum` `group_add` `hourglass_empty` `inbox` `info`
 `inventory_2` `keyboard` `link` `link_off` `mark_email_unread` `menu`
-`notifications` `open_in_new` `person` `person_add` `reply` `reply_all`
-`report` `search` `send` `settings` `storage` `sync`
-`system_update_alt` `unfold_more` `visibility_off`
+`notifications` `open_in_full` `open_in_new` `person` `person_add`
+`reply` `reply_all` `report` `search` `send` `settings` `storage`
+`sync` `system_update_alt` `unfold_less` `unfold_more` `visibility_off`
 `volunteer_activism` `warning`
 
 Ajouter un glyphe = régénérer le fichier (ci-dessous), tenir cette
@@ -103,8 +106,7 @@ curl -s -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?fam
 ## Preuve ([apercu.html](apercu.html))
 
 Page servie localement sous CSP `default-src 'none'; font-src 'self'` :
-**PASS — police locale chargée, 45/45 ligatures repliées** (les 44 glyphes
-+ le témoin FILL 1/600 ; rejouée le 2026-08-15, PLAN-WADA E1, canal
-msedge).
+**PASS — police locale chargée, 47/47 ligatures repliées** (les 46 glyphes
++ le témoin FILL 1/600 ; rejouée le 2026-08-16, terrain A46).
 Vérification objective : une ligature résolue se replie sur ~1 em ; un
 nom resté en toutes lettres est bien plus large.
