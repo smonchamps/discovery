@@ -76,8 +76,8 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 (PLAN-GELS, ADR 0019) ; auto-update 0.1.6 → 0.1.7 confirmé au terrain.
 Tous les plans de cette ligne sont soldés.
 
-**Dernier chantier soldé : PLAN-RETOURS-2** (2026-08-17, quatre retours
-terrain, non encore publié — vit sur `main`). (1) **Synchro Gmail « trop
+**Dernier chantier soldé : PLAN-RETOURS-2** (2026-08-17, `dfa6224`, A52-A54
++ ADR 0021, terrain complet, non encore publié — vit sur `main`). (1) **Synchro Gmail « trop
 longue »** : mesurée au terrain (trace `run_sync`, ~135 s en release quand
 22 vues Gmail ont bougé — ~5 s par dossier changé, bridage probable). La
 sobriété (ADR 0017) tient ; c'était la **cadence** qui coûtait. Le

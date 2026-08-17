@@ -1,5 +1,14 @@
 # PLAN-RETOURS-2 — synchro Gmail, trait de chargement, composition (indépendante, Cc/Cci)
 
+> **CHANTIER SOLDÉ le 2026-08-17 — terrain complet.** Commit unique
+> `dfa6224` (feat), CI verte (run 32063007854). GO CE du plan le
+> 2026-08-17 (D1-D4), décisions #1 le même jour (D5-D8). Terrain validé
+> par le CE sur ses vrais comptes : #2 (animation vue sur un envoi), #3,
+> #4 (Cc/Cci, Cci non fuité) ; #1 confirmé (le courrier arrive tout de
+> suite, IDLE tient à 30 min). Journal Système A52-A54, ADR 0021 (S-D4
+> tranché). Reports : DETTE D-19 (Cc/Cci cross-appareil), D-20 (coût par
+> cycle Gmail / vues virtuelles). Pas de publication : vit sur `main`.
+>
 > Deuxième salve de retours terrain du Chef Ingénieur (2026-08-17), sur
 > la 0.1.8. Quatre retours **hétérogènes** en taille et en nature : une
 > régression de performance à mesurer (§1), un défaut d'affichage à

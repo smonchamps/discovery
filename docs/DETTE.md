@@ -177,6 +177,43 @@ motivée.)
 - **Rouvre si** : le comportement du bouton régresse au terrain, ou avant de
   retoucher à `chargerPlus`/la borne.
 
+### D-19 · Reprise cross-appareil d'un brouillon ne restitue pas Cc/Cci
+
+- **Fait (2026-08-17, PLAN-RETOURS-2 #4)** : Cc et Cci sont persistés
+  **localement** (colonnes `drafts.cc_raw`/`bcc_raw`) — autosave, fermeture
+  et reprise sur la MÊME machine les gardent, et le miroir poussé au dossier
+  Brouillons Gmail (`draft_bytes`) porte les en-têtes Cc et Bcc. Mais le
+  **tirage** d'un brouillon écrit sur un AUTRE appareil (`import_remote_draft`,
+  `commands.rs:1449`) ne lit que `to_raw`/`subject`/`body` du message
+  distant : les Cc/Cci d'un brouillon rapatrié repartent **vides**.
+- **Raison du report (§2.6)** : le chemin d'analyse distant (parser l'en-tête
+  Cc, décider du sort du Bcc rapatrié) est une tranche à part ; la perte ne
+  touche que la reprise cross-appareil, jamais l'envoi ni la reprise locale.
+- **Piste** : étendre `RemoteDraft` + `convert.rs` pour extraire Cc (et,
+  décision à prendre, Bcc) du message distant, puis `import_remote_draft`
+  peuple `cc_raw`/`bcc_raw`.
+- **Rouvre si** : un utilisateur signale des Cc perdus en reprenant un
+  brouillon commencé ailleurs.
+
+### D-20 · Cycle Gmail : coût par cycle encore élevé quand beaucoup de vues bougent
+
+- **Fait (2026-08-17, PLAN-RETOURS-2 #1, ADR 0021)** : la cadence à 30 min
+  a réglé la FRÉQUENCE (de ~45 % du temps en synchro à ~7 %). Mais un cycle
+  complet Gmail coûte encore **jusqu'à ~135 s** quand beaucoup de vues ont
+  changé (mesure release : 22 dossiers relevés, ~5 s/dossier changé — bridage
+  Gmail probable, cf. **D-17**). L'exclusion des vues virtuelles (Important,
+  Suivis) a été **écartée** : marginale après la cadence, et coûteuse (champ
+  neuf au type `Folder` du cœur, détection des drapeaux `\Important`/`\Flagged`
+  dans l'adaptateur, logique voisine de l'ADR 0010). « Tous les messages »
+  est délibérément CONSERVÉ (Archives, mail archivé ailleurs — ADR 0010).
+- **Raison du report (§2.6)** : la cadence capte l'essentiel du gain ; le
+  reste ne vaut pas la surface de code tant qu'un terrain ne le redemande pas.
+- **Piste** : (1) exclure Important/Suivis par drapeau IMAP (non fragile) ;
+  (2) attaquer le ~5 s/dossier (bridage — croise D-17) ; (3) LIST-STATUS
+  n'aide pas Gmail (non annoncé), l'inventaire reste à ~52 STATUS.
+- **Rouvre si** : le cycle à 30 min redevient gênant au terrain, ou si le
+  bridage est confirmé (croise D-17).
+
 ## Soldée
 
 ### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15
