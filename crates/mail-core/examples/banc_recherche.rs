@@ -98,9 +98,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // du total, la bascule tri-date au-delà du seuil de requête large, et
         // le rendu plafonné. Un tour à blanc (régime établi, à chaud), puis
         // la mesure.
-        let _ = store.search_capped(requete, SEARCH_LIMIT)?;
+        let _ = store.search_capped(requete, SEARCH_LIMIT, 0)?;
         let depart = Instant::now();
-        let (resultats, total) = store.search_capped(requete, SEARCH_LIMIT)?;
+        let (resultats, total) = store.search_capped(requete, SEARCH_LIMIT, 0)?;
         let cout = depart.elapsed().as_secs_f64() * 1000.0;
         let tri_date = total > mail_core::WIDE_QUERY_THRESHOLD;
         let verdict = if cout > 100.0 {
@@ -113,6 +113,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             resultats.len(),
             if tri_date { " (tri date)" } else { " (BM25)" },
         );
+    }
+
+    // Le point dur du chantier « charger plus » : l'OFFSET tient-il le budget
+    // en profondeur ? La borne douce est ~1000 lignes = 10 lots, on mesure
+    // donc les pages 1, 5, 10. Si l'OFFSET se dégrade, le plan B est un
+    // curseur (tri date seulement) — mais l'énumération devrait dominer le
+    // saut, laissant le coût ~plat.
+    println!("\n--- pagination OFFSET en profondeur (charger plus, budget < 100 ms) ---");
+    for (etiquette, requete) in REQUETES {
+        let mut ligne = format!("{etiquette:<22} « {requete:<12} »");
+        let mut hors = false;
+        for page in [0usize, 4, 9] {
+            let offset = page * SEARCH_LIMIT;
+            let _ = store.search_capped(requete, SEARCH_LIMIT, offset)?;
+            let depart = Instant::now();
+            let (rendus, _) = store.search_capped(requete, SEARCH_LIMIT, offset)?;
+            let cout = depart.elapsed().as_secs_f64() * 1000.0;
+            hors |= cout > 100.0;
+            ligne.push_str(&format!("  p{}={cout:>6.1}ms({})", page + 1, rendus.len()));
+        }
+        if hors {
+            ligne.push_str("  ✗ HORS BUDGET");
+        }
+        println!("{ligne}");
     }
 
     println!("\n--- ouverture d'un message (budget < 50 ms) ---");

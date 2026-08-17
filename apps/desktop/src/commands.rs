@@ -1731,17 +1731,25 @@ pub struct SearchResults {
     pub total: u64,
 }
 
-/// Recherche plein-texte sur tous les comptes. Le déclenchement à partir
-/// de 3 caractères et le debounce sont de la responsabilité de l'UI.
+/// Recherche plein-texte sur tous les comptes, une tranche à la fois.
+/// `offset` sert « charger plus » : 0 à la frappe, puis le nombre de lignes
+/// déjà affichées. Le déclenchement à partir de 3 caractères et le debounce
+/// sont de la responsabilité de l'UI.
 #[tauri::command]
-pub async fn search_messages(app: AppHandle, query: String) -> Result<SearchResults, String> {
+pub async fn search_messages(
+    app: AppHandle,
+    query: String,
+    offset: usize,
+) -> Result<SearchResults, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        // `search_capped` rend les lignes ET le total exact, et bascule sur le
-        // tri par date au-delà du seuil de requête large (le classement BM25
-        // y dépasse le budget et ne veut plus rien dire — ADR 0004).
+        // `search_capped` rend la tranche `[offset, offset+SEARCH_LIMIT)` ET le
+        // total exact, et bascule sur le tri par date au-delà du seuil de
+        // requête large (le classement BM25 y dépasse le budget et ne veut plus
+        // rien dire — ADR 0004). Le tri ne dépendant que du total, les tranches
+        // s'enchaînent sans trou ni doublon.
         let (hits, total) = store
-            .search_capped(&query, SEARCH_LIMIT)
+            .search_capped(&query, SEARCH_LIMIT, offset)
             .map_err(|err| err.to_string())?;
         let rows = hits.into_iter().map(to_message_row).collect();
         Ok(SearchResults { rows, total })

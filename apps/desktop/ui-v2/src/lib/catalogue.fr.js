@@ -118,6 +118,8 @@ export const FR = {
   'liste.aria': 'Liste des messages',
   'liste.aucunResultat': 'Aucun résultat.',
   'liste.vide': 'Aucun message ici.',
+  'liste.chargerPlus': 'Afficher le résultat suivant|Afficher les {n} résultats suivants',
+  'liste.affiner': 'Affinez votre recherche (from:, to:, date:) pour aller plus loin.',
   'liste.prefixeBrouillon': 'Brouillon : ',
   'liste.dest': 'À : {a}',
   'brouillons.a': 'À : {a}',

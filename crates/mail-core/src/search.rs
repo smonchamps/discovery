@@ -17,6 +17,7 @@
 //! Elle est sans clé étrangère à dessein — l'entretien passe uniquement
 //! par les fonctions de ce module, jamais par un CASCADE silencieux.
 
+use std::collections::HashMap;
 use std::ops::ControlFlow;
 
 use chrono::NaiveDate;
@@ -265,7 +266,7 @@ impl Store {
     /// `date:AAAA`, `date:AAAA-MM`, `date:AAAA-MM-JJ`. Un filtre seul,
     /// sans terme, liste les messages correspondants par date.
     pub fn search(&self, input: &str, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
-        self.run_search(input, limit, false)
+        self.run_search(input, limit, 0, false)
     }
 
     /// Recherche classée par DATE (le plus récent d'abord), pertinence
@@ -275,33 +276,58 @@ impl Store {
     /// alors le meilleur ordre. [`Store::search_capped`] y bascule au-delà
     /// de [`WIDE_QUERY_THRESHOLD`].
     pub fn search_recent(&self, input: &str, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
-        self.run_search(input, limit, true)
+        self.run_search(input, limit, 0, true)
     }
 
-    /// La recherche telle que l'UI la consomme : les lignes (au plus `limit`)
-    /// ET le total exact des correspondances, pour dire « N sur M » quand le
-    /// rendu est plafonné. Bascule sur le tri par date au-delà de
-    /// [`WIDE_QUERY_THRESHOLD`] correspondances — le COUNT du total, calculé
-    /// de toute façon, informe la bascule sans requête de plus.
+    /// La recherche telle que l'UI la consomme : les lignes de la tranche
+    /// `[offset, offset+limit)` ET le total exact des correspondances, pour
+    /// dire « N sur M » et servir « charger plus ». Bascule sur le tri par
+    /// date au-delà de [`WIDE_QUERY_THRESHOLD`] correspondances — le COUNT du
+    /// total, calculé de toute façon, informe la bascule ET dit combien de
+    /// lots restent. Le tri ne dépend que du total : il est le même d'une
+    /// page à l'autre, donc les tranches s'enchaînent sans trou ni doublon.
     pub fn search_capped(
         &self,
         input: &str,
         limit: usize,
+        offset: usize,
     ) -> Result<(Vec<UnifiedRow>, u64), Error> {
         let total = self.search_total(input)?;
-        let rows = self.run_search(input, limit, total > WIDE_QUERY_THRESHOLD)?;
+        let rows = self.run_search(input, limit, offset, total > WIDE_QUERY_THRESHOLD)?;
         Ok((rows, total))
     }
 
-    /// Le corps partagé. `force_date` impose le tri par date même quand des
-    /// termes justifieraient un classement BM25 : la soupape des requêtes
-    /// trop larges.
+    /// En DEUX temps, pour que « charger plus » tienne le budget en
+    /// profondeur (terrain 2026-08-17 : `LIMIT ? OFFSET ?` sur la requête
+    /// hydratée dégrade en O(offset) — SQLite hydrate les lignes sautées via
+    /// `SELECT_UNIFIED` puis les jette). Phase 1 : les CLÉS ordonnées de la
+    /// tranche, l'OFFSET ne saute alors que des clés, bon marché. Phase 2 :
+    /// hydrater UNIQUEMENT les clés de la page, réordonnées comme la phase 1.
+    /// `force_date` impose le tri par date (soupape des requêtes trop larges).
     fn run_search(
         &self,
         input: &str,
         limit: usize,
+        offset: usize,
         force_date: bool,
     ) -> Result<Vec<UnifiedRow>, Error> {
+        let keys = self.page_keys(input, limit, offset, force_date)?;
+        self.hydrate_in_order(&keys)
+    }
+
+    /// Phase 1 : les `(mailbox_id, uid)` de la tranche, dans l'ordre, SANS
+    /// hydratation (ni jointures de sortie, ni sous-requête pièces jointes, ni
+    /// corps) — l'OFFSET ne saute que ces clés légères. L'ordre est TOTAL
+    /// (`… , e.uid DESC` en dernier départage) pour que les tranches
+    /// s'enchaînent sans trou ni doublon même à correspondances et dates
+    /// égales.
+    fn page_keys(
+        &self,
+        input: &str,
+        limit: usize,
+        offset: usize,
+        force_date: bool,
+    ) -> Result<Vec<(i64, Uid)>, Error> {
         let (match_expr, has_terms, filters) = build_match(input);
         if match_expr.is_none() && filters.since.is_none() && filters.until.is_none() {
             return Ok(Vec::new());
@@ -313,44 +339,74 @@ impl Store {
         }
         values.extend(date_values);
         values.push((limit as i64).into());
+        values.push((offset as i64).into());
         let sql = if match_expr.is_some() {
             // Pertinence quand il y a des termes ET que la requête n'est pas
             // trop large ; date sinon — filtre seul (le BM25 n'a alors aucun
             // sens), ou requête très large (`force_date`, la soupape).
             let order = if has_terms && !force_date {
-                "bm25(search_fts, 10.0, 5.0, 3.0, 1.0), e.date_epoch DESC"
+                "bm25(search_fts, 10.0, 5.0, 3.0, 1.0), e.date_epoch DESC, e.uid DESC"
             } else {
                 "e.date_epoch DESC, e.uid DESC"
             };
             format!(
-                "{SELECT_UNIFIED}
+                "SELECT d.mailbox_id, d.uid
                  FROM search_fts
                  JOIN search_docs d ON d.docid = search_fts.rowid
                  JOIN envelopes e ON e.mailbox_id = d.mailbox_id AND e.uid = d.uid
-                 JOIN mailboxes m ON m.id = e.mailbox_id
-                 JOIN accounts a ON a.id = m.account_id
-                 LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
                  WHERE search_fts MATCH ?{clauses}
                  ORDER BY {order}
-                 LIMIT ?"
+                 LIMIT ? OFFSET ?"
             )
         } else {
             format!(
-                "{SELECT_UNIFIED}
+                "SELECT e.mailbox_id, e.uid
                  FROM envelopes e
-                 JOIN mailboxes m ON m.id = e.mailbox_id
-                 JOIN accounts a ON a.id = m.account_id
-                 LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
                  WHERE 1 = 1{clauses}
                  ORDER BY e.date_epoch DESC, e.uid DESC
-                 LIMIT ?"
+                 LIMIT ? OFFSET ?"
             )
         };
         let mut stmt = self.conn().prepare(&sql)?;
-        let rows = stmt
-            .query_map(params_from_iter(values), row_to_unified)?
+        let keys = stmt
+            .query_map(params_from_iter(values), |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, Uid>(1)?))
+            })?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
+        Ok(keys)
+    }
+
+    /// Phase 2 : hydrate UNIQUEMENT ces clés (jamais les lignes sautées), puis
+    /// les remet dans l'ordre de la phase 1 — le `IN` de SQL ne le préserve
+    /// pas. `mailbox_id` est relu par NOM (`mbid`), pour ne pas coupler au
+    /// nombre de colonnes de `SELECT_UNIFIED`.
+    fn hydrate_in_order(&self, keys: &[(i64, Uid)]) -> Result<Vec<UnifiedRow>, Error> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        let placeholders = vec!["(?,?)"; keys.len()].join(",");
+        let sql = format!(
+            "{SELECT_UNIFIED}, e.mailbox_id AS mbid
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             JOIN accounts a ON a.id = m.account_id
+             LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+             WHERE (e.mailbox_id, e.uid) IN (VALUES {placeholders})"
+        );
+        let mut values: Vec<Value> = Vec::with_capacity(keys.len() * 2);
+        for (mailbox_id, uid) in keys {
+            values.push((*mailbox_id).into());
+            values.push(i64::from(*uid).into());
+        }
+        let mut stmt = self.conn().prepare(&sql)?;
+        let mut par_cle: HashMap<(i64, Uid), UnifiedRow> = stmt
+            .query_map(params_from_iter(values), |row| {
+                let mbid: i64 = row.get("mbid")?;
+                let unified = row_to_unified(row)?;
+                Ok(((mbid, unified.envelope.uid), unified))
+            })?
+            .collect::<Result<_, _>>()?;
+        Ok(keys.iter().filter_map(|k| par_cle.remove(k)).collect())
     }
 
     /// Le nombre EXACT de correspondances d'une recherche — sans classement
@@ -1482,11 +1538,39 @@ mod tests {
             .collect();
         store.upsert_envelopes(inbox, &envelopes).unwrap();
 
-        let (rows, total) = store.search_capped("rapport", 3).unwrap();
+        let (rows, total) = store.search_capped("rapport", 3, 0).unwrap();
         assert_eq!(rows.len(), 3, "rendu plafonné à la limite");
         assert_eq!(total, 10, "total exact, au-delà du plafond");
         // 10 correspondances, bien en deçà de WIDE_QUERY_THRESHOLD : classement
         // BM25 conservé (le sujet prime, prouvé par les tests dédiés).
+    }
+
+    #[test]
+    fn search_capped_pages_without_gap_or_overlap() {
+        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        // Dix messages, tri par date (uid croissant = epoch croissant) : la
+        // recherche les rend du plus récent (uid 10) au plus ancien (uid 1).
+        let envelopes: Vec<Envelope> = (1..=10)
+            .map(|uid| envelope(uid, "Rapport", "Alice", "a@ex.fr", uid as i64))
+            .collect();
+        store.upsert_envelopes(inbox, &envelopes).unwrap();
+
+        // Trois pages de 4 : [10..7], [6..3], [2..1]. Total constant à 10.
+        let uids = |rows: &[UnifiedRow]| rows.iter().map(|r| r.envelope.uid).collect::<Vec<_>>();
+        let (p1, total) = store.search_capped("rapport", 4, 0).unwrap();
+        let (p2, _) = store.search_capped("rapport", 4, 4).unwrap();
+        let (p3, _) = store.search_capped("rapport", 4, 8).unwrap();
+
+        assert_eq!(total, 10);
+        assert_eq!(uids(&p1), vec![10, 9, 8, 7]);
+        assert_eq!(
+            uids(&p2),
+            vec![6, 5, 4, 3],
+            "la page 2 enchaîne sans trou ni doublon"
+        );
+        assert_eq!(uids(&p3), vec![2, 1], "la dernière page rend le reste");
+        // Au-delà du total : plus rien.
+        assert!(store.search_capped("rapport", 4, 12).unwrap().0.is_empty());
     }
 
     #[test]

@@ -116,6 +116,8 @@ export const EN = {
   'liste.aria': 'Message list',
   'liste.aucunResultat': 'No results.',
   'liste.vide': 'No messages here.',
+  'liste.chargerPlus': 'Show the next result|Show the next {n} results',
+  'liste.affiner': 'Refine your search (from:, to:, date:) to go further.',
   'liste.prefixeBrouillon': 'Draft: ',
   'liste.dest': 'To: {a}',
   'brouillons.a': 'To: {a}',

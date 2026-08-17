@@ -215,19 +215,55 @@
   // Bornés côté coeur : pas de fenêtrage. En deçà de 3 caractères, la
   // boîte revient telle quelle.
   let resultats = $state(null);
+  let totalResultats = $state(0);
+  let chargementPlus = $state(false);
   let minuterieRecherche;
   let jetonRecherche = 0;
+  // Le lot, miroir du `SEARCH_LIMIT` de la commande : la taille d'un « charger
+  // plus » (le dernier lot rend le reste, moins de 100).
+  const LOT = 100;
+  // Borne douce (D1) : au-delà, le bouton « charger plus » s'efface au profit
+  // d'une invite à affiner — la liste n'est pas fenêtrée, empiler sans fin
+  // finirait par alourdir le DOM. Dix lots.
+  const MAX_RESULTATS = 10 * LOT;
   async function executerRecherche(q) {
     const mien = ++jetonRecherche;
     try {
-      const res = await appel('search_messages', { query: q });
+      const res = await appel('search_messages', { query: q, offset: 0 });
       if (mien !== jetonRecherche) return; // frappe plus récente
       resultats = res.rows;
-      // Le nombre rendu (plafonné) ET le total : la barre dira « N sur M »
-      // quand le plafond mord.
+      totalResultats = res.total;
+      // Le nombre rendu (plafonné) ET le total : la barre dit « N sur M ».
       onresultats(res.rows.length, res.total);
     } catch (err) {
       console.error('search_messages :', err);
+    }
+  }
+  // « Charger plus » : le lot suivant, APPENDÉ. On ne touche pas au jeton
+  // (rien à annuler), mais on le CAPTURE : si une frappe survient pendant le
+  // chargement, elle l'incrémente et on jette ce lot devenu caduc.
+  async function chargerPlus() {
+    const q = recherche.trim();
+    // Garde SYNCHRONE : un seul lot en vol à la fois. Le bouton `disabled`
+    // peut retarder d'un tick — ce test bloque un double-déclenchement avant
+    // qu'il ne lise deux fois le même offset (donc n'append deux fois le
+    // même lot).
+    if (q.length < 3 || resultats === null || chargementPlus) return;
+    const mien = jetonRecherche;
+    chargementPlus = true;
+    try {
+      const res = await appel('search_messages', { query: q, offset: resultats.length });
+      if (mien !== jetonRecherche) return; // une recherche plus récente a pris la main
+      resultats = [...resultats, ...res.rows];
+      totalResultats = res.total;
+      onresultats(resultats.length, res.total);
+    } catch (err) {
+      console.error('search_messages (plus) :', err);
+    } finally {
+      // Ce lot n'est plus en vol, QUOI QU'IL ARRIVE (superseded compris) :
+      // sans reset inconditionnel, une frappe pendant le chargement laisserait
+      // le drapeau à true et condamnerait le bouton des recherches suivantes.
+      chargementPlus = false;
     }
   }
   $effect(() => {
@@ -237,6 +273,7 @@
       if (q.length < 3) {
         jetonRecherche += 1;
         resultats = null;
+        totalResultats = 0;
         onresultats(null, null);
         return;
       }
@@ -469,6 +506,16 @@
         {#each resultats as ligne (`${ligne.account_id}/${ligne.mailbox}/${ligne.uid}`)}
           {@render rangee(ligne)}
         {/each}
+        {#if resultats.length > 0 && resultats.length < totalResultats}
+          {#if resultats.length < MAX_RESULTATS}
+            <button type="button" class="charger-plus" data-testid="charger-plus"
+                    disabled={chargementPlus} onclick={chargerPlus}>
+              {t('liste.chargerPlus', { n: Math.min(LOT, totalResultats - resultats.length) })}
+            </button>
+          {:else}
+            <p class="affiner" data-testid="affiner">{t('liste.affiner')}</p>
+          {/if}
+        {/if}
       </div>
     {:else if lignesBrouillons !== null}
       <!-- Le dossier Brouillons (B-D1) : les brouillons locaux, du plus
@@ -564,6 +611,22 @@
   .fenetre-recherche { display:flex; flex-direction:column; }
   .vide-recherche { padding:40px; text-align:center; }
   .vide-recherche p { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
+  /* « Charger plus » : un bouton discret centré sous les résultats (paire
+     ink/surface, survol ink/sel — validées par la gate contraste). Au-delà
+     de la borne douce, l'invite à affiner le remplace (encre atténuée, comme
+     l'état vide). */
+  .charger-plus {
+    align-self:center; margin:12px 0 20px; height:32px; padding:0 18px;
+    display:inline-flex; align-items:center; font-size:13px; font-weight:600;
+    color:var(--ink); background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; cursor:pointer;
+  }
+  .charger-plus:hover { background:var(--sel); }
+  .charger-plus:disabled { opacity:.6; cursor:default; }
+  .affiner {
+    margin:0; padding:16px 40px 24px; text-align:center;
+    font-size:13px; line-height:1.5; color:var(--muted);
+  }
 
   /* Quatre états (A30) : repos transparent, survol en teinte légère,
      sélection en teinte + liseré d'accent de 2 px — jamais d'ombre ni
