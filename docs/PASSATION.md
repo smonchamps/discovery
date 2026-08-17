@@ -626,11 +626,16 @@ bandeau. La recherche gagne en profondeur à mesure.
 - **Doublons multi-boîtes dans la recherche** (nouveau, ADR 0010) : le
   même message copié dans plusieurs boîtes remonte plusieurs fois dans
   les résultats. À observer en bêta avant de décider d'un dédoublonnage.
-- **Tri par date de la recherche** — tranché en bêta (levier ×1,8–2,9).
-- **Défilement profond** : `OFFSET` coûte ~230 ms à 150 000 conversations ;
-  seule une pagination par curseur l'effacerait.
+- **Tri par date de la recherche** — **armé** (A50, PLAN-RECHERCHE) : au-delà
+  de 10 k correspondances (`WIDE_QUERY_THRESHOLD`), le classement bascule sur
+  la date, le plancher BM25 dépassant sinon le budget. Plus un report.
+- **Défilement profond de la LISTE** : `OFFSET` coûte ~230 ms à 150 000
+  conversations. La recherche a résolu le même mur (l'`OFFSET` **hydrate les
+  lignes sautées**) par une **pagination en deux temps** — clés ordonnées
+  puis hydratation de la seule page (A51, PLAN-CHARGER-PLUS) ; le même patron
+  s'appliquerait à la liste.
 - **Envoi de pièces jointes** (lecture seule en v1) ; **filtre « a une
-  pièce jointe »** ; **`to:` dans la recherche**.
+  pièce jointe »**. (Le **`to:` dans la recherche** est LIVRÉ — A49.)
 - **CONDSTORE réel, IDLE/push** — reports de Phase 1 inchangés.
 - **Dossier CASA Google** — chemin critique du lancement public, côté
   produit-owner.

@@ -1,6 +1,12 @@
 # PLAN-CHARGER-PLUS — pagination « charger plus » des résultats
 
-Statut : **soldé** · Ouvert et soldé le 2026-08-17 · Chantier `/chantier`
+**CHANTIER SOLDÉ le 2026-08-17 — terrain complet.** Commit `99c9707`
+(A51 ; CI 32025943490). GO CE du plan le 2026-08-17 (D1 borne douce ~1000
+lignes ; D2 mécanisme tranché à la mesure → **pagination en deux temps**
+après que l'OFFSET nu s'est révélé O(offset) au terrain). Terrain validé le
+jour même : banc « OFFSET en profondeur » **plat** (p1 ≈ p10, < 100 ms), geste
+« charger plus » sur la vraie base. Revue à regard neuf : un bug d'anti-course
+corrigé (drapeau `chargementPlus` qui fuyait à `true`).
 
 ## Constat (vérifié)
 

@@ -1,6 +1,15 @@
 # PLAN-RECHERCHE — pertinence et performance de la barre de recherche
 
-Statut : **soldé** · Ouvert et soldé le 2026-08-17 · Chantier `/chantier`
+**CHANTIER SOLDÉ le 2026-08-17 — terrain complet.** Deux commits :
+`6f44566` (destinataires `to:`/`à:`, `prefix='2 3'`, reconstruction d'index
+visible et interruptible, A49 ; CI 32011441351) et `d82e0dc` (plafond 100,
+« N sur M » avec total exact, soupape tri-date armée au-delà de 10 k corr.,
+A50 ; CI 32020891088). GO CE des décisions D1-D4 le 2026-08-17 (+ arbitrages
+plafond et budget). Terrain validé sur la vraie base (251 k messages / 7 Go)
+le jour même : geste `to:`/nom nu, modale de reconstruction visible, budget
+recherche **~66 ms** au pire (contre 113-210 ms annoncés). Revue à regard
+neuf à chaque étape ; le cache chaud avait menti sur le coût de
+reconstruction (×340), rattrapé au terrain.
 
 ## Constat (vérifié, pas supposé)
 

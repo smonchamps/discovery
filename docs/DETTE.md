@@ -156,6 +156,27 @@ motivée.)
   synchro initiale. Commencer par (1) — rendre l'erreur visible est le
   préalable à tout diagnostic.
 
+### D-18 · « Charger plus » : le bouton et l'append ne sont pas testés en e2e
+
+- **Fait (2026-08-17, PLAN-CHARGER-PLUS)** : le bouton « Afficher les N
+  suivants », l'append, la borne douce à 1000 lignes et l'anti-course ne
+  sont pas couverts en e2e. Le bouton n'apparaît qu'au-delà de 100 résultats
+  (`resultats.length < total`), or les décors du gate (Clarity, inbox à 6-10
+  messages) sont bien en dessous. Seul le CŒUR est testé
+  (`search_capped_pages_without_gap_or_overlap` : pages sans trou ni
+  doublon) ; l'UI a été validée AU TERRAIN (base 251 k) et par revue à
+  regard neuf (qui a d'ailleurs attrapé un bug d'anti-course).
+- **Raison du report** : un décor e2e à >100 messages avec un terme commun
+  (`seed_inbox` à grand `nombre` + `ko_par_corps ≥ 1`, dont les corps
+  portent les mots de `MOTS`) est une infrastructure à part, disproportionnée
+  pour ce chantier — le terrain a couvert le geste.
+- **Piste** : un spec dédié sur une base `seed_inbox` large (≈ 250 messages) ;
+  assertions : bouton présent, clic → la liste grandit et « N sur M » monte,
+  ~1000 lignes → invite « Affinez votre recherche », terme rare → pas de
+  bouton.
+- **Rouvre si** : le comportement du bouton régresse au terrain, ou avant de
+  retoucher à `chargerPlus`/la borne.
+
 ## Soldée
 
 ### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15
