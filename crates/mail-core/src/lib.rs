@@ -38,8 +38,7 @@ pub use backfill::{
 };
 pub use body::load_body;
 pub use compose::{
-    Draft, compose, forward_subject, quote_forward, quote_reply, reply_all_recipients,
-    reply_subject,
+    Draft, compose, forward_subject, quote_forward, quote_reply, reply_all_split, reply_subject,
 };
 pub use crash::{CrashReport, RawPanic, redact};
 pub use drafts::{

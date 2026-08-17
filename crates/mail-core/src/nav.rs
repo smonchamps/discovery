@@ -649,6 +649,8 @@ mod tests {
                 None,
                 crate::DraftContent {
                     to_raw: "",
+                    cc_raw: "",
+                    bcc_raw: "",
                     subject: "local",
                     body: "texte",
                     reply_to_uid: None,
@@ -663,6 +665,8 @@ mod tests {
                 None,
                 crate::DraftContent {
                     to_raw: "",
+                    cc_raw: "",
+                    bcc_raw: "",
                     subject: "du voisin",
                     body: "texte",
                     reply_to_uid: None,

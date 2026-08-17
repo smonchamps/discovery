@@ -32,7 +32,12 @@ balayage (patron A13 : plus employé nulle part — la tuile de la boîte
 en cours porte `person`, W2-D5/D7) ; le compte reste à 44. Terrain A46
 (2026-08-16) ajoute `open_in_full` (« Ouvrir » — le volet vers l'écran
 03 ; `unfold_more` servait DEUX sens, contraire à A3) et `unfold_less`
-(« Replier », la bascule du fil) ; le compte passe à 46.
+(« Replier », la bascule du fil) ; le compte passe à 46. A53
+(PLAN-RETOURS-2, D2) retire le bouton « Rendre indépendante » du
+composeur : `open_in_new` n'est plus employé, mais il est **conservé au
+sous-ensemble** (réservé) — le multi-fenêtre revient en chantier dédié,
+régénérer la police pour un seul glyphe serait disproportionné ; le
+compte reste à 46.
 
 `all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
 `check_circle` `close` `delete` `description` `display_settings`

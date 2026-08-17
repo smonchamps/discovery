@@ -155,7 +155,6 @@ export const FR = {
   'compo.tr': 'Tr : {sujet}',
   'compo.bonjour': 'Bonjour {prenom},',
   'compo.sansObjet': 'sans objet',
-  'compo.independante': 'Rendre indépendante',
   'compo.compteEmetteur': 'Compte émetteur',
   'compo.destinataire': 'Destinataire',
   'compo.objetPlaceholder': 'Objet du message',

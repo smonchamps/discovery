@@ -132,6 +132,11 @@ CREATE TABLE IF NOT EXISTS drafts (
     id            INTEGER PRIMARY KEY,
     account_id    INTEGER NOT NULL DEFAULT 1,
     to_raw        TEXT NOT NULL,
+    -- Cc et Cci bruts, non validés (comme to_raw) — la validation stricte
+    -- n'intervient qu'à l'envoi (compose). Vides par défaut : un brouillon
+    -- d'avant ces colonnes n'a ni l'un ni l'autre.
+    cc_raw        TEXT NOT NULL DEFAULT '',
+    bcc_raw       TEXT NOT NULL DEFAULT '',
     subject       TEXT NOT NULL,
     body          TEXT NOT NULL,
     reply_to_uid  INTEGER,
@@ -179,6 +184,8 @@ CREATE TABLE IF NOT EXISTS outbox (
     message_id   TEXT NOT NULL,
     sender       TEXT NOT NULL,
     recipients   TEXT NOT NULL,
+    cc_addrs     TEXT NOT NULL DEFAULT '',
+    bcc_addrs    TEXT NOT NULL DEFAULT '',
     subject      TEXT NOT NULL,
     body_text    TEXT NOT NULL,
     in_reply_to  TEXT,
@@ -2051,7 +2058,22 @@ fn migrate(
     add_missing_columns(
         conn,
         "drafts",
-        &[("remote_uid", "INTEGER"), ("pushed_epoch", "INTEGER")],
+        &[
+            ("remote_uid", "INTEGER"),
+            ("pushed_epoch", "INTEGER"),
+            // Cc/Cci d'un brouillon — vides sur l'existant (PLAN-RETOURS-2).
+            ("cc_raw", "TEXT NOT NULL DEFAULT ''"),
+            ("bcc_raw", "TEXT NOT NULL DEFAULT ''"),
+        ],
+    )?;
+    // Cc/Cci du journal d'envoi — vides sur l'existant (PLAN-RETOURS-2).
+    add_missing_columns(
+        conn,
+        "outbox",
+        &[
+            ("cc_addrs", "TEXT NOT NULL DEFAULT ''"),
+            ("bcc_addrs", "TEXT NOT NULL DEFAULT ''"),
+        ],
     )?;
     // Les corps deja en base valent 0 : ils datent d'avant les pieces
     // jointes, et le rattrapage devra les relire une fois.
@@ -2610,6 +2632,8 @@ mod tests {
                     None,
                     crate::DraftContent {
                         to_raw: "a@b.fr",
+                        cc_raw: "",
+                        bcc_raw: "",
                         subject: sujet,
                         body: "brouillon",
                         reply_to_uid: None,
@@ -2624,6 +2648,8 @@ mod tests {
                         message_id: format!("<sortant-{account}@exemple.fr>"),
                         from: "moi@exemple.fr".to_string(),
                         to: vec!["a@b.fr".to_string()],
+                        cc: Vec::new(),
+                        bcc: Vec::new(),
                         subject: sujet.to_string(),
                         body_text: "corps".to_string(),
                         in_reply_to: None,

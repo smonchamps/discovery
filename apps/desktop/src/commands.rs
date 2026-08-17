@@ -2245,6 +2245,9 @@ pub struct ComposeContext {
     pub uid: u32,
     /// Vide pour un transfert : l'utilisateur choisit le destinataire.
     pub to: String,
+    /// Cc pré-rempli — « Répondre à tous » y remet les Cc d'origine (D3) ;
+    /// vide pour une réponse simple ou un transfert.
+    pub cc: String,
     pub subject: String,
     /// Citation pré-remplie ; l'utilisateur écrit au-dessus (top-posting).
     pub body: String,
@@ -2315,6 +2318,7 @@ pub async fn reply_context(
         mailbox,
         uid,
         to,
+        cc: String::new(),
         subject: mail_core::reply_subject(envelope.subject.as_deref()),
         body,
         reply: true,
@@ -2362,12 +2366,10 @@ pub async fn reply_all_context(
         .map_err(|err| err.to_string())??;
         (recipients.to, recipients.cc)
     };
-    let mut to = mail_core::reply_all_recipients(
-        envelope.sender_address.as_deref(),
-        &to_list,
-        &cc_list,
-        &own,
-    );
+    // D3 : À et Cc SÉPARÉS — les Cc d'origine restent des Cc (au lieu
+    // d'être aplatis dans le À).
+    let (mut to, cc) =
+        mail_core::reply_all_split(envelope.sender_address.as_deref(), &to_list, &cc_list, &own);
     if to.is_empty() {
         // Message qu'on s'est envoyé à soi seul : l'expéditeur reste le
         // seul destinataire sensé — mieux qu'un champ « À » vide.
@@ -2389,6 +2391,7 @@ pub async fn reply_all_context(
         mailbox,
         uid,
         to: to.join(", "),
+        cc: cc.join(", "),
         subject: mail_core::reply_subject(envelope.subject.as_deref()),
         body,
         reply: true,
@@ -2426,6 +2429,7 @@ pub async fn forward_context(
         mailbox,
         uid,
         to: String::new(),
+        cc: String::new(),
         subject: mail_core::forward_subject(envelope.subject.as_deref()),
         body: mail_core::quote_forward(
             envelope.sender.as_deref(),
@@ -2467,6 +2471,8 @@ pub async fn queue_send(
     app: AppHandle,
     account_id: i64,
     to: String,
+    cc: String,
+    bcc: String,
     subject: String,
     body: String,
     reply_to_mailbox: Option<String>,
@@ -2489,8 +2495,16 @@ pub async fn queue_send(
             .zip(reply_to_mailbox)
             .and_then(|(uid, mailbox)| store.envelope(account_id, &mailbox, uid).ok().flatten())
             .and_then(|envelope| envelope.message_id);
-        let draft = mail_core::compose(&from, &to, &subject, &body, in_reply_to.as_deref())
-            .map_err(|err| err.to_string())?;
+        let draft = mail_core::compose(
+            &from,
+            &to,
+            &cc,
+            &bcc,
+            &subject,
+            &body,
+            in_reply_to.as_deref(),
+        )
+        .map_err(|err| err.to_string())?;
         // Avec un brouillon-ancre, ses pièces rejoignent le journal dans la
         // MÊME transaction (PJ-D2) ; sans lui (composition jamais sauvée,
         // donc sans pièce possible), le chemin historique suffit.
@@ -3037,6 +3051,8 @@ pub struct DraftRow {
     pub id: i64,
     pub account_id: i64,
     pub to: String,
+    pub cc: String,
+    pub bcc: String,
     pub subject: String,
     pub body: String,
     pub reply_to_uid: Option<u32>,
@@ -3074,6 +3090,8 @@ pub struct DraftSavedRow {
 #[serde(rename_all = "camelCase")]
 pub struct DraftContentArg {
     to: String,
+    cc: String,
+    bcc: String,
     subject: String,
     body: String,
     reply_to_uid: Option<u32>,
@@ -3097,6 +3115,8 @@ pub async fn save_draft(
                 base_epoch,
                 mail_core::DraftContent {
                     to_raw: &content.to,
+                    cc_raw: &content.cc,
+                    bcc_raw: &content.bcc,
                     subject: &content.subject,
                     body: &content.body,
                     reply_to_uid: content.reply_to_uid,
@@ -3126,6 +3146,8 @@ pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
                 id: draft.id,
                 account_id: draft.account_id,
                 to: draft.to_raw,
+                cc: draft.cc_raw,
+                bcc: draft.bcc_raw,
                 subject: draft.subject,
                 body: draft.body,
                 reply_to_uid: draft.reply_to_uid,
@@ -3252,6 +3274,8 @@ pub async fn attach_files(
                         None,
                         mail_core::DraftContent {
                             to_raw: "",
+                            cc_raw: "",
+                            bcc_raw: "",
                             subject: "",
                             body: "",
                             reply_to_uid: None,
@@ -3375,6 +3399,8 @@ pub async fn fetch_source_attachment(
                     None,
                     mail_core::DraftContent {
                         to_raw: "",
+                        cc_raw: "",
+                        bcc_raw: "",
                         subject: "",
                         body: "",
                         reply_to_uid: None,
@@ -3553,6 +3579,8 @@ fn run_draft_sync_all(
             let bytes = match mail_smtp::draft_bytes(
                 session.email(),
                 &draft.to_raw,
+                &draft.cc_raw,
+                &draft.bcc_raw,
                 &draft.subject,
                 &draft.body,
                 &pieces,

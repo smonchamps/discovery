@@ -19,10 +19,11 @@
   // la frappe, conflit d'édition (`forked`) JAMAIS tu, fermer = conserver
   // (un contenu vidé par l'utilisateur est le seul cas où fermer jette).
   //
-  // Inertes comme au prototype : barre G/I/S/Liste/Lien/Citation,
-  // « Rendre indépendante », Cc/Cci. Écart dit : la ligne « De » montre
-  // l'adresse seule — le cœur ne stocke ni nom d'affichage ni étiquette
-  // de compte.
+  // Inertes comme au prototype : la barre de format G/I/S/Liste/Lien/
+  // Citation. (« Rendre indépendante » RETIRÉE — A53, D2 : le multi-
+  // fenêtre est reporté en chantier dédié. Cc/Cci sont désormais CÂBLÉS
+  // — A54.) Écart dit : la ligne « De » montre l'adresse seule — le cœur
+  // ne stocke ni nom d'affichage ni étiquette de compte.
   //
   // « Joindre » est RÉEL (PLAN-PIECES-JOINTES E2) : sélecteur natif,
   // octets copiés au brouillon dès le geste (PJ-D1 — le brouillon-ancre
@@ -51,6 +52,15 @@
   let mode = $state('new');
   let expediteur = $state(null); // { account_id, email }
   let a = $state('');
+  // Cc et Cci (A54) : leurs rangs ne s'affichent qu'à la demande
+  // (`montrerCc`/`montrerCci`) — ou d'office si un contenu arrive (reprise
+  // de brouillon, « Répondre à tous » qui remet les Cc d'origine, D3).
+  let cc = $state('');
+  let cci = $state('');
+  let montrerCc = $state(false);
+  let montrerCci = $state(false);
+  let champCc = $state(null);
+  let champCci = $state(null);
   let objet = $state('');
   let corps = $state('');
   // Les pièces RÉELLES du brouillon (métadonnées) — ce que le composeur
@@ -112,6 +122,10 @@
     const mien = ++jeton;
     mode = nouveauMode;
     a = '';
+    cc = '';
+    cci = '';
+    montrerCc = false;
+    montrerCci = false;
     objet = '';
     corps = '';
     pieces = [];
@@ -139,6 +153,10 @@
         objet = enReponse ? sujetRe(source.subject) : sujetTr(source.subject);
         if (enReponse) {
           a = contexte.to;
+          // D3 : « Répondre à tous » remet les Cc d'origine EN Cc — le
+          // rang s'ouvre de lui-même s'il y en a.
+          cc = contexte.cc ?? '';
+          if (cc) montrerCc = true;
           const prenom = (source.sender ?? '').split(' ')[0];
           // La citation du cœur mène par deux sauts (la place du curseur en
           // v1) ; l'amorce du prototype les apporte déjà — sans cette taille,
@@ -230,6 +248,12 @@
     mode = 'new';
     expediteur = compteDe(brouillon.account_id);
     a = brouillon.to;
+    // Cc/Cci reviennent avec le brouillon (A54) — leur rang s'ouvre s'il
+    // y a du contenu à montrer.
+    cc = brouillon.cc ?? '';
+    cci = brouillon.bcc ?? '';
+    montrerCc = cc.trim() !== '';
+    montrerCci = cci.trim() !== '';
     objet = brouillon.subject;
     corps = brouillon.body;
     pieces = [];
@@ -255,7 +279,8 @@
 
   // Un brouillon sans texte mais avec pièce n'est PAS vide : fermer le
   // conserve, le contrat des brouillons couvre les octets.
-  const vide = () => !a.trim() && !objet.trim() && !corps.trim() && pieces.length === 0;
+  const vide = () =>
+    !a.trim() && !cc.trim() && !cci.trim() && !objet.trim() && !corps.trim() && pieces.length === 0;
 
   function programmerSauvegarde() {
     clearTimeout(minuterie);
@@ -283,7 +308,7 @@
         accountId: expediteur.account_id,
         id: brouillonId,
         baseEpoch: brouillonEpoch,
-        content: { to: a, subject: objet, body: corps, replyToUid, replyToMailbox },
+        content: { to: a, cc, bcc: cci, subject: objet, body: corps, replyToUid, replyToMailbox },
       });
       if (!visible) {
         // Le panneau s'est fermé pendant la sauvegarde (envoi parti) :
@@ -368,6 +393,8 @@
       await appel('queue_send', {
         accountId: expediteur.account_id,
         to: a,
+        cc,
+        bcc: cci,
         subject: objet.trim(),
         body: corps,
         replyToMailbox,
@@ -564,7 +591,6 @@
       <div class="tete">
         <span class="kicker" data-testid="composition-kicker">{t(KICKERS[mode])}</span>
         <span class="essor"></span>
-        <span class="puce"><span class="ms" aria-hidden="true">open_in_new</span>{t('compo.independante')}</span>
         <button type="button" class="fermer" aria-label={t('action.fermer')} onclick={fermer}>
           <span class="ms" aria-hidden="true">close</span></button>
       </div>
@@ -593,9 +619,33 @@
           <span class="etiquette">{t('conv.a')}</span>
           <input type="text" bind:this={champA} bind:value={a} oninput={programmerSauvegarde}
                  placeholder={t('compo.destinataire')} data-testid="composition-a">
-          <span class="puce"><span class="ms" aria-hidden="true">group_add</span>{t('compo.cc')}</span>
-          <span class="puce"><span class="ms" aria-hidden="true">visibility_off</span>{t('compo.cci')}</span>
+          <!-- A54 : Cc/Cci ouvrent leur rang à la demande (ou d'office si
+               un contenu est déjà là — reprise, « Répondre à tous »). -->
+          {#if !montrerCc}
+            <button type="button" class="puce" data-testid="composition-bouton-cc"
+                    onclick={() => { montrerCc = true; setTimeout(() => champCc?.focus(), 0); }}>
+              <span class="ms" aria-hidden="true">group_add</span>{t('compo.cc')}</button>
+          {/if}
+          {#if !montrerCci}
+            <button type="button" class="puce" data-testid="composition-bouton-cci"
+                    onclick={() => { montrerCci = true; setTimeout(() => champCci?.focus(), 0); }}>
+              <span class="ms" aria-hidden="true">visibility_off</span>{t('compo.cci')}</button>
+          {/if}
         </div>
+        {#if montrerCc}
+          <div class="rang">
+            <span class="etiquette">{t('compo.cc')}</span>
+            <input type="text" bind:this={champCc} bind:value={cc} oninput={programmerSauvegarde}
+                   placeholder={t('compo.destinataire')} data-testid="composition-cc">
+          </div>
+        {/if}
+        {#if montrerCci}
+          <div class="rang">
+            <span class="etiquette">{t('compo.cci')}</span>
+            <input type="text" bind:this={champCci} bind:value={cci} oninput={programmerSauvegarde}
+                   placeholder={t('compo.destinataire')} data-testid="composition-cci">
+          </div>
+        {/if}
         <div class="rang">
           <span class="etiquette">{t('conv.objet')}</span>
           <input type="text" bind:value={objet} oninput={programmerSauvegarde}

@@ -153,7 +153,6 @@ export const EN = {
   'compo.tr': 'Fwd: {sujet}',
   'compo.bonjour': 'Hello {prenom},',
   'compo.sansObjet': 'no subject',
-  'compo.independante': 'Pop out',
   'compo.compteEmetteur': 'Sending account',
   'compo.destinataire': 'Recipient',
   'compo.objetPlaceholder': 'Message subject',

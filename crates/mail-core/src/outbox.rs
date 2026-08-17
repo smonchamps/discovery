@@ -23,6 +23,17 @@ use crate::transport::{MailTransport, SendError};
 /// [`crate::EmailAddress`] refuse tout caractère blanc.
 const TO_SEPARATOR: char = '\n';
 
+/// Reconstitue une liste d'adresses stockée (Cc, Cci) : la chaîne VIDE
+/// vaut liste vide — sans quoi `"".split('\n')` rendrait un `[""]` fantôme
+/// (le champ « À », lui, n'est jamais vide et n'en a pas besoin).
+fn split_recipients(stored: &str) -> Vec<String> {
+    if stored.is_empty() {
+        Vec::new()
+    } else {
+        stored.split(TO_SEPARATOR).map(str::to_string).collect()
+    }
+}
+
 /// Cycle de vie d'un envoi. Machine à états stricte :
 ///
 /// ```text
@@ -97,6 +108,11 @@ pub struct OutboxMessage {
     pub message_id: String,
     pub from: String,
     pub to: Vec<String>,
+    /// Copie carbone — paraît dans l'en-tête `Cc:` du message envoyé.
+    pub cc: Vec<String>,
+    /// Copie carbone invisible — JAMAIS dans les en-têtes du message
+    /// servi ; l'envoi la porte dans l'enveloppe SMTP seule (mail-smtp).
+    pub bcc: Vec<String>,
     pub subject: String,
     pub body_text: String,
     pub in_reply_to: Option<String>,
@@ -109,23 +125,26 @@ pub struct OutboxMessage {
 }
 
 const OUTBOX_SELECT: &str = "SELECT id, account_id, message_id, sender, recipients, subject,
-        body_text, in_reply_to, state, attempts, last_error, queued_epoch
+        body_text, in_reply_to, state, attempts, last_error, queued_epoch, cc_addrs, bcc_addrs
  FROM outbox";
 
 impl Store {
     /// Journalise l'intention d'envoi — AVANT toute tentative réseau.
     /// C'est cette écriture qui fonde « jamais d'envoi perdu ».
     pub fn enqueue_outbox(&self, account_id: i64, draft: &Draft) -> Result<i64, Error> {
+        let sep = TO_SEPARATOR.to_string();
         self.conn().execute(
             "INSERT INTO outbox
-             (account_id, message_id, sender, recipients, subject, body_text,
+             (account_id, message_id, sender, recipients, cc_addrs, bcc_addrs, subject, body_text,
               in_reply_to, state, queued_epoch)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
             params![
                 account_id,
                 draft.message_id,
                 draft.from,
-                draft.to.join(&TO_SEPARATOR.to_string()),
+                draft.to.join(&sep),
+                draft.cc.join(&sep),
+                draft.bcc.join(&sep),
                 draft.subject,
                 draft.body_text,
                 draft.in_reply_to,
@@ -304,12 +323,16 @@ fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
         )
     })?;
     let recipients: String = row.get(4)?;
+    let cc_addrs: String = row.get(12)?;
+    let bcc_addrs: String = row.get(13)?;
     Ok(OutboxMessage {
         id: row.get(0)?,
         account_id: row.get(1)?,
         message_id: row.get(2)?,
         from: row.get(3)?,
         to: recipients.split(TO_SEPARATOR).map(str::to_string).collect(),
+        cc: split_recipients(&cc_addrs),
+        bcc: split_recipients(&bcc_addrs),
         subject: row.get(5)?,
         body_text: row.get(6)?,
         in_reply_to: row.get(7)?,
@@ -412,7 +435,16 @@ mod tests {
     }
 
     fn draft(subject: &str) -> Draft {
-        compose("moi@exemple.fr", "vous@exemple.fr", subject, "corps", None).unwrap()
+        compose(
+            "moi@exemple.fr",
+            "vous@exemple.fr",
+            "",
+            "",
+            subject,
+            "corps",
+            None,
+        )
+        .unwrap()
     }
 
     fn store() -> (Store, i64) {
@@ -429,6 +461,8 @@ mod tests {
         let composed = compose(
             "moi@exemple.fr",
             "a@exemple.fr, b@exemple.fr",
+            "",
+            "",
             "Sujet",
             "Corps\nsur deux lignes",
             Some("<origine@exemple.fr>"),
@@ -448,6 +482,34 @@ mod tests {
         assert_eq!(message.in_reply_to.as_deref(), Some("<origine@exemple.fr>"));
         assert_eq!(message.attempts, 0);
         assert_eq!(message.last_error, None);
+    }
+
+    /// A54 : Cc/Cci du journal survivent à l'enqueue et à la relecture ;
+    /// un envoi sans copie les relit VIDES, jamais un `[""]` fantôme (le
+    /// garde de `split_recipients`).
+    #[test]
+    fn enqueue_roundtrips_cc_and_bcc() {
+        let (avec_store, compte) = store();
+        let avec = compose(
+            "moi@exemple.fr",
+            "a@exemple.fr",
+            "b@exemple.fr, c@exemple.fr",
+            "secret@exemple.fr",
+            "Sujet",
+            "corps",
+            None,
+        )
+        .unwrap();
+        avec_store.enqueue_outbox(compte, &avec).unwrap();
+        let releve = avec_store.outbox_to_send(compte).unwrap();
+        assert_eq!(releve[0].cc, vec!["b@exemple.fr", "c@exemple.fr"]);
+        assert_eq!(releve[0].bcc, vec!["secret@exemple.fr"]);
+
+        let (nu_store, compte) = store();
+        nu_store.enqueue_outbox(compte, &draft("nu")).unwrap();
+        let nu = nu_store.outbox_to_send(compte).unwrap();
+        assert!(nu[0].cc.is_empty(), "pas de destinataire Cc fantôme");
+        assert!(nu[0].bcc.is_empty(), "pas de destinataire Cci fantôme");
     }
 
     /// Règle d'or n°1 : l'intention d'envoi survit à l'arrêt du processus.
@@ -717,6 +779,8 @@ mod tests_pieces {
                 None,
                 DraftContent {
                     to_raw: "vous@exemple.fr",
+                    cc_raw: "",
+                    bcc_raw: "",
                     subject: "Photos",
                     body: "corps",
                     reply_to_uid: None,
@@ -735,7 +799,16 @@ mod tests_pieces {
     }
 
     fn composed() -> Draft {
-        compose("moi@exemple.fr", "vous@exemple.fr", "Photos", "corps", None).unwrap()
+        compose(
+            "moi@exemple.fr",
+            "vous@exemple.fr",
+            "",
+            "",
+            "Photos",
+            "corps",
+            None,
+        )
+        .unwrap()
     }
 
     /// PJ-D2 : le geste copie les pièces au journal — le brouillon peut

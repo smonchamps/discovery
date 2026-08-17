@@ -532,8 +532,16 @@ mod tests {
         let account = store
             .adopt_or_create_account("t@exemple.fr", "gmail")
             .unwrap();
-        let draft =
-            crate::compose("t@exemple.fr", "a@b.fr", "objet", "corps\nligne 2", None).unwrap();
+        let draft = crate::compose(
+            "t@exemple.fr",
+            "a@b.fr",
+            "",
+            "",
+            "objet",
+            "corps\nligne 2",
+            None,
+        )
+        .unwrap();
         store.enqueue_outbox(account, &draft).unwrap();
         let id = store.outbox_to_send(account).unwrap()[0].id;
 

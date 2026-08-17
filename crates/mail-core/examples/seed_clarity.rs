@@ -313,6 +313,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         DraftContent {
             to_raw: "c.rousseau@atelier-nord.fr",
+            cc_raw: "",
+            bcc_raw: "",
             subject: "Re : Relecture du contrat Vantis",
             body: "Bonjour Camille,\n\nMerci pour la v4 — je penche pour la reconduction \
                    tacite, avec un préavis porté à trois mois. Je te confirme jeudi, \
@@ -442,6 +444,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None,
         DraftContent {
             to_raw: "l.fontaine@atelier-nord.fr",
+            cc_raw: "",
+            bcc_raw: "",
             subject: "Merci pour le compte rendu",
             body: "Bonjour Léa,\n\nBien reçu, merci — je relis le calendrier de \
                    livraison ce week-end et je te réponds lundi.",

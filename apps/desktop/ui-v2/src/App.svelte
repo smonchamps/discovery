@@ -159,8 +159,6 @@
   let envoisEnAttente = $state(0);
   let rattrapageApercus = $state(false);
   let rattrapageCorps = $state(null); // restant, ou null si rien à faire
-  // Total constaté au départ de la passe : le dénominateur de la barre.
-  let rattrapageTotal = $state(null);
   // Échec TOTAL de la dernière synchro : dans la ligne, pas la fente —
   // §6 n'y met pas la synchro, et « hors ligne » n'est pas un incident.
   let synchroEchec = $state(false);
@@ -194,10 +192,11 @@
     corbeille: 'boite.corbeille',
   };
 
-  // La ligne de statut ENTIÈRE — texte, trait hitofude (A36 : au
-  // pourcentage `fil.plein`, en boucle `fil.vague`, plein au repos
-  // `trait`), point d'alerte — sort d'une seule décision : les trois
-  // ne peuvent pas diverger. Au plus UNE progression (Système A4) ; priorités
+  // La ligne de statut ENTIÈRE — texte, trait hitofude (A52 : la boucle
+  // `fil` dès qu'une action tourne, plein au repos `trait` ; le mode « au
+  // pourcentage » est mort, le % vit dans le TEXTE), point d'alerte —
+  // sort d'une seule décision : les trois ne peuvent pas diverger. Au
+  // plus UNE progression (Système A4) ; priorités
   // re-triées par la sincérité (PLAN-SYNCHRO E1) : le cycle courant
   // d'abord — c'est lui que l'utilisateur attend — puis l'intégrale,
   // les rattrapages, l'attente d'envoi, l'échec, le repos horodaté.
@@ -253,37 +252,29 @@
         else if (activite.phase) parts.push(t(`statut.phase.${activite.phase}`));
       }
       let texte = `${parts.join(' · ')}…`;
+      // A52/D1 : le pourcentage de l'intégrale reste dans le TEXTE ; le
+      // trait, lui, ne fait plus que boucler pendant qu'une action tourne.
       if (pct !== null) texte += ` · ${t('statut.pourcent', { p: pct })}`;
-      return {
-        texte,
-        fil: pct !== null ? { mode: 'plein', pct } : { mode: 'vague' },
-        alerte: false,
-      };
+      return { texte, fil: true, alerte: false };
     }
     if (synchro && synchro.percent !== null && synchro.percent < 100) {
       return {
         texte: t('statut.synchro', { p: synchro.percent }),
-        fil: { mode: 'plein', pct: synchro.percent },
+        fil: true,
         alerte: false,
       };
     }
     if (rattrapageCorps !== null && rattrapageCorps > 0) {
-      // Jamais 100 % tant qu'il reste quelque chose — la règle de
-      // sync_percent, tenue aussi ici.
-      const fil = rattrapageTotal > 0
-        ? {
-            mode: 'plein',
-            pct: Math.min(99, Math.max(0,
-              Math.floor(((rattrapageTotal - rattrapageCorps) * 100) / rattrapageTotal))),
-          }
-        : { mode: 'vague' };
-      return { texte: t('statut.rattrapageCorps', { n: rattrapageCorps }), fil, alerte: false };
+      return { texte: t('statut.rattrapageCorps', { n: rattrapageCorps }), fil: true, alerte: false };
     }
     if (rattrapageApercus) {
-      return { texte: t('statut.rattrapageApercus'), fil: { mode: 'vague' }, alerte: false };
+      return { texte: t('statut.rattrapageApercus'), fil: true, alerte: false };
     }
     if (envoisEnAttente > 0) {
-      return { texte: t('statut.envois', { n: envoisEnAttente }), fil: null, alerte: false };
+      // Un envoi en file est une action en cours (A52) : le trait boucle
+      // jusqu'à la vidange. Hors ligne est capté plus haut — le trait ne
+      // tourne jamais dans le vide.
+      return { texte: t('statut.envois', { n: envoisEnAttente }), fil: true, alerte: false };
     }
     // L'horodatage du prototype, enfin : « dernière synchronisation il
     // y a N minutes » — et sur échec, depuis quand on vit sur le stock.
@@ -401,7 +392,6 @@
       const etat = await appel('backfill_status');
       if (etat.remaining === 0) return;
       rattrapageCorps = etat.remaining;
-      rattrapageTotal = etat.remaining;
       let restant = etat.remaining;
       while (restant > 0) {
         const bilan = await appel('backfill_bodies');
@@ -418,7 +408,6 @@
     } finally {
       corpsEnCours = false;
       rattrapageCorps = null;
-      rattrapageTotal = null;
     }
   }
 
@@ -595,6 +584,14 @@
   // mesuré — l'intégrale du terrain avançait par lots de ~75 s, et
   // chaque lot bouge l'avancement (`synchro.local`), donc la signature.
   const IMMOBILITE_MAX = 5 * 60 * 1000;
+  // Cadences de synchro (PLAN-RETOURS-2, ADR 0021). Le cycle COMPLET
+  // (inventaire + balayage des dossiers + fils + brouillons) est cher sur
+  // un compte à beaucoup de dossiers ; depuis qu'IDLE (ADR 0018) tient
+  // INBOX en temps réel, il tourne à 30 min. La passe LÉGÈRE (STATUS INBOX
+  // seul) tourne à 5 min en filet — si un veilleur IDLE est tombé sans
+  // s'être reconnecté, INBOX reste fraîche à 5 min près malgré tout.
+  const CYCLE_COMPLET_MS = 30 * 60 * 1000;
+  const PASSE_LEGERE_MS = 5 * 60 * 1000;
   // Le jeton interdit à la fin TARDIVE d'un cycle déclaré mort de
   // toucher l'état d'un cycle relancé depuis.
   let jetonCycle = 0;
@@ -746,7 +743,12 @@
       await connecter();
       await synchroniser();
     })();
-    setInterval(synchroniser, 300000);
+    // Le cycle complet à 30 min (IDLE tient INBOX, ADR 0018/0021),
+    // et une passe légère INBOX à 5 min en filet contre un veilleur tombé.
+    // La passe légère se sabre pendant un cycle (`enSynchro`) — jamais
+    // deux relèves du même INBOX.
+    setInterval(synchroniser, CYCLE_COMPLET_MS);
+    setInterval(() => relever(false), PASSE_LEGERE_MS);
     // E3 : le réveil de veille — un tick en retard de plusieurs minutes
     // signe une veille (saut d'horloge : les minuteries dorment avec la
     // machine), et c'est LE moment où l'utilisateur regarde l'écran. La
@@ -1140,18 +1142,15 @@
     </div>
 
     <div class="statut" data-testid="statut">
-      <!-- A36 : le trait hitofude est l'indicateur de progression, à
-           gauche de la ligne — il se dessine au rythme du pourcentage
-           quand un dénominateur existe, en boucle sinon, et reste
-           plein et immobile au repos. La barre fine de 2 px est morte. -->
+      <!-- A52 : le trait hitofude, à gauche de la ligne, porte son
+           animation de boucle dès qu'une action tourne (`ligne.fil`) et
+           reste plein et immobile au repos (`ligne.trait`). Le mode « au
+           pourcentage » est mort : le % vit dans le TEXTE. La barre fine
+           de 2 px est morte depuis A36. -->
       <span class="texte">
         {#if ligne.alerte}<span class="point-alerte" aria-hidden="true"></span>{/if}
         {#if ligne.fil}
-          {#if ligne.fil.mode === 'plein'}
-            <Hitofude progression={ligne.fil.pct} largeur={38} hauteur={9} />
-          {:else}
-            <Hitofude anime largeur={38} hauteur={9} />
-          {/if}
+          <Hitofude anime largeur={38} hauteur={9} />
         {:else if ligne.trait}
           <Hitofude largeur={38} hauteur={9} />
         {/if}

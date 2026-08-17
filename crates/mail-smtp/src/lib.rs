@@ -15,11 +15,12 @@
 //! au dossier « Envoyés » — aucun APPEND IMAP à faire. D'autres
 //! fournisseurs l'exigeront (Phase 3, multi-comptes).
 
+use lettre::address::Envelope;
 use lettre::message::header::ContentType;
 use lettre::message::{Attachment as FilePart, Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::SmtpTransportBuilder;
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
-use lettre::{Message, SmtpTransport, Transport};
+use lettre::{Address, Message, SmtpTransport, Transport};
 use mail_core::{DraftAttachmentFull, MailTransport, OutboxMessage, SendError};
 
 pub struct SmtpMailer {
@@ -107,12 +108,39 @@ impl SmtpMailer {
 impl MailTransport for SmtpMailer {
     fn send(&mut self, message: &OutboxMessage) -> Result<(), SendError> {
         let email = build_message(message)?;
-        match self.transport.send(&email) {
+        // Cci : l'enveloppe SMTP porte TOUS les destinataires (À + Cc +
+        // Cci), mais le message servi (`build_message`) n'a PAS d'en-tête
+        // Bcc — c'est pourquoi on envoie via `send_raw` (enveloppe
+        // explicite) plutôt que `send` (qui dériverait l'enveloppe des
+        // en-têtes ET laisserait le Bcc fuiter dans le corps servi à tous).
+        let envelope = build_envelope(message)?;
+        let raw = email.formatted();
+        match self.transport.send_raw(&envelope, &raw) {
             Ok(_) => Ok(()),
             Err(err) if err.is_permanent() => Err(SendError::Permanent(err.to_string())),
             Err(err) => Err(SendError::Transient(err.to_string())),
         }
     }
+}
+
+/// L'enveloppe SMTP : expéditeur + TOUS les destinataires (À, Cc, Cci).
+/// C'est elle, et non les en-têtes du message, qui commande les `RCPT
+/// TO` — le seul endroit où une adresse Cci a le droit de paraître.
+fn build_envelope(message: &OutboxMessage) -> Result<Envelope, SendError> {
+    let parse = |addr: &str| -> Result<Address, SendError> {
+        addr.parse::<Address>()
+            .map_err(|err| SendError::Permanent(format!("adresse invalide {addr:?} : {err}")))
+    };
+    let from = parse(&message.from)?;
+    let recipients = message
+        .to
+        .iter()
+        .chain(&message.cc)
+        .chain(&message.bcc)
+        .map(|addr| parse(addr))
+        .collect::<Result<Vec<_>, _>>()?;
+    Envelope::new(Some(from), recipients)
+        .map_err(|err| SendError::Permanent(format!("enveloppe SMTP : {err}")))
 }
 
 /// Traduit un message de la boîte d'envoi en message RFC 5322.
@@ -128,6 +156,11 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
         .date_now();
     for recipient in &message.to {
         builder = builder.to(parse_mailbox(recipient)?);
+    }
+    // Cc paraît dans les en-têtes ; Cci JAMAIS (elle vit dans l'enveloppe
+    // SMTP seule, `build_envelope`) — c'est toute sa raison d'être.
+    for recipient in &message.cc {
+        builder = builder.cc(parse_mailbox(recipient)?);
     }
     if let Some(parent) = &message.in_reply_to {
         builder = builder
@@ -187,6 +220,8 @@ fn file_part(name: &str, mime: &str, bytes: Vec<u8>) -> Result<SinglePart, SendE
 pub fn draft_bytes(
     from: &str,
     to_raw: &str,
+    cc_raw: &str,
+    bcc_raw: &str,
     subject: &str,
     body: &str,
     pieces: &[DraftAttachmentFull],
@@ -198,6 +233,19 @@ pub fn draft_bytes(
     for candidate in to_raw.split([',', ';']) {
         if let Ok(mailbox) = candidate.trim().parse::<Mailbox>() {
             builder = builder.to(mailbox);
+        }
+    }
+    // Un brouillon est le message tel que l'utilisateur le prépare : il
+    // porte SES Cc et Cci (le dossier Brouillons est le sien seul, rien
+    // n'est encore envoyé). Adresses tolérées, comme le champ À.
+    for candidate in cc_raw.split([',', ';']) {
+        if let Ok(mailbox) = candidate.trim().parse::<Mailbox>() {
+            builder = builder.cc(mailbox);
+        }
+    }
+    for candidate in bcc_raw.split([',', ';']) {
+        if let Ok(mailbox) = candidate.trim().parse::<Mailbox>() {
+            builder = builder.bcc(mailbox);
         }
     }
     if pieces.is_empty() {
@@ -238,6 +286,8 @@ mod tests {
             message_id: "<test.abc123@exemple.fr>".to_string(),
             from: "moi@exemple.fr".to_string(),
             to: vec!["a@exemple.fr".to_string(), "b@exemple.fr".to_string()],
+            cc: vec![],
+            bcc: vec![],
             subject: "Bonjour".to_string(),
             body_text: "Premier essai.\nDeuxième ligne.".to_string(),
             in_reply_to: in_reply_to.map(str::to_string),
@@ -269,6 +319,42 @@ mod tests {
         assert!(raw.contains("From: moi@exemple.fr"));
         assert!(raw.contains("a@exemple.fr"));
         assert!(raw.contains("b@exemple.fr"));
+    }
+
+    /// Le cœur de la correctness du Cci : le Cc paraît dans les en-têtes du
+    /// message SERVI, le Cci JAMAIS — il ne vit que dans l'enveloppe SMTP
+    /// (les RCPT TO). Un Cci qui fuit dans le corps servi à tous n'est plus
+    /// un Cci. C'est pourquoi l'envoi passe par `send_raw` + `build_envelope`.
+    #[test]
+    fn cc_dans_les_entetes_cci_dans_l_enveloppe_seule() {
+        let mut message = outbox_message(None);
+        message.cc = vec!["copie@exemple.fr".to_string()];
+        message.bcc = vec!["invisible@exemple.fr".to_string()];
+
+        let raw = formatted(&message);
+        assert!(
+            raw.contains("Cc: copie@exemple.fr"),
+            "le Cc doit paraître :\n{raw}"
+        );
+        assert!(
+            !raw.contains("invisible@exemple.fr"),
+            "le Cci ne doit JAMAIS paraître dans le message servi :\n{raw}"
+        );
+        assert!(
+            !raw.to_lowercase().contains("bcc:"),
+            "aucun en-tête Bcc dans le message servi :\n{raw}"
+        );
+
+        // L'enveloppe, elle, porte TOUS les destinataires — Cci compris :
+        // sans quoi le Cci ne recevrait rien.
+        let envelope = build_envelope(&message).expect("enveloppe construisible");
+        let rcpts: Vec<String> = envelope.to().iter().map(ToString::to_string).collect();
+        assert!(rcpts.iter().any(|a| a == "a@exemple.fr"), "{rcpts:?}");
+        assert!(rcpts.iter().any(|a| a == "copie@exemple.fr"), "{rcpts:?}");
+        assert!(
+            rcpts.iter().any(|a| a == "invisible@exemple.fr"),
+            "le Cci DOIT être un destinataire d'enveloppe : {rcpts:?}"
+        );
     }
 
     #[test]
@@ -390,6 +476,8 @@ mod tests {
         let raw = draft_bytes(
             "moi@exemple.fr",
             "valide@exemple.fr, adresse-en-cours-de-fra",
+            "",
+            "",
             "Brouillon",
             "corps",
             &[],
@@ -405,7 +493,15 @@ mod tests {
     /// il reste local, rien n'est perdu — comportement documenté par test.
     #[test]
     fn draft_without_any_valid_recipient_stays_local() {
-        let result = draft_bytes("moi@exemple.fr", "pas encore d'adresse", "s", "c", &[]);
+        let result = draft_bytes(
+            "moi@exemple.fr",
+            "pas encore d'adresse",
+            "",
+            "",
+            "s",
+            "c",
+            &[],
+        );
         assert!(result.is_err(), "attendu : non poussable en l'état");
     }
 
@@ -416,6 +512,8 @@ mod tests {
         let raw = draft_bytes(
             "moi@exemple.fr",
             "valide@exemple.fr",
+            "",
+            "",
             "Brouillon",
             "corps",
             &[DraftAttachmentFull {
@@ -443,7 +541,7 @@ mod tests {
     /// ne paie pas le multipart.
     #[test]
     fn draft_bytes_without_pieces_stays_single_part() {
-        let raw = draft_bytes("moi@exemple.fr", "valide@exemple.fr", "s", "c", &[])
+        let raw = draft_bytes("moi@exemple.fr", "valide@exemple.fr", "", "", "s", "c", &[])
             .expect("brouillon constructible");
         assert!(!String::from_utf8_lossy(&raw).contains("multipart/mixed"));
     }

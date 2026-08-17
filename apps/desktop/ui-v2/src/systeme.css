@@ -277,8 +277,11 @@
    sous prefers-reduced-motion la règle A8 coupe le fondu et le
    composant ne rend pas l'<animate> (SMIL n'obéit pas au CSS) — le
    dashoffset de base est 0, le trait reste plein. */
+/* A52 : le fondu-in ACCOMPAGNE le remplissage (tracé SMIL 0→2 s = 0→50 %) :
+   apparition en fondu + remplissage G→D, brève tenue pleine, disparition
+   en fondu — l'animation « complète » du retour terrain 2026-08-17. */
 @keyframes hitofudeFade {
-  0% { opacity:0; } 10% { opacity:1; } 75% { opacity:1; }
+  0% { opacity:0; } 45% { opacity:1; } 70% { opacity:1; }
   95% { opacity:0; } 100% { opacity:0; }
 }
 

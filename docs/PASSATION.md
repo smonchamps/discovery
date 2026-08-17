@@ -76,7 +76,27 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 (PLAN-GELS, ADR 0019) ; auto-update 0.1.6 → 0.1.7 confirmé au terrain.
 Tous les plans de cette ligne sont soldés.
 
-**Dernier chantier soldé : PLAN-RETOURS-MAIL** (2026-08-16, `19ea16a`,
+**Dernier chantier soldé : PLAN-RETOURS-2** (2026-08-17, quatre retours
+terrain, non encore publié — vit sur `main`). (1) **Synchro Gmail « trop
+longue »** : mesurée au terrain (trace `run_sync`, ~135 s en release quand
+22 vues Gmail ont bougé — ~5 s par dossier changé, bridage probable). La
+sobriété (ADR 0017) tient ; c'était la **cadence** qui coûtait. Le
+veilleur IDLE (ADR 0018) tenant INBOX en temps réel, le **cycle complet
+passe de 5 à 30 min** (+ passe légère INBOX à 5 min en filet) — S-D4
+tranché, **ADR 0021**. All Mail RESTE synchronisé (Archives intacte, ADR
+0010 préservé) ; l'exclusion des vues virtuelles est reportée (§2.6). (2)
+**Trait de chargement** : le mode « au pourcentage » (figé chez Chromium,
+A40) meurt ; le trait fait sa boucle complète dès qu'une action tourne, le
+% reste dans le TEXTE (A52). (3) **« Rendre indépendante » retirée** —
+placeholder inerte, multi-fenêtre reporté en chantier dédié (A53). (4)
+**Cc/Cci fonctionnels** — tranche compose→Draft→outbox→SMTP→UI ; **Cci
+dans l'enveloppe SMTP SEULE** (`send_raw`, jamais un en-tête Bcc servi),
+« Répondre à tous » remet les Cc d'origine en Cc (`reply_all_split`) ;
+brouillons locaux portent cc/bcc (A54). Piège payé : l'app **release** est
+sous-système *windows* → `eprintln` **muet** en console (mesurer en
+débogage ou `2> fichier`).
+
+**Chantier soldé précédent : PLAN-RETOURS-MAIL** (2026-08-16, `19ea16a`,
 A48, terrain complet, livré en 0.1.8). Quatre retours du CE sur le
 courrier réel : objets/noms débarrassés des escapes `quoted-string`
 d'IMAP que `imap-proto` laisse (correctif + migration de l'existant),
@@ -412,6 +432,15 @@ Bash). Syntaxes différentes.
   fausse).
 - **Depuis l'ADR 0011, la base a deux compagnons** : `wind.db-wal`
   et `-shm`. Une copie à chaud doit prendre les trois.
+- **L'app en `--release` est MUETTE en console** (`main.rs` :
+  `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]`) :
+  sous-système *windows*, aucune console attachée, `eprintln` (la trace
+  `run_sync`) n'a nulle part où s'écrire. Pour lire une trace au terrain :
+  soit **débogage** (`cargo run -p wind-desktop`, console attachée, mais
+  durées CPU gonflées), soit **rediriger** (`… --release 2> fichier`, la
+  redirection fournit un handle même à une appli fenêtrée — timing release
+  exact). Payé au chantier PLAN-RETOURS-2 (un « pas de trace » pris à tort
+  pour « pas de synchro »).
 - **Un commit ne peut pas être chaîné avec `git --no-pager …`** : le hook
   `block-no-verify` bloque le préfixe `--no-`. Séparer les commandes.
 - **`prefers-color-scheme` est MORT dans le WebView2 de Tauri** : jamais

@@ -21,6 +21,12 @@ pub struct Draft {
     pub from: String,
     /// Destinataires validés — jamais vide.
     pub to: Vec<String>,
+    /// Copie carbone, validée — peut être vide.
+    pub cc: Vec<String>,
+    /// Copie carbone INVISIBLE, validée — peut être vide. Ne paraît
+    /// JAMAIS dans les en-têtes du message servi aux autres (l'envoi la
+    /// porte dans l'enveloppe SMTP seule, mail-smtp) : c'est tout son sens.
+    pub bcc: Vec<String>,
     pub subject: String,
     pub body_text: String,
     /// Message-ID du message auquel on répond (fil de discussion).
@@ -29,34 +35,48 @@ pub struct Draft {
 
 /// Valide et assemble un brouillon prêt à journaliser.
 ///
-/// `to_raw` accepte plusieurs adresses séparées par des virgules ou des
-/// points-virgules ; chacune doit être valide, sinon tout est refusé
-/// (fail fast à la frontière). `in_reply_to` est le Message-ID du message
-/// d'origine tel que rapporté par le serveur — normalisé ici.
+/// `to_raw`/`cc_raw`/`bcc_raw` acceptent plusieurs adresses séparées par
+/// des virgules ou des points-virgules ; chacune doit être valide, sinon
+/// tout est refusé (fail fast à la frontière). `to_raw` ne peut pas être
+/// vide ; Cc et Cci le peuvent. `in_reply_to` est le Message-ID du
+/// message d'origine tel que rapporté par le serveur — normalisé ici.
 pub fn compose(
     from: &str,
     to_raw: &str,
+    cc_raw: &str,
+    bcc_raw: &str,
     subject: &str,
     body_text: &str,
     in_reply_to: Option<&str>,
 ) -> Result<Draft, Error> {
     let from = EmailAddress::parse(from)?;
-    let to: Vec<String> = to_raw
-        .split([',', ';'])
-        .filter(|part| !part.trim().is_empty())
-        .map(|part| EmailAddress::parse(part).map(|address| address.to_string()))
-        .collect::<Result<_, _>>()?;
+    let to = parse_recipients(to_raw)?;
     if to.is_empty() {
         return Err(Error::InvalidEmailAddress(to_raw.to_string()));
     }
+    let cc = parse_recipients(cc_raw)?;
+    let bcc = parse_recipients(bcc_raw)?;
     Ok(Draft {
         message_id: generate_message_id(&from),
         from: from.to_string(),
         to,
+        cc,
+        bcc,
         subject: single_line(subject),
         body_text: body_text.to_string(),
         in_reply_to: in_reply_to.and_then(normalize_message_id),
     })
+}
+
+/// Valide une liste d'adresses (virgules ou points-virgules) : chacune
+/// stricte, une seule invalide refuse tout. Rend une liste vide sur une
+/// entrée vide — l'appelant décide si le vide est permis (À : non ; Cc,
+/// Cci : oui).
+fn parse_recipients(raw: &str) -> Result<Vec<String>, Error> {
+    raw.split([',', ';'])
+        .filter(|part| !part.trim().is_empty())
+        .map(|part| EmailAddress::parse(part).map(|address| address.to_string()))
+        .collect()
 }
 
 /// Sujet pré-rempli d'une réponse : « Re: » sans empilement — jamais de
@@ -100,37 +120,43 @@ pub fn forward_subject(original: Option<&str>) -> String {
     }
 }
 
-/// Destinataires d'un « Répondre à tous » : l'expéditeur d'abord, puis
-/// les À, puis les Cc du message d'origine — sans doublon (comparaison
-/// insensible à la casse) et sans sa propre adresse (s'écrire à soi-même
-/// serait du bruit). Peut rendre une liste VIDE : un message qu'on s'est
-/// envoyé à soi seul n'a personne d'autre — l'appelant tranche.
-pub fn reply_all_recipients(
+/// Destinataires d'un « Répondre à tous », À et Cc SÉPARÉS (verdict CE
+/// D3, PLAN-RETOURS-2) : le champ À reçoit l'expéditeur puis les À
+/// d'origine ; le champ Cc reçoit les Cc d'origine — les Cc restent des
+/// Cc au lieu d'être aplatis dans le À. Sans doublon (comparaison
+/// insensible à la casse), sans sa propre adresse (s'écrire à soi-même
+/// serait du bruit), et sans remettre en Cc quelqu'un déjà placé en À.
+/// Chaque liste peut être VIDE : un message qu'on s'est envoyé à soi seul
+/// n'a personne d'autre — l'appelant tranche.
+pub fn reply_all_split(
     sender: Option<&str>,
     to: &[String],
     cc: &[String],
     own_address: &str,
-) -> Vec<String> {
+) -> (Vec<String>, Vec<String>) {
     let own = own_address.trim().to_lowercase();
     let mut vus: Vec<String> = Vec::new();
-    let mut liste = Vec::new();
-    let candidats = sender
-        .into_iter()
-        .chain(to.iter().map(String::as_str))
-        .chain(cc.iter().map(String::as_str));
-    for candidat in candidats {
+    let mut ajouter = |dest: &mut Vec<String>, candidat: &str| {
         let adresse = candidat.trim();
         if adresse.is_empty() {
-            continue;
+            return;
         }
         let cle = adresse.to_lowercase();
         if cle == own || vus.contains(&cle) {
-            continue;
+            return;
         }
         vus.push(cle);
-        liste.push(adresse.to_string());
+        dest.push(adresse.to_string());
+    };
+    let mut to_out = Vec::new();
+    for candidat in sender.into_iter().chain(to.iter().map(String::as_str)) {
+        ajouter(&mut to_out, candidat);
     }
-    liste
+    let mut cc_out = Vec::new();
+    for candidat in cc {
+        ajouter(&mut cc_out, candidat);
+    }
+    (to_out, cc_out)
 }
 
 /// Bloc de citation d'une réponse, à placer SOUS le curseur (top-posting) :
@@ -215,7 +241,59 @@ mod tests {
     use super::*;
 
     fn compose_simple(to_raw: &str) -> Result<Draft, Error> {
-        compose("moi@exemple.fr", to_raw, "Sujet", "Corps", None)
+        compose("moi@exemple.fr", to_raw, "", "", "Sujet", "Corps", None)
+    }
+
+    #[test]
+    fn valide_cc_et_bcc_comme_le_champ_a() {
+        let draft = compose(
+            "moi@exemple.fr",
+            "a@exemple.fr",
+            "b@exemple.fr, c@exemple.fr",
+            "secret@exemple.fr",
+            "Sujet",
+            "Corps",
+            None,
+        )
+        .unwrap();
+        assert_eq!(draft.to, vec!["a@exemple.fr"]);
+        assert_eq!(draft.cc, vec!["b@exemple.fr", "c@exemple.fr"]);
+        assert_eq!(draft.bcc, vec!["secret@exemple.fr"]);
+    }
+
+    #[test]
+    fn cc_et_bcc_vides_valent_liste_vide() {
+        let draft = compose_simple("a@exemple.fr").unwrap();
+        assert!(draft.cc.is_empty());
+        assert!(draft.bcc.is_empty());
+    }
+
+    #[test]
+    fn une_adresse_cc_ou_bcc_invalide_refuse_tout() {
+        assert!(
+            compose(
+                "moi@exemple.fr",
+                "a@exemple.fr",
+                "pas-une-adresse",
+                "",
+                "s",
+                "c",
+                None
+            )
+            .is_err()
+        );
+        assert!(
+            compose(
+                "moi@exemple.fr",
+                "a@exemple.fr",
+                "",
+                "x\r\ny@z.fr",
+                "s",
+                "c",
+                None
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -241,7 +319,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_sender() {
-        assert!(compose("pas-une-adresse", "a@exemple.fr", "s", "c", None).is_err());
+        assert!(compose("pas-une-adresse", "a@exemple.fr", "", "", "s", "c", None).is_err());
     }
 
     #[test]
@@ -259,6 +337,8 @@ mod tests {
         let draft = compose(
             "moi@exemple.fr",
             "a@exemple.fr",
+            "",
+            "",
             "Alerte\r\nBcc: espion@mal.example",
             "Corps",
             None,
@@ -274,6 +354,8 @@ mod tests {
         let draft = compose(
             "moi@exemple.fr",
             "a@exemple.fr",
+            "",
+            "",
             "s",
             "ligne 1\nligne 2",
             None,
@@ -284,11 +366,38 @@ mod tests {
 
     #[test]
     fn normalizes_in_reply_to_with_angle_brackets() {
-        let with = compose("moi@exemple.fr", "a@exemple.fr", "s", "c", Some("<id@x.y>")).unwrap();
+        let with = compose(
+            "moi@exemple.fr",
+            "a@exemple.fr",
+            "",
+            "",
+            "s",
+            "c",
+            Some("<id@x.y>"),
+        )
+        .unwrap();
         assert_eq!(with.in_reply_to.as_deref(), Some("<id@x.y>"));
-        let without = compose("moi@exemple.fr", "a@exemple.fr", "s", "c", Some("id@x.y")).unwrap();
+        let without = compose(
+            "moi@exemple.fr",
+            "a@exemple.fr",
+            "",
+            "",
+            "s",
+            "c",
+            Some("id@x.y"),
+        )
+        .unwrap();
         assert_eq!(without.in_reply_to.as_deref(), Some("<id@x.y>"));
-        let blank = compose("moi@exemple.fr", "a@exemple.fr", "s", "c", Some("  ")).unwrap();
+        let blank = compose(
+            "moi@exemple.fr",
+            "a@exemple.fr",
+            "",
+            "",
+            "s",
+            "c",
+            Some("  "),
+        )
+        .unwrap();
         assert_eq!(blank.in_reply_to, None);
     }
 
@@ -317,45 +426,57 @@ mod tests {
     }
 
     #[test]
-    fn reply_all_orders_sender_then_to_then_cc_without_self() {
+    fn reply_all_split_ordonne_sender_puis_a_puis_cc_sans_soi() {
         let to = vec!["moi@exemple.fr".to_string(), "bob@exemple.fr".to_string()];
         let cc = vec!["carole@exemple.fr".to_string()];
-        assert_eq!(
-            reply_all_recipients(Some("alice@exemple.fr"), &to, &cc, "moi@exemple.fr"),
-            vec!["alice@exemple.fr", "bob@exemple.fr", "carole@exemple.fr"]
-        );
+        let (to_out, cc_out) =
+            reply_all_split(Some("alice@exemple.fr"), &to, &cc, "moi@exemple.fr");
+        assert_eq!(to_out, vec!["alice@exemple.fr", "bob@exemple.fr"]);
+        assert_eq!(cc_out, vec!["carole@exemple.fr"]);
+    }
+
+    /// D3 : les Cc d'origine restent en Cc ; un Cc déjà placé en À (bob)
+    /// n'y est pas remis.
+    #[test]
+    fn reply_all_split_garde_les_cc_en_cc() {
+        let to = vec!["moi@exemple.fr".to_string(), "bob@exemple.fr".to_string()];
+        let cc = vec![
+            "carole@exemple.fr".to_string(),
+            "bob@exemple.fr".to_string(),
+        ];
+        let (to_out, cc_out) =
+            reply_all_split(Some("alice@exemple.fr"), &to, &cc, "moi@exemple.fr");
+        assert_eq!(to_out, vec!["alice@exemple.fr", "bob@exemple.fr"]);
+        assert_eq!(cc_out, vec!["carole@exemple.fr"]);
     }
 
     /// La casse ne fait pas deux adresses : « Bob@ » et « bob@ » ne
-    /// doivent produire qu'un destinataire, et « MOI@ » reste soi.
+    /// produisent qu'un destinataire, et « MOI@ » reste soi.
     #[test]
-    fn reply_all_deduplicates_case_insensitively() {
+    fn reply_all_split_dedoublonne_insensible_a_la_casse() {
         let to = vec!["Bob@Exemple.fr".to_string(), "MOI@exemple.fr".to_string()];
         let cc = vec!["bob@exemple.fr".to_string(), "alice@exemple.fr".to_string()];
-        assert_eq!(
-            reply_all_recipients(Some("alice@exemple.fr"), &to, &cc, "moi@exemple.fr"),
-            vec!["alice@exemple.fr", "Bob@Exemple.fr"]
-        );
+        let (to_out, cc_out) =
+            reply_all_split(Some("alice@exemple.fr"), &to, &cc, "moi@exemple.fr");
+        assert_eq!(to_out, vec!["alice@exemple.fr", "Bob@Exemple.fr"]);
+        assert!(cc_out.is_empty(), "bob et alice sont déjà en À");
     }
 
-    /// Message envoyé à soi seul : personne d'autre — liste vide, c'est
-    /// à l'appelant de trancher (retomber sur l'expéditeur, ou refuser).
+    /// Message envoyé à soi seul : personne d'autre — les deux listes sont
+    /// vides, c'est à l'appelant de trancher (retomber sur l'expéditeur).
     #[test]
-    fn reply_all_can_be_empty_when_alone() {
+    fn reply_all_split_peut_etre_vide_quand_seul() {
         let to = vec!["moi@exemple.fr".to_string()];
-        assert_eq!(
-            reply_all_recipients(Some("moi@exemple.fr"), &to, &[], "moi@exemple.fr"),
-            Vec::<String>::new()
-        );
+        let (to_out, cc_out) = reply_all_split(Some("moi@exemple.fr"), &to, &[], "moi@exemple.fr");
+        assert!(to_out.is_empty());
+        assert!(cc_out.is_empty());
     }
 
     #[test]
-    fn reply_all_skips_blank_entries_and_missing_sender() {
+    fn reply_all_split_ignore_les_vides_et_l_expediteur_absent() {
         let to = vec!["  ".to_string(), "bob@exemple.fr".to_string()];
-        assert_eq!(
-            reply_all_recipients(None, &to, &[], "moi@exemple.fr"),
-            vec!["bob@exemple.fr"]
-        );
+        let (to_out, _) = reply_all_split(None, &to, &[], "moi@exemple.fr");
+        assert_eq!(to_out, vec!["bob@exemple.fr"]);
     }
 
     #[test]

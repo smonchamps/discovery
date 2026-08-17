@@ -31,6 +31,8 @@ fn main() -> anyhow::Result<()> {
     let draft = mail_core::compose(
         &account.email,
         &account.email,
+        "",
+        "",
         "Wind — essai de la boîte d'envoi",
         "Ce message a transité par la boîte d'envoi persistante.\n\
          S'il arrive une seule fois, les deux règles d'or tiennent.",
