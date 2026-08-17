@@ -151,14 +151,35 @@ progression + flux (`migration_reports_progress_and_indexes_every_message`),
 annulation + rembobinage (`migration_cancel_rolls_back_and_reruns`).
 Gate complète verte, e2e 86/86.
 
-## Report ouvert (nouveau, à instruire après ce solde)
+## Plafond de la recherche — soldé (2026-08-17, décisions CE)
 
-- **Plafond de la recherche** : `SEARCH_LIMIT = 50`, et la barre affiche le
-  nombre RENDU — « 50 résultats » se lit comme « exactement 50 » alors que
-  c'est « les 50 mieux classés, peut-être plus ». Le BM25 est déjà calculé
-  sur toutes les correspondances (monter le plafond est quasi gratuit) ; le
-  mur d'un « sans limite » est l'hydratation `SELECT_UNIFIED` par ligne + la
-  liste de résultats **non fenêtrée**. Options : signal « 50+ » (peu de
-  code), plafond à 200 + « 200+ », ou le vrai chantier liste virtualisée +
-  pagination par curseur. **Traité après le commit de ce chantier** (choix
-  CE du 2026-08-17).
+Micro-chantier ouvert après le solde principal, sur constat du CE (« 50
+résultats » se lit comme « exactement 50 »).
+
+- **Total exact + « N sur M »** : la barre affiche « Recherche · N sur M
+  résultats » quand le rendu est plafonné (M = vrai total, via un `COUNT`
+  sur l'index calculé **seulement** si plafonné — 3,5 ms au terrain,
+  négligeable). Sinon « N résultats ». `search_total` partagé avec `search`
+  par `build_match`/`date_clauses`.
+- **Plafond `SEARCH_LIMIT` = 100** (était 50). Deux tours de terrain : 200
+  dépassait le budget (124 ms sur « fac »), et **100 aussi** (104 ms) — parce
+  que le mur n'est ni le COUNT (3,5 ms) ni l'hydratation, mais le **plancher
+  BM25** (~80 ms sur les 36 k correspondances de « fac », et il monte avec le
+  corpus). Le plafond ne gratte que l'hydratation (~0,2 ms/ligne) ; il ne
+  pouvait pas régler ça seul.
+- **Soupape tri-date ARMÉE** (D-plafond, révision terrain) : au-delà de
+  `WIDE_QUERY_THRESHOLD` (10 000 correspondances), `search_capped` classe par
+  **date** au lieu de BM25. Le budget tient (**~66 ms sur « fac »**), et pour
+  un préfixe de 3 car. la date est un meilleur ordre que le « classement de
+  pertinence » d'un moignon. En deçà du seuil, BM25 inchangé. Le COUNT du
+  total (déjà nécessaire à « N sur M ») informe la bascule sans requête de
+  plus. `search`/`search_recent`/`search_total` publics ; `search_capped` est
+  le point d'entrée UI ; corps partagé `run_search(force_date)`.
+- Système A50, DC-D2. Banc `banc_recherche` aligné sur le plafond de prod
+  (100) + le COUNT.
+
+### Report ouvert (au CE)
+
+- **Recherche sans limite pratique** = liste de résultats **virtualisée +
+  pagination par curseur** (le mur : hydratation `SELECT_UNIFIED` par ligne
+  + liste non fenêtrée). Chantier à part entière, non ouvert.

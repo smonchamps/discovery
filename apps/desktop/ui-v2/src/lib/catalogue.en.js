@@ -24,6 +24,7 @@ export const EN = {
 
   // --- Barre de statut --------------------------------------------------
   'statut.recherche': 'Search · {n} result|Search · {n} results',
+  'statut.recherchePlafond': 'Search · {n} of {total} result|Search · {n} of {total} results',
   'statut.categorie': '{boite} · {n} item|{boite} · {n} items',
   'statut.synchro': 'Syncing · {p}%',
   'statut.rattrapageCorps': 'Catching up on messages · {n} to go',

@@ -26,6 +26,7 @@ export const FR = {
 
   // --- Barre de statut --------------------------------------------------
   'statut.recherche': 'Recherche · {n} résultat|Recherche · {n} résultats',
+  'statut.recherchePlafond': 'Recherche · {n} sur {total} résultat|Recherche · {n} sur {total} résultats',
   'statut.categorie': '{boite} · {n} élément|{boite} · {n} éléments',
   'statut.synchro': 'Synchronisation · {p} %',
   'statut.rattrapageCorps': 'Rattrapage des messages · {n} restants',

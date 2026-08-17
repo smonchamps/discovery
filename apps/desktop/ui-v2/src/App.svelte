@@ -56,6 +56,7 @@
   let onglet = $state('tous');
   let recherche = $state('');
   let nResultats = $state(null);
+  let nTotal = $state(null);
   let totalListe = $state(0);
   let synchro = $state(null);
   // Le cycle en cours, vu par la sonde d'activité (E1) : null au repos.
@@ -202,7 +203,12 @@
   // les rattrapages, l'attente d'envoi, l'échec, le repos horodaté.
   const ligne = $derived.by(() => {
     if (nResultats !== null) {
-      return { texte: t('statut.recherche', { n: nResultats }), fil: null, alerte: false };
+      // « N sur M » quand le rendu est plafonné (M > N), sinon « N résultats ».
+      const texte =
+        nTotal !== null && nTotal > nResultats
+          ? t('statut.recherchePlafond', { n: nResultats, total: nTotal })
+          : t('statut.recherche', { n: nResultats });
+      return { texte, fil: null, alerte: false };
     }
     if (categorie !== 'reception') {
       return {
@@ -1097,7 +1103,7 @@
              {brouillons} onreprendre={reprendreBrouillon}
              onselect={surSelection} ononglet={surOnglet}
              ontotal={(t) => (totalListe = t)}
-             onresultats={(n) => (nResultats = n)} />
+             onresultats={(n, total) => { nResultats = n; nTotal = total; }} />
       {#if volets === 3}
         <Lecture bind:this={lecture} {brouillons} onreprendre={reprendreBrouillon}
                  onarchiver={archiver} onsupprimer={supprimer}

@@ -25,7 +25,7 @@ use crate::AppState;
 
 pub(crate) const MAILBOX: &str = "INBOX";
 const LIST_LIMIT_MAX: usize = 500;
-const SEARCH_LIMIT: usize = 50;
+const SEARCH_LIMIT: usize = 100;
 /// Corps rapatriés par appel, tous comptes confondus. Borner le lot rend
 /// l'interruption gratuite : l'UI cesse simplement de rappeler.
 const BACKFILL_BUDGET: usize = 200;
@@ -1722,19 +1722,29 @@ pub async fn preview_catchup(app: AppHandle, limit: usize) -> Result<u64, String
     .await
 }
 
+/// Les résultats d'une recherche : les lignes rendues (plafonnées à
+/// `SEARCH_LIMIT`) et le nombre TOTAL de correspondances — pour dire
+/// « 100 sur N » quand le rendu est plafonné.
+#[derive(Serialize)]
+pub struct SearchResults {
+    pub rows: Vec<MessageRow>,
+    pub total: u64,
+}
+
 /// Recherche plein-texte sur tous les comptes. Le déclenchement à partir
 /// de 3 caractères et le debounce sont de la responsabilité de l'UI.
 #[tauri::command]
-pub async fn search_messages(app: AppHandle, query: String) -> Result<Vec<MessageRow>, String> {
+pub async fn search_messages(app: AppHandle, query: String) -> Result<SearchResults, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
-        let rows = store
-            .search(&query, SEARCH_LIMIT)
-            .map_err(|err| err.to_string())?
-            .into_iter()
-            .map(to_message_row)
-            .collect();
-        Ok(rows)
+        // `search_capped` rend les lignes ET le total exact, et bascule sur le
+        // tri par date au-delà du seuil de requête large (le classement BM25
+        // y dépasse le budget et ne veut plus rien dire — ADR 0004).
+        let (hits, total) = store
+            .search_capped(&query, SEARCH_LIMIT)
+            .map_err(|err| err.to_string())?;
+        let rows = hits.into_iter().map(to_message_row).collect();
+        Ok(SearchResults { rows, total })
     })
     .await
 }

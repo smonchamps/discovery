@@ -6,11 +6,14 @@
 //! | Recherche | < 100 ms |
 //! | Ouverture d'un message | < 50 ms |
 //!
-//! Protocole de l'[ADR 0004] : top-50 avec classement, et **le nombre de
-//! résultats affiché à côté de chaque durée**. Sans lui un chiffre de
-//! recherche ne veut rien dire — le coût de FTS5 suit le nombre de
-//! correspondances, puisque `ORDER BY rank` calcule BM25 sur toutes. Une
-//! requête rapide sur un terme rare ne prouve rien.
+//! Protocole de l'[ADR 0004] : on mesure `search_capped` — CE que la
+//! production paie par frappe (top-100, le `SEARCH_LIMIT` de production ;
+//! COUNT du total pour « N sur M » ; bascule tri-date au-delà de
+//! `WIDE_QUERY_THRESHOLD`), avec **le nombre de correspondances affiché à
+//! côté de chaque durée**. Sans lui un chiffre de recherche ne veut rien
+//! dire — le coût de FTS5 suit le nombre de correspondances, puisque
+//! `ORDER BY rank` calcule BM25 sur toutes. Une requête rapide sur un terme
+//! rare ne prouve rien.
 //!
 //! L'ADR nomme d'ailleurs le point de rupture : une requête qui matche
 //! 69-90 % du corpus dépasse le budget à 200 000 messages. Le banc la
@@ -45,6 +48,13 @@ const REQUETES: [(&str, &str); 6] = [
     ("deux termes", "facture réu"),
     ("mot très commun", "réunion"),
 ];
+
+/// Le plafond de rendu, aligné sur `SEARCH_LIMIT` de la commande
+/// `search_messages` : mesurer un autre nombre que ce que la production rend
+/// (et le COUNT du total qu'elle paie quand c'est plafonné) mentirait sur le
+/// coût réel. Fixé à 100 au terrain : 200 dépassait le budget sur un préfixe
+/// à 3 caractères très commun (l'hydratation des lignes, pas le COUNT).
+const SEARCH_LIMIT: usize = 100;
 
 /// L'expression FTS que `search` construira — reproduite ici pour que le
 /// nombre de correspondances corresponde à la durée mesurée.
@@ -82,35 +92,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let store = Store::open(std::path::Path::new(&path))?;
 
-    println!("\n--- recherche (top 50, budget < 100 ms) ---");
+    println!("\n--- recherche (search_capped : count + tri + rendu, budget < 100 ms) ---");
     for (etiquette, requete) in REQUETES {
-        // Un tour à blanc : on mesure le régime établi, pas le premier
-        // défaut de cache — la recherche se fait à la frappe, donc à
-        // chaud.
-        let _ = store.search(requete, 50)?;
+        // `search_capped` est CE que la production paie par frappe : le COUNT
+        // du total, la bascule tri-date au-delà du seuil de requête large, et
+        // le rendu plafonné. Un tour à blanc (régime établi, à chaud), puis
+        // la mesure.
+        let _ = store.search_capped(requete, SEARCH_LIMIT)?;
         let depart = Instant::now();
-        let resultats = store.search(requete, 50)?;
-        let duree = depart.elapsed().as_secs_f64() * 1000.0;
-        let expression = expression_fts(requete);
-        let total = correspondances(&path, &expression).unwrap_or(-1);
-        let verdict = if duree > 100.0 {
+        let (resultats, total) = store.search_capped(requete, SEARCH_LIMIT)?;
+        let cout = depart.elapsed().as_secs_f64() * 1000.0;
+        let tri_date = total > mail_core::WIDE_QUERY_THRESHOLD;
+        let verdict = if cout > 100.0 {
             "  ✗ HORS BUDGET"
         } else {
             ""
         };
-        // Le coût unitaire est le seul chiffre transférable : le corpus
-        // de ce banc est synthétique, donc sa SÉLECTIVITÉ ne vaut rien,
-        // mais « tant de µs par correspondance » se reporte sur une vraie
-        // boîte dont on connaît la sélectivité.
-        let unitaire = if total > 0 {
-            duree * 1000.0 / total as f64
-        } else {
-            0.0
-        };
         println!(
-            "{etiquette:<22} « {requete:<12} » → {expression:<22} {duree:>7.2} ms — \
-             {:>2} rendus sur {total} correspondance(s) ({unitaire:.2} µs/corr.){verdict}",
-            resultats.len()
+            "{etiquette:<22} « {requete:<12} » {cout:>7.2} ms — {:>3} rendus sur {total} corr.{}{verdict}",
+            resultats.len(),
+            if tri_date { " (tri date)" } else { " (BM25)" },
         );
     }
 
@@ -148,7 +149,7 @@ fn comparer_tris(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let expression = expression_fts(saisie);
         let mut durees = Vec::new();
         for ordre in [
-            "bm25(search_fts, 10.0, 5.0, 1.0), e.date_epoch DESC",
+            "bm25(search_fts, 10.0, 5.0, 3.0, 1.0), e.date_epoch DESC",
             "e.date_epoch DESC, e.uid DESC",
         ] {
             let sql = format!("{BASE}{ordre} LIMIT 50");
@@ -176,20 +177,6 @@ fn comparer_tris(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         );
     }
     Ok(())
-}
-
-/// Le nombre RÉEL de correspondances, que `search` masque en tronquant à
-/// `limit`. C'est lui qui explique la durée : `ORDER BY rank` calcule
-/// BM25 sur **toutes** les correspondances, pas seulement sur les 50
-/// rendues (ADR 0004).
-fn correspondances(path: &str, expression: &str) -> Result<i64, Box<dyn std::error::Error>> {
-    let conn = Connection::open(path)?;
-    let total = conn.query_row(
-        "SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH ?1",
-        [expression],
-        |row| row.get(0),
-    )?;
-    Ok(total)
 }
 
 /// Le corps est-il servi depuis le cache assez vite ? On prend des

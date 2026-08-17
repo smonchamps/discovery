@@ -245,6 +245,15 @@ pub(crate) fn deindex_mailbox(conn: &Connection, mailbox_id: i64) -> Result<(), 
     Ok(())
 }
 
+/// Au-delà de ce nombre de correspondances, [`Store::search_capped`] bascule
+/// du classement BM25 au tri par date : le BM25 sur autant de correspondances
+/// dépasse le budget (ADR 0004), et pour une requête aussi large le classement
+/// de pertinence ne veut de toute façon rien dire. Valeur calée au terrain
+/// (2026-08-17) : les requêtes à ~8 000 correspondances tiennent le budget en
+/// BM25 (~45 ms), celle à 36 000 le dépassait (~101 ms). Le coût BM25 par
+/// correspondance étant stable, ce seuil tient quand le corpus grandit.
+pub const WIDE_QUERY_THRESHOLD: u64 = 10_000;
+
 impl Store {
     /// Recherche sur TOUS les comptes — les résultats sont des lignes de
     /// la boîte unifiée, triées par pertinence (BM25 ; un mot du sujet
@@ -256,50 +265,59 @@ impl Store {
     /// `date:AAAA`, `date:AAAA-MM`, `date:AAAA-MM-JJ`. Un filtre seul,
     /// sans terme, liste les messages correspondants par date.
     pub fn search(&self, input: &str, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
-        let (terms_expr, filters) = parse_query(input);
-        // Les filtres expéditeur/destinataire passent par les colonnes
-        // `sender`/`recipients` de l'index FTS, qui replient casse ET
-        // accents (unicode61 remove_diacritics) : un LIKE SQL ne replie que
-        // l'ASCII et raterait « Étienne ». Préfixe, pour rester tolérant à
-        // la frappe (« duran » → Durand).
-        let from_expr = filters
-            .from
-            .as_ref()
-            .map(|value| format!("sender:\"{value}\"*"));
-        let to_expr = filters
-            .to
-            .as_ref()
-            .map(|value| format!("recipients:\"{value}\"*"));
-        let has_terms = terms_expr.is_some();
-        // Termes et filtres se conjoignent (AND implicite de FTS5) dans une
-        // seule expression MATCH.
-        let parts: Vec<String> = [terms_expr, from_expr, to_expr]
-            .into_iter()
-            .flatten()
-            .collect();
-        let match_expr = (!parts.is_empty()).then(|| parts.join(" "));
+        self.run_search(input, limit, false)
+    }
+
+    /// Recherche classée par DATE (le plus récent d'abord), pertinence
+    /// ignorée. Le classement BM25 d'une requête très large (un préfixe de
+    /// 3 caractères, des dizaines de milliers de correspondances) ne veut
+    /// rien dire, et son coût dépasse le budget (ADR 0004) ; la date est
+    /// alors le meilleur ordre. [`Store::search_capped`] y bascule au-delà
+    /// de [`WIDE_QUERY_THRESHOLD`].
+    pub fn search_recent(&self, input: &str, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
+        self.run_search(input, limit, true)
+    }
+
+    /// La recherche telle que l'UI la consomme : les lignes (au plus `limit`)
+    /// ET le total exact des correspondances, pour dire « N sur M » quand le
+    /// rendu est plafonné. Bascule sur le tri par date au-delà de
+    /// [`WIDE_QUERY_THRESHOLD`] correspondances — le COUNT du total, calculé
+    /// de toute façon, informe la bascule sans requête de plus.
+    pub fn search_capped(
+        &self,
+        input: &str,
+        limit: usize,
+    ) -> Result<(Vec<UnifiedRow>, u64), Error> {
+        let total = self.search_total(input)?;
+        let rows = self.run_search(input, limit, total > WIDE_QUERY_THRESHOLD)?;
+        Ok((rows, total))
+    }
+
+    /// Le corps partagé. `force_date` impose le tri par date même quand des
+    /// termes justifieraient un classement BM25 : la soupape des requêtes
+    /// trop larges.
+    fn run_search(
+        &self,
+        input: &str,
+        limit: usize,
+        force_date: bool,
+    ) -> Result<Vec<UnifiedRow>, Error> {
+        let (match_expr, has_terms, filters) = build_match(input);
         if match_expr.is_none() && filters.since.is_none() && filters.until.is_none() {
             return Ok(Vec::new());
         }
-        let mut clauses = String::new();
+        let (clauses, date_values) = date_clauses(&filters);
         let mut values: Vec<Value> = Vec::new();
         if let Some(expr) = &match_expr {
             values.push(expr.clone().into());
         }
-        if let Some(since) = filters.since {
-            clauses.push_str(" AND e.date_epoch >= ?");
-            values.push(since.into());
-        }
-        if let Some(until) = filters.until {
-            clauses.push_str(" AND e.date_epoch < ?");
-            values.push(until.into());
-        }
+        values.extend(date_values);
         values.push((limit as i64).into());
         let sql = if match_expr.is_some() {
-            // Pertinence quand il y a des termes ; date quand la requête
-            // n'est qu'un filtre expéditeur/destinataire (le BM25 n'a alors
-            // aucun sens).
-            let order = if has_terms {
+            // Pertinence quand il y a des termes ET que la requête n'est pas
+            // trop large ; date sinon — filtre seul (le BM25 n'a alors aucun
+            // sens), ou requête très large (`force_date`, la soupape).
+            let order = if has_terms && !force_date {
                 "bm25(search_fts, 10.0, 5.0, 3.0, 1.0), e.date_epoch DESC"
             } else {
                 "e.date_epoch DESC, e.uid DESC"
@@ -334,6 +352,89 @@ impl Store {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(rows)
     }
+
+    /// Le nombre EXACT de correspondances d'une recherche — sans classement
+    /// ni hydratation, un simple COUNT sur l'index (mêmes termes et filtres
+    /// que [`Store::search`]). Sert à afficher « 100 sur N » quand le rendu
+    /// est plafonné ; l'appelant ne le demande QUE dans ce cas, une
+    /// recherche qui rend moins que sa limite connaissant déjà son total.
+    pub fn search_total(&self, input: &str) -> Result<u64, Error> {
+        let (match_expr, _has_terms, filters) = build_match(input);
+        if match_expr.is_none() && filters.since.is_none() && filters.until.is_none() {
+            return Ok(0);
+        }
+        let (clauses, date_values) = date_clauses(&filters);
+        let mut values: Vec<Value> = Vec::new();
+        if let Some(expr) = &match_expr {
+            values.push(expr.clone().into());
+        }
+        values.extend(date_values);
+        let sql = if match_expr.is_some() {
+            if clauses.is_empty() {
+                // Sans borne de date, le COUNT n'a besoin d'aucune jointure :
+                // l'index seul porte la réponse (le chemin le plus cher, le
+                // plus fréquent — c'est là que le plafond mord).
+                "SELECT COUNT(*) FROM search_fts WHERE search_fts MATCH ?".to_string()
+            } else {
+                // Une borne de date vit dans `envelopes` : il faut la jointure.
+                format!(
+                    "SELECT COUNT(*)
+                     FROM search_fts
+                     JOIN search_docs d ON d.docid = search_fts.rowid
+                     JOIN envelopes e ON e.mailbox_id = d.mailbox_id AND e.uid = d.uid
+                     WHERE search_fts MATCH ?{clauses}"
+                )
+            }
+        } else {
+            format!("SELECT COUNT(*) FROM envelopes e WHERE 1 = 1{clauses}")
+        };
+        let total: i64 = self
+            .conn()
+            .query_row(&sql, params_from_iter(values), |row| row.get(0))?;
+        Ok(total as u64)
+    }
+}
+
+/// Traduit la saisie en une expression MATCH conjointe — termes (dernier en
+/// préfixe) et filtres `from:`/`to:` vers les colonnes `sender`/`recipients`,
+/// qui replient casse ET accents (`unicode61 remove_diacritics` ; un LIKE SQL
+/// ne replie que l'ASCII et raterait « Étienne »). `has_terms` dit si un
+/// classement BM25 a un sens (sinon, tri par date). Partagé par `search` et
+/// `search_total` : la même requête, comptée puis rendue.
+fn build_match(input: &str) -> (Option<String>, bool, Filters) {
+    let (terms_expr, filters) = parse_query(input);
+    let from_expr = filters
+        .from
+        .as_ref()
+        .map(|value| format!("sender:\"{value}\"*"));
+    let to_expr = filters
+        .to
+        .as_ref()
+        .map(|value| format!("recipients:\"{value}\"*"));
+    let has_terms = terms_expr.is_some();
+    let parts: Vec<String> = [terms_expr, from_expr, to_expr]
+        .into_iter()
+        .flatten()
+        .collect();
+    let match_expr = (!parts.is_empty()).then(|| parts.join(" "));
+    (match_expr, has_terms, filters)
+}
+
+/// Les bornes de date en fragment SQL et leurs valeurs, dans l'ordre.
+/// Partagé par `search` et `search_total` : le filtre de date ne peut pas
+/// diverger entre le compte et le rendu.
+fn date_clauses(filters: &Filters) -> (String, Vec<Value>) {
+    let mut clauses = String::new();
+    let mut values: Vec<Value> = Vec::new();
+    if let Some(since) = filters.since {
+        clauses.push_str(" AND e.date_epoch >= ?");
+        values.push(since.into());
+    }
+    if let Some(until) = filters.until {
+        clauses.push_str(" AND e.date_epoch < ?");
+        values.push(until.into());
+    }
+    (clauses, values)
 }
 
 #[derive(Default)]
@@ -1288,6 +1389,104 @@ mod tests {
         // Rejouée sans annulation : elle aboutit.
         migrate_search(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
         assert_eq!(store.search("to:alice", 50).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn search_total_counts_all_matches_beyond_the_limit() {
+        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let envelopes: Vec<Envelope> = (1..=10)
+            .map(|uid| envelope(uid, "Rapport", "Alice", "a@ex.fr", uid as i64))
+            .collect();
+        store.upsert_envelopes(inbox, &envelopes).unwrap();
+
+        // `search` plafonne à 3 ; `search_total` voit les 10.
+        assert_eq!(store.search("rapport", 3).unwrap().len(), 3);
+        assert_eq!(store.search_total("rapport").unwrap(), 10);
+
+        // Mêmes filtres que la recherche.
+        assert_eq!(store.search_total("rapport from:alice").unwrap(), 10);
+        assert_eq!(store.search_total("rapport from:bob").unwrap(), 0);
+
+        // Requête vide : rien à compter.
+        assert_eq!(store.search_total("").unwrap(), 0);
+        assert_eq!(store.search_total("   ").unwrap(), 0);
+    }
+
+    #[test]
+    fn search_total_respects_the_date_filter() {
+        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let in_2025 = Utc
+            .with_ymd_and_hms(2025, 6, 15, 12, 0, 0)
+            .unwrap()
+            .timestamp();
+        let in_2026 = Utc
+            .with_ymd_and_hms(2026, 7, 1, 9, 0, 0)
+            .unwrap()
+            .timestamp();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    envelope(1, "Rapport ancien", "Alice", "a@ex.fr", in_2025),
+                    envelope(2, "Rapport récent", "Alice", "a@ex.fr", in_2026),
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(store.search_total("rapport").unwrap(), 2);
+        assert_eq!(
+            store.search_total("rapport date:2026").unwrap(),
+            1,
+            "le total suit le filtre de date (chemin avec jointure)"
+        );
+        // Filtre de date SEUL (sans terme) : compté par la branche envelopes.
+        assert_eq!(store.search_total("date:2025").unwrap(), 1);
+    }
+
+    #[test]
+    fn search_recent_orders_by_date_ignoring_relevance() {
+        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    // Le terme dans le SUJET, mais ANCIEN.
+                    envelope(1, "Facture du mois", "Alice", "a@ex.fr", 100),
+                    // Le terme dans le CORPS seulement, mais RÉCENT.
+                    envelope(2, "Divers", "Alice", "a@ex.fr", 300),
+                ],
+            )
+            .unwrap();
+        store
+            .save_body(inbox, 2, "<p>la facture est jointe</p>", &[])
+            .unwrap();
+
+        // BM25 : le sujet pèse plus lourd → « Facture du mois » d'abord.
+        assert_eq!(
+            subjects(&store.search("facture", 50).unwrap()),
+            vec!["Facture du mois", "Divers"]
+        );
+        // Date : le plus récent d'abord, pertinence ignorée → « Divers ».
+        assert_eq!(
+            subjects(&store.search_recent("facture", 50).unwrap()),
+            vec!["Divers", "Facture du mois"],
+            "la soupape des requêtes larges trie par date, pas par BM25"
+        );
+    }
+
+    #[test]
+    fn search_capped_returns_rows_and_exact_total() {
+        let (mut store, inbox) = store_with_inbox("test@exemple.fr");
+        let envelopes: Vec<Envelope> = (1..=10)
+            .map(|uid| envelope(uid, "Rapport", "Alice", "a@ex.fr", uid as i64))
+            .collect();
+        store.upsert_envelopes(inbox, &envelopes).unwrap();
+
+        let (rows, total) = store.search_capped("rapport", 3).unwrap();
+        assert_eq!(rows.len(), 3, "rendu plafonné à la limite");
+        assert_eq!(total, 10, "total exact, au-delà du plafond");
+        // 10 correspondances, bien en deçà de WIDE_QUERY_THRESHOLD : classement
+        // BM25 conservé (le sujet prime, prouvé par les tests dédiés).
     }
 
     #[test]

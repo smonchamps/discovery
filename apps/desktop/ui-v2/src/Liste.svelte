@@ -220,10 +220,12 @@
   async function executerRecherche(q) {
     const mien = ++jetonRecherche;
     try {
-      const lignes = await appel('search_messages', { query: q });
+      const res = await appel('search_messages', { query: q });
       if (mien !== jetonRecherche) return; // frappe plus récente
-      resultats = lignes;
-      onresultats(lignes.length);
+      resultats = res.rows;
+      // Le nombre rendu (plafonné) ET le total : la barre dira « N sur M »
+      // quand le plafond mord.
+      onresultats(res.rows.length, res.total);
     } catch (err) {
       console.error('search_messages :', err);
     }
@@ -235,7 +237,7 @@
       if (q.length < 3) {
         jetonRecherche += 1;
         resultats = null;
-        onresultats(null);
+        onresultats(null, null);
         return;
       }
       minuterieRecherche = setTimeout(() => executerRecherche(q), 150);

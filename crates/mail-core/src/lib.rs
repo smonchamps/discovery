@@ -57,6 +57,7 @@ pub use remote::{
     FetchedBody, Folder, FolderStatus, FolderWithStatus, MailServer, MailboxSnapshot,
     MessageRecipients, RemoteDraft, ThreadHeaders,
 };
+pub use search::WIDE_QUERY_THRESHOLD;
 pub use store::{Account, AccountConfig, AdoptionProgress, Store, SyncState, UnifiedRow};
 pub use sync::{
     RepereLocal, SYNC_BYTES_PER_MESSAGE, SyncEngine, SyncMode, SyncReport, disk_shortfall,

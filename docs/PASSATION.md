@@ -128,13 +128,16 @@ est automatique au premier lancement Wind.)
 | Poste | Mesure (2026-07-26) | Levier |
 |---|---|---|
 | Adoption d'une base héritée | 3,66 s à 200 000 messages, une seule fois | **réglé en forme par l'ADR 0012** : visible, annulable, rembobinable — la durée est assumée, la passe est unique |
-| Recherche | ~~113–210 ms~~ → **82 ms ✅** (2026-08-17) | **réglé** : `prefix='2 3'` posé + mesure sur la VRAIE base (251 k / 7 Go), pire cas préfixe 3 car. à 82 ms (PLAN-RECHERCHE). Tri par date gardé en soupape documentée si un corpus futur repasse le plafond |
+| Recherche | ~~113–210 ms~~ → **~66 ms ✅** (2026-08-17) | **réglé** : `prefix='2 3'` + destinataires indexés + **soupape tri-date armée** au-delà de 10 k corr. (`WIDE_QUERY_THRESHOLD`) ; mesuré sur la VRAIE base (251 k / 7 Go), pire cas préfixe 3 car. (36 k corr.) à ~66 ms (PLAN-RECHERCHE, A50) |
 
-Le budget recherche est **tenu au terrain** : les 113–210 ms venaient d'une
-projection sur vocabulaire synthétique (ADR 0004). Sur une vraie boîte le
-vocabulaire est bien plus dispersé — la requête réaliste la plus large
-matche ~33 k messages et rend en 82 ms. Reste indexé désormais :
-destinataires (`to:`/`à:`), le trou de pertinence le plus courant.
+Le budget recherche est **tenu au terrain**. Enseignement du terrain : le
+mur n'est pas le plafond de rendu (l'hydratation ne coûte que ~0,2 ms/ligne)
+mais le **plancher BM25** — classer 36 k correspondances d'un préfixe 3 car.
+prend ~80 ms, quel que soit le plafond, et ce plancher monte avec le corpus.
+La soupape tri-date de l'ADR 0004 le résout : au-delà de 10 k correspondances,
+`search_capped` classe par date (meilleur ordre pour une requête aussi large,
+de toute façon), ~66 ms. Reste indexé désormais : destinataires (`to:`/`à:`),
+le trou de pertinence le plus courant.
 
 ### 1.3 Arbitrages — tranchés et ouverts
 
@@ -146,14 +149,16 @@ destinataires (`to:`/`à:`), le trou de pertinence le plus courant.
   télémétrie, bêta.
 
 **Ouverts** (au Chef Ingénieur) :
-- **Plafond de la recherche** (nouveau, 2026-08-17) — `SEARCH_LIMIT = 50`,
-  et la barre affiche « 50 résultats » (le nombre RENDU) même quand il y en
-  a plus. Options : signal « 50+ », plafond à 200, ou liste virtualisée +
-  pagination par curseur (le seul vrai « sans limite » ; PLAN-RECHERCHE,
-  report ouvert). À traiter après le solde de PLAN-RECHERCHE.
-- **Tri par date de la recherche** — soupape documentée, non nécessaire au
-  terrain (`prefix='2 3'` posé, budget tenu à 82 ms). À rouvrir seulement si
-  un corpus futur repasse les 100 ms.
+- **Recherche sans limite pratique** (2026-08-17) — le plafond lui-même est
+  soldé (`SEARCH_LIMIT = 100`, barre « N sur M » avec le vrai total ;
+  A50/PLAN-RECHERCHE). Reste ouvert le seul vrai « tout voir » : liste de
+  résultats **virtualisée + pagination par curseur** (le mur : hydratation
+  `SELECT_UNIFIED` par ligne + liste non fenêtrée). Chantier à part.
+- **Tri par date de la recherche** — **armé** au terrain (2026-08-17) : le
+  plancher BM25 d'un préfixe 3 car. très large (36 k corr.) dépasse le budget
+  quel que soit le plafond. `search_capped` bascule sur la date au-delà de
+  `WIDE_QUERY_THRESHOLD` (10 k corr.) ; en deçà, BM25. Seuil calé sur cette
+  machine — à re-mesurer si le budget se tend en bêta.
 - **Doublons multi-boîtes dans la recherche** — observé au terrain : le
   même message vit copié dans plusieurs boîtes (« 19 messages partagent
   un Message-ID »), et la recherche renverra chaque copie. Dédoublonner à
@@ -256,7 +261,7 @@ Re-mesurés le 2026-07-26 après l'ADR 0010, sur les bases du gate 3
 | Taille de la base | **levé** (ADR 0010 §2) | garde d'espace disque à ~50 ko/message |
 | Perte de données | 0, prouvé par crash-récup | ✅ |
 | **Gel de la pompe de messages** | aucun gel > 150 ms (fenêtre toujours déplaçable) | 0 gel sur 40 s, décor 251 k enveloppes (PLAN-GELS, `e2e/sonde-gel.py`) ✅ |
-| **Recherche** | < 100 ms | **82 ms ✅** (terrain, vraie base 251 k / 7 Go, pire cas préfixe 3 car. ; `prefix='2 3'` + destinataires indexés, PLAN-RECHERCHE) |
+| **Recherche** | < 100 ms | **~66 ms ✅** (terrain, vraie base 251 k / 7 Go, pire cas préfixe 3 car. 36 k corr. ; tenu par la **soupape tri-date** au-delà de 10 k corr., le plancher BM25 dépassant sinon — `WIDE_QUERY_THRESHOLD`, A50/PLAN-RECHERCHE) |
 | **Adoption d'une base héritée** | < 1 s | **3,66 s — assumé** (ADR 0012 : une seule fois, visible, annulable, rembobinable) |
 | **Reconstruction de l'index de recherche** | pas de gel muet | **~4 min à froid sur 7 Go — assumé** (ADR 0012 : une seule fois à la MAJ, visible, annulable, rembobinable ; PLAN-RECHERCHE E3) |
 
