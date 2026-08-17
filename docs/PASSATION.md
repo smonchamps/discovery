@@ -128,12 +128,13 @@ est automatique au premier lancement Wind.)
 | Poste | Mesure (2026-07-26) | Levier |
 |---|---|---|
 | Adoption d'une base héritée | 3,66 s à 200 000 messages, une seule fois | **réglé en forme par l'ADR 0012** : visible, annulable, rembobinable — la durée est assumée, la passe est unique |
-| Recherche | 113–210 ms à l'échelle du gate 3 | tri par date (**×1,8–2,9, re-validé**) ou `prefix=` — le Chef Ingénieur tranche **en bêta**, sur de vraies boîtes |
+| Recherche | ~~113–210 ms~~ → **82 ms ✅** (2026-08-17) | **réglé** : `prefix='2 3'` posé + mesure sur la VRAIE base (251 k / 7 Go), pire cas préfixe 3 car. à 82 ms (PLAN-RECHERCHE). Tri par date gardé en soupape documentée si un corpus futur repasse le plafond |
 
-À l'échelle réelle la recherche reste confortable (~2,9 µs par
-correspondance), mais le corpus intégral (×34) rapproche le plafond des
-~35 000 correspondances : le tri par date est sur le chemin critique de
-la bêta.
+Le budget recherche est **tenu au terrain** : les 113–210 ms venaient d'une
+projection sur vocabulaire synthétique (ADR 0004). Sur une vraie boîte le
+vocabulaire est bien plus dispersé — la requête réaliste la plus large
+matche ~33 k messages et rend en 82 ms. Reste indexé désormais :
+destinataires (`to:`/`à:`), le trou de pertinence le plus courant.
 
 ### 1.3 Arbitrages — tranchés et ouverts
 
@@ -145,11 +146,18 @@ la bêta.
   télémétrie, bêta.
 
 **Ouverts** (au Chef Ingénieur) :
-- **Tri par date de la recherche** — en bêta.
+- **Plafond de la recherche** (nouveau, 2026-08-17) — `SEARCH_LIMIT = 50`,
+  et la barre affiche « 50 résultats » (le nombre RENDU) même quand il y en
+  a plus. Options : signal « 50+ », plafond à 200, ou liste virtualisée +
+  pagination par curseur (le seul vrai « sans limite » ; PLAN-RECHERCHE,
+  report ouvert). À traiter après le solde de PLAN-RECHERCHE.
+- **Tri par date de la recherche** — soupape documentée, non nécessaire au
+  terrain (`prefix='2 3'` posé, budget tenu à 82 ms). À rouvrir seulement si
+  un corpus futur repasse les 100 ms.
 - **Doublons multi-boîtes dans la recherche** — observé au terrain : le
   même message vit copié dans plusieurs boîtes (« 19 messages partagent
   un Message-ID »), et la recherche renverra chaque copie. Dédoublonner à
-  l'affichage ? À observer en usage réel avant de décider.
+  l'affichage ? À observer en usage réel avant de décider (D2, gardé ouvert).
 
 ### 1.4 Ensuite — la Phase 5
 
@@ -248,8 +256,9 @@ Re-mesurés le 2026-07-26 après l'ADR 0010, sur les bases du gate 3
 | Taille de la base | **levé** (ADR 0010 §2) | garde d'espace disque à ~50 ko/message |
 | Perte de données | 0, prouvé par crash-récup | ✅ |
 | **Gel de la pompe de messages** | aucun gel > 150 ms (fenêtre toujours déplaçable) | 0 gel sur 40 s, décor 251 k enveloppes (PLAN-GELS, `e2e/sonde-gel.py`) ✅ |
-| **Recherche** | < 100 ms | **113–210 ms ❌** (levier ×1,8–2,9 validé, tranché en bêta) |
+| **Recherche** | < 100 ms | **82 ms ✅** (terrain, vraie base 251 k / 7 Go, pire cas préfixe 3 car. ; `prefix='2 3'` + destinataires indexés, PLAN-RECHERCHE) |
 | **Adoption d'une base héritée** | < 1 s | **3,66 s — assumé** (ADR 0012 : une seule fois, visible, annulable, rembobinable) |
+| **Reconstruction de l'index de recherche** | pas de gel muet | **~4 min à froid sur 7 Go — assumé** (ADR 0012 : une seule fois à la MAJ, visible, annulable, rembobinable ; PLAN-RECHERCHE E3) |
 
 Un budget dépassé = **on arrête la ligne** (andon). Le gate « base
 < 1 Go » n'est pas un oubli : il est **levé explicitement** par

@@ -378,8 +378,27 @@ impl Store {
             return Ok(None);
         }
         let conn = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        // Deux passes distinctes peuvent réclamer l'écran, indépendamment :
+        // l'adoption des fils (base d'avant ADR 0008) ET la reconstruction
+        // de l'index de recherche (schéma FTS d'avant la colonne
+        // `recipients`). La seconde touche des bases DÉJÀ à jour côté fils —
+        // sans cette détection, elle gèlerait le démarrage en silence, hors
+        // de tout écran (constat terrain 2026-08-17).
         let version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if version >= thread::THREADING_VERSION {
+        let threads_pending = version < thread::THREADING_VERSION;
+        let search_pending = {
+            let fts_sql: Option<String> = conn
+                .query_row(
+                    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            fts_sql
+                .as_deref()
+                .is_some_and(|sql| !sql.contains("recipients"))
+        };
+        if !threads_pending && !search_pending {
             return Ok(None);
         }
         // Une base d'avant les fils peut ne pas avoir la table : le COUNT
@@ -392,12 +411,15 @@ impl Store {
         if has_envelopes == 0 {
             return Ok(None);
         }
-        // Quand la base connaît la portée du regroupement (ADR 0010),
-        // n'annoncer QUE ce que la passe adoptera : sur une boîte
-        // intégrale, la portée (INBOX + Envoyés) est très en dessous du
-        // total, et « 256 312 messages » pour une passe qui en rattache
-        // 7 500 serait un chiffre qui ne désigne pas ce qu'il dit.
-        let messages: i64 = if table_columns(&conn, "mailboxes")?.contains("threaded") {
+        // La reconstruction de l'index parcourt TOUTES les enveloppes ;
+        // l'adoption des fils, seulement la portée du regroupement (ADR 0010 :
+        // INBOX + Envoyés, très en dessous du total — « 256 312 » pour une
+        // passe qui en rattache 7 500 ne désignerait pas ce qu'il dit). On
+        // annonce la passe la plus large en attente ; ce n'est qu'un ordre de
+        // grandeur, le vrai dénominateur vient d'`open_with_progress`.
+        let messages: i64 = if search_pending {
+            conn.query_row("SELECT COUNT(*) FROM envelopes", [], |row| row.get(0))?
+        } else if table_columns(&conn, "mailboxes")?.contains("threaded") {
             conn.query_row(
                 "SELECT COUNT(*) FROM envelopes e
                  JOIN mailboxes m ON m.id = e.mailbox_id
@@ -496,11 +518,15 @@ impl Store {
             row.get::<_, String>(0)
         })?;
         conn.execute_batch(SCHEMA)?;
-        // Les migrations légères d'abord : colonnes, recherche, index.
-        // Idempotentes et atomiques une à une — et l'adoption des fils,
-        // juste dessous, a besoin des colonnes qu'elles ajoutent
+        // Les migrations légères d'abord : colonnes, index. La
+        // reconstruction de l'index de recherche vit ICI mais n'est PAS
+        // légère sur une base fournie (relecture des corps) : elle est
+        // donc visible et interruptible via `on_progress`, et
+        // `pending_adoption` la fait précéder d'un écran (sinon, gel muet
+        // du démarrage — constat terrain 2026-08-17). L'adoption des fils,
+        // juste dessous, a besoin des colonnes qu'ajoutent ces migrations
         // (`thread_id`, `in_reply_to`, `refs`).
-        migrate(&conn)?;
+        migrate(&conn, on_progress)?;
         // ——— L'unité des fils, d'un seul tenant (passation §8). ———
         // Du DROP conditionnel jusqu'à `user_version`, tout vit dans UNE
         // transaction : annuler pendant l'adoption rembobine TOUT — une
@@ -1099,14 +1125,20 @@ impl Store {
                 let html: Option<String> = body_stmt
                     .query_row(params![mailbox_id, envelope.uid], |row| row.get(0))
                     .optional()?;
+                let to_field = join_addrs(&envelope.to_addrs);
+                let cc_field = join_addrs(&envelope.cc_addrs);
                 search::index_message(
                     &tx,
                     mailbox_id,
                     envelope.uid,
-                    envelope.subject.as_deref(),
-                    envelope.sender.as_deref(),
-                    envelope.sender_address.as_deref(),
-                    html.as_deref(),
+                    search::Indexed {
+                        subject: envelope.subject.as_deref(),
+                        sender: envelope.sender.as_deref(),
+                        sender_address: envelope.sender_address.as_deref(),
+                        to_addrs: to_field.as_deref(),
+                        cc_addrs: cc_field.as_deref(),
+                        body_html: html.as_deref(),
+                    },
                 )?;
             }
             // Après la boucle, et une seule fois par fil : recalculer à
@@ -1392,9 +1424,9 @@ impl Store {
                 ],
             )?;
         }
-        if let Some((subject, sender, sender_address)) = tx
+        if let Some((subject, sender, sender_address, to_field, cc_field)) = tx
             .query_row(
-                "SELECT subject, sender, sender_address
+                "SELECT subject, sender, sender_address, to_addrs, cc_addrs
                  FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
                 params![mailbox_id, uid],
                 |row| {
@@ -1402,6 +1434,8 @@ impl Store {
                         row.get::<_, Option<String>>(0)?,
                         row.get::<_, Option<String>>(1)?,
                         row.get::<_, Option<String>>(2)?,
+                        row.get::<_, Option<String>>(3)?,
+                        row.get::<_, Option<String>>(4)?,
                     ))
                 },
             )
@@ -1411,10 +1445,14 @@ impl Store {
                 &tx,
                 mailbox_id,
                 uid,
-                subject.as_deref(),
-                sender.as_deref(),
-                sender_address.as_deref(),
-                Some(html),
+                search::Indexed {
+                    subject: subject.as_deref(),
+                    sender: sender.as_deref(),
+                    sender_address: sender_address.as_deref(),
+                    to_addrs: to_field.as_deref(),
+                    cc_addrs: cc_field.as_deref(),
+                    body_html: Some(html),
+                },
             )?;
         }
         tx.commit()?;
@@ -1954,7 +1992,10 @@ pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool) -> String {
     )
 }
 
-fn migrate(conn: &Connection) -> Result<(), Error> {
+fn migrate(
+    conn: &Connection,
+    on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
+) -> Result<(), Error> {
     migrate_multi_account(conn)?;
     add_missing_columns(
         conn,
@@ -2153,7 +2194,7 @@ fn migrate(conn: &Connection) -> Result<(), Error> {
             ("username", "TEXT"),
         ],
     )?;
-    search::migrate_search(conn)?;
+    search::migrate_search(conn, on_progress)?;
     // L'index vient APRÈS `add_missing_columns`, pas dans `SCHEMA` : sur
     // une base héritée, `CREATE TABLE IF NOT EXISTS envelopes` ne fait
     // rien et la colonne `thread_id` n'existe pas encore au moment où le
@@ -3160,6 +3201,64 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// La reconstruction de l'index de recherche doit faire afficher l'écran
+    /// de migration (ADR 0012) même sur une base DÉJÀ à jour côté fils : sans
+    /// cette détection dans `pending_adoption`, elle gèlerait le démarrage en
+    /// silence (constat terrain 2026-08-17). Sur base fichier, car la sonde
+    /// ouvre en lecture seule — une base en mémoire n'a pas de chemin.
+    #[test]
+    fn pending_adoption_sees_an_old_search_index() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-search-migr-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let mut store = Store::open(&path).unwrap();
+            let account = test_account(&store);
+            let mailbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+            store
+                .upsert_envelopes(mailbox, &[envelope(1, "Sujet", 100, false)])
+                .unwrap();
+            // Rétrograde l'index vers l'ancien schéma à trois colonnes : les
+            // fils restent adoptés (`user_version` inchangé), seul l'index est
+            // d'avant ce chantier — exactement l'état du terrain.
+            store
+                .conn()
+                .execute_batch(
+                    "DROP TABLE search_fts;
+                     DROP TABLE search_docs;
+                     CREATE TABLE search_docs (
+                        docid      INTEGER PRIMARY KEY,
+                        mailbox_id INTEGER NOT NULL,
+                        uid        INTEGER NOT NULL,
+                        UNIQUE (mailbox_id, uid)
+                     );
+                     CREATE VIRTUAL TABLE search_fts USING fts5(
+                        subject, sender, body,
+                        content='', contentless_delete=1,
+                        tokenize='unicode61 remove_diacritics 2'
+                     );",
+                )
+                .unwrap();
+        } // fermeture propre → checkpoint du WAL, la sonde lecture seule lit.
+
+        assert_eq!(
+            Store::pending_adoption(&path).unwrap(),
+            Some(1),
+            "l'ancien schéma FTS fait afficher l'écran, fils déjà adoptés"
+        );
+
+        // Une ouverture pleine reconstruit ; ensuite, plus rien à annoncer.
+        {
+            Store::open(&path).unwrap();
+        }
+        assert_eq!(
+            Store::pending_adoption(&path).unwrap(),
+            None,
+            "reconstruit → l'écran ne se réaffiche pas"
+        );
+        let _ = std::fs::remove_file(&path);
+    }
+
     /// Une base Phase 1 (sans les colonnes de réponse) doit s'ouvrir et
     /// s'enrichir sans perdre les enveloppes déjà synchronisées.
     #[test]
@@ -3470,7 +3569,7 @@ mod tests {
             .conn()
             .execute("DELETE FROM reparations WHERE nom = 'corps-fffd'", [])
             .unwrap();
-        migrate(store.conn()).unwrap();
+        migrate(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
         let account = test_account(&store);
         assert_eq!(
             store.body(account, "INBOX", 1).unwrap(),

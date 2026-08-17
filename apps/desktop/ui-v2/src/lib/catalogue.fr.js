@@ -188,8 +188,8 @@ export const FR = {
 
   // --- Modale de migration ----------------------------------------------
   'migration.aria': 'Mise à jour de la base de messages',
-  'migration.titre': 'Vos messages deviennent des conversations.',
-  'migration.note': 'Environ {n} messages vont être réorganisés en conversations. Cette mise à jour ne se fait qu’une fois et n’efface rien.',
+  'migration.titre': 'Mise à jour de votre boîte.',
+  'migration.note': 'Environ {n} messages sont mis à jour. Cette mise à jour ne se fait qu’une fois et n’efface rien.',
   'migration.preparation': 'Préparation…',
   'migration.pourcent': '{p} %',
   'migration.annulee': 'Mise à jour annulée, tout est revenu comme avant. Elle reprendra au prochain lancement, ou tout de suite :',

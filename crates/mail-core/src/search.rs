@@ -17,75 +17,170 @@
 //! Elle est sans clé étrangère à dessein — l'entretien passe uniquement
 //! par les fonctions de ce module, jamais par un CASCADE silencieux.
 
+use std::ops::ControlFlow;
+
 use chrono::NaiveDate;
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 
 use crate::envelope::Uid;
 use crate::error::Error;
-use crate::store::{SELECT_UNIFIED, Store, UnifiedRow, row_to_unified};
+use crate::store::{AdoptionProgress, SELECT_UNIFIED, Store, UnifiedRow, row_to_unified};
 
 /// Crée l'index à la première ouverture qui le découvre absent, et le
 /// reconstruit depuis les messages déjà en base : une base des phases
 /// précédentes devient cherchable sans resynchroniser.
-pub(crate) fn migrate_search(conn: &Connection) -> Result<(), Error> {
-    let already: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'search_docs'",
-        [],
-        |row| row.get(0),
-    )?;
-    if already > 0 {
+///
+/// La reconstruction est **visible et interruptible** (ADR 0012) : elle
+/// relève son avancement par `on_progress` et, sur `ControlFlow::Break`,
+/// rend [`Error::Interrupted`] — la transaction interne rembobine (le
+/// `DROP` de l'ancien index est défait), et la passe se rejoue au
+/// prochain lancement. C'est [`Store::pending_adoption`] qui fait
+/// afficher l'écran : sans lui, cette reconstruction gèlerait le
+/// démarrage en silence (constat terrain 2026-08-17).
+pub(crate) fn migrate_search(
+    conn: &Connection,
+    on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
+) -> Result<(), Error> {
+    // Le schéma courant porte la colonne `recipients` et l'option
+    // `prefix='2 3'`. Une base d'avant (`search_fts` à trois colonnes, sans
+    // préfixe) est reconstruite : FTS5 ne sait pas ajouter une colonne, et
+    // `prefix=` doit exister dès la création. Drop + rebuild dans UNE
+    // transaction — l'index est reconstructible depuis les messages, jamais
+    // une source de vérité. Le marqueur est la présence de `recipients`
+    // dans le `CREATE` mémorisé par `sqlite_master`.
+    let fts_sql: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if fts_sql
+        .as_deref()
+        .is_some_and(|sql| sql.contains("recipients"))
+    {
         return Ok(());
     }
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(
-        "CREATE TABLE search_docs (
+        "DROP TABLE IF EXISTS search_fts;
+         DROP TABLE IF EXISTS search_docs;
+         CREATE TABLE search_docs (
             docid      INTEGER PRIMARY KEY,
             mailbox_id INTEGER NOT NULL,
             uid        INTEGER NOT NULL,
             UNIQUE (mailbox_id, uid)
          );
          CREATE VIRTUAL TABLE search_fts USING fts5(
-            subject, sender, body,
+            subject, sender, recipients, body,
+            prefix='2 3',
             content='', contentless_delete=1,
             tokenize='unicode61 remove_diacritics 2'
          );",
     )?;
-    rebuild(&tx)?;
+    rebuild(&tx, on_progress)?;
     tx.commit()?;
     Ok(())
 }
 
-fn rebuild(conn: &Connection) -> Result<(), Error> {
+/// Combien de messages entre deux relevés d'avancement : assez rare pour
+/// ne pas payer un appel par message, assez fréquent pour que l'annulation
+/// réponde en une fraction de seconde.
+const REBUILD_STEP: u64 = 1000;
+
+fn rebuild(
+    conn: &Connection,
+    on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
+) -> Result<(), Error> {
+    // Le dénominateur exact de l'avancement — `pending_adoption` ne pouvait
+    // qu'en donner un ordre de grandeur (sonde en lecture seule).
+    let total: u64 = conn.query_row("SELECT COUNT(*) FROM envelopes", [], |row| {
+        row.get::<_, i64>(0)
+    })? as u64;
     let mut stmt = conn.prepare(
-        "SELECT e.mailbox_id, e.uid, e.subject, e.sender, e.sender_address, b.html
+        "SELECT e.mailbox_id, e.uid, e.subject, e.sender, e.sender_address,
+                e.to_addrs, e.cc_addrs, b.html
          FROM envelopes e
          LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid",
     )?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, Uid>(1)?,
-                row.get::<_, Option<String>>(2)?,
-                row.get::<_, Option<String>>(3)?,
-                row.get::<_, Option<String>>(4)?,
-                row.get::<_, Option<String>>(5)?,
-            ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-    for (mailbox_id, uid, subject, sender, address, html) in rows {
+    // Flux, jamais collecte : un `Vec` de toutes les lignes chargerait TOUS
+    // les corps en mémoire (~7 Go au terrain). On indexe au fil du curseur —
+    // il lit `envelopes`/`bodies`, l'écriture va dans `search_fts`/
+    // `search_docs`, tables disjointes : SQLite sert les deux sur la même
+    // connexion.
+    let mut rows = stmt.query([])?;
+    let mut done: u64 = 0;
+    while let Some(row) = rows.next()? {
+        let subject: Option<String> = row.get(2)?;
+        let sender: Option<String> = row.get(3)?;
+        let address: Option<String> = row.get(4)?;
+        let to: Option<String> = row.get(5)?;
+        let cc: Option<String> = row.get(6)?;
+        let html: Option<String> = row.get(7)?;
         index_message(
             conn,
-            mailbox_id,
-            uid,
-            subject.as_deref(),
-            sender.as_deref(),
-            address.as_deref(),
-            html.as_deref(),
+            row.get(0)?,
+            row.get(1)?,
+            Indexed {
+                subject: subject.as_deref(),
+                sender: sender.as_deref(),
+                sender_address: address.as_deref(),
+                to_addrs: to.as_deref(),
+                cc_addrs: cc.as_deref(),
+                body_html: html.as_deref(),
+            },
         )?;
+        done += 1;
+        // Palier : relever l'avancement et guetter l'annulation.
+        if done.is_multiple_of(REBUILD_STEP) {
+            report(on_progress, done, total)?;
+        }
+    }
+    // « Fini » ne se dit qu'ici, la passe faite — et jamais sur une base
+    // sans message (rien à raconter, pas de faux bandeau : contrat des fils).
+    if total > 0 {
+        report(on_progress, total, total)?;
     }
     Ok(())
+}
+
+/// Transmet un relevé d'avancement, et traduit la réponse : `Break`
+/// devient [`Error::Interrupted`], que la transaction de l'appelant
+/// convertit en `ROLLBACK` — le rembobinage du §8, comme pour les fils.
+fn report(
+    on_progress: &mut dyn FnMut(AdoptionProgress) -> ControlFlow<()>,
+    done: u64,
+    total: u64,
+) -> Result<(), Error> {
+    match on_progress(AdoptionProgress { done, total }) {
+        ControlFlow::Continue(()) => Ok(()),
+        ControlFlow::Break(()) => Err(Error::Interrupted),
+    }
+}
+
+/// Les champs d'un message tels qu'ils entrent dans l'index. Nommés à
+/// dessein : six `Option<&str>` positionnels s'intervertiraient sans que le
+/// compilateur ni les tests ne le voient (`to`/`cc` et
+/// `sender`/`sender_address` fusionnent dans un même champ FTS).
+pub(crate) struct Indexed<'a> {
+    pub subject: Option<&'a str>,
+    pub sender: Option<&'a str>,
+    pub sender_address: Option<&'a str>,
+    pub to_addrs: Option<&'a str>,
+    pub cc_addrs: Option<&'a str>,
+    pub body_html: Option<&'a str>,
+}
+
+/// Réunit les champs présents en un seul champ cherchable, séparés par une
+/// espace (unicode61 tokenise sur tout blanc, `\n` compris).
+fn join_present(a: Option<&str>, b: Option<&str>) -> String {
+    [a, b]
+        .iter()
+        .flatten()
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// (Ré)indexe un message. À appeler dans la transaction qui écrit le
@@ -94,10 +189,7 @@ pub(crate) fn index_message(
     conn: &Connection,
     mailbox_id: i64,
     uid: Uid,
-    subject: Option<&str>,
-    sender: Option<&str>,
-    sender_address: Option<&str>,
-    body_html: Option<&str>,
+    msg: Indexed<'_>,
 ) -> Result<(), Error> {
     deindex_message(conn, mailbox_id, uid)?;
     conn.execute(
@@ -105,19 +197,19 @@ pub(crate) fn index_message(
         params![mailbox_id, uid],
     )?;
     let docid = conn.last_insert_rowid();
-    let sender_field = [sender, sender_address]
-        .iter()
-        .flatten()
-        .copied()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let sender_field = join_present(msg.sender, msg.sender_address);
+    // `to` et `cc` sont un seul champ cherchable : un destinataire reste un
+    // destinataire, en direct ou en copie.
+    let recipients_field = join_present(msg.to_addrs, msg.cc_addrs);
     conn.execute(
-        "INSERT INTO search_fts (rowid, subject, sender, body) VALUES (?1, ?2, ?3, ?4)",
+        "INSERT INTO search_fts (rowid, subject, sender, recipients, body)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
         params![
             docid,
-            subject.unwrap_or(""),
+            msg.subject.unwrap_or(""),
             sender_field,
-            body_html.map(indexable_text).unwrap_or_default()
+            recipients_field,
+            msg.body_html.map(indexable_text).unwrap_or_default()
         ],
     )?;
     Ok(())
@@ -160,25 +252,32 @@ impl Store {
     /// préfixe : « budg » trouve « budgétaire » pendant la frappe.
     ///
     /// Filtres : `from:`/`de:` (nom ou adresse de l'expéditeur),
+    /// `to:`/`à:` (nom ou adresse d'un destinataire, direct ou en copie),
     /// `date:AAAA`, `date:AAAA-MM`, `date:AAAA-MM-JJ`. Un filtre seul,
     /// sans terme, liste les messages correspondants par date.
     pub fn search(&self, input: &str, limit: usize) -> Result<Vec<UnifiedRow>, Error> {
         let (terms_expr, filters) = parse_query(input);
-        // Le filtre expéditeur passe par la colonne `sender` de l'index
-        // FTS, qui replie casse ET accents (unicode61 remove_diacritics) :
-        // un LIKE SQL ne replie que l'ASCII et raterait « Étienne ».
-        // Préfixe, pour rester tolérant à la frappe (« duran » → Durand).
+        // Les filtres expéditeur/destinataire passent par les colonnes
+        // `sender`/`recipients` de l'index FTS, qui replient casse ET
+        // accents (unicode61 remove_diacritics) : un LIKE SQL ne replie que
+        // l'ASCII et raterait « Étienne ». Préfixe, pour rester tolérant à
+        // la frappe (« duran » → Durand).
         let from_expr = filters
             .from
             .as_ref()
             .map(|value| format!("sender:\"{value}\"*"));
+        let to_expr = filters
+            .to
+            .as_ref()
+            .map(|value| format!("recipients:\"{value}\"*"));
         let has_terms = terms_expr.is_some();
-        let match_expr = match (terms_expr, from_expr) {
-            (Some(terms), Some(from)) => Some(format!("{terms} {from}")),
-            (Some(terms), None) => Some(terms),
-            (None, Some(from)) => Some(from),
-            (None, None) => None,
-        };
+        // Termes et filtres se conjoignent (AND implicite de FTS5) dans une
+        // seule expression MATCH.
+        let parts: Vec<String> = [terms_expr, from_expr, to_expr]
+            .into_iter()
+            .flatten()
+            .collect();
+        let match_expr = (!parts.is_empty()).then(|| parts.join(" "));
         if match_expr.is_none() && filters.since.is_none() && filters.until.is_none() {
             return Ok(Vec::new());
         }
@@ -198,9 +297,10 @@ impl Store {
         values.push((limit as i64).into());
         let sql = if match_expr.is_some() {
             // Pertinence quand il y a des termes ; date quand la requête
-            // n'est qu'un filtre expéditeur (le BM25 n'a alors aucun sens).
+            // n'est qu'un filtre expéditeur/destinataire (le BM25 n'a alors
+            // aucun sens).
             let order = if has_terms {
-                "bm25(search_fts, 10.0, 5.0, 1.0), e.date_epoch DESC"
+                "bm25(search_fts, 10.0, 5.0, 3.0, 1.0), e.date_epoch DESC"
             } else {
                 "e.date_epoch DESC, e.uid DESC"
             };
@@ -239,6 +339,7 @@ impl Store {
 #[derive(Default)]
 struct Filters {
     from: Option<String>,
+    to: Option<String>,
     since: Option<i64>,
     until: Option<i64>,
 }
@@ -260,6 +361,15 @@ fn parse_query(input: &str) -> (Option<String>, Filters) {
             let clean: String = value.chars().filter(|c| *c != '"').collect();
             if !clean.is_empty() {
                 filters.from = Some(clean);
+            }
+        } else if let Some(value) = lower
+            .strip_prefix("to:")
+            .or_else(|| lower.strip_prefix("à:"))
+        {
+            // Symétrique de `from:`, vers la colonne `recipients`.
+            let clean: String = value.chars().filter(|c| *c != '"').collect();
+            if !clean.is_empty() {
+                filters.to = Some(clean);
             }
         } else if let Some(value) = lower.strip_prefix("date:") {
             // Un filtre de date illisible est ignoré plutôt qu'appliqué
@@ -467,6 +577,54 @@ mod tests {
             to_addrs: Vec::new(),
             cc_addrs: Vec::new(),
         }
+    }
+
+    fn envelope_to(
+        uid: Uid,
+        subject: &str,
+        sender: &str,
+        address: &str,
+        to: &[&str],
+        cc: &[&str],
+        epoch: i64,
+    ) -> Envelope {
+        Envelope {
+            uid,
+            subject: Some(subject.to_string()),
+            sender: Some(sender.to_string()),
+            sender_address: Some(address.to_string()),
+            message_id: None,
+            in_reply_to: None,
+            date: Some(Utc.timestamp_opt(epoch, 0).unwrap()),
+            seen: false,
+            flagged: false,
+            to_addrs: to.iter().map(|s| s.to_string()).collect(),
+            cc_addrs: cc.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    /// Rétrograde l'index vers l'ancien schéma à trois colonnes (ni
+    /// `recipients`, ni `prefix=`) : l'état exact d'une base installée
+    /// avant ce chantier, celui que la reconstruction doit rattraper.
+    fn retrograde_ancien_schema(store: &Store) {
+        store
+            .conn()
+            .execute_batch(
+                "DROP TABLE search_fts;
+                 DROP TABLE search_docs;
+                 CREATE TABLE search_docs (
+                    docid      INTEGER PRIMARY KEY,
+                    mailbox_id INTEGER NOT NULL,
+                    uid        INTEGER NOT NULL,
+                    UNIQUE (mailbox_id, uid)
+                 );
+                 CREATE VIRTUAL TABLE search_fts USING fts5(
+                    subject, sender, body,
+                    content='', contentless_delete=1,
+                    tokenize='unicode61 remove_diacritics 2'
+                 );",
+            )
+            .unwrap();
     }
 
     fn store_with_inbox(email: &str) -> (Store, i64) {
@@ -816,6 +974,118 @@ mod tests {
     }
 
     #[test]
+    fn to_filter_narrows_by_recipient_name_or_address() {
+        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    envelope_to(
+                        1,
+                        "Compte rendu",
+                        "Moi",
+                        "moi@ex.fr",
+                        &["Alice Martin <alice@ex.fr>"],
+                        &[],
+                        100,
+                    ),
+                    envelope_to(
+                        2,
+                        "Devis",
+                        "Moi",
+                        "moi@ex.fr",
+                        &["Bob Durand <bob@ex.fr>"],
+                        &[],
+                        200,
+                    ),
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(
+            subjects(&store.search("to:alice", 50).unwrap()),
+            vec!["Compte rendu"]
+        );
+        assert_eq!(
+            subjects(&store.search("à:durand", 50).unwrap()),
+            vec!["Devis"],
+            "le filtre destinataire répond aussi à « à: »"
+        );
+        assert_eq!(
+            subjects(&store.search("to:bob@ex.fr", 50).unwrap()),
+            vec!["Devis"],
+            "le filtre matche l'adresse comme le nom affiché"
+        );
+    }
+
+    #[test]
+    fn cc_recipients_fold_case_and_accents() {
+        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope_to(
+                    1,
+                    "Réunion",
+                    "Moi",
+                    "moi@ex.fr",
+                    &["alice@ex.fr"],
+                    &["Étienne Bernard <e.bernard@ex.fr>"],
+                    100,
+                )],
+            )
+            .unwrap();
+
+        // Une adresse en copie est un destinataire ; « É » se replie.
+        assert_eq!(store.search("to:etienne", 50).unwrap().len(), 1);
+        assert_eq!(store.search("to:étienne", 50).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn bare_term_finds_a_message_by_its_recipient() {
+        // « alice » retrouve un mail que je LUI ai envoyé, pas seulement
+        // ceux reçus d'elle : le destinataire est un champ cherchable.
+        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope_to(
+                    1,
+                    "Sans son nom ailleurs",
+                    "Moi",
+                    "moi@ex.fr",
+                    &["Alice Martin <alice@ex.fr>"],
+                    &[],
+                    100,
+                )],
+            )
+            .unwrap();
+
+        assert_eq!(store.search("alice", 50).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn to_filter_alone_lists_by_date() {
+        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    envelope_to(1, "Premier", "Moi", "moi@ex.fr", &["alice@ex.fr"], &[], 100),
+                    envelope_to(2, "À Bob", "Moi", "moi@ex.fr", &["bob@ex.fr"], &[], 200),
+                    envelope_to(3, "Second", "Moi", "moi@ex.fr", &["alice@ex.fr"], &[], 300),
+                ],
+            )
+            .unwrap();
+
+        assert_eq!(
+            subjects(&store.search("to:alice", 50).unwrap()),
+            vec!["Second", "Premier"],
+            "un filtre destinataire seul liste par date, du plus récent au plus ancien"
+        );
+    }
+
+    #[test]
     fn date_filter_bounds_by_year_month_or_day() {
         let (mut store, inbox) = store_with_inbox("test@exemple.fr");
         let in_2025 = Utc
@@ -875,6 +1145,149 @@ mod tests {
             vec!["Second d'Alice", "Premier d'Alice"],
             "un filtre seul liste par date, du plus récent au plus ancien"
         );
+    }
+
+    /// Migration : une base d'avant ce chantier porte un `search_fts` à
+    /// trois colonnes (ni `recipients`, ni `prefix=`). À l'ouverture,
+    /// `migrate_search` la reconstruit depuis les messages — sans
+    /// resynchroniser — et les destinataires deviennent cherchables.
+    #[test]
+    fn migration_rebuilds_an_old_index_with_recipients() {
+        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope_to(
+                    1,
+                    "Devis",
+                    "Moi",
+                    "moi@ex.fr",
+                    &["Alice Martin <alice@ex.fr>"],
+                    &[],
+                    100,
+                )],
+            )
+            .unwrap();
+        assert_eq!(store.search("to:alice", 50).unwrap().len(), 1);
+
+        retrograde_ancien_schema(&store);
+
+        // La reconstruction est déclenchée par la détection de l'ancien
+        // schéma (pas de colonne `recipients`).
+        migrate_search(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
+
+        assert_eq!(
+            store.search("devis", 50).unwrap().len(),
+            1,
+            "le message reste cherchable après reconstruction"
+        );
+        assert_eq!(
+            store.search("to:alice", 50).unwrap().len(),
+            1,
+            "la reconstruction réindexe les destinataires depuis les enveloppes"
+        );
+        assert_eq!(indexed_count(&store), 1, "une seule entrée d'index");
+
+        // Le levier de performance (D3) doit survivre à la reconstruction :
+        // sans cette garde, un retrait de `prefix='2 3'` passerait en vert.
+        let schema: String = store
+            .conn()
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            schema.contains("prefix='2 3'"),
+            "le schéma reconstruit garde l'option prefix='2 3'"
+        );
+    }
+
+    #[test]
+    fn migration_reports_progress_and_indexes_every_message() {
+        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        // Plusieurs messages, avec et sans corps : le flux (pas de collecte
+        // de tous les corps en mémoire) doit tous les réindexer.
+        let envelopes: Vec<Envelope> = (1..=5u32)
+            .map(|uid| {
+                envelope_to(
+                    uid,
+                    &format!("Sujet {uid}"),
+                    "Moi",
+                    "moi@ex.fr",
+                    &[&format!("dest{uid}@ex.fr")],
+                    &[],
+                    uid as i64 * 100,
+                )
+            })
+            .collect();
+        store.upsert_envelopes(inbox, &envelopes).unwrap();
+        store
+            .save_body(inbox, 3, "<p>le contrat spécial</p>", &[])
+            .unwrap();
+
+        retrograde_ancien_schema(&store);
+
+        let mut releves = Vec::new();
+        migrate_search(store.conn(), &mut |p| {
+            releves.push((p.done, p.total));
+            ControlFlow::Continue(())
+        })
+        .unwrap();
+
+        // « Fini » annoncé sur le total exact (5 enveloppes).
+        assert_eq!(releves.last(), Some(&(5, 5)));
+        // Chaque message réindexé, destinataire et corps compris : la preuve
+        // que le flux n'en saute aucun.
+        assert_eq!(store.search("to:dest4", 50).unwrap().len(), 1);
+        assert_eq!(store.search("contrat", 50).unwrap().len(), 1);
+        assert_eq!(indexed_count(&store), 5);
+    }
+
+    #[test]
+    fn migration_cancel_rolls_back_and_reruns() {
+        let (mut store, inbox) = store_with_inbox("moi@exemple.fr");
+        store
+            .upsert_envelopes(
+                inbox,
+                &[envelope_to(
+                    1,
+                    "Devis",
+                    "Moi",
+                    "moi@ex.fr",
+                    &["alice@ex.fr"],
+                    &[],
+                    100,
+                )],
+            )
+            .unwrap();
+
+        retrograde_ancien_schema(&store);
+
+        // L'utilisateur annule : Break → Interrupted.
+        let issue = migrate_search(store.conn(), &mut |_| ControlFlow::Break(()));
+        assert!(matches!(issue, Err(Error::Interrupted)));
+
+        // Rembobiné : le schéma est resté l'ancien (pas de `recipients`), donc
+        // la passe se rejouera au prochain lancement plutôt que de laisser un
+        // index à moitié fait.
+        let schema: String = store
+            .conn()
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'search_fts'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            !schema.contains("recipients"),
+            "l'annulation a rembobiné le DROP/CREATE — rien de partiel persisté"
+        );
+
+        // Rejouée sans annulation : elle aboutit.
+        migrate_search(store.conn(), &mut |_| ControlFlow::Continue(())).unwrap();
+        assert_eq!(store.search("to:alice", 50).unwrap().len(), 1);
     }
 
     #[test]

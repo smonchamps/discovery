@@ -186,8 +186,8 @@ export const EN = {
 
   // --- Modale de migration ----------------------------------------------
   'migration.aria': 'Message database update',
-  'migration.titre': 'Your messages become conversations.',
-  'migration.note': 'About {n} messages will be reorganized into conversations. This update runs only once and deletes nothing.',
+  'migration.titre': 'Updating your mailbox.',
+  'migration.note': 'About {n} messages are being updated. This runs only once and deletes nothing.',
   'migration.preparation': 'Preparing…',
   'migration.pourcent': '{p}%',
   'migration.annulee': 'Update canceled, everything is back as before. It will resume at the next launch, or right away:',
