@@ -61,12 +61,15 @@ commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
-**Dernière version livrée : 0.1.8** (publiée 2026-08-16, auto-update
-**0.1.7 → 0.1.8 confirmé au terrain le 2026-08-17**, base intacte — la
-chaîne signée ADR 0013 reste prouvée vivante). La 0.1.8 porte les quatre
-correctifs courrier de PLAN-RETOURS-MAIL (ci-dessous) ; la publication a
-suivi le protocole (tag nu `0.1.8`, `latest.json` sans BOM à l'URL nue,
-marquée Latest, gate rejouée au pré-push).
+**Dernière version livrée : 0.1.9** (publiée 2026-08-17, auto-update
+**0.1.8 → 0.1.9 confirmé au terrain le 2026-08-17** — mise à jour depuis
+l'app, base intacte, la chaîne signée ADR 0013 reste prouvée vivante). La
+0.1.9 porte les quatre retours de PLAN-RETOURS-2 (Cc/Cci ; cadence de
+synchro Gmail 5→30 min ; trait de chargement ; retrait « Rendre
+indépendante »). Publication au protocole (tag nu `0.1.9`, `latest.json`
+sans BOM à l'URL nue, marquée Latest, les 3 assets attachés, gate rejouée
+au pré-push). **La 0.1.8** (2026-08-16) portait les quatre correctifs
+courrier de PLAN-RETOURS-MAIL.
 
 **La 0.1.7** (2026-08-16) reste la ligne de la refonte entière — le
 Système v2 « Wada » et son élargissement (28 thèmes, PLAN-WADA /
@@ -77,7 +80,7 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 Tous les plans de cette ligne sont soldés.
 
 **Dernier chantier soldé : PLAN-RETOURS-2** (2026-08-17, `dfa6224`, A52-A54
-+ ADR 0021, terrain complet, non encore publié — vit sur `main`). (1) **Synchro Gmail « trop
++ ADR 0021, terrain complet, **livré en 0.1.9**). (1) **Synchro Gmail « trop
 longue »** : mesurée au terrain (trace `run_sync`, ~135 s en release quand
 22 vues Gmail ont bougé — ~5 s par dossier changé, bridage probable). La
 sobriété (ADR 0017) tient ; c'était la **cadence** qui coûtait. Le
