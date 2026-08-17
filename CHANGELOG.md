@@ -9,6 +9,33 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.1.9] - 2026-08-17
+
+Quatre retours du terrain.
+
+### Ajouté
+
+- **Cc et Cci** dans le composeur : ajoutez des destinataires en copie et
+  en copie cachée. La copie cachée reste cachée (elle ne paraît jamais
+  dans le message reçu par les autres) ; « Répondre à tous » replace les
+  Cc d'origine en Cc.
+
+### Modifié
+
+- La **synchronisation Gmail est bien plus légère** : le balayage complet
+  des dossiers, qui pouvait durer et se répétait toutes les 5 minutes,
+  passe à toutes les 30 minutes. L'arrivée du nouveau courrier, elle,
+  reste **instantanée** — rien ne change à ce que vous recevez, seulement
+  au poids de fond.
+- L'**animation de chargement** (le trait) est simplifiée : une animation
+  complète et fluide dès qu'une action est en cours, au lieu d'un trait
+  qui pouvait rester figé.
+
+### Retiré
+
+- Le bouton « Rendre indépendante » du composeur, qui ne faisait rien, est
+  retiré (la fenêtre de composition détachée reviendra plus tard).
+
 ## [0.1.8] - 2026-08-16
 
 Quatre correctifs sur le courrier réel, remontés au terrain.
