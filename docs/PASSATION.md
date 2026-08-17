@@ -250,6 +250,43 @@ comportement par défaut : chaque ajout se paie en vitesse et en fiabilité.
 observable dans tout l'historique. Le corps du message porte les chiffres
 et le raisonnement.
 
+### 2.9 Numérotation des versions
+
+**Wind suit SemVer `MAJEUR.MINEUR.CORRECTIF`.** Mais Wind n'expose **aucune
+API publique** : le « contrat » dont la rupture vaut MAJEUR est redéfini sur
+les **deux seules choses que l'utilisateur ne peut pas réparer seul** — la
+chaîne d'auto-update et la survie de sa boîte.
+
+**Échelle de décision — on descend, on s'arrête au premier « oui » :**
+
+1. **MAJEUR** (`X`+1, puis `y` et `z` → 0) — si **l'un** est vrai :
+   - la version **ne s'atteint pas par auto-update** depuis la précédente
+     (réinstallation manuelle : rotation de clé de signature, changement
+     d'installeur/format — **c'est arrivé en 0.1.3**) ;
+   - elle embarque une **migration de données non rembobinable** (contraire
+     à l'[ADR 0012](adr/0012-migration-visible-interruptible.md)) ;
+   - \+ le passage **unique** `0.x → 1.0.0` au jalon « hors développement
+     initial » (sortie de bêta) — décision produit du shusa.
+2. **MINEUR** (`y`+1, puis `z` → 0) — sinon, si la release **ajoute au moins
+   une capacité nouvelle** visible par l'utilisateur.
+3. **CORRECTIF** (`z`+1) — sinon : corrections, ajustements de l'existant,
+   perf, allègements internes, nettoyages.
+
+**La question quotidienne est binaire** : « une nouveauté visible, oui/non ? »
+→ MINEUR sinon CORRECTIF. On ne pèse **jamais** l'ampleur. Trois cas tranchés
+d'avance, sinon le jugement revient :
+- une **refonte / redesign**, si grosse soit-elle, est au plus MINEUR
+  (précédent 0.1.7), **jamais** MAJEUR ;
+- **release mixte** (nouveauté + correctifs, le cas courant) : ≥ 1 nouveauté
+  ⇒ MINEUR, les correctifs embarqués ne comptent pas ;
+- **retrait** d'une capacité *employée* ⇒ MINEUR ; de code mort ou d'un bouton
+  inerte (0.1.9, « Rendre indépendante ») ⇒ CORRECTIF.
+
+Un « grand numéro pour marquer le coup » est une envie *marketing*, hors de la
+règle. La release se publie par `scripts/faire-release.ps1 <version>`
+([ADR 0013](adr/0013-installeur-nsis-maj-signee.md)) ; le tag GitHub reste la
+**version nue**.
+
 ---
 
 ## 3. Le produit
