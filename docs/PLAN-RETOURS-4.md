@@ -6,8 +6,9 @@
 > (STOP 1) : 2026-08-18. Journal Système A59 (R1), A60 (R2), A61 (R3).
 > **R4 (barre de mise en forme / composeur enrichi HTML) reporté en
 > chantier dédié** (décision CE D1) — voir PASSATION §1. Non encore
-> publié : la prochaine release (MINEUR, nouveautés visibles → 0.1.11)
-> embarquera R1-R3.
+> publié : R1-R3 sont des corrections / ajustements de l'existant (aucune
+> capacité nouvelle) → la prochaine release est un **CORRECTIF, 0.1.11**
+> (§2.9).
 >
 > Gate 2026-08-18 : fmt OK · ui-v2 build 0 avert. · contraste 28/700 ·
 > coherence 28/476 · garde-thread 65 · clippy muet · tests Rust 0 échec ·

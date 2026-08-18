@@ -71,7 +71,8 @@ des brouillons, mail-smtp en `multipart/alternative`, citation HTML,
 éditeur `contenteditable`) qui touche les **règles d'or de l'envoi**
 (ADR 0003) et exige une migration rembobinable (invariant #7). À ouvrir
 par `/chantier` (PLAN-COMPOSITION-HTML), avec son propre terrain et sa
-release.
+release. R4 **ajoute une capacité nouvelle** → sa release sera un
+**MINEUR : 0.2.0** (§2.9, première bascule `y`+1 du 0.x).
 
 **Dernière version livrée : 0.1.10** (publiée 2026-08-18, `a25c566`,
 auto-update **0.1.9 → 0.1.10 confirmé au terrain le 2026-08-18** — mise à
@@ -102,8 +103,9 @@ Tous les plans de cette ligne sont soldés.
 
 **Dernier chantier soldé : PLAN-RETOURS-4** (2026-08-18, `52aec3e`, A59-A61,
 terrain complet, CI verte — **R1-R3 livrés, R4 reporté en chantier dédié**,
-décision CE D1 ; landé sur `main`, **non encore publié** — la prochaine
-release sera MINEUR, 0.1.11). Trois retours. (1) **Téléchargement d'une pièce
+décision CE D1 ; landé sur `main`, **non encore publié**). Trois retours.
+R1-R3 sont des **corrections / ajustements de l'existant** (aucune capacité
+nouvelle) : la prochaine release est un **CORRECTIF → 0.1.11** (§2.9). (1) **Téléchargement d'une pièce
 par dialogue** : le clic enregistrait en SILENCE dans Téléchargements (« il ne
 se passe rien ») ; il ouvre désormais « Enregistrer sous » natif — dossier ET
 nom au choix, défaut Téléchargements + nom assaini ; nouvelle commande
@@ -320,14 +322,15 @@ et le raisonnement.
 
 ### 2.9 Numérotation des versions
 
-**Wind suit SemVer `MAJEUR.MINEUR.CORRECTIF`.** Mais Wind n'expose **aucune
-API publique** : le « contrat » dont la rupture vaut MAJEUR est redéfini sur
-les **deux seules choses que l'utilisateur ne peut pas réparer seul** — la
-chaîne d'auto-update et la survie de sa boîte.
+**Wind suit un format `x.y.z`, où `x` = MAJEUR, `y` = MINEUR, `z` =
+CORRECTIF.** Wind n'expose aucune API publique : le « contrat » dont la
+rupture vaut MAJEUR est redéfini sur les **deux seules choses que
+l'utilisateur ne peut pas réparer seul** — la chaîne d'auto-update et la
+survie de sa boîte.
 
-**Échelle de décision — on descend, on s'arrête au premier « oui » :**
+On descend, on s'arrête au premier « oui » :
 
-1. **MAJEUR** (`X`+1, puis `y` et `z` → 0) — si **l'un** est vrai :
+1. **MAJEUR** (`x`+1, puis `y` et `z` → 0) — si **l'un** est vrai :
    - la version **ne s'atteint pas par auto-update** depuis la précédente
      (réinstallation manuelle : rotation de clé de signature, changement
      d'installeur/format — **c'est arrivé en 0.1.3**) ;
@@ -335,25 +338,14 @@ chaîne d'auto-update et la survie de sa boîte.
      à l'[ADR 0012](adr/0012-migration-visible-interruptible.md)) ;
    - \+ le passage **unique** `0.x → 1.0.0` au jalon « hors développement
      initial » (sortie de bêta) — décision produit du shusa.
-2. **MINEUR** (`y`+1, puis `z` → 0) — sinon, si la release **ajoute au moins
-   une capacité nouvelle** visible par l'utilisateur.
-3. **CORRECTIF** (`z`+1) — sinon : corrections, ajustements de l'existant,
-   perf, allègements internes, nettoyages.
+2. **MINEUR** (`y`+1, puis `z` → 0) — si la release **ajoute au moins une
+   capacité nouvelle** visible par l'utilisateur.
+3. **CORRECTIF** (`z`+1) — si la release n'inclut que des corrections,
+   ajustements de l'existant, perf, allègements internes, nettoyages.
 
-**La question quotidienne est binaire** : « une nouveauté visible, oui/non ? »
-→ MINEUR sinon CORRECTIF. On ne pèse **jamais** l'ampleur. Trois cas tranchés
-d'avance, sinon le jugement revient :
-- une **refonte / redesign**, si grosse soit-elle, est au plus MINEUR
-  (précédent 0.1.7), **jamais** MAJEUR ;
-- **release mixte** (nouveauté + correctifs, le cas courant) : ≥ 1 nouveauté
-  ⇒ MINEUR, les correctifs embarqués ne comptent pas ;
-- **retrait** d'une capacité *employée* ⇒ MINEUR ; de code mort ou d'un bouton
-  inerte (0.1.9, « Rendre indépendante ») ⇒ CORRECTIF.
-
-Un « grand numéro pour marquer le coup » est une envie *marketing*, hors de la
-règle. La release se publie par `scripts/faire-release.ps1 <version>`
-([ADR 0013](adr/0013-installeur-nsis-maj-signee.md)) ; le tag GitHub reste la
-**version nue**.
+La release se publie par `scripts/faire-release.ps1 <version>`
+([ADR 0013](adr/0013-installeur-nsis-maj-signee.md)) ; le tag GitHub reste
+la **version nue**.
 
 ---
 
