@@ -12,6 +12,25 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.1.11] - 2026-08-19
+
+Trois retours du terrain.
+
+### Modifié
+
+- **Enregistrer une pièce jointe** : cliquer une pièce ouvre désormais une
+  fenêtre « Enregistrer sous » où vous choisissez le dossier et le nom du
+  fichier, au lieu d'un enregistrement silencieux dans Téléchargements.
+- Le **nom et le poids d'une pièce jointe** sont réunis dans une seule
+  puce, plus lisible d'un coup d'œil.
+
+### Corrigé
+
+- Sur les **thèmes sombres**, le corps des messages s'affiche désormais sur
+  fond clair : le texte des courriels — souvent composé pour un fond blanc,
+  comme les infolettres — redevient lisible, au lieu d'apparaître parfois en
+  noir sur fond sombre.
+
 ## [0.1.10] - 2026-08-18
 
 Quatre retours du terrain.
@@ -183,6 +202,9 @@ l'UI v3 et ses retours CE, sur une fenêtre qui ne gèle plus.
 - Première version publiée (discovery) : installeur NSIS et mise à jour
   signée minisign, pilotée depuis Rust (ADR 0013).
 
+[0.1.11]: https://github.com/smonchamps/wind/releases/tag/0.1.11
+[0.1.10]: https://github.com/smonchamps/wind/releases/tag/0.1.10
+[0.1.9]: https://github.com/smonchamps/wind/releases/tag/0.1.9
 [0.1.8]: https://github.com/smonchamps/wind/releases/tag/0.1.8
 [0.1.7]: https://github.com/smonchamps/wind/releases/tag/0.1.7
 [0.1.6]: https://github.com/smonchamps/wind/releases/tag/0.1.6
