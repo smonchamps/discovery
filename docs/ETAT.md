@@ -62,7 +62,19 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 (PLAN-GELS, ADR 0019) ; auto-update 0.1.6 → 0.1.7 confirmé au terrain.
 Tous les plans de cette ligne sont soldés.
 
-**Dernier chantier soldé : PLAN-RETOURS-4** (2026-08-18, `52aec3e`, A59-A61,
+**Dernier chantier soldé : PLAN-DOCUMENTATION** (2026-08-19, `78a2a91`
+→ `8cf8ac3`, CI verte, terrain E4 : reprise à froid et test du stub
+propres). La documentation est restructurée en trois gestes kaizen :
+**la méthode vit dans [STANDARD.md](STANDARD.md)** (numérotation
+§2-§10 figée, s'amende par kaizen, ne se réécrit pas), **l'état dans
+ce document** (réécrit à chaque chantier), les 24 plans soldés et
+5 revues de phase dans [archives/](archives/), le normatif orphelin
+rapatrié au dépôt (vérification de release → STANDARD §2.10, piège du
+cache chaud → §9) ; les mémoires Claude ne portent plus que des faits
+machine et des pointeurs. Stub PASSATION.md temporaire (D-24 : une
+reprise propre sur les deux requises comptée).
+
+**Chantier soldé précédent : PLAN-RETOURS-4** (2026-08-18, `52aec3e`, A59-A61,
 terrain complet, CI verte — **R1-R3 livrés en 0.1.11** (`6977778`, auto-update
 confirmé le 2026-08-19) ; **R4 reporté en chantier dédié**, décision CE D1).
 Trois retours, tous **corrections / ajustements de l'existant** (aucune

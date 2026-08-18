@@ -340,3 +340,6 @@ motivée.)
 - **Condition de retrait** : deux reprises à froid consécutives sans
   que rien ne trébuche sur l'ancien chemin ; alors le stub se supprime
   (commit `docs:`) et cette entrée se raye.
+- **Avancement** : première reprise comptée le 2026-08-19 (E4 du
+  chantier — reprise ordinaire propre, et le stub a rattrapé l'ancien
+  rituel collé volontairement). Une reprise propre de plus et il tombe.
