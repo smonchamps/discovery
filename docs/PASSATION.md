@@ -61,15 +61,24 @@ commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
-**Dernière version livrée : 0.1.9** (publiée 2026-08-17, auto-update
-**0.1.8 → 0.1.9 confirmé au terrain le 2026-08-17** — mise à jour depuis
-l'app, base intacte, la chaîne signée ADR 0013 reste prouvée vivante). La
-0.1.9 porte les quatre retours de PLAN-RETOURS-2 (Cc/Cci ; cadence de
-synchro Gmail 5→30 min ; trait de chargement ; retrait « Rendre
-indépendante »). Publication au protocole (tag nu `0.1.9`, `latest.json`
-sans BOM à l'URL nue, marquée Latest, les 3 assets attachés, gate rejouée
-au pré-push). **La 0.1.8** (2026-08-16) portait les quatre correctifs
-courrier de PLAN-RETOURS-MAIL.
+**Dernière version livrée : 0.1.10** (publiée 2026-08-18, `a25c566`,
+auto-update **0.1.9 → 0.1.10 confirmé au terrain le 2026-08-18** — mise à
+jour depuis l'app, la chaîne signée ADR 0013 reste prouvée vivante). La
+0.1.10 porte les quatre retours de PLAN-RETOURS-3 (% de rattrapage ; spam /
+non-spam ; supprimer un brouillon ; réponse par message). **Première release
+faite par le pilote complet `scripts/faire-release.ps1`** : bump de
+tauri.conf.json + build signé (clé `C:\Keys\wind.key`, mot de passe à la
+main) + manifeste + — après confirmation `OUI` — commit de release, push
+(gate rejouée), tag nu + Release GitHub marquée Latest, notes tirées du
+CHANGELOG. Fait prouvé : `TAURI_SIGNING_PRIVATE_KEY` accepte le **chemin**
+du fichier de clé (pas seulement son contenu). La publication n'est donc
+**plus manuelle** (l'ADR 0013 la décrivait ainsi ; le script la fait,
+derrière une confirmation).
+
+**La 0.1.9** (2026-08-17) portait les quatre retours de PLAN-RETOURS-2
+(Cc/Cci ; cadence de synchro Gmail 5→30 min ; trait de chargement ; retrait
+« Rendre indépendante »). **La 0.1.8** (2026-08-16) portait les quatre
+correctifs courrier de PLAN-RETOURS-MAIL.
 
 **La 0.1.7** (2026-08-16) reste la ligne de la refonte entière — le
 Système v2 « Wada » et son élargissement (28 thèmes, PLAN-WADA /
@@ -80,8 +89,8 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 Tous les plans de cette ligne sont soldés.
 
 **Dernier chantier soldé : PLAN-RETOURS-3** (2026-08-18, `8819090`, A55-A58,
-terrain complet, CI verte — **commité, pas encore releasé** ; prêt pour une
-0.1.10, décision CE). Quatre retours terrain. (1) **Pourcentage de
+terrain complet, CI verte — **livré en 0.1.10**, auto-update confirmé au
+terrain le 2026-08-18). Quatre retours terrain. (1) **Pourcentage de
 rattrapage** : la barre d'état passe à « N restants · P % » ; `P` = corps
 présents / corpus en portée, fonction pure `backfill_percent` (sœur de
 `sync_percent`, plafonnée à 99 tant qu'un corps manque), dénominateur
