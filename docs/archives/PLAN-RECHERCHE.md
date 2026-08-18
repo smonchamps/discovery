@@ -14,13 +14,13 @@ reconstruction (×340), rattrapé au terrain.
 ## Constat (vérifié, pas supposé)
 
 La recherche est bâtie sur **SQLite FTS5, index « sans contenu »,
-transactionnel** — décision gelée de l'[ADR 0004](adr/0004-moteur-de-recherche-fts5.md)
+transactionnel** — décision gelée de l'[ADR 0004](../adr/0004-moteur-de-recherche-fts5.md)
 après un set-based mesuré contre Tantivy. Lecture faite du cœur
-([`crates/mail-core/src/search.rs`](../crates/mail-core/src/search.rs)),
-du câblage UI ([`Liste.svelte:213`](../apps/desktop/ui-v2/src/Liste.svelte),
-[`App.svelte:1069`](../apps/desktop/ui-v2/src/App.svelte)), de la commande
-([`commands.rs:1728`](../apps/desktop/src/commands.rs)), du spike
-([`spikes/search-engine`](../spikes/search-engine/README.md)) et des
+([`crates/mail-core/src/search.rs`](../../crates/mail-core/src/search.rs)),
+du câblage UI ([`Liste.svelte:213`](../../apps/desktop/ui-v2/src/Liste.svelte),
+[`App.svelte:1069`](../../apps/desktop/ui-v2/src/App.svelte)), de la commande
+([`commands.rs:1728`](../../apps/desktop/src/commands.rs)), du spike
+([`spikes/search-engine`](../../spikes/search-engine/README.md)) et des
 observations ouvertes (PASSATION §1.2, DETTE D-16).
 
 État des lieux :

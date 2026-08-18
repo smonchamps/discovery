@@ -5,7 +5,7 @@ Date : 2026-07-21 · Statut : accepté
 ## Contexte
 
 La Phase 0 avait explicitement **reporté** ce départage à la Phase 3
-([PHASE0.md](../PHASE0.md) §3), la grille set-based du plan
+([PHASE0.md](../archives/PHASE0.md) §3), la grille set-based du plan
 ([PLAN.md](../PLAN.md) §2.4) posant *Graph API* en hypothèse du Chef
 Ingénieur, sur critères d'élimination : **fiabilité, quotas, effort**.
 

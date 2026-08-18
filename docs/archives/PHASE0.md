@@ -1,6 +1,6 @@
 # Revue de conception — clôture de la Phase 0 (2026-07-12)
 
-Conformément au plan ([PLAN.md](PLAN.md) §2), la Phase 0 se clôt par cette
+Conformément au plan ([PLAN.md](../PLAN.md) §2), la Phase 0 se clôt par cette
 revue : chaque problème dur a été résolu par un spike mesuré sur le compte
 Gmail réel, les décisions issues de l'exploration sont gelées, et les
 hypothèses restantes sont nommées avec leur échéance.
@@ -9,10 +9,10 @@ hypothèses restantes sont nommées avec leur échéance.
 
 | Spike | Question | Verdict | Mesure clé |
 |---|---|---|---|
-| oauth-gmail *(retiré → [mail-auth](../crates/mail-auth/src/lib.rs))* | Authentifier sans jamais voir un mot de passe ? | ✅ Oui | PKCE loopback + Credential Manager, reconnexion silencieuse |
-| sync-engine *(retiré → [mail-core](../crates/mail-core/src/sync.rs))* | Synchro incrémentale avec liste offline instantanée ? | ✅ Oui | Lecture offline ~180 µs (budget < 1 s tenu ×5000) |
-| html-render *(retiré → [mail-render](../crates/mail-render/src/lib.rs))* | Afficher l'HTML réel sûrement sans le casser ? | ✅ Sécurité acquise | 3 couches, 10 tests ; fidélité 0/20/0 → chantier CSS compris |
-| [web-bridge](../spikes/web-bridge/README.md) | Que coûte le pont web (« un seul cerveau ») ? | ✅ Viable | 0,36 ms serveur, insensible au volume (5 → 501 msgs) |
+| oauth-gmail *(retiré → [mail-auth](../../crates/mail-auth/src/lib.rs))* | Authentifier sans jamais voir un mot de passe ? | ✅ Oui | PKCE loopback + Credential Manager, reconnexion silencieuse |
+| sync-engine *(retiré → [mail-core](../../crates/mail-core/src/sync.rs))* | Synchro incrémentale avec liste offline instantanée ? | ✅ Oui | Lecture offline ~180 µs (budget < 1 s tenu ×5000) |
+| html-render *(retiré → [mail-render](../../crates/mail-render/src/lib.rs))* | Afficher l'HTML réel sûrement sans le casser ? | ✅ Sécurité acquise | 3 couches, 10 tests ; fidélité 0/20/0 → chantier CSS compris |
+| [web-bridge](../../spikes/web-bridge/README.md) | Que coûte le pont web (« un seul cerveau ») ? | ✅ Viable | 0,36 ms serveur, insensible au volume (5 → 501 msgs) |
 
 ## 2. Décisions gelées (issues de la grille set-based, PLAN.md §2.4)
 

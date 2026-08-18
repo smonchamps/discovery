@@ -1,5 +1,8 @@
 # Plan — WIND : Discovery devient Wind, marque de la suite Elements
 
+> **CHANTIER SOLDÉ.** Le verdict de solde est au fil du document ;
+> marqueur normalisé en tête le 2026-08-19 (PLAN-DOCUMENTATION E2).
+
 Commande (2026-08-14) : le client s'appelle désormais **Wind**, outil
 courrier/agenda de la suite **Elements** (« ce que le vent porte, le
 rythme des jours »). Il gagne le logo dessiné à la page de la suite

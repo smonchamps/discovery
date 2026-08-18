@@ -1,6 +1,6 @@
 # Revue de clôture — Phase 1 « je lis mes mails » (2026-07-12)
 
-Le squelette marchant du plan ([PLAN.md](PLAN.md) §4) est livré, validé sur
+Le squelette marchant du plan ([PLAN.md](../PLAN.md) §4) est livré, validé sur
 compte réel et mesuré contre ses budgets. Discovery est une application :
 fenêtre, compte Gmail, synchronisation, liste, lecture sûre, offline-first.
 

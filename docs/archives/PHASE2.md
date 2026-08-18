@@ -1,6 +1,6 @@
 # Revue de clôture — Phase 2 « je travaille dans mes mails » (2026-07-17)
 
-Le triage et l'écriture du plan ([PLAN.md](PLAN.md) §4) sont livrés, validés
+Le triage et l'écriture du plan ([PLAN.md](../PLAN.md) §4) sont livrés, validés
 sur compte réel (envois, coupures, redémarrages) et re-mesurés contre les
 budgets. Discovery lit, trie, répond, transfère et envoie — offline-first,
 sans jamais perdre ni dupliquer un envoi.
@@ -11,7 +11,7 @@ sans jamais perdre ni dupliquer un envoi.
 |---|---|---|
 | Actions lu/non-lu, archiver, supprimer, étoiler — optimistes, file offline rejouable | ✅ | `pending_actions` rejouée en tête de synchro ; coupure simulée = file intacte (tests) |
 | Composer, répondre, transférer | ✅ | Validation stricte à la frontière, « Re:/Fwd: » sans empilement, citation (`> ` / bloc transféré), In-Reply-To/References |
-| Envoi SMTP, boîte d'envoi « jamais perdu » | ✅ | Journal AVANT réseau, machine à états, **quarantaine anti-fantôme** ([ADR 0003](adr/0003-boite-envoi-smtp.md)) ; validé sur Gmail réel : un seul exemplaire, Message-ID du journal |
+| Envoi SMTP, boîte d'envoi « jamais perdu » | ✅ | Journal AVANT réseau, machine à états, **quarantaine anti-fantôme** ([ADR 0003](../adr/0003-boite-envoi-smtp.md)) ; validé sur Gmail réel : un seul exemplaire, Message-ID du journal |
 | Brouillons synchronisés | ✅ (poussée) | Locaux d'abord (autosauvegarde, plus de texte perdu), reflétés dans le dossier Brouillons Gmail (APPEND \Draft + APPENDUID, tombstones, garde UIDVALIDITY) |
 | Raccourcis clavier | ✅ | c, r, f, s, e, Suppr, j/k, Échap — avec garde de saisie |
 | **Gate : zéro perte prouvée par coupure/crash + E2E des parcours critiques verts** | ✅ | Tests de coupure et de redémarrage (unitaires **et** terrain) ; 5 parcours E2E sur la vraie fenêtre (~5 s, `e2e/`) |

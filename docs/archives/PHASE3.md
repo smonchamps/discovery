@@ -1,7 +1,7 @@
 # Revue de clôture — Phase 3 « recherche, multi-comptes, échelle » (2026-07-25)
 
 La recherche, le multi-comptes et le passage à l'échelle du plan
-([PLAN.md](PLAN.md) §4) sont livrés, validés sur trois comptes réels
+([PLAN.md](../PLAN.md) §4) sont livrés, validés sur trois comptes réels
 (Gmail, Microsoft 365, IMAP générique) et re-mesurés au gate 3 —
 **3 comptes, 200 000 messages cumulés**.
 
@@ -16,13 +16,13 @@ quoi il existe.
 | Recherche plein-texte FTS5 (< 100 ms sur 100 000 messages) | ⚠️ | Tenue jusqu'à ~35 000 correspondances ; au-delà, le classement BM25 domine — voir §2 et §4 |
 | Filtres `from:` / `date:` | ✅ | `parse_query`, repli sur la date quand la requête n'a pas de terme |
 | Filtres `to:` / « a une pièce jointe » | ❌ | Reportés (§4) |
-| Multi-comptes Gmail + Microsoft + IMAP générique | ✅ | Trois comptes réels ; fournisseurs décrits **en données** ([ADR 0006](adr/0006-microsoft-imap-oauth2.md)) |
+| Multi-comptes Gmail + Microsoft + IMAP générique | ✅ | Trois comptes réels ; fournisseurs décrits **en données** ([ADR 0006](../adr/0006-microsoft-imap-oauth2.md)) |
 | Boîte unifiée | ✅ | `unified_recent` ; identité `(account_id, uid)` jusque dans la sélection |
 | Pièces jointes | ✅ (lecture) | Trombone en liste, liste au détail ; envoi reporté (§4) |
 | Notifications Windows | ✅ | Validé **application installée** — l'identité applicative exige un raccourci du menu Démarrer |
-| Threading des conversations | ✅ | Union-find pur sur en-têtes RFC 5322 ([ADR 0008](adr/0008-regroupement-en-conversations.md)) |
+| Threading des conversations | ✅ | Union-find pur sur en-têtes RFC 5322 ([ADR 0008](../adr/0008-regroupement-en-conversations.md)) |
 | Dossiers et déplacement | ✅ | Report de Phase 2 rattrapé ; décodage UTF-7 modifié (`mutf7`) |
-| Rattrapage des corps | ✅ | Non prévu au plan — imposé par la mesure ([ADR 0007](adr/0007-rattrapage-des-corps.md)) |
+| Rattrapage des corps | ✅ | Non prévu au plan — imposé par la mesure ([ADR 0007](../adr/0007-rattrapage-des-corps.md)) |
 | Brouillons : tirage et conflit d'édition | ✅ | Report de Phase 2 rattrapé ; validé terrain |
 | **Gate : budgets tenus avec 3 comptes et 200 000 messages** | ⚠️ | Six postes sur huit ✅ — la recherche et l'adoption d'une base héritée font exception |
 
@@ -52,7 +52,7 @@ de l'ADR 0007. À 778 Mo, la marge reste de 22 % dans ce cas défavorable.
 ### Le défaut trouvé par le gate
 
 La page de liste coûtait **87 ms**, et jusqu'à **987 ms** en défilement
-profond. L'[ADR 0008](adr/0008-regroupement-en-conversations.md) §4
+profond. L'[ADR 0008](../adr/0008-regroupement-en-conversations.md) §4
 promettait pourtant que « le coût d'une page ne dépend plus de la taille
 de la boîte ».
 
@@ -132,7 +132,7 @@ Deux réserves d'honnêteté :
 
 ## 2 bis. Re-mesure après l'ADR 0009 (2026-07-25, même jour)
 
-Le chantier de la [portée des fils au compte](adr/0009-portee-des-fils-au-compte.md)
+Le chantier de la [portée des fils au compte](../adr/0009-portee-des-fils-au-compte.md)
 — « Envoyés » synchronisé, identité portant la boîte, index **partiel** —
 a été livré après cette revue. Les budgets ont donc été re-mesurés.
 
@@ -254,7 +254,7 @@ prix du disque et du plafond de recherche. Non tranché.
   0004 prévoyait déjà.
 - **Adoption d'une base héritée de 200 000 messages** : 4,22 s, budget
   dépassé. Le précédent existe et il est bon — le rattrapage des corps
-  ([ADR 0007](adr/0007-rattrapage-des-corps.md)) a rendu un travail de fond
+  ([ADR 0007](../adr/0007-rattrapage-des-corps.md)) a rendu un travail de fond
   **visible et interruptible** plutôt que de le cacher. Une migration qui
   s'annonce vaut mieux qu'une fenêtre figée quatre secondes sans
   explication. Ce qu'il ne faut PAS faire : adopter par tranches à chaque

@@ -1,11 +1,14 @@
 # Plan — UI v2 : livrer l'UI du prototype
 
+> **CHANTIER SOLDÉ.** Le verdict de solde est au fil du document ;
+> marqueur normalisé en tête le 2026-08-19 (PLAN-DOCUMENTATION E2).
+
 > Directive du Chef Ingénieur (2026-08-11) : l'UI v1 est le point noir du
 > produit ; la refonte livre **exactement l'UI du prototype**
-> [`docs/design/ui_prototype.html`](design/ui_prototype.html). Socle
-> technique : [ADR 0015](adr/0015-socle-ui-v2-svelte.md) (Svelte 5,
+> [`docs/design/ui_prototype.html`](../design/ui_prototype.html). Socle
+> technique : [ADR 0015](../adr/0015-socle-ui-v2-svelte.md) (Svelte 5,
 > stratégie A, port de transport, budgets-gates). Méthode : le *shusa*
-> ([PASSATION.md](PASSATION.md) §2) — chaque phase est un incrément validé
+> ([PASSATION.md](../STANDARD.md) §2) — chaque phase est un incrément validé
 > au terrain sur de vrais comptes. Ce plan remplace l'ancien plan R0–R6
 > (supprimé) ; les acquis de R0 sont repris ci-dessous, pas rejoués.
 
@@ -31,11 +34,11 @@ puces ; 0/120 sans) ne disparaît pas : il devient un **repli documenté**
 
 | Acquis | Ce qu'on reprend |
 |---|---|
-| S1 — frontière du volet de lecture | iframe `sandbox` + CSP par message, gouttière 20 px, encre bakée par thème, corps HTML sur surface claire ([`spikes/volet-lecture/`](../spikes/volet-lecture/README.md)) |
-| S3 — icônes vendorisées | [`assets/icones/`](../assets/icones/README.md), 15,1 Kio, CSP `font-src 'self'`. Vérifié ce jour : les **30 glyphes du prototype sont tous couverts** par l'inventaire |
+| S1 — frontière du volet de lecture | iframe `sandbox` + CSP par message, gouttière 20 px, encre bakée par thème, corps HTML sur surface claire ([`spikes/volet-lecture/`](../../spikes/volet-lecture/README.md)) |
+| S3 — icônes vendorisées | [`assets/icones/`](../../assets/icones/README.md), 15,1 Kio, CSP `font-src 'self'`. Vérifié ce jour : les **30 glyphes du prototype sont tous couverts** par l'inventaire |
 | S4 — avis et progression | la règle des 3 régions (Système A4) reste la spéc de l'hors-prototype (§6) |
-| S5 — port de transport | `appel(commande, args) → Promise`, impl en-processus prouvée par 21 e2e ([`transport.js`](../apps/desktop/ui/transport.js)) |
-| S6 — hooks de test | `data-testid` sur le markup généré + contrat « v2 préserve » ([`e2e/README.md`](../e2e/README.md)) |
+| S5 — port de transport | `appel(commande, args) → Promise`, impl en-processus prouvée par 21 e2e ([`transport.js`](../../apps/desktop/ui/transport.js)) |
+| S6 — hooks de test | `data-testid` sur le markup généré + contrat « v2 préserve » ([`e2e/README.md`](../../e2e/README.md)) |
 | S2 — ligne 104 px | **rétrogradé en repli** : éprouvé au terrain, dégainé seulement sur mesure (andon P1) |
 
 **Périmètre.** Ce que le prototype ne montre pas n'est **pas sur le
@@ -120,7 +123,7 @@ en P1) :
 - **Le jeu d'essai « Clarity »** : les 10 conversations fictives du
   prototype (contrat Vantis, planning semaine 33…) seedées dans une base
   jetable (variante de
-  [`seed_inbox.rs`](../crates/mail-core/examples/seed_inbox.rs)). v2 sur
+  [`seed_inbox.rs`](../../crates/mail-core/examples/seed_inbox.rs)). v2 sur
   ce décor, côte à côte avec le prototype, mêmes états → la parité se
   juge d'un regard et se capture. C'est le banc de chaque revue de phase.
 - Le **runtime du prototype n'est pas repris** (player React embarqué —

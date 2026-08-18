@@ -32,7 +32,7 @@ cette documentation doit garantir.
   exactement ce que chaque session a fait. Personne ne « réécrit »
   DETTE.md ni un ADR : leurs noms disent des registres, ils sont
   traités en registres.
-- **F3 — Les morts et les vivants sont mélangés.** 16 `PLAN-*.md`
+- **F3 — Les morts et les vivants sont mélangés.** 23 `PLAN-*.md`
   **tous soldés** (vérifié ce jour, un par un) et 5 revues de phase
   closes vivent à plat dans `docs/`, à côté des documents vivants. Le
   statut ne se lit pas dans `ls` ; six plans (BROUILLONS, DC, LANGUES,
@@ -114,7 +114,7 @@ plan).
    *chaque* plan ; pour les six où il est enfoui, le normaliser en
    tête (blockquote datée, une ligne, comme PLAN-RETOURS-4) — le
    statut d'un document se lit dans ses 5 premières lignes.
-3. `git mv` des 21 fichiers : les 16 `PLAN-*.md` soldés + `PHASE0.md`
+3. `git mv` des 28 fichiers : les 23 `PLAN-*.md` soldés + `PHASE0.md`
    à `PHASE3.md` + `PHASE-REFONTE.md`. **`PLAN.md` reste** à la
    racine : c'est le concept paper, source de vérité produit, vivant.
 4. **Garde des liens relatifs** : les fichiers déplacés qui pointent

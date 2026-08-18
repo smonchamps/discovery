@@ -1,8 +1,11 @@
 # Plan — DC : le Système, source unique et exhaustive
 
+> **CHANTIER SOLDÉ.** Le verdict de solde est au fil du document ;
+> marqueur normalisé en tête le 2026-08-19 (PLAN-DOCUMENTATION E2).
+
 Commande du Chief Designer (2026-08-14) : clarifier, simplifier et
 fiabiliser la documentation de design autour de
-[`docs/design/systeme.dc.html`](design/systeme.dc.html). Le Système
+[`docs/design/systeme.dc.html`](../design/systeme.dc.html). Le Système
 redevient **l'unique source normative**, exhaustive de ce qui est
 réellement livré — et un mécanisme l'empêche de re-dériver. La refonte
 UI v2 est derrière nous : le prototype a rempli son office, la parité
@@ -18,7 +21,7 @@ plan + décisions + journal » s'achève en reversant tout au Système.
   retouché depuis son import du 2026-08-11, commit 9975a12) ; trois
   maquettes de plan (`maquette-synchro`, `maquette-brouillons`,
   `maquette-pieces-jointes`) validées puis restées vivantes ;
-  l'inventaire d'icônes ([`assets/icones/`](../assets/icones/README.md),
+  l'inventaire d'icônes ([`assets/icones/`](../../assets/icones/README.md),
   le contrat des glyphes).
 - **Le journal a décroché.** Dernier commit du Système : e6ccd7d
   (2026-08-13). **A17 est cité au message du commit 27ed056 mais
@@ -73,7 +76,7 @@ plan + décisions + journal » s'achève en reversant tout au Système.
   « après coup » ne tient pas. La règle vaut pour les valeurs (jetons,
   géométries) comme pour les surfaces (sections d'écran).
 - **DC-D3 — un seul compteur de glyphes.**
-  [`assets/icones/README.md`](../assets/icones/README.md) est le
+  [`assets/icones/README.md`](../../assets/icones/README.md) est le
   contrat ; le corps du Système **renvoie** à l'inventaire et ne compte
   plus. Les nombres du journal restent — ce sont des faits datés, pas
   des états courants.

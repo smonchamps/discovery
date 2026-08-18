@@ -13,7 +13,7 @@ La règle était **conditionnée à cette prémisse**, et la prémisse vient de
 tomber : le Chef Ingénieur a décidé de synchroniser « Envoyés ». Cette
 décision était elle-même reportée après le gate 3, pour connaître le coût à
 l'échelle avant d'engager un second dossier
-([PHASE3.md](../PHASE3.md) §5) — il est désormais connu.
+([PHASE3.md](../archives/PHASE3.md) §5) — il est désormais connu.
 
 Ce n'est donc pas rouvrir une décision gelée contre une mesure : c'est en
 retirer le socle. La règle du §5 de la passation est respectée.
@@ -83,7 +83,7 @@ l'incrémentant.
 ### 4. Un index PARTIEL, sans quoi le gate 3 est perdu
 
 Le gate 3 vient de corriger un tri matérialisé qui coûtait jusqu'à 987 ms
-par page ([PHASE3.md](../PHASE3.md) §2). La règle §2 ci-dessus le
+par page ([PHASE3.md](../archives/PHASE3.md) §2). La règle §2 ci-dessus le
 ramènerait par une autre porte : filtrer « les fils ayant au moins un
 message reçu » **tout en triant par date** oblige SQLite à parcourir puis
 jeter tous les fils purement sortants.
@@ -119,7 +119,7 @@ chemin et d'incrémenter la version.
 
 Coût mesuré de la reconstruction : **4,22 s pour 200 000 messages**, une
 seule fois. Il est déjà hors budget et déjà consigné comme report
-([PHASE3.md](../PHASE3.md) §4) ; ce chantier ne l'aggrave pas d'un ordre de
+([PHASE3.md](../archives/PHASE3.md) §4) ; ce chantier ne l'aggrave pas d'un ordre de
 grandeur, mais il **rend son traitement plus urgent** — la migration
 touchera cette fois toutes les bases existantes, pas seulement les
 héritées.

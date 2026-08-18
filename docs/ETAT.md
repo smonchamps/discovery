@@ -27,17 +27,25 @@ par `/chantier` (PLAN-COMPOSITION-HTML), avec son propre terrain et sa
 release. R4 **ajoute une capacité nouvelle** → sa release sera un
 **MINEUR : 0.2.0** (STANDARD.md §2.9, première bascule `y`+1 du 0.x).
 
-**Dernière version livrée : 0.1.10** (publiée 2026-08-18, `a25c566`,
-auto-update **0.1.9 → 0.1.10 confirmé au terrain le 2026-08-18** — mise à
-jour depuis l'app, la chaîne signée ADR 0013 reste prouvée vivante). La
-0.1.10 porte les quatre retours de PLAN-RETOURS-3 (% de rattrapage ; spam /
-non-spam ; supprimer un brouillon ; réponse par message). **Première release
-faite par le pilote complet `scripts/faire-release.ps1`** : bump de
+**Dernière version livrée : 0.1.11** (publiée 2026-08-19, `6977778`,
+auto-update **0.1.10 → 0.1.11 confirmé au terrain le 2026-08-19** — mise à
+jour depuis l'app, la chaîne signée ADR 0013 reste prouvée vivante ;
+release **vérifiée a posteriori** : Latest, 3 assets, `latest.json` sans
+BOM, URL au tag nu, signature == `.sig`). La 0.1.11 porte les **trois
+retours** de PLAN-RETOURS-4 (R1-R3, un **CORRECTIF** — aucune capacité
+nouvelle, STANDARD.md §2.9) : téléchargement d'une pièce par dialogue
+« Enregistrer sous » ; nom + poids d'une pièce dans une seule puce ; corps
+des messages toujours sur dalle claire (thèmes sombres redevenus lisibles).
+
+**La 0.1.10** (2026-08-18, `a25c566`, auto-update 0.1.9 → 0.1.10 confirmé)
+portait les quatre retours de PLAN-RETOURS-3 (% de rattrapage ; spam /
+non-spam ; supprimer un brouillon ; réponse par message). **La publication
+est pilotée de bout en bout par `scripts/faire-release.ps1`** : bump de
 tauri.conf.json + build signé (clé `C:\Keys\wind.key`, mot de passe à la
 main) + manifeste + — après confirmation `OUI` — commit de release, push
 (gate rejouée), tag nu + Release GitHub marquée Latest, notes tirées du
 CHANGELOG. Fait prouvé : `TAURI_SIGNING_PRIVATE_KEY` accepte le **chemin**
-du fichier de clé (pas seulement son contenu). La publication n'est donc
+du fichier de clé (pas seulement son contenu) ; la publication n'est donc
 **plus manuelle** (l'ADR 0013 la décrivait ainsi ; le script la fait,
 derrière une confirmation).
 
@@ -55,10 +63,10 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 Tous les plans de cette ligne sont soldés.
 
 **Dernier chantier soldé : PLAN-RETOURS-4** (2026-08-18, `52aec3e`, A59-A61,
-terrain complet, CI verte — **R1-R3 livrés, R4 reporté en chantier dédié**,
-décision CE D1 ; landé sur `main`, **non encore publié**). Trois retours.
-R1-R3 sont des **corrections / ajustements de l'existant** (aucune capacité
-nouvelle) : la prochaine release est un **CORRECTIF → 0.1.11** (STANDARD.md §2.9). (1) **Téléchargement d'une pièce
+terrain complet, CI verte — **R1-R3 livrés en 0.1.11** (`6977778`, auto-update
+confirmé le 2026-08-19) ; **R4 reporté en chantier dédié**, décision CE D1).
+Trois retours, tous **corrections / ajustements de l'existant** (aucune
+capacité nouvelle → **CORRECTIF**, STANDARD.md §2.9). (1) **Téléchargement d'une pièce
 par dialogue** : le clic enregistrait en SILENCE dans Téléchargements (« il ne
 se passe rien ») ; il ouvre désormais « Enregistrer sous » natif — dossier ET
 nom au choix, défaut Téléchargements + nom assaini ; nouvelle commande

@@ -1,5 +1,8 @@
 # Plan — Réglages en deux volets
 
+> **CHANTIER SOLDÉ.** Le verdict de solde est au fil du document ;
+> marqueur normalisé en tête le 2026-08-19 (PLAN-DOCUMENTATION E2).
+
 Commande du Chef Ingénieur (2026-08-12) : restructurer la surimpression
 Réglages en deux volets — à gauche la liste des GROUPES (Comptes,
 Thèmes, Affichage, Notifications, Raccourcis, À propos), à droite les

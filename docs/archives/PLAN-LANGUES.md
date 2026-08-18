@@ -1,5 +1,8 @@
 # Plan — L'interface en plusieurs langues
 
+> **CHANTIER SOLDÉ.** Le verdict de solde est au fil du document ;
+> marqueur normalisé en tête le 2026-08-19 (PLAN-DOCUMENTATION E2).
+
 Commande (2026-08-12) : support multilingue de l'interface. Le
 prototype est muet sur la langue — il parle français ; le Système
 complète (A6), l'amendement **A15** portera la spécification. Le

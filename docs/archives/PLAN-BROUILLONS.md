@@ -1,5 +1,8 @@
 # Plan — Brouillons : le dossier et la mention en liste, plus de bandeau
 
+> **CHANTIER SOLDÉ.** Le verdict de solde est au fil du document ;
+> marqueur normalisé en tête le 2026-08-19 (PLAN-DOCUMENTATION E2).
+
 Commande du Chef Ingénieur (2026-08-13) : l'interface porte aujourd'hui
 DEUX surfaces pour les brouillons — le dossier « Brouillons » et la
 fente d'avis (« Un brouillon en cours : … », Reprendre / Plus tard).

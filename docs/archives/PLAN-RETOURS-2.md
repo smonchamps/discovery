@@ -27,18 +27,18 @@ C'est le symptôme **exact** que l'**ADR 0017 (« cycle sobre »)** a déjà
 traité : chaque dossier payait `SELECT` + `UID SEARCH ALL` à chaque
 cycle, même immobile — **~38 min mesurées sur ce compte Gmail** le
 2026-08-13, ramenées sous **60 s** par la relève gardée
-(`faut_relever`, [sync.rs:391](../crates/mail-core/src/sync.rs#L391)).
+(`faut_relever`, [sync.rs:391](../../crates/mail-core/src/sync.rs#L391)).
 
-Le cycle complet ([commands.rs `run_sync`](../apps/desktop/src/commands.rs#L1077))
+Le cycle complet ([commands.rs `run_sync`](../../apps/desktop/src/commands.rs#L1077))
 applique aujourd'hui :
 
 - **LIST-STATUS** en un aller-retour (`folders_with_status`), Gmail
-  l'annonce ([lib.rs:524](../crates/mail-imap/src/lib.rs#L524)) — l'inventaire
+  l'annonce ([lib.rs:524](../../crates/mail-imap/src/lib.rs#L524)) — l'inventaire
   n'est plus censé être un goulot ;
-- **`doit_relever`** ([commands.rs:497](../apps/desktop/src/commands.rs#L497)) :
+- **`doit_relever`** ([commands.rs:497](../../apps/desktop/src/commands.rs#L497)) :
   saute un dossier dont ni UIDNEXT, ni MESSAGES, ni HIGHESTMODSEQ n'ont
   bougé ; le modseq est persité au SELECT (`update_state`,
-  [store.rs:1029](../crates/mail-core/src/store.rs#L1029)) ;
+  [store.rs:1029](../../crates/mail-core/src/store.rs#L1029)) ;
 - la barre d'état ne nomme (`poser_boite`) que les dossiers **réellement
   relevés** — un dossier sauté ne s'affiche pas.
 
@@ -49,13 +49,13 @@ cycle** — « [Gmail]/Tous les messages » (All Mail, qui contient TOUT le
 courrier : son UIDNEXT/MODSEQ glisse au moindre mail), « Important », les
 onglets de catégorie. **Je ne peux pas trancher sans mesure** (§7.1 : je
 ne lis pas la vraie base). La trace par phase existe déjà
-([commands.rs:1373](../apps/desktop/src/commands.rs#L1373)) et EST
+([commands.rs:1373](../../apps/desktop/src/commands.rs#L1373)) et EST
 l'instrument qui a servi à décider l'ADR 0017.
 
 ### #2 — Bug d'affichage du trait en mode chargement
 
-Le trait hitofude a trois états ([App.svelte:204](../apps/desktop/ui-v2/src/App.svelte#L204),
-[Hitofude.svelte](../apps/desktop/ui-v2/src/Hitofude.svelte)) : statique
+Le trait hitofude a trois états ([App.svelte:204](../../apps/desktop/ui-v2/src/App.svelte#L204),
+[Hitofude.svelte](../../apps/desktop/ui-v2/src/Hitofude.svelte)) : statique
 (repos « À jour »), `anime` (boucle 4 s), et **`progression` au
 pourcentage** (`mode:'plein'`). Le défaut vit dans ce dernier :
 le tracé est masqué à une longueur partielle par `stroke-dashoffset`,
@@ -70,7 +70,7 @@ complète dès qu'une action tourne**, quelle qu'elle soit.
 ### #3 — Le bouton « Rendre indépendante » ne fonctionne pas
 
 C'est un `<span class="puce">` **inerte**, sans handler
-([Composition.svelte:567](../apps/desktop/ui-v2/src/Composition.svelte#L567)) —
+([Composition.svelte:567](../../apps/desktop/ui-v2/src/Composition.svelte#L567)) —
 explicitement documenté « inerte comme au prototype » en tête du fichier
 (lignes 22-25). Ce n'est **pas une régression** : la fonction n'a jamais
 existé. Le faire fonctionner = **une vraie fenêtre de composition
@@ -81,17 +81,17 @@ lourd, et de loin.
 ### #4 — Les boutons Cc et Cci ne fonctionnent pas
 
 Mêmes `<span>` inertes
-([Composition.svelte:596-597](../apps/desktop/ui-v2/src/Composition.svelte#L596)),
+([Composition.svelte:596-597](../../apps/desktop/ui-v2/src/Composition.svelte#L596)),
 même statut « inerte comme au prototype ». Le back-end d'envoi ne connaît
 que `to` : `mail_core::compose(from, to, subject, body, in_reply_to)`
-([compose.rs:36](../crates/mail-core/src/compose.rs#L36)), le `Draft`
+([compose.rs:36](../../crates/mail-core/src/compose.rs#L36)), le `Draft`
 n'a ni `cc` ni `bcc`, l'outbox stocke un seul champ `recipients`
-([outbox.rs](../crates/mail-core/src/outbox.rs#L99)), et le SMTP
-([mail-smtp/lib.rs:123](../crates/mail-smtp/src/lib.rs#L123)) n'ajoute que
+([outbox.rs](../../crates/mail-core/src/outbox.rs#L99)), et le SMTP
+([mail-smtp/lib.rs:123](../../crates/mail-smtp/src/lib.rs#L123)) n'ajoute que
 `.to()`. Le câbler est une **tranche verticale** : compose → Draft →
 outbox (schéma) → SMTP → UI, sous les règles d'or (jamais de fantôme) et
 la garde d'injection d'en-têtes déjà en place
-([compose.rs:262](../crates/mail-core/src/compose.rs#L262)).
+([compose.rs:262](../../crates/mail-core/src/compose.rs#L262)).
 
 ## Périmètre
 

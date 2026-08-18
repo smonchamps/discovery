@@ -6,7 +6,7 @@ Date : 2026-07-12 · Statut : accepté · **Gate 1 re-mesuré : tenu (voir bas d
 
 Le plan ([PLAN.md](../PLAN.md) §2.4) posait Tauri 2 en hypothèse de départ
 pour le shell Windows, contre Slint/egui (natif) et Electron. La revue de
-clôture de Phase 0 ([PHASE0.md](../PHASE0.md) §3) exigeait de la valider en
+clôture de Phase 0 ([PHASE0.md](../archives/PHASE0.md) §3) exigeait de la valider en
 tout premier en Phase 1 : c'est l'hypothèse la plus structurante non spikée.
 
 ## Mesures (build release, squelette : fenêtre + frontend statique + noyau relié)
