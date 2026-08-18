@@ -159,6 +159,33 @@ pub fn reply_all_split(
     (to_out, cc_out)
 }
 
+/// À qui adresse une réponse SIMPLE (« Répondre ») — R4, PLAN-RETOURS-3,
+/// constat terrain du 2026-08-18.
+///
+/// Sur un message REÇU : l'expéditeur, comme toujours. Sur NOTRE PROPRE
+/// message (l'expéditeur est le compte), répondre à l'expéditeur nous
+/// écrirait à nous-mêmes ; on vise donc les destinataires d'ORIGINE (le
+/// À du message), c'est-à-dire réécrire au même groupe. La liste peut être
+/// VIDE — message reçu sans expéditeur connu, ou envoi ancien dont les
+/// destinataires ne sont pas encore en base : l'appelant tranche le repli
+/// (relève serveur, ou échec franc).
+pub fn reply_to(is_own: bool, sender: Option<&str>, to_addrs: &[String]) -> Vec<String> {
+    if is_own {
+        to_addrs
+            .iter()
+            .map(|adresse| adresse.trim())
+            .filter(|adresse| !adresse.is_empty())
+            .map(str::to_string)
+            .collect()
+    } else {
+        sender
+            .map(str::trim)
+            .filter(|adresse| !adresse.is_empty())
+            .map(|adresse| vec![adresse.to_string()])
+            .unwrap_or_default()
+    }
+}
+
 /// Bloc de citation d'une réponse, à placer SOUS le curseur (top-posting) :
 /// une ligne d'attribution puis chaque ligne du texte préfixée de « > ».
 pub fn quote_reply(sender: Option<&str>, date: Option<&str>, body_text: &str) -> String {
@@ -477,6 +504,43 @@ mod tests {
         let to = vec!["  ".to_string(), "bob@exemple.fr".to_string()];
         let (to_out, _) = reply_all_split(None, &to, &[], "moi@exemple.fr");
         assert_eq!(to_out, vec!["bob@exemple.fr"]);
+    }
+
+    /// Réponse simple à un message REÇU : l'expéditeur, un seul.
+    #[test]
+    fn reply_to_recu_vise_l_expediteur() {
+        assert_eq!(
+            reply_to(
+                false,
+                Some("alice@exemple.fr"),
+                &["bob@exemple.fr".to_string()]
+            ),
+            vec!["alice@exemple.fr"],
+        );
+    }
+
+    /// LE constat terrain (R4) : sur NOTRE propre message, répondre vise
+    /// les destinataires d'origine — jamais l'expéditeur (nous).
+    #[test]
+    fn reply_to_propre_vise_les_destinataires_pas_soi() {
+        let to = vec!["client@vantis.fr".to_string(), "chef@vantis.fr".to_string()];
+        assert_eq!(
+            reply_to(true, Some("moi@exemple.fr"), &to),
+            vec!["client@vantis.fr", "chef@vantis.fr"],
+        );
+    }
+
+    /// Notre propre message SANS destinataires en base (envoi ancien non
+    /// rattrapé) : liste vide — l'appelant relève le serveur.
+    #[test]
+    fn reply_to_propre_sans_destinataires_est_vide() {
+        assert!(reply_to(true, Some("moi@exemple.fr"), &[]).is_empty());
+    }
+
+    /// Message reçu sans expéditeur connu : vide — l'appelant échoue franc.
+    #[test]
+    fn reply_to_recu_sans_expediteur_est_vide() {
+        assert!(reply_to(false, None, &["x@y.fr".to_string()]).is_empty());
     }
 
     #[test]

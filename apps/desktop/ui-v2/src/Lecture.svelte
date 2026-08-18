@@ -18,6 +18,9 @@
     onrepondre = () => {},
     onrepondretous = () => {},
     ontransferer = () => {},
+    onspam = () => {},
+    onnonspam = () => {},
+    estIndesirable = false,
     onflash = () => {},
   } = $props();
 
@@ -35,7 +38,8 @@
 <main aria-label={t('lecture.aria')} data-testid="volet-lecture">
   {#if fil.cadre === 'volet' && fil.ligne}
     <Fil {brouillons} {onreprendre} {onarchiver} {onsupprimer}
-         {onrepondre} {onrepondretous} {ontransferer} {onflash}
+         {onrepondre} {onrepondretous} {ontransferer}
+         {onspam} {onnonspam} {estIndesirable} {onflash}
          onagrandir={onconversation} />
   {:else if fil.cadre !== 'plein'}
     <p class="vide">{t('lecture.vide')}</p>

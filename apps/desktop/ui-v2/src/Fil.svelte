@@ -31,22 +31,26 @@
     onrepondre = () => {},
     onrepondretous = () => {},
     ontransferer = () => {},
+    // R2 (PLAN-RETOURS-3, D2) : signaler un fil comme indésirable, ou le
+    // ramener en Réception. Le geste vit dans la barre du fil, par fil ;
+    // `estIndesirable` bascule le libellé selon la vue courante.
+    onspam = () => {},
+    onnonspam = () => {},
+    estIndesirable = false,
     onflash = () => {},
     // Le cadre volet passe le geste d'agrandissement ; l'écran 03, non.
     onagrandir = null,
   } = $props();
 
-  // Transférer vise le DERNIER message du fil (son contenu) ;
-  // Répondre / Répondre à tous visent le dernier message d'AUTRUI —
-  // thread_messages joint les Envoyés, et répondre à sa propre copie
-  // composait vers soi-même (revue v3), divergent du raccourci r.
-  const dernier = () => fil.messages[fil.messages.length - 1] ?? fil.ligne;
+  // Depuis R4 (PLAN-RETOURS-3, D4) Répondre / Répondre à tous /
+  // Transférer visent CHAQUE message (barre par message) — plus de
+  // `cible()` unique au fil. Le raccourci clavier `r`, lui, reste sur la
+  // sélection de liste (App.svelte), inchangé.
+  //
   // Le compte de pièces FRAIS (après-scan, terrain CE 2026-08-14) : la
   // ligne porte celui d'AVANT l'ouverture — le store retient celui de
   // message_body dès que le corps est servi.
   const nbPiecesDe = (m) => fil.nbPieces[cleMsg(m)] ?? m.attachment_count;
-  const cible = () =>
-    [...fil.messages].reverse().find((m) => !propre(m)) ?? dernier();
 
   // Le brouillon du fil ouvert — le plus récent (B-D5).
   const brouillonDuFil = $derived.by(() => {
@@ -239,6 +243,26 @@
                 </div>
               {/if}
             </div>
+            <!-- R4 (PLAN-RETOURS-3, D4) : les gestes de réponse EN BAS de
+                 CHAQUE message, visant CE message — on répond quand on a
+                 fini de lire (convention Gmail/Outlook). « Répondre à
+                 tous » entre Répondre et Transférer (A14). -->
+            <!-- R4 (constat terrain 2026-08-18) : les TROIS gestes sur
+                 CHAQUE message, le nôtre compris — on répond parfois sur
+                 son propre message. Le cœur adresse alors la réponse aux
+                 destinataires d'origine (reply_context/reply_all), jamais
+                 à soi-même. -->
+            <div class="actions-message" data-testid="actions-message">
+              <button type="button" class="principal" data-testid="repondre"
+                      onclick={() => onrepondre(m)}>
+                <span class="ms" aria-hidden="true">reply</span>{t('action.repondre')}</button>
+              <button type="button" data-testid="repondre-tous"
+                      onclick={() => onrepondretous(m)}>
+                <span class="ms" aria-hidden="true">reply_all</span>{t('action.repondreTous')}</button>
+              <button type="button" data-testid="transferer"
+                      onclick={() => ontransferer(m)}>
+                <span class="ms miroir" aria-hidden="true">reply</span>{t('action.transferer')}</button>
+            </div>
           </article>
         {:else}
           <div class="replie" data-testid="message-replie"
@@ -264,20 +288,22 @@
       {/if}
     </div>
 
+    <!-- La barre du fil = gestes de TRI seuls (D5) : Répondre/Répondre à
+         tous/Transférer ont rejoint chaque message (D4). Signaler comme
+         spam s'y range (D2), ou « Ce n'est pas un spam » en vue
+         Indésirables. -->
     <div class="actions">
-      <button type="button" class="principal" data-testid="repondre"
-              onclick={() => onrepondre(cible())}>
-        <span class="ms" aria-hidden="true">reply</span>{t('action.repondre')}</button>
-      <button type="button" data-testid="repondre-tous"
-              onclick={() => onrepondretous(cible())}>
-        <span class="ms" aria-hidden="true">reply_all</span>{t('action.repondreTous')}</button>
-      <button type="button" data-testid="transferer"
-              onclick={() => ontransferer(dernier())}>
-        <span class="ms miroir" aria-hidden="true">reply</span>{t('action.transferer')}</button>
       <button type="button" data-testid="archiver" onclick={() => onarchiver(fil.ligne)}>
         <span class="ms" aria-hidden="true">archive</span>{t('action.archiver')}</button>
       <button type="button" data-testid="supprimer" onclick={() => onsupprimer(fil.ligne)}>
         <span class="ms" aria-hidden="true">delete</span>{t('action.supprimer')}</button>
+      {#if estIndesirable}
+        <button type="button" data-testid="pas-spam" onclick={() => onnonspam(fil.ligne)}>
+          <span class="ms" aria-hidden="true">inbox</span>{t('action.pasSpam')}</button>
+      {:else}
+        <button type="button" data-testid="signaler-spam" onclick={() => onspam(fil.ligne)}>
+          <span class="ms" aria-hidden="true">report</span>{t('action.signalerSpam')}</button>
+      {/if}
     </div>
   </div>
 {/if}
@@ -401,11 +427,25 @@
     border:1px solid var(--border); border-radius:6px; cursor:pointer;
   }
   .actions button:hover { background:var(--sel); }
-  .actions .principal {
+
+  /* R4/D4 : la barre de réponse d'UN message — en bas de la carte, un
+     filet la sépare du corps ; même gabarit de boutons que la barre du
+     fil, un peu plus compacte (26 px, jetons nus au repos). */
+  .actions-message {
+    padding:12px 20px; border-top:1px solid var(--border);
+    display:flex; gap:10px; flex-wrap:wrap;
+  }
+  .actions-message button {
+    height:30px; padding:0 14px; display:inline-flex; align-items:center;
+    gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+  }
+  .actions-message button:hover { background:var(--sel); }
+  .actions-message .principal {
     font-weight:600; color:var(--onAccent); background:var(--accent);
     border-color:var(--accent);
   }
-  .actions .principal:hover { background:var(--accentH); border-color:var(--accentH); }
+  .actions-message .principal:hover { background:var(--accentH); border-color:var(--accentH); }
 
   /* Le cadre VOLET, à plat (A46) — la géométrie du prototype
      (.voletLecture / .lecture) : le volet défile en un seul flot, les

@@ -186,6 +186,8 @@ fn main() {
             commands::list_folders,
             commands::move_message,
             commands::delete_message,
+            commands::report_spam,
+            commands::mark_not_spam,
             commands::reply_context,
             commands::reply_all_context,
             commands::forward_context,

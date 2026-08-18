@@ -158,19 +158,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let envoyes = boite(&mut store, travail, "Envoyés")?;
 
     // Le fil Vantis : m1 (notre réponse, dans Envoyés) <- m2 <- m3.
-    store.upsert_envelopes(
-        envoyes,
-        &[message(
-            1,
-            "Re : Relecture du contrat Vantis",
-            "Paul Mérand",
-            "paul.merand@atelier-nord.fr",
-            "<vantis-m1@atelier-nord.fr>",
-            None,
-            quand(3, 18, 20),
-            true,
-        )],
-    )?;
+    // R4 (constat terrain 2026-08-18) : notre envoi porte SES
+    // destinataires — répondre sur son propre message doit viser Camille
+    // (À) et Sofia (Cc), jamais soi-même.
+    let mut m1 = message(
+        1,
+        "Re : Relecture du contrat Vantis",
+        "Paul Mérand",
+        "paul.merand@atelier-nord.fr",
+        "<vantis-m1@atelier-nord.fr>",
+        None,
+        quand(3, 18, 20),
+        true,
+    );
+    m1.to_addrs = vec!["c.rousseau@atelier-nord.fr".to_string()];
+    m1.cc_addrs = vec!["s.nardi@atelier-nord.fr".to_string()];
+    store.upsert_envelopes(envoyes, &[m1])?;
     store.save_body(
         envoyes,
         1,

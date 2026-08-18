@@ -47,6 +47,26 @@ pub const BACKFILL_BATCH: usize = 50;
 /// [ADR 0010]: ../../../docs/adr/0010-synchronisation-integrale.md
 pub const NO_HORIZON: i64 = i64::MIN;
 
+/// Le pourcentage de corps DÉJÀ rapatriés sur le corpus en portée
+/// (R1, PLAN-RETOURS-3) — `done` = messages avec un corps, `total` = tous
+/// les messages en portée.
+///
+/// Décision **pure et testable** (motif PASSATION §4), sœur de
+/// [`crate::sync_percent`] dont elle partage les deux gardes : `None` sans
+/// dénominateur (aucun message — « 0 % » se confondrait avec un rattrapage
+/// à l'arrêt), et « 100 % » réservé à un rattrapage VRAIMENT fini —
+/// 255 999/256 000 arrondit à 99, jamais à 100, sinon la barre d'état
+/// annoncerait la fin quand la longue traîne court encore.
+pub fn backfill_percent(done: u64, total: u64) -> Option<u8> {
+    if total == 0 {
+        return None;
+    }
+    if done >= total {
+        return Some(100);
+    }
+    Some((done * 100 / total).min(99) as u8)
+}
+
 /// Ce qu'un passage a fait, et ce qu'il reste à faire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackfillReport {
@@ -233,6 +253,43 @@ pub fn backfill_thread_headers(
         fetched,
         remaining: store.thread_headers_pending_count(account_id, mailbox, since_epoch)?,
     })
+}
+
+#[cfg(test)]
+mod percent_tests {
+    use super::backfill_percent;
+
+    /// Sans dénominateur, on ne raconte rien — surtout pas « 0 % », qui
+    /// serait indiscernable d'un rattrapage à l'arrêt (même règle que
+    /// `sync_percent`).
+    #[test]
+    fn sans_denominateur_on_ne_dit_rien() {
+        assert_eq!(backfill_percent(0, 0), None);
+        assert_eq!(backfill_percent(42, 0), None);
+    }
+
+    #[test]
+    fn le_cas_courant() {
+        assert_eq!(backfill_percent(0, 200), Some(0));
+        assert_eq!(backfill_percent(50, 200), Some(25));
+        assert_eq!(backfill_percent(200, 200), Some(100));
+    }
+
+    /// LE défaut classique : « 100 % » alors qu'il reste des corps. Sur la
+    /// vraie base (~256 k), 255 999/256 000 doit dire 99, jamais 100 —
+    /// sinon la ligne annonce la fin quand la traîne court encore.
+    #[test]
+    fn presque_fini_n_est_pas_fini() {
+        assert_eq!(backfill_percent(255_999, 256_000), Some(99));
+    }
+
+    /// Le « fait » ne peut pas dépasser le total (remaining ≤ total par
+    /// construction), mais un décor incohérent ne doit pas produire
+    /// « 103 % » : on plafonne, comme `sync_percent`.
+    #[test]
+    fn le_fait_qui_depasse_est_plafonne() {
+        assert_eq!(backfill_percent(210, 200), Some(100));
+    }
 }
 
 #[cfg(test)]

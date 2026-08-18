@@ -79,8 +79,16 @@
   let sourceTransfert = null;
   let replyToMailbox = null;
   let replyToUid = null;
-  let brouillonId = null;
+  // $state : la visibilité du geste « Supprimer le brouillon » se dérive
+  // de l'existence d'un brouillon persisté (R3) — un `let` nu ne
+  // rafraîchirait pas le pied.
+  let brouillonId = $state(null);
   let brouillonEpoch = null;
+  // R3 (PLAN-RETOURS-3, D3) : la suppression VOLONTAIRE d'un brouillon
+  // depuis la composition passe une confirmation — un irréversible ne
+  // part jamais du premier clic (même règle que le retrait de compte).
+  // `Annuler`, lui, CONSERVE : les deux gestes ne se confondent pas.
+  let demandeSuppr = $state(false);
   let minuterie;
   // La sauvegarde EN VOL : sa promesse, tant qu'elle court. Les
   // sauvegardes sont SÉRIALISÉES derrière elle, et les gestes qui
@@ -136,6 +144,7 @@
     replyToUid = null;
     brouillonId = null;
     brouillonEpoch = null;
+    demandeSuppr = false;
     expediteur = source
       ? compteDe(source.account_id)
       : compteDe(compte) ?? (comptes.length > 0 ? compteDe(comptes[0].account_id) : null);
@@ -273,6 +282,7 @@
     replyToUid = brouillon.reply_to_uid ?? null;
     brouillonId = brouillon.id;
     brouillonEpoch = brouillon.updated_epoch;
+    demandeSuppr = false;
     visible = true;
     setTimeout(() => champCorps?.focus(), 0);
   }
@@ -281,6 +291,11 @@
   // conserve, le contrat des brouillons couvre les octets.
   const vide = () =>
     !a.trim() && !cc.trim() && !cci.trim() && !objet.trim() && !corps.trim() && pieces.length === 0;
+
+  // R3 : le geste « Supprimer le brouillon » n'a de sens que s'il y a une
+  // matière à jeter — un brouillon déjà persisté, ou du contenu en cours.
+  // Sur une composition vierge, « Annuler » suffit.
+  const peutSupprimer = $derived(brouillonId !== null || !vide());
 
   function programmerSauvegarde() {
     clearTimeout(minuterie);
@@ -368,6 +383,34 @@
   async function enregistrerBrouillon() {
     if (vide()) return;
     await fermer();
+  }
+
+  // R3 (PLAN-RETOURS-3, D3) : JETER le brouillon en cours, sur
+  // confirmation. Contraire de `fermer()` — qui conserve : ici on
+  // supprime la trace au dossier, quoi qu'elle contienne.
+  async function supprimerBrouillon() {
+    demandeSuppr = false;
+    clearTimeout(minuterie);
+    // Le sol immobile de `fermer()` : une sauvegarde en vol peut porter
+    // un contenu d'AVANT le geste et ressusciter ce qu'on supprime —
+    // on l'attend, puis on efface l'id FINAL.
+    if (volSauvegarde) await volSauvegarde;
+    // `brouillonId` peut avoir été posé PAR la sauvegarde qu'on vient
+    // d'attendre — on le lit après, jamais avant.
+    const avaitBrouillon = brouillonId !== null;
+    if (avaitBrouillon) {
+      await appel('delete_draft', { id: brouillonId })
+        .catch((err) => console.error('delete_draft (suppression volontaire) :', err));
+      onbrouillon();
+    }
+    // Plus aucun id ne subsiste : une réouverture repart vierge, jamais
+    // sur un brouillon supprimé.
+    brouillonId = null;
+    brouillonEpoch = null;
+    visible = false;
+    // « Supprimé » ne se dit que si un brouillon existait VRAIMENT : sur
+    // une composition jamais sauvée, il n'y avait rien à supprimer.
+    if (avaitBrouillon) onflash(t('toast.brouillonSupprime'));
   }
 
   async function envoyer() {
@@ -705,17 +748,40 @@
         <span class="puce"><span class="ms" aria-hidden="true">link</span>{t('compo.lien')}</span>
         <span class="puce"><span class="ms" aria-hidden="true">format_quote</span>{t('compo.citation')}</span>
       </div>
-      <div class="pied">
-        <button type="button" class="principal" data-testid="composition-envoyer"
-                disabled={envoiEnCours} onclick={envoyer}>
-          <span class="ms" aria-hidden="true">send</span>{t('action.envoyer')}</button>
-        <button type="button" onclick={joindre} data-testid="composition-joindre">
-          <span class="ms" aria-hidden="true">attach_file</span>{t('compo.joindre')}</button>
-        <button type="button" onclick={enregistrerBrouillon} data-testid="composition-brouillon">
-          <span class="ms" aria-hidden="true">drafts</span>{t('compo.enregistrerBrouillon')}</button>
-        <button type="button" class="annuler" data-testid="composition-annuler"
-                onclick={fermer}>{t('action.annuler')}</button>
-      </div>
+      {#if demandeSuppr}
+        <!-- R3/D3 : la confirmation vit DANS le pied, à la place des
+             boutons — un brouillon jeté ne revient pas, le geste dit ce
+             qu'il fait avant de le faire. -->
+        <div class="pied confirmation" data-testid="composition-suppr-carte">
+          <span class="avert-suppr">{t('compo.supprConfirme')}</span>
+          <span class="essor"></span>
+          <button type="button" class="danger" data-testid="composition-suppr-confirmer"
+                  onclick={supprimerBrouillon}>
+            <span class="ms" aria-hidden="true">delete</span>{t('action.supprimer')}</button>
+          <button type="button" class="annuler" data-testid="composition-suppr-annuler"
+                  onclick={() => (demandeSuppr = false)}>{t('action.annuler')}</button>
+        </div>
+      {:else}
+        <div class="pied">
+          <button type="button" class="principal" data-testid="composition-envoyer"
+                  disabled={envoiEnCours} onclick={envoyer}>
+            <span class="ms" aria-hidden="true">send</span>{t('action.envoyer')}</button>
+          <button type="button" onclick={joindre} data-testid="composition-joindre">
+            <span class="ms" aria-hidden="true">attach_file</span>{t('compo.joindre')}</button>
+          <button type="button" onclick={enregistrerBrouillon} data-testid="composition-brouillon">
+            <span class="ms" aria-hidden="true">drafts</span>{t('compo.enregistrerBrouillon')}</button>
+          <span class="essor"></span>
+          {#if peutSupprimer}
+            <!-- Le geste destructif à DROITE, détaché du cluster d'envoi
+                 (moins de mégarde), avant « Annuler » qui, lui, conserve. -->
+            <button type="button" class="supprimer" data-testid="composition-supprimer"
+                    onclick={() => (demandeSuppr = true)}>
+              <span class="ms" aria-hidden="true">delete</span>{t('compo.supprimerBrouillon')}</button>
+          {/if}
+          <button type="button" class="annuler" data-testid="composition-annuler"
+                  onclick={fermer}>{t('action.annuler')}</button>
+        </div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -859,4 +925,18 @@
     text-decoration:underline; cursor:pointer;
   }
   .annuler:hover { background:transparent; color:var(--ink2); }
+  /* Le ressort pousse le geste destructif et « Annuler » à droite,
+     séparés du cluster Envoyer/Joindre/Enregistrer. */
+  .essor { flex:1; }
+  /* R3 : « Supprimer le brouillon » et sa confirmation — teinte d'alerte,
+     jamais la couleur d'accent (qui appelle au clic). */
+  .supprimer { color:var(--alert); border-color:var(--border); }
+  .supprimer:hover { background:var(--alert); color:var(--onAccent); border-color:var(--alert); }
+  .supprimer .ms { font-size:18px; }
+  .confirmation .avert-suppr { font-size:13px; color:var(--alert); font-weight:600; }
+  .danger {
+    font-weight:600; color:var(--onAccent); background:var(--alert);
+    border-color:var(--alert);
+  }
+  .danger:hover { background:var(--alert); border-color:var(--alert); filter:brightness(1.08); }
 </style>

@@ -183,6 +183,47 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(page.locator('[data-testid="resultats"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   });
+
+  test('brouillon : le supprimer depuis la composition, avec confirmation (PLAN-RETOURS-3 R3)', async () => {
+    // Un brouillon persisté au dossier, rouvert, puis JETÉ depuis la
+    // fenêtre de composition — geste destructif explicite, distinct
+    // d'« Annuler » qui conserve. D3 : un irréversible passe une
+    // confirmation avant de partir.
+    await page.keyboard.press('c');
+    await page.locator('[data-testid="composition-objet"]').fill('Brouillon a jeter');
+    await page.locator('[data-testid="composition-corps"]').fill('Contenu jetable.');
+    await page.keyboard.press('Escape'); // sortir du champ…
+    await page.keyboard.press('Escape'); // …fermer : conserve
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
+
+    await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+    const ligne = page.locator('[data-testid="ligne-brouillon"]', { hasText: 'Brouillon a jeter' });
+    await expect(ligne).toBeVisible();
+    await ligne.click();
+    await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue('Brouillon a jeter');
+
+    // Premier clic : la confirmation s'arme, RIEN n'est supprimé encore.
+    await page.locator('[data-testid="composition-supprimer"]').click();
+    await expect(page.locator('[data-testid="composition-suppr-confirmer"]')).toBeVisible();
+    // Annuler la confirmation : le brouillon reste, la fenêtre reste.
+    await page.locator('[data-testid="composition-suppr-annuler"]').click();
+    await expect(page.locator('[data-testid="composition-suppr-confirmer"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="composition"]')).toBeVisible();
+
+    // Cette fois on confirme : la fenêtre se ferme, le brouillon quitte
+    // le dossier pour de bon.
+    await page.locator('[data-testid="composition-supprimer"]').click();
+    await page.locator('[data-testid="composition-suppr-confirmer"]').click();
+    await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon supprimé.');
+    await expect(
+      page.locator('[data-testid="ligne-brouillon"]', { hasText: 'Brouillon a jeter' }),
+    ).toHaveCount(0);
+
+    // Retour en Réception pour la suite de la chaîne sérielle.
+    await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+    await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  });
 });
 
 test.describe('décor v1 : deux comptes fusionnés', () => {

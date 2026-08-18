@@ -159,6 +159,10 @@
   let envoisEnAttente = $state(0);
   let rattrapageApercus = $state(false);
   let rattrapageCorps = $state(null); // restant, ou null si rien à faire
+  // R1 (PLAN-RETOURS-3, D1) : le % de corps déjà là sur le corpus en
+  // portée — calculé par le cœur (`backfill_percent`), affiché dans le
+  // TEXTE à côté du reste (A52 : le trait ne fait qu'une boucle).
+  let rattrapagePct = $state(null);
   // Échec TOTAL de la dernière synchro : dans la ligne, pas la fente —
   // §6 n'y met pas la synchro, et « hors ligne » n'est pas un incident.
   let synchroEchec = $state(false);
@@ -265,7 +269,15 @@
       };
     }
     if (rattrapageCorps !== null && rattrapageCorps > 0) {
-      return { texte: t('statut.rattrapageCorps', { n: rattrapageCorps }), fil: true, alerte: false };
+      // Le % accompagne le reste (D1) ; garde-fou si le dénominateur
+      // manquait (corpus vide — impossible quand il reste des corps).
+      return {
+        texte: rattrapagePct !== null
+          ? t('statut.rattrapageCorps', { n: rattrapageCorps, p: rattrapagePct })
+          : t('statut.rattrapageCorpsSeul', { n: rattrapageCorps }),
+        fil: true,
+        alerte: false,
+      };
     }
     if (rattrapageApercus) {
       return { texte: t('statut.rattrapageApercus'), fil: true, alerte: false };
@@ -392,11 +404,13 @@
       const etat = await appel('backfill_status');
       if (etat.remaining === 0) return;
       rattrapageCorps = etat.remaining;
+      rattrapagePct = etat.percent;
       let restant = etat.remaining;
       while (restant > 0) {
         const bilan = await appel('backfill_bodies');
         restant = bilan.remaining;
         rattrapageCorps = restant;
+        rattrapagePct = bilan.percent;
         if (bilan.fetched === 0) break;
         // E4 : les aperçus rattrapés se montrent au fil des lots — la
         // resservie est invisible depuis E1, plus besoin d'attendre une
@@ -408,6 +422,7 @@
     } finally {
       corpsEnCours = false;
       rattrapageCorps = null;
+      rattrapagePct = null;
     }
   }
 
@@ -1010,6 +1025,50 @@
       return false;
     }
   }
+  // R2 (PLAN-RETOURS-3) : signaler indésirable / le contraire. Même
+  // mécanique optimiste qu'archiver/supprimer — disparition locale,
+  // action MoveTo journalisée, le serveur suit. Le fil se ferme, la
+  // liste et la nav se rafraîchissent, la passe réconcilie derrière.
+  async function signalerSpam(ligne) {
+    if (gesteSurEcho(ligne)) return false;
+    try {
+      await appel('report_spam', {
+        accountId: ligne.account_id,
+        mailbox: ligne.mailbox,
+        uid: ligne.uid,
+      });
+      flash(t('toast.spamSignale'));
+      fermerFil();
+      liste.recharger();
+      chargerNav();
+      passeApresGeste(ligne.account_id);
+      return true;
+    } catch (err) {
+      // Le seul échec attendu : le compte n'a pas de dossier indésirable.
+      console.error('report_spam :', err);
+      flash(t('erreur.spamImpossible'));
+      return false;
+    }
+  }
+  async function marquerLegitime(ligne) {
+    if (gesteSurEcho(ligne)) return false;
+    try {
+      await appel('mark_not_spam', {
+        accountId: ligne.account_id,
+        mailbox: ligne.mailbox,
+        uid: ligne.uid,
+      });
+      flash(t('toast.pasSpam'));
+      fermerFil();
+      liste.recharger();
+      chargerNav();
+      passeApresGeste(ligne.account_id);
+      return true;
+    } catch (err) {
+      console.error('mark_not_spam :', err);
+      return false;
+    }
+  }
 
   // Le triage clavier s'enchaîne (A38) : après e/Suppr, la ligne du
   // DESSOUS devient la sélection — capturée AVANT le geste (les lignes
@@ -1111,7 +1170,9 @@
                  onarchiver={archiver} onsupprimer={supprimer}
                  onconversation={ouvrirConversation}
                  onrepondre={repondre} onrepondretous={repondreTous}
-                 ontransferer={transferer} onflash={flash} />
+                 ontransferer={transferer}
+                 onspam={signalerSpam} onnonspam={marquerLegitime}
+                 estIndesirable={categorie === 'indesirables'} onflash={flash} />
       {/if}
       <!-- Les poignées (R3) : posées SUR les frontières de la grille,
            hors flux — la grille ne gagne pas de colonne. Le motif ARIA
@@ -1196,7 +1257,11 @@
                   onarchiver={async (l) => { await archiver(l); retourBoite(); }}
                   onsupprimer={async (l) => { await supprimer(l); retourBoite(); }}
                   onrepondre={repondre} onrepondretous={repondreTous}
-                  ontransferer={transferer} onecrire={ecrire}
+                  ontransferer={transferer}
+                  onspam={async (l) => { await signalerSpam(l); retourBoite(); }}
+                  onnonspam={async (l) => { await marquerLegitime(l); retourBoite(); }}
+                  estIndesirable={categorie === 'indesirables'}
+                  onecrire={ecrire}
                   onflash={flash} />
 
     {#if navPrete && comptes.length === 0}

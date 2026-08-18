@@ -1793,6 +1793,30 @@ impl Store {
         Ok(count as u64)
     }
 
+    /// Le corpus EN PORTÉE : tous les messages qui PEUVENT porter un corps
+    /// (même filtre que [`Self::bodies_pending_count`], sans la clause du
+    /// corps manquant). C'est le dénominateur du pourcentage de rattrapage
+    /// (R1, PLAN-RETOURS-3) — `total - pending` donne les corps présents.
+    /// Plus léger que le compte des manquants : pas de sous-requête
+    /// `NOT EXISTS`.
+    pub fn bodies_total_count(
+        &self,
+        account_id: i64,
+        mailbox: &str,
+        since_epoch: i64,
+    ) -> Result<u64, Error> {
+        let count: i64 = self.0.query_row(
+            "SELECT COUNT(*)
+             FROM envelopes e
+             JOIN mailboxes m ON m.id = e.mailbox_id
+             WHERE m.account_id = ?1 AND m.name = ?2
+               AND (e.date_epoch IS NULL OR e.date_epoch >= ?3)",
+            params![account_id, mailbox, since_epoch],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
     /// Une page d'enveloppes d'UN compte, les plus récentes d'abord.
     pub fn recent(
         &self,
@@ -3027,6 +3051,39 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    /// R1 (PLAN-RETOURS-3) : le dénominateur du pourcentage. Le total ne
+    /// bouge PAS quand un corps arrive — seul le nombre de manquants
+    /// diminue ; `total - pending` donne les corps présents, base du
+    /// pourcentage affiché.
+    #[test]
+    fn le_total_du_corpus_ne_compte_pas_les_corps_mais_les_messages() {
+        let (mut store, id) = store_with_mailbox();
+        let account = test_account(&store);
+        store
+            .upsert_envelopes(
+                id,
+                &[
+                    envelope(1, "un", 100, false),
+                    envelope(2, "deux", 200, false),
+                    envelope(3, "trois", 300, false),
+                ],
+            )
+            .unwrap();
+
+        // Trois messages en portée, aucun corps encore lu.
+        assert_eq!(store.bodies_total_count(account, "INBOX", 0).unwrap(), 3);
+        assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 3);
+
+        // Un corps arrive : le total tient, le reste baisse d'un.
+        store.save_body(id, 2, "<p>corps</p>", &[]).unwrap();
+        assert_eq!(
+            store.bodies_total_count(account, "INBOX", 0).unwrap(),
+            3,
+            "le total est le corpus, pas les corps rapatriés"
+        );
+        assert_eq!(store.bodies_pending_count(account, "INBOX", 0).unwrap(), 2);
     }
 
     /// Un message deja lu ailleurs — telephone, webmail — ne doit pas

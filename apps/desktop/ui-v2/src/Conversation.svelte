@@ -19,6 +19,9 @@
     onrepondre = () => {},
     onrepondretous = () => {},
     ontransferer = () => {},
+    onspam = () => {},
+    onnonspam = () => {},
+    estIndesirable = false,
     onecrire = () => {},
     onflash = () => {},
   } = $props();
@@ -52,7 +55,8 @@
     <div class="scene">
       <div class="carte">
         <Fil {brouillons} {onreprendre} {onarchiver} {onsupprimer}
-             {onrepondre} {onrepondretous} {ontransferer} {onflash} />
+             {onrepondre} {onrepondretous} {ontransferer}
+             {onspam} {onnonspam} {estIndesirable} {onflash} />
       </div>
     </div>
   </div>

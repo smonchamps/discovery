@@ -2098,6 +2098,61 @@ pub async fn delete_message(
     .await
 }
 
+/// Signaler un message comme indésirable (R2, PLAN-RETOURS-3) : il part
+/// vers le dossier Junk du serveur — c'est LUI qui apprend (Gmail entraîne
+/// son filtre sur le déplacement). Même boucle qu'archiver : disparition
+/// locale immédiate, action `MoveTo` journalisée et rejouée, le serveur
+/// suit. Le dossier indésirable est résolu par compte
+/// (`canonical_folders`) ; sans dossier reconnu, le geste échoue
+/// franchement plutôt que d'inventer une destination.
+#[tauri::command]
+pub async fn report_spam(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let dossiers = store
+            .canonical_folders(account_id)
+            .map_err(|err| err.to_string())?;
+        let Some(spam) = dossiers.indesirables else {
+            return Err("aucun dossier indesirable reconnu sur ce compte".to_string());
+        };
+        // Déjà dans les indésirables : rien à faire (la vue n'offre pas le
+        // geste, mais la garde évite un déplacement vers soi-même).
+        if spam == mailbox {
+            return Ok(());
+        }
+        queue_removal(&app, account_id, mailbox, uid, Action::MoveTo(spam))
+    })
+    .await
+}
+
+/// L'inverse (R2) : un message classé à tort indésirable revient en
+/// Réception. Offert depuis la seule vue Indésirables. Même boucle —
+/// `MoveTo(INBOX)` journalisé, le serveur réconcilie, le fil se
+/// reconstitue à la relève de INBOX (ADR 0009).
+#[tauri::command]
+pub async fn mark_not_spam(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        queue_removal(
+            &app,
+            account_id,
+            mailbox,
+            uid,
+            Action::MoveTo(MAILBOX.to_string()),
+        )
+    })
+    .await
+}
+
 fn queue_removal(
     app: &AppHandle,
     account_id: i64,
@@ -2301,10 +2356,42 @@ pub async fn reply_context(
     uid: u32,
 ) -> Result<ComposeContext, String> {
     let envelope = envelope_of(&app, account_id, &mailbox, uid)?;
-    let to = envelope
+    let path = db_path(&app)?;
+    let own = {
+        let store = Store::open(&path).map_err(|err| err.to_string())?;
+        account_email(&store, account_id)?
+    };
+    // Notre propre message ? (l'expéditeur est le compte). Répondre à
+    // l'expéditeur nous écrirait à nous-mêmes.
+    let is_own = envelope
         .sender_address
-        .clone()
-        .ok_or_else(|| "adresse de l'expéditeur inconnue — resynchronisez la boîte".to_string())?;
+        .as_deref()
+        .map(|adresse| adresse.trim().eq_ignore_ascii_case(own.trim()))
+        .unwrap_or(false);
+    // R4 (constat terrain) : sur son propre message, répondre vise les
+    // destinataires d'origine (le À) ; sinon, l'expéditeur. Décision pure.
+    let mut destinataires = mail_core::reply_to(
+        is_own,
+        envelope.sender_address.as_deref(),
+        &envelope.to_addrs,
+    );
+    // Propre envoi sans destinataires en base (ancien, non rattrapé) :
+    // relève serveur UNE fois — même repli que « répondre à tous », jamais
+    // un « À » vide sur son propre message.
+    if destinataires.is_empty() && is_own {
+        let session = auth_for(&path, &state, account_id)?;
+        let boite = mailbox.clone();
+        let recipients = tauri::async_runtime::spawn_blocking(move || {
+            fetch_recipients_remote(&session, &boite, uid)
+        })
+        .await
+        .map_err(|err| err.to_string())??;
+        destinataires = recipients.to;
+    }
+    if destinataires.is_empty() {
+        return Err("destinataire inconnu — resynchronisez la boîte".to_string());
+    }
+    let to = destinataires.join(", ");
     let body = match raw_body(&app, &state, account_id, &mailbox, uid).await {
         Ok(html) => mail_core::quote_reply(
             envelope.sender.as_deref(),
@@ -3870,6 +3957,27 @@ fn pending_total(store: &Store) -> Result<u64, String> {
     Ok(total)
 }
 
+/// Le CORPUS en portée — tous les messages qui peuvent porter un corps,
+/// tous comptes et boîtes confondus. Dénominateur du pourcentage de
+/// rattrapage (R1, PLAN-RETOURS-3) : `corpus - pending` = corps présents.
+/// Même parcours que [`pending_total`] ; requête par boîte plus légère
+/// (pas de sous-requête `NOT EXISTS`). Coût à re-mesurer au terrain sur
+/// la vraie base (DETTE D-8, sondes chères).
+fn corpus_total(store: &Store) -> Result<u64, String> {
+    let mut total = 0;
+    for account in store.accounts().map_err(|err| err.to_string())? {
+        for boite in store
+            .mailbox_names(account.id)
+            .map_err(|err| err.to_string())?
+        {
+            total += store
+                .bodies_total_count(account.id, &boite, mail_core::NO_HORIZON)
+                .map_err(|err| err.to_string())?;
+        }
+    }
+    Ok(total)
+}
+
 #[derive(Serialize)]
 pub struct SyncProgress {
     /// Messages en base, toutes boîtes déjà visitées confondues.
@@ -3994,16 +4102,24 @@ pub fn sync_activity(state: State<'_, AppState>) -> Option<SyncActivite> {
 #[derive(Serialize)]
 pub struct BackfillStatus {
     pub remaining: u64,
+    /// Le pourcentage de corps DÉJÀ présents sur le corpus en portée
+    /// (R1, PLAN-RETOURS-3) — `None` sans dénominateur (aucun message).
+    pub percent: Option<u8>,
 }
 
 /// État du rattrapage, sans rien télécharger — de quoi afficher
-/// « N messages sans corps » avant même de commencer.
+/// « N restants · P % » avant même de commencer.
 #[tauri::command]
 pub async fn backfill_status(app: AppHandle) -> Result<BackfillStatus, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let remaining = pending_total(&store)?;
+        let total = corpus_total(&store)?;
         Ok(BackfillStatus {
-            remaining: pending_total(&store)?,
+            remaining,
+            // `done = total - remaining` : les corps déjà là. La fonction
+            // pure plafonne à 99 tant qu'il reste des corps (R1).
+            percent: mail_core::backfill_percent(total.saturating_sub(remaining), total),
         })
     })
     .await
@@ -4107,6 +4223,9 @@ pub async fn migration_run(app: AppHandle, state: State<'_, AppState>) -> Result
 pub struct BackfillSummary {
     pub fetched: usize,
     pub remaining: u64,
+    /// Le pourcentage de corps présents après ce lot (R1) — met à jour la
+    /// barre d'état au fil des lots, sans re-sonder depuis l'UI.
+    pub percent: Option<u8>,
     pub errors: Vec<String>,
 }
 
@@ -4147,6 +4266,7 @@ fn run_backfill_all(
     let mut summary = BackfillSummary {
         fetched: 0,
         remaining: 0,
+        percent: None,
         errors: Vec::new(),
     };
     let mut refreshed_list = Vec::new();
@@ -4210,6 +4330,8 @@ fn run_backfill_all(
     }
 
     summary.remaining = pending_total(&store)?;
+    let total = corpus_total(&store)?;
+    summary.percent = mail_core::backfill_percent(total.saturating_sub(summary.remaining), total);
     summary.errors.sort();
     Ok((summary, refreshed_list))
 }

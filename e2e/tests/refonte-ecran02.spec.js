@@ -500,26 +500,35 @@ test("écrire ouvre la composition ; l'annuler vide ne laisse rien", async () =>
   await expect(page.locator('[data-testid="toast"]')).toHaveCount(0);
 });
 
-test('« Répondre à tous » se tient entre Répondre et Transférer (A14)', async () => {
-  // Pas de clic : le décor E2E est hors ligne garanti, et « Répondre à
-  // tous » relit les destinataires sur le serveur (échec franc voulu).
-  // Ici on prouve la place du bouton, dans les DEUX barres d'actions.
-  const barre = await page
+test('« Répondre à tous » se tient entre Répondre et Transférer, par message (A14, R4/D4)', async () => {
+  // R4 (PLAN-RETOURS-3, D4) : les gestes de réponse vivent EN BAS de
+  // chaque message — A14 tient toujours, « Répondre à tous » entre
+  // Répondre et Transférer. La barre du FIL ne garde que le TRI (D5) et
+  // « Signaler comme spam » (R2/D2). Pas de clic : hors ligne garanti,
+  // « Répondre à tous » relit les destinataires sur le serveur.
+  const barreMsg = await page
+    .locator('[data-testid="volet-lecture"] [data-testid="actions-message"]')
+    .last()
+    .locator('button')
+    .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
+  expect(barreMsg).toEqual(['repondre', 'repondre-tous', 'transferer']);
+  const barreFil = await page
     .locator('[data-testid="volet-lecture"] .actions button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barre).toEqual(['repondre', 'repondre-tous', 'transferer', 'archiver', 'supprimer']);
+  expect(barreFil).toEqual(['archiver', 'supprimer', 'signaler-spam']);
 
   await page.locator('[data-testid="voir-conversation"]').click();
-  const barreConv = await page
+  const barreMsgConv = await page
+    .locator('[data-testid="conversation"] [data-testid="actions-message"]')
+    .last()
+    .locator('button')
+    .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
+  expect(barreMsgConv).toEqual(['repondre', 'repondre-tous', 'transferer']);
+  const barreFilConv = await page
     .locator('[data-testid="conversation"] .actions button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barreConv).toEqual([
-    'repondre',
-    'repondre-tous',
-    'transferer',
-    'archiver',
-    'supprimer',
-  ]);
+  expect(barreFilConv).toEqual(['archiver', 'supprimer', 'signaler-spam']);
+
   await page.locator('[data-testid="retour-boite"]').click();
   await expect(page.locator('[data-testid="fil-sujet"]')).toHaveText(
     'Relecture du contrat Vantis',
@@ -527,7 +536,9 @@ test('« Répondre à tous » se tient entre Répondre et Transférer (A14)', as
 });
 
 test("répondre préremplit depuis le coeur : adresse, Re :, amorce, citation — sans les pièces d'origine", async () => {
-  await page.locator('[data-testid="repondre"]').click();
+  // R4 : la réponse est PAR message ; le dernier message déplié du fil
+  // Vantis est celui de Camille Rousseau (`.last()`).
+  await page.locator('[data-testid="repondre"]').last().click();
   await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText('Répondre');
   await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(
     'c.rousseau@atelier-nord.fr',
@@ -556,7 +567,9 @@ test('enregistrer le brouillon conserve et confirme', async () => {
 });
 
 test("envoyer journalise dans la boîte d'envoi et confirme", async () => {
-  await page.locator('[data-testid="repondre"]').click();
+  // R4 : la réponse est PAR message ; le dernier message déplié du fil
+  // Vantis est celui de Camille Rousseau (`.last()`).
+  await page.locator('[data-testid="repondre"]').last().click();
   await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(
     'c.rousseau@atelier-nord.fr',
   );
@@ -1025,7 +1038,9 @@ test('le transfert rapatrie pour de vrai — hors ligne : échec dit, « Réessa
   await page
     .locator('[data-testid="ligne"]', { hasText: 'Relecture du contrat Vantis' })
     .click();
-  await page.locator('[data-testid="transferer"]').click();
+  // R4 : transférer PAR message ; le dernier message du fil Vantis porte
+  // l'annexe tarifaire (`.last()`).
+  await page.locator('[data-testid="transferer"]').last().click();
   await expect(page.locator('[data-testid="composition-kicker"]')).toHaveText('Transférer');
   // Les comptes du décor n'ont pas de serveur : chaque rapatriement finit
   // en échec — nom en alerte, « Réessayer » — jamais une puce pleine, et

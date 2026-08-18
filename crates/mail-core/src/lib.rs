@@ -34,11 +34,12 @@ pub use address::EmailAddress;
 pub use attachment::{Attachment, human_size};
 pub use backfill::{
     BACKFILL_BATCH, BackfillReport, NO_HORIZON, THREAD_HEADER_BATCH, backfill_bodies,
-    backfill_recipients, backfill_thread_headers,
+    backfill_percent, backfill_recipients, backfill_thread_headers,
 };
 pub use body::load_body;
 pub use compose::{
     Draft, compose, forward_subject, quote_forward, quote_reply, reply_all_split, reply_subject,
+    reply_to,
 };
 pub use crash::{CrashReport, RawPanic, redact};
 pub use drafts::{
