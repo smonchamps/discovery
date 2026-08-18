@@ -1,19 +1,25 @@
 # PLAN-RETOURS-4 — quatre retours terrain (2026-08-18)
 
+> **CHANTIER SOLDÉ le 2026-08-18 — terrain complet.** R1-R2-R3 livrés
+> (commit `52aec3e`), terrain validé par le CE (« R1 R2 R3 OK au
+> terrain », 2026-08-18), CI verte (run 32190246721). GO CE du plan
+> (STOP 1) : 2026-08-18. Journal Système A59 (R1), A60 (R2), A61 (R3).
+> **R4 (barre de mise en forme / composeur enrichi HTML) reporté en
+> chantier dédié** (décision CE D1) — voir PASSATION §1. Non encore
+> publié : la prochaine release (MINEUR, nouveautés visibles → 0.1.11)
+> embarquera R1-R3.
+>
+> Gate 2026-08-18 : fmt OK · ui-v2 build 0 avert. · contraste 28/700 ·
+> coherence 28/476 · garde-thread 65 · clippy muet · tests Rust 0 échec ·
+> doc OK · **e2e 91 passed**. `/code-review high` : 2 correctifs
+> appliqués (requête base retirée de la suggestion ; garde e2e du corps
+> clair), 1 écart assumé (DETTE D-23).
+
 Quatrième lot de retours du Chef Ingénieur, dans la foulée de la 0.1.10.
 Quatre demandes : (R1) le téléchargement d'une pièce jointe, (R2) la
 fusion nom + poids d'une pièce en une puce, (R3) la lisibilité du corps
 sur thème sombre, (R4) une barre de mise en forme réelle dans le
 composeur.
-
-> **État : R1-R2-R3 implémentés, `/code-review high` passé (2 correctifs
-> appliqués, 1 écart assumé), `/gate` complète VERTE (91 e2e). R4 en
-> chantier dédié. En attente de STOP 2 — terrain du correctif R3.**
-> Décisions consignées en bas.
->
-> Gate 2026-08-18 : fmt OK · ui-v2 build 0 avert. · contraste 28/700 ·
-> coherence 28/476 · garde-thread 65 · clippy muet · tests Rust 0 échec ·
-> doc OK · **e2e 91 passed**.
 
 ---
 

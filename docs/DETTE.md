@@ -315,3 +315,17 @@ motivée.)
   budgets avec un chantier de features. Les bancs mesurent DÉJÀ la
   bonne géométrie (args-navigateur.mjs) ; seule la série de référence
   date.
+
+### D-23 · Téléchargement d'une pièce : chemin réseau non couvert en e2e
+
+- **Fait (PLAN-RETOURS-4, R1, 2026-08-18)** : le nouveau geste
+  « Enregistrer sous » (clic puce → `chemin_enregistrement_suggere` →
+  dialogue `plugin:dialog|save` → `save_attachment(dest)`) a sa couture
+  e2e (`__e2eDestination`) mais aucun test ne l'exerce. Le succès exige
+  le rapatriement IMAP des octets — terrain seul par construction
+  (§7.5) ; seul le chemin d'annulation (`!dest → return`, ni toast ni
+  fetch) est jouable hors ligne.
+- **Report assumé** (code-review high, écart assumé) : R1 est validé au
+  terrain (CE, 2026-08-18). Ajouter un e2e du seul chemin d'annulation
+  apporte peu ; le chemin de succès restera terrain. À instruire si un
+  banc de composition/pièces se monte.

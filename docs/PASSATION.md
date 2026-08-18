@@ -61,6 +61,18 @@ commentaires expliquent *pourquoi*, et supposent le contexte ci-dessous.
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
+**Prochain chantier planifié : le composeur enrichi HTML** (R4 de
+PLAN-RETOURS-4, reporté en chantier dédié — décision CE D1 du
+2026-08-18). Une barre de mise en forme réelle : police, taille, gras /
+italique / souligné / barré, couleur du texte, alignement, listes à
+puces et numérotée, retrait −/+, effacer la mise en forme. C'est une
+**tranche verticale** — corps HTML de bout en bout (mail-core + migration
+des brouillons, mail-smtp en `multipart/alternative`, citation HTML,
+éditeur `contenteditable`) qui touche les **règles d'or de l'envoi**
+(ADR 0003) et exige une migration rembobinable (invariant #7). À ouvrir
+par `/chantier` (PLAN-COMPOSITION-HTML), avec son propre terrain et sa
+release.
+
 **Dernière version livrée : 0.1.10** (publiée 2026-08-18, `a25c566`,
 auto-update **0.1.9 → 0.1.10 confirmé au terrain le 2026-08-18** — mise à
 jour depuis l'app, la chaîne signée ADR 0013 reste prouvée vivante). La
@@ -88,7 +100,32 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 (PLAN-GELS, ADR 0019) ; auto-update 0.1.6 → 0.1.7 confirmé au terrain.
 Tous les plans de cette ligne sont soldés.
 
-**Dernier chantier soldé : PLAN-RETOURS-3** (2026-08-18, `8819090`, A55-A58,
+**Dernier chantier soldé : PLAN-RETOURS-4** (2026-08-18, `52aec3e`, A59-A61,
+terrain complet, CI verte — **R1-R3 livrés, R4 reporté en chantier dédié**,
+décision CE D1 ; landé sur `main`, **non encore publié** — la prochaine
+release sera MINEUR, 0.1.11). Trois retours. (1) **Téléchargement d'une pièce
+par dialogue** : le clic enregistrait en SILENCE dans Téléchargements (« il ne
+se passe rien ») ; il ouvre désormais « Enregistrer sous » natif — dossier ET
+nom au choix, défaut Téléchargements + nom assaini ; nouvelle commande
+`chemin_enregistrement_suggere` (le nom vient de l'UI ; `safe_file_name` reste
+l'autorité de désinfection), `save_attachment(dest)` écrit au chemin choisi,
+capability `dialog:allow-save`, couture e2e `__e2eDestination` (A59). (2) **Nom
++ poids d'une pièce dans la MÊME puce** : la lecture s'aligne sur le composeur,
+exception assumée à « 1 puce = 1 information » ; glyphe `storage` retiré de
+l'usage, conservé réservé au sous-ensemble (précédent A53, A60). (3) **Corps
+toujours sur dalle claire** : mesuré au terrain que seul le texte à COULEURS
+d'expéditeur (infolettres pensées pour fond blanc) était noir sur sombre — le
+texte sans couleur propre était déjà lisible ; le corps bake désormais
+`mail_render::Palette::default` (fond blanc) quel que soit le thème, comme les
+clients mûrs, **renversant la dalle sombre d'A42** ; le front ne transmet plus
+de palette (`paletteLecture` retirée, params `palette` de
+`message_body`/`echo_body` retirés — A61). Report : DETTE D-23. **Piège gravé
+(A61)** : ne JAMAIS re-transmettre une palette de thème au corps d'un message —
+le corps est volontairement clair partout (le texte d'expéditeur est composé
+pour fond blanc) ; garde e2e « le corps reste sur dalle claire même sous un
+thème sombre ».
+
+**Chantier soldé précédent : PLAN-RETOURS-3** (2026-08-18, `8819090`, A55-A58,
 terrain complet, CI verte — **livré en 0.1.10**, auto-update confirmé au
 terrain le 2026-08-18). Quatre retours terrain. (1) **Pourcentage de
 rattrapage** : la barre d'état passe à « N restants · P % » ; `P` = corps
