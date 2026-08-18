@@ -1,0 +1,1528 @@
+<!DOCTYPE html>
+<!-- Illustration NON NORMATIVE de l'architecture de Wind (PLAN-DOCUMENTATION,
+     décision CE D4 du 2026-08-19). Ce document illustre, il ne fait pas foi :
+     la référence est docs/STANDARD.md §4 (architecture) et les ADR. -->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture de Wind</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8D%83%3C/text%3E%3C/svg%3E">
+<style>
+  /* ---------------------------------------------------------------
+     Palette « Wada — nature » (le Système visuel de Wind lui-même).
+     Trois états de thème : clair par défaut, sombre auto, bascule.
+     --------------------------------------------------------------- */
+  :root {
+    --fond:      #f2f0ea;
+    --panneau:   #e9e6dd;
+    --surface:   #ffffff;
+    --encre:     #24272e;
+    --encre-att: #5c5f68;
+    --accent:    #1e7566;
+    --accent-2:  #a8402e;
+    --accent-3:  #4d6fa8;
+    --bord:      #d8d4c8;
+    --bord-fort: #c3beb0;
+    --ombre:     rgba(36,39,46,.08);
+    --code-fond: #ece9e0;
+    --code-encre:#1a4d43;
+    --ok:        #1e7566;
+    --alerte:    #a8402e;
+
+    /* Jetons de schéma (SVG) */
+    --sv-line:   #b8b2a2;
+    --sv-ink:    #24272e;
+    --sv-muted:  #6f7178;
+    --sv-box:    #ffffff;
+    --sv-box2:   #efece3;
+    --sv-accent: #1e7566;
+    --sv-accsoft:#dbeae5;
+    --sv-warm:   #f5e4de;
+    --sv-warm-l: #a8402e;
+    --sv-cool:   #e2e8f3;
+    --sv-cool-l: #4d6fa8;
+
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fond:      #181b18;
+      --panneau:   #202420;
+      --surface:   #262b27;
+      --encre:     #e7e4da;
+      --encre-att: #a3a69d;
+      --accent:    #56b6a4;
+      --accent-2:  #d98a76;
+      --accent-3:  #8fa9d8;
+      --bord:      #333a34;
+      --bord-fort: #414a41;
+      --ombre:     rgba(0,0,0,.35);
+      --code-fond: #1d221e;
+      --code-encre:#7fd0bf;
+      --ok:        #56b6a4;
+      --alerte:    #d98a76;
+
+      --sv-line:   #4a544a;
+      --sv-ink:    #e7e4da;
+      --sv-muted:  #9aa097;
+      --sv-box:    #2b312c;
+      --sv-box2:   #222722;
+      --sv-accent: #56b6a4;
+      --sv-accsoft:#1f3a34;
+      --sv-warm:   #3a2622;
+      --sv-warm-l: #e0a08f;
+      --sv-cool:   #222b3a;
+      --sv-cool-l: #9db6e4;
+
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --fond:      #181b18;
+    --panneau:   #202420;
+    --surface:   #262b27;
+    --encre:     #e7e4da;
+    --encre-att: #a3a69d;
+    --accent:    #56b6a4;
+    --accent-2:  #d98a76;
+    --accent-3:  #8fa9d8;
+    --bord:      #333a34;
+    --bord-fort: #414a41;
+    --ombre:     rgba(0,0,0,.35);
+    --code-fond: #1d221e;
+    --code-encre:#7fd0bf;
+    --ok:        #56b6a4;
+    --alerte:    #d98a76;
+
+    --sv-line:   #4a544a;
+    --sv-ink:    #e7e4da;
+    --sv-muted:  #9aa097;
+    --sv-box:    #2b312c;
+    --sv-box2:   #222722;
+    --sv-accent: #56b6a4;
+    --sv-accsoft:#1f3a34;
+    --sv-warm:   #3a2622;
+    --sv-warm-l: #e0a08f;
+    --sv-cool:   #222b3a;
+    --sv-cool-l: #9db6e4;
+
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--fond);
+    color: var(--encre);
+    font: 16px/1.65 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Mise en page : barre latérale collante + contenu */
+  .enveloppe { display: flex; align-items: flex-start; max-width: 1280px; margin: 0 auto; }
+
+  aside {
+    position: sticky; top: 0; align-self: flex-start;
+    width: 264px; flex: 0 0 264px; height: 100vh; overflow-y: auto;
+    padding: 26px 18px 40px; border-right: 1px solid var(--bord);
+    background: var(--panneau);
+  }
+  aside .marque { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  aside .marque .pastille {
+    width: 30px; height: 30px; border-radius: 8px; flex: 0 0 30px;
+    background: var(--accent); display: grid; place-items: center; color: #fff; font-size: 17px;
+  }
+  aside .marque b { font-size: 18px; letter-spacing: .2px; }
+  aside .sous { color: var(--encre-att); font-size: 12.5px; margin: 0 0 18px 40px; }
+  nav a {
+    display: block; padding: 5px 10px; margin: 1px 0; border-radius: 7px;
+    color: var(--encre-att); text-decoration: none; font-size: 13.5px;
+    border-left: 2px solid transparent;
+  }
+  nav a:hover { background: var(--surface); color: var(--encre); }
+  nav a.actif { color: var(--accent); border-left-color: var(--accent); background: var(--surface); font-weight: 600; }
+  nav .grp { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--sv-muted); margin: 16px 0 4px 10px; }
+
+  main { flex: 1 1 auto; min-width: 0; padding: 0 clamp(20px, 4vw, 60px) 90px; }
+
+  header.hero {
+    padding: 60px 0 30px; border-bottom: 1px solid var(--bord); margin-bottom: 14px;
+  }
+  header.hero h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.1; margin: 0 0 12px; letter-spacing: -.5px; }
+  header.hero .tagline { font-size: 18px; color: var(--encre-att); margin: 0 0 22px; max-width: 640px; }
+  .puces { display: flex; flex-wrap: wrap; gap: 8px; }
+  .puce {
+    font-size: 12.5px; padding: 4px 11px; border-radius: 999px;
+    background: var(--surface); border: 1px solid var(--bord); color: var(--encre-att);
+  }
+  .puce b { color: var(--accent); font-weight: 700; }
+
+  section { padding-top: 46px; }
+  section > h2 {
+    font-size: 26px; margin: 0 0 6px; letter-spacing: -.3px;
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  section > h2 .n {
+    font-size: 14px; color: var(--accent); font-weight: 700;
+    border: 1px solid var(--accent); border-radius: 6px; padding: 1px 7px; flex: 0 0 auto;
+  }
+  section > .chapo { color: var(--encre-att); font-size: 16.5px; max-width: 720px; margin: 0 0 22px; }
+  h3 { font-size: 19px; margin: 30px 0 8px; }
+  h4 { font-size: 15px; margin: 20px 0 4px; letter-spacing: .2px; }
+  p { margin: 0 0 14px; }
+  a { color: var(--accent); }
+
+  code, .kbd {
+    font: 13px/1.5 "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+    background: var(--code-fond); color: var(--code-encre);
+    padding: 1.5px 6px; border-radius: 5px; white-space: nowrap;
+  }
+  pre { background: var(--code-fond); border: 1px solid var(--bord); border-radius: 10px; padding: 14px 16px; overflow-x: auto; }
+  pre code { background: none; padding: 0; white-space: pre; color: var(--encre); }
+
+  /* Cartes & encarts */
+  .grille { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin: 18px 0; }
+  .carte {
+    background: var(--surface); border: 1px solid var(--bord); border-radius: 12px; padding: 16px 18px;
+  }
+  .carte h4 { margin-top: 0; color: var(--accent); }
+  .carte p:last-child { margin-bottom: 0; }
+
+  .encart {
+    border-left: 3px solid var(--accent); background: var(--surface);
+    border-radius: 0 10px 10px 0; padding: 13px 18px; margin: 18px 0;
+    border-top: 1px solid var(--bord); border-right: 1px solid var(--bord); border-bottom: 1px solid var(--bord);
+  }
+  .encart.attention { border-left-color: var(--accent-2); }
+  .encart .et { font-size: 12px; text-transform: uppercase; letter-spacing: .7px; font-weight: 700; color: var(--accent); margin: 0 0 3px; }
+  .encart.attention .et { color: var(--accent-2); }
+  .encart p:last-child { margin-bottom: 0; }
+
+  /* Figures */
+  figure { margin: 24px 0; }
+  .cadre-svg {
+    background: var(--surface); border: 1px solid var(--bord); border-radius: 14px;
+    padding: 18px; overflow-x: auto; box-shadow: 0 1px 3px var(--ombre);
+  }
+  .cadre-svg svg { display: block; width: 100%; height: auto; min-width: 560px; }
+  figcaption { font-size: 13.5px; color: var(--encre-att); margin-top: 10px; text-align: center; }
+  figcaption b { color: var(--encre); }
+
+  /* SVG classes communes */
+  svg .bg   { fill: var(--sv-box); stroke: var(--sv-line); stroke-width: 1.2; }
+  svg .bg2  { fill: var(--sv-box2); stroke: var(--sv-line); stroke-width: 1.2; }
+  svg .acc  { fill: var(--sv-accsoft); stroke: var(--sv-accent); stroke-width: 1.4; }
+  svg .warm { fill: var(--sv-warm); stroke: var(--sv-warm-l); stroke-width: 1.3; }
+  svg .cool { fill: var(--sv-cool); stroke: var(--sv-cool-l); stroke-width: 1.3; }
+  svg text { fill: var(--sv-ink); font-family: -apple-system, "Segoe UI", Roboto, sans-serif; }
+  svg .t   { font-size: 13px; }
+  svg .tb  { font-size: 13px; font-weight: 700; }
+  svg .ts  { font-size: 11px; fill: var(--sv-muted); }
+  svg .tacc{ font-size: 13px; font-weight: 700; fill: var(--sv-accent); }
+  svg .mono{ font-family: "SF Mono","Cascadia Code",Consolas,monospace; font-size: 11px; fill: var(--sv-muted); }
+  svg .ln  { stroke: var(--sv-line); stroke-width: 1.5; fill: none; }
+  svg .lnacc { stroke: var(--sv-accent); stroke-width: 1.8; fill: none; }
+  svg .lndash { stroke: var(--sv-line); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+
+  /* Tableaux */
+  .table-hote { overflow-x: auto; margin: 18px 0; border: 1px solid var(--bord); border-radius: 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--surface); }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--bord); vertical-align: top; }
+  th { background: var(--panneau); font-size: 12.5px; text-transform: uppercase; letter-spacing: .4px; color: var(--encre-att); position: sticky; top: 0; }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: normal; }
+  .oui { color: var(--ok); font-weight: 700; }
+  .non { color: var(--alerte); font-weight: 700; }
+
+  /* Bascule de thème */
+  .bascule {
+    position: fixed; top: 14px; right: 16px; z-index: 20;
+    background: var(--surface); border: 1px solid var(--bord-fort); color: var(--encre);
+    border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer; box-shadow: 0 1px 4px var(--ombre);
+  }
+  .bascule:hover { border-color: var(--accent); color: var(--accent); }
+
+  footer {
+    margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--bord);
+    color: var(--encre-att); font-size: 13.5px;
+  }
+  .anchor-top { display:inline-block; margin-top: 6px; font-size: 13px; }
+
+  @media (max-width: 880px) {
+    aside { display: none; }
+    main { padding: 0 20px 70px; }
+    .cadre-svg svg { min-width: 520px; }
+  }
+</style>
+</head>
+<body>
+<button class="bascule" id="bascule" title="Basculer le thème">◐ Thème</button>
+
+<div class="enveloppe">
+  <aside>
+    <div class="marque"><span class="pastille">🍃</span><b>Wind</b></div>
+    <p class="sous">Architecture applicative & technique</p>
+    <nav id="toc">
+      <div class="grp">Fondations</div>
+      <a href="#resume">Résumé exécutif</a>
+      <a href="#vue">1 · Vue d'ensemble</a>
+      <a href="#workspace">2 · Le workspace</a>
+      <a href="#cerveau">3 · mail-core, le cerveau</a>
+      <a href="#ports">4 · Les deux ports</a>
+      <div class="grp">Données & moteurs</div>
+      <a href="#donnees">5 · Modèle de données</a>
+      <a href="#synchro">6 · Synchronisation</a>
+      <a href="#fils">7 · Conversations</a>
+      <a href="#envoi">8 · Boîte d'envoi & échos</a>
+      <div class="grp">Plateforme</div>
+      <a href="#shell">9 · Shell Tauri & IPC</a>
+      <a href="#threads">10 · Modèle de threads</a>
+      <a href="#securite">11 · Sécurité</a>
+      <a href="#interface">12 · Interface Svelte</a>
+      <div class="grp">Cycle de vie</div>
+      <a href="#livraison">13 · Livraison & qualité</a>
+      <a href="#decisions">14 · Décisions gelées</a>
+      <a href="#budgets">15 · Budgets & dette</a>
+    </nav>
+  </aside>
+
+  <main>
+    <header class="hero">
+      <h1>Architecture de Wind</h1>
+      <p class="tagline">Le client courrier de la suite <b>Elements</b> : cœur Rust, interface Svelte, empaqueté par Tauri. « Vos mails, instantanément. »</p>
+      <div class="puces">
+        <span class="puce">Version <b>0.1.8</b></span>
+        <span class="puce">Windows <b>arm64 natif</b></span>
+        <span class="puce"><b>5</b> crates + shell desktop</span>
+        <span class="puce">Rust <b>edition 2024</b> · 1.97.1</span>
+        <span class="puce">Svelte <b>5</b> · Tauri <b>2</b></span>
+        <span class="puce">SQLite <b>WAL</b> + FTS5</span>
+        <span class="puce"><b>20</b> ADR gelés</span>
+      </div>
+    </header>
+
+    <p style="color:var(--encre-att);font-size:14px;max-width:720px">
+      Ce document formalise l'état de l'architecture à la version 0.1.8. Il est
+      dérivé du code et des décisions gelées (<code>docs/adr/</code>,
+      <code>docs/PASSATION.md</code>). La source de vérité reste le code ; cette
+      page en est la carte, pas le territoire.
+    </p>
+
+    <!-- ============================================================= -->
+    <section id="resume">
+      <h2><span class="n">§0</span> Résumé exécutif</h2>
+      <p class="chapo">Un principe organise tout le reste : <b>un seul cerveau</b>. Toute la logique
+      vit dans un cœur Rust portable ; l'interface est « bête ».</p>
+
+      <div class="grille">
+        <div class="carte">
+          <h4>Un seul cerveau</h4>
+          <p><code>mail-core</code> porte 100 % du domaine, de la synchro, du stockage,
+          de la recherche et des fils — <b>zéro dépendance UI ou réseau</b>. Le desktop
+          l'embarque en processus ; le web (Phase 4) l'exécutera côté serveur, sans
+          le toucher.</p>
+        </div>
+        <div class="carte">
+          <h4>Une seule frontière</h4>
+          <p>Le cœur ne connaît que deux ports abstraits : <code>MailServer</code>
+          (lecture) et <code>MailTransport</code> (envoi). IMAP, SMTP, OAuth et TLS
+          vivent dans des adaptateurs. SQLite, lui, n'est <b>pas</b> derrière un trait —
+          décision gelée.</p>
+        </div>
+        <div class="carte">
+          <h4>La performance est la fonctionnalité</h4>
+          <p>Démarrage &lt; 1 s (337 ms mesurés), ouverture &lt; 50 ms (1–3 ms), page
+          de liste &lt; 100 ms (0,58 ms) à 200 000 messages. Un budget dépassé arrête
+          la ligne (<i>andon</i>).</p>
+        </div>
+        <div class="carte">
+          <h4>Fiable & sûr</h4>
+          <p>Jamais de perte, jamais d'envoi fantôme (journal avant réseau, quarantaine).
+          Credentials au coffre de l'OS, HTML assaini en défense en profondeur, images
+          distantes bloquées.</p>
+        </div>
+        <div class="carte">
+          <h4>Complet & hors-ligne</h4>
+          <p>Toute la boîte est locale et cherchable — 256 312 messages sur la boîte de
+          référence, spam et corbeille compris. Lire, trier, chercher, écrire fonctionnent
+          sans réseau.</p>
+        </div>
+        <div class="carte">
+          <h4>La fenêtre ne gèle jamais</h4>
+          <p>Aucune commande bloquante sur le thread de la pompe de messages : tout passe
+          par <code>hors_pompe()</code>. 25,2 s de gels cumulés → 0, tenu par une garde
+          et une sonde.</p>
+        </div>
+      </div>
+
+      <div class="encart">
+        <p class="et">Ce que Wind n'est pas (v1)</p>
+        <p>Pas de calendrier, pas de chat, pas d'IA intégrée, pas de plugins, pas de
+        mobile. Dire non est le comportement par défaut : chaque ajout se paie en
+        vitesse et en fiabilité.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="vue">
+      <h2><span class="n">§1</span> Vue d'ensemble</h2>
+      <p class="chapo">Cinq couches, un sens de circulation : l'interface émet des
+      <i>intentions</i> vers le bas, l'<i>état</i> remonte vers le haut. La seule frontière
+      abstraite est la ligne des ports.</p>
+
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 560" role="img" aria-label="Architecture en couches de Wind">
+            <defs>
+              <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-accent)"/>
+              </marker>
+              <marker id="arg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-line)"/>
+              </marker>
+            </defs>
+
+            <!-- Couche 1 : UI -->
+            <rect class="bg2" x="40" y="24" width="880" height="72" rx="12"/>
+            <text class="tb" x="60" y="50">Interface — Svelte 5 (« bête »)</text>
+            <text class="ts" x="60" y="70">App · Nav · Liste · Lecture/Fil · Conversation · Composition · Réglages · Onboarding</text>
+            <text class="ts" x="60" y="86">Affiche un état, émet des intentions. 28 thèmes « Wada », 3 modes d'affichage.</text>
+            <rect class="acc" x="700" y="44" width="196" height="34" rx="8"/>
+            <text class="tacc" x="798" y="66" text-anchor="middle">port de transport</text>
+
+            <!-- Frontière IPC -->
+            <rect class="acc" x="40" y="120" width="880" height="40" rx="10"/>
+            <text class="tb" x="60" y="145">Frontière IPC — Tauri 2 · <tspan class="mono">invoke(commande, args)</tspan> → Promise</text>
+            <text class="ts" x="740" y="145" text-anchor="start">~55 commandes</text>
+
+            <!-- Shell desktop -->
+            <rect class="bg" x="40" y="184" width="880" height="84" rx="12"/>
+            <text class="tb" x="60" y="210">Shell desktop (Rust) — <tspan class="mono">apps/desktop</tspan></text>
+            <text class="ts" x="60" y="230">AppState (verrous, veilleurs) · hors_pompe (spawn_blocking) · migration · updater · télémétrie</text>
+            <text class="ts" x="60" y="248">Garde du thread principal · veilleurs IDLE par compte · cycle de synchro automatique</text>
+
+            <!-- Ports -->
+            <line class="lnacc" x1="40" y1="288" x2="920" y2="288" stroke-dasharray="6 5"/>
+            <text class="tacc" x="480" y="283" text-anchor="middle">◆ frontière abstraite : MailServer (lecture) · MailTransport (envoi) ◆</text>
+
+            <!-- mail-core -->
+            <rect class="acc" x="40" y="300" width="880" height="86" rx="12"/>
+            <text class="tb" x="60" y="326" style="fill:var(--sv-accent)">mail-core — LE CERVEAU</text>
+            <text class="ts" x="60" y="346">Domaine · moteur de synchro · stockage SQLite (WAL) · recherche FTS5 · fils (union-find)</text>
+            <text class="ts" x="60" y="364">brouillons · boîte d'envoi · échos · rattrapage · notifications — décisions PURES, testables</text>
+            <text class="tb" x="900" y="326" text-anchor="end" style="fill:var(--sv-accent)">0 dép. UI / réseau</text>
+
+            <!-- Adaptateurs -->
+            <rect class="bg" x="40" y="404" width="212" height="64" rx="10"/>
+            <text class="tb" x="146" y="430" text-anchor="middle">mail-imap</text>
+            <text class="ts" x="146" y="450" text-anchor="middle">IMAP · CONDSTORE</text>
+            <rect class="bg" x="264" y="404" width="212" height="64" rx="10"/>
+            <text class="tb" x="370" y="430" text-anchor="middle">mail-smtp</text>
+            <text class="ts" x="370" y="450" text-anchor="middle">SMTP · XOAUTH2</text>
+            <rect class="bg" x="488" y="404" width="212" height="64" rx="10"/>
+            <text class="tb" x="594" y="430" text-anchor="middle">mail-auth</text>
+            <text class="ts" x="594" y="450" text-anchor="middle">OAuth2 PKCE · coffre</text>
+            <rect class="bg" x="712" y="404" width="208" height="64" rx="10"/>
+            <text class="tb" x="816" y="430" text-anchor="middle">mail-render</text>
+            <text class="ts" x="816" y="450" text-anchor="middle">ammonia · CSP</text>
+
+            <!-- Extérieur -->
+            <rect class="bg2" x="40" y="492" width="280" height="52" rx="10"/>
+            <text class="t" x="180" y="514" text-anchor="middle">Serveurs IMAP / SMTP</text>
+            <text class="ts" x="180" y="532" text-anchor="middle">Gmail · Microsoft 365 · IMAP générique</text>
+            <rect class="bg2" x="336" y="492" width="270" height="52" rx="10"/>
+            <text class="t" x="471" y="514" text-anchor="middle">Coffre de l'OS</text>
+            <text class="ts" x="471" y="532" text-anchor="middle">Credential Manager Windows (keyring)</text>
+            <rect class="bg2" x="622" y="492" width="298" height="52" rx="10"/>
+            <text class="t" x="771" y="514" text-anchor="middle">Base locale SQLite</text>
+            <text class="ts" x="771" y="532" text-anchor="middle">wind.db (+ -wal, -shm) · ~13 Go à terme</text>
+
+            <!-- Flèches intentions (bas) / état (haut) -->
+            <line class="ln" x1="150" y1="96" x2="150" y2="118" marker-end="url(#arg)"/>
+            <line class="ln" x1="150" y1="160" x2="150" y2="182" marker-end="url(#arg)"/>
+            <line class="ln" x1="150" y1="268" x2="150" y2="298" marker-end="url(#arg)"/>
+            <line class="ln" x1="146" y1="386" x2="146" y2="402" marker-end="url(#arg)"/>
+            <line class="ln" x1="146" y1="468" x2="146" y2="490" marker-end="url(#arg)"/>
+
+            <text class="ts" transform="rotate(-90 30 300)" x="30" y="300" text-anchor="middle">intentions ↓   ·   état ↑</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 1.</b> Les couches de Wind. L'interface ne parle qu'au port de transport ; le cœur ne parle qu'aux deux ports abstraits. Tout le reste est adaptateur ou extérieur.</figcaption>
+      </figure>
+
+      <p>Le même cœur sert deux cibles. Sur le desktop, le port de transport de l'UI est
+      une implémentation <b>en processus</b> qui appelle l'IPC Tauri. En Phase 4, le web
+      remplacera ce rejet par un <code>POST /api/appel/&lt;commande&gt;</code> vers
+      <code>mail-core</code> exécuté côté serveur — <b>sans changer l'application</b>. La
+      couture est déjà écrite dans <code>transport.js</code>.</p>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="workspace">
+      <h2><span class="n">§2</span> Le workspace</h2>
+      <p class="chapo">Un workspace Cargo multi-crates (ADR 0001). Les dépendances ne
+      remontent jamais vers l'UI : <code>mail-core</code> est la racine, tout converge
+      vers lui.</p>
+
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 420" role="img" aria-label="Graphe de dépendances du workspace">
+            <defs>
+              <marker id="dep" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-line)"/>
+              </marker>
+            </defs>
+
+            <!-- wind-desktop -->
+            <rect class="bg2" x="330" y="26" width="300" height="60" rx="12"/>
+            <text class="tb" x="480" y="52" text-anchor="middle">wind-desktop</text>
+            <text class="ts" x="480" y="72" text-anchor="middle">tauri · updater · notification · dialog · fs4 · open</text>
+
+            <!-- adaptateurs rangée -->
+            <rect class="bg" x="24" y="164" width="200" height="66" rx="11"/>
+            <text class="tb" x="124" y="190" text-anchor="middle">mail-imap</text>
+            <text class="mono" x="124" y="210" text-anchor="middle">imap · imap-proto</text>
+            <text class="mono" x="124" y="224" text-anchor="middle">native-tls · mail-parser</text>
+
+            <rect class="bg" x="248" y="164" width="196" height="66" rx="11"/>
+            <text class="tb" x="346" y="190" text-anchor="middle">mail-smtp</text>
+            <text class="mono" x="346" y="212" text-anchor="middle">lettre (rustls, XOAUTH2)</text>
+
+            <rect class="bg" x="516" y="164" width="196" height="66" rx="11"/>
+            <text class="tb" x="614" y="190" text-anchor="middle">mail-auth</text>
+            <text class="mono" x="614" y="210" text-anchor="middle">oauth2 · keyring</text>
+            <text class="mono" x="614" y="224" text-anchor="middle">webbrowser · url</text>
+
+            <rect class="bg" x="736" y="164" width="200" height="66" rx="11"/>
+            <text class="tb" x="836" y="190" text-anchor="middle">mail-render</text>
+            <text class="mono" x="836" y="212" text-anchor="middle">ammonia</text>
+            <text class="mono" x="836" y="224" text-anchor="middle">mail-parser</text>
+
+            <!-- mail-core -->
+            <rect class="acc" x="300" y="320" width="360" height="74" rx="13"/>
+            <text class="tb" x="480" y="350" text-anchor="middle" style="fill:var(--sv-accent)">mail-core</text>
+            <text class="ts" x="480" y="370" text-anchor="middle">rusqlite · chrono · thiserror</text>
+            <text class="ts" x="480" y="386" text-anchor="middle">— aucune dépendance UI ni réseau —</text>
+
+            <!-- desktop -> adaptateurs -->
+            <path class="ln" d="M360,86 C240,120 150,130 124,162" marker-end="url(#dep)"/>
+            <path class="ln" d="M430,88 C400,120 360,140 346,162" marker-end="url(#dep)"/>
+            <path class="ln" d="M540,88 C580,120 606,140 614,162" marker-end="url(#dep)"/>
+            <path class="ln" d="M600,86 C740,120 820,130 836,162" marker-end="url(#dep)"/>
+            <!-- desktop -> core (direct, via ligne centrale pointillée) -->
+            <path class="lndash" d="M480,86 L480,318" marker-end="url(#dep)"/>
+
+            <!-- adaptateurs -> core -->
+            <path class="ln" d="M150,230 C210,280 320,300 360,320" marker-end="url(#dep)"/>
+            <path class="ln" d="M360,230 C390,270 420,290 440,318" marker-end="url(#dep)"/>
+            <path class="ln" d="M600,230 C560,270 540,290 520,318" marker-end="url(#dep)"/>
+            <path class="ln" d="M810,230 C740,285 640,300 600,322" marker-end="url(#dep)"/>
+
+            <text class="ts" x="480" y="414" text-anchor="middle">— les flèches indiquent « dépend de » —</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 2.</b> Le sens des dépendances. <code>mail-render</code> et <code>mail-auth</code> n'ont même pas besoin de <code>mail-core</code> : ils sont autonomes. Un adaptateur par protocole (« SMTP et Graph auront les leurs »).</figcaption>
+      </figure>
+
+      <div class="table-hote">
+        <table>
+          <thead><tr><th>Crate</th><th>Rôle</th><th>Dépendances clés</th></tr></thead>
+          <tbody>
+            <tr><td><code>mail-core</code></td><td>Domaine, synchro, stockage, recherche, fils, brouillons, envoi, échos. Décisions pures.</td><td><code>rusqlite</code> (bundled), <code>chrono</code>, <code>thiserror</code></td></tr>
+            <tr><td><code>mail-imap</code></td><td>Adaptateur IMAP : implémente <code>MailServer</code>. TLS borné, CONDSTORE, MUTF-7.</td><td><code>imap</code>, <code>imap-proto</code>, <code>native-tls</code>, <code>mail-parser</code></td></tr>
+            <tr><td><code>mail-auth</code></td><td>OAuth2 PKCE loopback + coffre Windows. Fournisseurs décrits <b>en données</b>.</td><td><code>oauth2</code>, <code>keyring</code>, <code>webbrowser</code></td></tr>
+            <tr><td><code>mail-render</code></td><td>Assainissement HTML (défense en profondeur) + conversion texte + CSP.</td><td><code>ammonia</code>, <code>mail-parser</code></td></tr>
+            <tr><td><code>mail-smtp</code></td><td>Adaptateur SMTP : implémente <code>MailTransport</code>. XOAUTH2, classement transitoire/permanent.</td><td><code>lettre</code> (rustls, builder)</td></tr>
+            <tr><td><code>wind-desktop</code></td><td>Shell Tauri 2 : commandes IPC, cycle de synchro, veilleurs, migration, updater, télémétrie.</td><td><code>tauri</code> 2 + plugins <code>updater</code>/<code>notification</code>/<code>dialog</code>, <code>fs4</code>, <code>open</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="encart">
+        <p class="et">Discipline de crate</p>
+        <p><code>unsafe_code = "forbid"</code> sur tout le workspace. <code>unwrap()</code>/<code>expect()</code>
+        en <i>warn</i> (donc rouge au gate, <code>clippy -D warnings</code>). Erreurs typées
+        (<code>thiserror</code>) dans les crates, <code>anyhow</code> dans les apps. Rust
+        <b>épinglé à 1.97.1</b> (<code>rust-toolchain.toml</code>) — source unique, alignée
+        local / hook / CI.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="cerveau">
+      <h2><span class="n">§3</span> mail-core, le cerveau</h2>
+      <p class="chapo">Le cœur ne connaît ni Tauri, ni le web, ni IMAP. Il répond à des
+      questions et prend des décisions ; l'I/O vit ailleurs. C'est le motif récurrent qui
+      rend le terrain testable sans réseau.</p>
+
+      <h3>Le motif : décision pure, exécution ailleurs</h3>
+      <p>Partout où c'est possible, la <b>décision</b> est une fonction pure et testable ;
+      l'<b>exécution</b> (I/O, réseau) est séparée. Ce découpage permet de rejouer les
+      scénarios du terrain — un serveur capricieux, une base héritée, une boîte de 250 000
+      messages — sans jamais ouvrir de socket.</p>
+
+      <div class="grille">
+        <div class="carte"><h4>thread::plan</h4><p>À quel fil rattacher un message ? Union-find pur sur les en-têtes RFC 5322.</p></div>
+        <div class="carte"><h4>sync_order · sync_percent</h4><p>Dans quel ordre relever les boîtes ; où en est l'avancement (dénominateur = <code>EXISTS</code>).</p></div>
+        <div class="carte"><h4>disk_shortfall</h4><p>Combien d'espace il manque avant de s'engager — la garde de l'ADR 0010, pure.</p></div>
+        <div class="carte"><h4>plan_draft_pull</h4><p>Que tirer du dossier Brouillons distant ? Détection de conflit d'édition.</p></div>
+        <div class="carte"><h4>convert::sent_folder</h4><p>Quel dossier est celui des envois, à partir des attributs LIST.</p></div>
+        <div class="carte"><h4>notify::arrivals_to_notify</h4><p>Quelles arrivées méritent une bulle — et dans quelle langue.</p></div>
+      </div>
+
+      <h3>Les modules du cœur</h3>
+      <div class="table-hote">
+        <table>
+          <thead><tr><th>Module</th><th>Responsabilité</th></tr></thead>
+          <tbody>
+            <tr><td><code>store</code></td><td>Stockage SQLite (WAL), schéma, migrations, boîte unifiée, portée du regroupement, adoption transactionnelle.</td></tr>
+            <tr><td><code>sync</code></td><td>Moteur « enveloppes d'abord » : initial (récent→ancien), incrémental (CONDSTORE ou diff d'UIDs), + <code>sync_order/percent</code>, <code>disk_shortfall</code>.</td></tr>
+            <tr><td><code>thread</code></td><td>Conversations : union-find pur + persistance, portée au compte, reconstruction sur UIDVALIDITY.</td></tr>
+            <tr><td><code>search</code></td><td>Index FTS5 <i>contentless</i>, transactionnel, entretenu dans la même transaction que le message.</td></tr>
+            <tr><td><code>backfill</code></td><td>Rattrapage borné/reprenable/groupé : corps, en-têtes de fil, destinataires — <code>NO_HORIZON</code> depuis l'ADR 0010.</td></tr>
+            <tr><td><code>outbox</code></td><td>Boîte d'envoi + les deux règles d'or (journal avant réseau, anti-fantôme).</td></tr>
+            <tr><td><code>drafts</code></td><td>Brouillons : poussée, tirage, conflit d'édition, pièces jointes copiées au geste.</td></tr>
+            <tr><td><code>echo</code></td><td>Échos locaux : la copie de destination d'un geste, visible avant que le serveur suive.</td></tr>
+            <tr><td><code>compose / body / attachment / envelope / address</code></td><td>Types du domaine : composition, citation, corps, pièces, enveloppe, adresses.</td></tr>
+            <tr><td><code>remote / transport</code></td><td>Les deux ports abstraits — la seule frontière (voir §4).</td></tr>
+            <tr><td><code>crash</code></td><td>Rédaction <b>pure</b> d'un rapport de crash : écarte le message du panic (seul vecteur de PII).</td></tr>
+            <tr><td><code>imap_quoted</code></td><td>Dé-échappement des <code>quoted-string</code> IMAP que <code>imap-proto</code> laisse (correctif 0.1.8).</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="encart">
+        <p class="et">Outillage de diagnostic (lecture seule, aucun contenu divulgué)</p>
+        <p>Trois diagnostics (<code>diagnostic_index</code>, <code>diagnostic_fils</code>,
+        <code>diagnostic_brouillons</code>), trois bancs (<code>banc_page_liste</code>,
+        <code>banc_migration_fils</code>, <code>banc_recherche</code>) et
+        <code>seed_inbox</code> vivent dans <code>crates/mail-core/examples/</code>. Ils
+        mesurent le terrain sans jamais exposer un sujet, un expéditeur ou un identifiant
+        en clair.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="ports">
+      <h2><span class="n">§4</span> Les deux ports</h2>
+      <p class="chapo">Toute la frontière abstraite du cœur tient en deux traits. Le reste
+      (SQLite) est concret et assumé.</p>
+
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 440" role="img" aria-label="Les ports MailServer et MailTransport">
+            <defs>
+              <marker id="imp" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-accent)"/>
+              </marker>
+            </defs>
+
+            <!-- coeur -->
+            <rect class="acc" x="360" y="30" width="240" height="60" rx="12"/>
+            <text class="tb" x="480" y="56" text-anchor="middle" style="fill:var(--sv-accent)">mail-core</text>
+            <text class="ts" x="480" y="76" text-anchor="middle">moteur de synchro + envoi</text>
+
+            <!-- MailServer trait -->
+            <rect class="bg2" x="60" y="140" width="380" height="230" rx="12"/>
+            <text class="tb" x="80" y="166">trait MailServer <tspan class="ts">— lecture</tspan></text>
+            <line class="ln" x1="80" y1="176" x2="420" y2="176"/>
+            <text class="mono" x="80" y="198">select · list_uids · fetch_envelopes</text>
+            <text class="mono" x="80" y="218">changes_since  (CONDSTORE, delta)</text>
+            <text class="mono" x="80" y="238">fetch_body_html · fetch_bodies_html</text>
+            <text class="mono" x="80" y="258">fetch_thread_headers (References)</text>
+            <text class="mono" x="80" y="278">fetch_attachment · fetch_recipients</text>
+            <text class="mono" x="80" y="298">set_seen · set_flagged · archive · delete</text>
+            <text class="mono" x="80" y="318">folders · folders_with_status</text>
+            <text class="mono" x="80" y="338">folder_status (STATUS) · move_to</text>
+
+            <!-- MailTransport trait -->
+            <rect class="bg2" x="560" y="140" width="340" height="120" rx="12"/>
+            <text class="tb" x="580" y="166">trait MailTransport <tspan class="ts">— envoi</tspan></text>
+            <line class="ln" x1="580" y1="176" x2="880" y2="176"/>
+            <text class="mono" x="580" y="200">send(&amp;OutboxMessage)</text>
+            <text class="ts" x="580" y="224">Ok seulement si le serveur a TOUT accepté.</text>
+            <text class="ts" x="580" y="240">SendError::Transient (rejouer)  vs</text>
+            <text class="ts" x="580" y="256">SendError::Permanent (l'utilisateur tranche)</text>
+
+            <!-- implémentations -->
+            <rect class="bg" x="60" y="392" width="150" height="34" rx="8"/>
+            <text class="t" x="135" y="414" text-anchor="middle">ImapServer</text>
+            <rect class="bg" x="222" y="392" width="150" height="34" rx="8"/>
+            <text class="t" x="297" y="414" text-anchor="middle">FakeServer (tests)</text>
+            <rect class="bg" x="560" y="284" width="150" height="34" rx="8"/>
+            <text class="t" x="635" y="306" text-anchor="middle">SmtpMailer</text>
+            <rect class="bg" x="722" y="284" width="150" height="34" rx="8"/>
+            <text class="t" x="797" y="306" text-anchor="middle">FakeTransport</text>
+
+            <!-- liens -->
+            <path class="lnacc" d="M400,90 C300,110 250,120 250,138" marker-end="url(#imp)"/>
+            <path class="lnacc" d="M560,90 C660,110 720,120 720,138" marker-end="url(#imp)"/>
+            <line class="ln" x1="135" y1="370" x2="135" y2="390"/>
+            <line class="ln" x1="297" y1="370" x2="297" y2="390"/>
+            <line class="ln" x1="635" y1="260" x2="635" y2="282"/>
+            <line class="ln" x1="797" y1="260" x2="797" y2="282"/>
+            <text class="ts" x="250" y="128">implémenté par ↓</text>
+            <text class="ts" x="700" y="128">implémenté par ↓</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 3.</b> Les deux ports et leurs implémentations. Le <code>FakeServer</code> rejoue les bizarreries du terrain (il annonce exactement ce qu'il sert, jamais une constante). La distinction transitoire/permanent est LA décision que le cœur délègue à l'adaptateur d'envoi.</figcaption>
+      </figure>
+
+      <div class="encart attention">
+        <p class="et">Décision gelée</p>
+        <p><b>SQLite n'est PAS derrière un trait.</b> <code>Store</code> est une struct
+        concrète ; les tests utilisent une base en mémoire ; le journal est en <b>WAL</b>
+        sur fichier (ADR 0011). Abstraire le stockage aurait coûté sans rien prouver — le
+        cœur est déjà indépendant de tout ce qui compte.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="donnees">
+      <h2><span class="n">§5</span> Modèle de données</h2>
+      <p class="chapo">Une base SQLite unique, en WAL, avec ses index et agrégats <b>dans</b>
+      la base — entretenus dans la même transaction que le message. L'identité d'un message
+      est <code>(account_id, boîte, uid)</code> partout.</p>
+
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 560" role="img" aria-label="Schéma relationnel SQLite">
+            <defs>
+              <marker id="fk" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-line)"/>
+              </marker>
+            </defs>
+
+            <!-- Réception -->
+            <text class="tacc" x="40" y="26">RÉCEPTION</text>
+            <rect class="acc" x="40" y="36" width="180" height="70" rx="10"/>
+            <text class="tb" x="52" y="58">accounts</text>
+            <text class="mono" x="52" y="76">id · email · provider</text>
+            <text class="mono" x="52" y="92">sent_mailbox</text>
+
+            <rect class="bg" x="40" y="150" width="180" height="86" rx="10"/>
+            <text class="tb" x="52" y="172">mailboxes</text>
+            <text class="mono" x="52" y="190">id · account_id · name</text>
+            <text class="mono" x="52" y="206">uid_validity · last_uid</text>
+            <text class="mono" x="52" y="222">threaded · remote_total</text>
+
+            <rect class="bg" x="40" y="286" width="200" height="118" rx="10"/>
+            <text class="tb" x="52" y="308">envelopes</text>
+            <text class="mono" x="52" y="326">(mailbox_id, uid) PK</text>
+            <text class="mono" x="52" y="342">subject · sender · to/cc</text>
+            <text class="mono" x="52" y="358">message_id · in_reply_to</text>
+            <text class="mono" x="52" y="374">refs · thread_id</text>
+            <text class="mono" x="52" y="390">date_epoch · seen · flagged</text>
+
+            <rect class="bg" x="40" y="440" width="96" height="60" rx="9"/>
+            <text class="tb" x="52" y="462">bodies</text>
+            <text class="mono" x="52" y="480">html</text>
+            <text class="mono" x="52" y="494">scanned</text>
+            <rect class="bg" x="144" y="440" width="96" height="60" rx="9"/>
+            <text class="tb" x="156" y="462">attachments</text>
+            <text class="mono" x="156" y="480">name·mime</text>
+            <text class="mono" x="156" y="494">size (méta)</text>
+
+            <!-- Fils -->
+            <text class="tacc" x="300" y="26">FILS</text>
+            <rect class="bg2" x="300" y="36" width="170" height="66" rx="10"/>
+            <text class="tb" x="312" y="58">threads</text>
+            <text class="mono" x="312" y="76">id · size · unseen</text>
+            <text class="mono" x="312" y="92">last_epoch</text>
+            <rect class="bg2" x="300" y="128" width="170" height="60" rx="10"/>
+            <text class="tb" x="312" y="150">thread_links</text>
+            <text class="mono" x="312" y="168">thread_id</text>
+            <text class="mono" x="312" y="182">message_id (annuaire)</text>
+
+            <!-- Recherche -->
+            <text class="tacc" x="300" y="228">RECHERCHE</text>
+            <rect class="acc" x="300" y="238" width="170" height="60" rx="10"/>
+            <text class="tb" x="312" y="260">search (FTS5)</text>
+            <text class="mono" x="312" y="278">contentless</text>
+            <text class="mono" x="312" y="292">transactionnel</text>
+
+            <!-- Brouillons -->
+            <text class="tacc" x="520" y="26">BROUILLONS</text>
+            <rect class="bg" x="520" y="36" width="190" height="78" rx="10"/>
+            <text class="tb" x="532" y="58">drafts</text>
+            <text class="mono" x="532" y="76">to_raw · subject · body</text>
+            <text class="mono" x="532" y="92">reply_to_uid/mailbox</text>
+            <text class="mono" x="532" y="108">remote_uid · pushed_epoch</text>
+            <rect class="bg" x="520" y="140" width="190" height="46" rx="10"/>
+            <text class="tb" x="532" y="162">draft_attachments</text>
+            <text class="mono" x="532" y="178">bytes BLOB (à nous)</text>
+            <rect class="bg" x="520" y="210" width="90" height="46" rx="9"/>
+            <text class="tb" x="532" y="230">drafts_remote</text>
+            <text class="mono" x="532" y="246">uid_validity</text>
+            <rect class="bg" x="620" y="210" width="90" height="46" rx="9"/>
+            <text class="tb" x="632" y="230">tombstones</text>
+            <text class="mono" x="632" y="246">remote_uid</text>
+
+            <!-- Envoi -->
+            <text class="tacc" x="750" y="26">ENVOI</text>
+            <rect class="bg" x="750" y="36" width="180" height="96" rx="10"/>
+            <text class="tb" x="762" y="58">outbox</text>
+            <text class="mono" x="762" y="76">message_id · sender</text>
+            <text class="mono" x="762" y="92">recipients · subject</text>
+            <text class="mono" x="762" y="108">state · attempts</text>
+            <text class="mono" x="762" y="124">last_error</text>
+            <rect class="bg" x="750" y="158" width="180" height="46" rx="10"/>
+            <text class="tb" x="762" y="180">outbox_attachments</text>
+            <text class="mono" x="762" y="196">bytes → NULL à l'envoi</text>
+
+            <!-- Échos & état -->
+            <text class="tacc" x="750" y="240">ÉCHOS &amp; ÉTAT</text>
+            <rect class="bg2" x="750" y="250" width="180" height="86" rx="10"/>
+            <text class="tb" x="762" y="272">echos</text>
+            <text class="mono" x="762" y="290">destination (canonique)</text>
+            <text class="mono" x="762" y="306">origin_action / outbox_id</text>
+            <text class="mono" x="762" y="322">preview · html</text>
+            <rect class="bg2" x="750" y="360" width="86" height="44" rx="9"/>
+            <text class="tb" x="762" y="380">folders</text>
+            <text class="mono" x="762" y="396">wire/display</text>
+            <rect class="bg2" x="844" y="360" width="86" height="44" rx="9"/>
+            <text class="tb" x="856" y="380">prefs</text>
+            <text class="mono" x="856" y="396">key/value</text>
+            <rect class="bg2" x="750" y="418" width="180" height="40" rx="9"/>
+            <text class="tb" x="762" y="443">pending_actions <tspan class="mono">(rejeu)</tspan></text>
+
+            <!-- liens FK -->
+            <line class="ln" x1="130" y1="106" x2="130" y2="148" marker-end="url(#fk)"/>
+            <line class="ln" x1="130" y1="236" x2="130" y2="284" marker-end="url(#fk)"/>
+            <line class="ln" x1="90" y1="404" x2="90" y2="438" marker-end="url(#fk)"/>
+            <line class="ln" x1="192" y1="404" x2="192" y2="438" marker-end="url(#fk)"/>
+            <path class="lndash" d="M240,330 C270,320 280,290 298,270" marker-end="url(#fk)"/>
+            <path class="lndash" d="M240,345 L298,150" marker-end="url(#fk)"/>
+            <line class="ln" x1="615" y1="114" x2="615" y2="138" marker-end="url(#fk)"/>
+            <line class="ln" x1="840" y1="132" x2="840" y2="156" marker-end="url(#fk)"/>
+
+            <text class="ts" x="250" y="262" transform="rotate(-16 250 262)">thread_id →</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 4.</b> Le schéma relationnel, par familles. <code>attachments</code> et <code>echos</code> ne portent jamais d'octets superflus : les métadonnées se stockent, les octets se paient à la demande. <code>bodies.scanned=0</code> marque un corps rapatrié avant que les pièces jointes n'existent — à relire.</figcaption>
+      </figure>
+
+      <h4>Invariants du stockage</h4>
+      <ul>
+        <li><b>Index et agrégats dans la base</b> : FTS5 et la table <code>threads</code> sont
+        entretenus dans la <b>même transaction</b> que le message.</li>
+        <li><b>Stocker tout, ne regrouper que la portée</b> : un message hors de INBOX + Envoyés
+        garde <code>thread_id = NULL</code> pour toujours (<code>mailboxes.threaded</code> +
+        <code>accounts.sent_mailbox</code>). Sans quoi un spam accroché à un fil le ferait
+        remonter en tête de liste.</li>
+        <li><b>Migrations adoptantes</b> : une fonctionnalité neuve <b>adopte</b> les données
+        anciennes, prouvée par un test qui rembobine une vraie base de fichier
+        (<code>PRAGMA user_version</code>). Le piège s'est présenté quatre fois.</li>
+        <li><b>UIDVALIDITY</b> : si elle change, la boîte repart de zéro et <b>tout le compte</b>
+        refait ses fils (<code>thread::rebuild_account</code>).</li>
+      </ul>
+
+      <div class="encart attention">
+        <p class="et">Données au repos</p>
+        <p>La base vit dans <code>%APPDATA%\dev.elements.wind\wind.db</code> avec ses deux
+        compagnons WAL (<code>-wal</code>, <code>-shm</code>) — une copie à chaud prend les
+        trois. Le budget « base &lt; 1 Go » est <b>levé</b> (ADR 0010) : la base grandit vers
+        ~13 Go (256 312 × ~50 ko) et c'est la garde d'espace disque qui veille avant chaque
+        engagement.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="synchro">
+      <h2><span class="n">§6</span> Synchronisation</h2>
+      <p class="chapo">« Enveloppes d'abord » : la liste devient utilisable dès le premier lot,
+      le reste (corps, en-têtes de fil, destinataires) se rattrape en tâche de fond. Tout est
+      synchronisé, sans horizon ni quota (ADR 0010).</p>
+
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 500" role="img" aria-label="Cycle de synchronisation">
+            <defs>
+              <marker id="fl" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-accent)"/>
+              </marker>
+              <marker id="flg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-line)"/>
+              </marker>
+            </defs>
+
+            <text class="tacc" x="40" y="24">CYCLE PAR COMPTE (automatique, veilleur, ou bouton)</text>
+
+            <rect class="acc" x="40" y="40" width="150" height="52" rx="10"/>
+            <text class="t" x="115" y="62" text-anchor="middle">Inventaire</text>
+            <text class="ts" x="115" y="80" text-anchor="middle">LIST-STATUS · 1 A/R</text>
+
+            <rect class="warm" x="216" y="40" width="150" height="52" rx="10"/>
+            <text class="t" x="291" y="62" text-anchor="middle">Garde disque</text>
+            <text class="ts" x="291" y="80" text-anchor="middle">disk_shortfall</text>
+
+            <rect class="bg" x="392" y="40" width="150" height="52" rx="10"/>
+            <text class="t" x="467" y="62" text-anchor="middle">Rejeu actions</text>
+            <text class="ts" x="467" y="80" text-anchor="middle">pending_actions</text>
+
+            <rect class="acc" x="568" y="40" width="160" height="52" rx="10"/>
+            <text class="t" x="648" y="62" text-anchor="middle">Relève INBOX</text>
+            <text class="ts" x="648" y="80" text-anchor="middle">enveloppes, lots 500</text>
+
+            <rect class="bg2" x="754" y="40" width="166" height="52" rx="10"/>
+            <text class="t" x="837" y="60" text-anchor="middle">Recharge liste</text>
+            <text class="ts" x="837" y="78" text-anchor="middle">courrier · génération</text>
+
+            <line class="lnacc" x1="190" y1="66" x2="214" y2="66" marker-end="url(#fl)"/>
+            <line class="lnacc" x1="366" y1="66" x2="390" y2="66" marker-end="url(#fl)"/>
+            <line class="lnacc" x1="542" y1="66" x2="566" y2="66" marker-end="url(#fl)"/>
+            <line class="lnacc" x1="728" y1="66" x2="752" y2="66" marker-end="url(#fl)"/>
+
+            <!-- balayage tous dossiers -->
+            <line class="lnacc" x1="648" y1="92" x2="648" y2="128" marker-end="url(#fl)"/>
+            <rect class="bg" x="470" y="130" width="360" height="52" rx="10"/>
+            <text class="t" x="650" y="152" text-anchor="middle">Balayage de TOUS les dossiers</text>
+            <text class="ts" x="650" y="170" text-anchor="middle">faut_relever gardé par STATUS (ADR 0017) — saute ce qui n'a pas bougé</text>
+
+            <!-- CONDSTORE / diff -->
+            <rect class="bg2" x="470" y="200" width="175" height="46" rx="9"/>
+            <text class="ts" x="557" y="220" text-anchor="middle">serveur CONDSTORE ?</text>
+            <text class="mono" x="557" y="236" text-anchor="middle">changes_since (delta)</text>
+            <rect class="bg2" x="655" y="200" width="175" height="46" rx="9"/>
+            <text class="ts" x="742" y="220" text-anchor="middle">sinon</text>
+            <text class="mono" x="742" y="236" text-anchor="middle">différentiel d'UIDs</text>
+            <line class="ln" x1="600" y1="182" x2="560" y2="198" marker-end="url(#flg)"/>
+            <line class="ln" x1="700" y1="182" x2="742" y2="198" marker-end="url(#flg)"/>
+
+            <!-- passes de fond -->
+            <text class="tacc" x="40" y="292">PASSES DE FOND (bornées, reprenables, groupées)</text>
+            <rect class="bg" x="40" y="304" width="270" height="60" rx="10"/>
+            <text class="tb" x="60" y="326">Rattrapage des corps</text>
+            <text class="ts" x="60" y="346">200 / lot · l'UI cesse de rappeler pour interrompre</text>
+            <rect class="bg" x="330" y="304" width="270" height="60" rx="10"/>
+            <text class="tb" x="350" y="326">En-têtes de fil</text>
+            <text class="ts" x="350" y="346">2 000 / compte · apporte « References »</text>
+            <rect class="bg" x="620" y="304" width="300" height="60" rx="10"/>
+            <text class="tb" x="640" y="326">Destinataires (À / Cc)</text>
+            <text class="ts" x="640" y="346">2 000 · INBOX + Envoyés · « Répondre à tous »</text>
+
+            <line class="lndash" x1="650" y1="182" x2="175" y2="302" marker-end="url(#flg)"/>
+
+            <!-- veilleur IDLE -->
+            <text class="tacc" x="40" y="404">TEMPS RÉEL — un veilleur par compte (ADR 0018)</text>
+            <rect class="warm" x="40" y="416" width="880" height="64" rx="11"/>
+            <text class="tb" x="60" y="440">Veilleur IDLE — thread dédié, connexion IMAP séparée</text>
+            <text class="ts" x="60" y="460">Ne touche JAMAIS la base : il SIGNALE (drapeau), la passe légère du compte fait le travail.</text>
+            <text class="ts" x="60" y="474">Relance 3 min (détecte aussi une connexion morte) · reconnexion à délai doublé · dort hors ligne.</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 5.</b> Le cycle de synchro et ses passes de fond. L'inventaire fond ~51 STATUS séquentiels en une commande LIST-STATUS. Un budget borné par lot rend l'interruption <i>gratuite</i> : l'UI cesse simplement de rappeler.</figcaption>
+      </figure>
+
+      <div class="grille">
+        <div class="carte"><h4>Enveloppes d'abord</h4><p>Synchro initiale du plus récent au plus ancien, par lots de 500. <code>In-Reply-To</code> vient gratuitement de l'ENVELOPE ; <code>References</code> exige une passe séparée (10× plus gros).</p></div>
+        <div class="carte"><h4>Incrémentale</h4><p>CONDSTORE (RFC 7162) quand le serveur l'expose — nouveaux messages ET changements de flags via <code>HIGHESTMODSEQ</code>. Sinon, différentiel d'UIDs.</p></div>
+        <div class="carte"><h4>Coalescence des relèves</h4><p>Un verrou de relève <b>par compte</b> : cycle, bouton et veilleur peuvent viser le même INBOX — un seul paie, les autres attendent.</p></div>
+        <div class="carte"><h4>Anti-martèlement</h4><p>Un compte en échec accumule un <i>recul</i> (échecs consécutifs, en mémoire) ; le cycle le saute sans le taire. Le geste manuel force toujours la tentative.</p></div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="fils">
+      <h2><span class="n">§7</span> Conversations</h2>
+      <p class="chapo">Le regroupement est un <b>union-find</b> sur les identifiants RFC 5322.
+      Jamais de repli par sujet ; un identifiant exige une arobase (ADR 0008).</p>
+
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 400" role="img" aria-label="Regroupement union-find en conversations">
+            <defs>
+              <marker id="uf" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-line)"/>
+              </marker>
+            </defs>
+
+            <text class="tacc" x="40" y="24">DANS LA PORTÉE — INBOX + Envoyés (threaded = 1)</text>
+
+            <!-- messages -->
+            <rect class="bg" x="40" y="44" width="180" height="58" rx="10"/>
+            <text class="t" x="52" y="66">A · Message-ID ⟨a⟩</text>
+            <text class="ts" x="52" y="86">boîte : INBOX (reçu)</text>
+
+            <rect class="bg" x="40" y="150" width="180" height="58" rx="10"/>
+            <text class="t" x="52" y="172">B · ⟨b⟩ · In-Reply-To ⟨a⟩</text>
+            <text class="ts" x="52" y="192">boîte : Envoyés (ma réponse)</text>
+
+            <rect class="bg" x="40" y="256" width="180" height="58" rx="10"/>
+            <text class="t" x="52" y="278">C · ⟨c⟩ · References ⟨a b⟩</text>
+            <text class="ts" x="52" y="298">boîte : INBOX (leur suite)</text>
+
+            <!-- annuaire -->
+            <rect class="bg2" x="330" y="120" width="220" height="150" rx="12"/>
+            <text class="tb" x="440" y="146" text-anchor="middle">Annuaire union-find</text>
+            <text class="mono" x="352" y="176">⟨a⟩ → fil #7</text>
+            <text class="mono" x="352" y="200">⟨b⟩ → fil #7</text>
+            <text class="mono" x="352" y="224">⟨c⟩ → fil #7</text>
+            <text class="ts" x="352" y="252">un citant deux fils les FUSIONNE</text>
+
+            <!-- fil -->
+            <rect class="acc" x="660" y="150" width="250" height="96" rx="12"/>
+            <text class="tb" x="785" y="182" text-anchor="middle" style="fill:var(--sv-accent)">Fil #7</text>
+            <text class="ts" x="785" y="206" text-anchor="middle">size · unseen · last_epoch</text>
+            <text class="ts" x="785" y="226" text-anchor="middle">agrégat recalculé, dans la base</text>
+
+            <path class="ln" d="M220,73 C280,90 300,120 328,150" marker-end="url(#uf)"/>
+            <path class="ln" d="M220,179 L328,190" marker-end="url(#uf)"/>
+            <path class="ln" d="M220,285 C280,270 300,250 328,232" marker-end="url(#uf)"/>
+            <path class="ln" d="M550,195 L658,197" marker-end="url(#uf)"/>
+
+            <!-- hors portée -->
+            <text class="tacc" x="40" y="352" style="fill:var(--sv-warm-l)">HORS PORTÉE — spam, archives, autres dossiers</text>
+            <rect class="warm" x="40" y="362" width="500" height="30" rx="8"/>
+            <text class="ts" x="52" y="382">thread_id = NULL pour toujours — stocké &amp; cherchable, jamais regroupé</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 6.</b> L'union-find recolle les morceaux. La fusion n'est pas un cas exotique : elle rend le regroupement <b>convergent</b>, car les messages et leurs en-têtes n'arrivent pas dans l'ordre. Un fil est un <i>entier</i>, pas un Message-ID — il ne change jamais d'identité.</figcaption>
+      </figure>
+
+      <div class="encart">
+        <p class="et">Pourquoi « References » compte</p>
+        <p>Dans une boîte de réception, le message intermédiaire d'un échange est souvent
+        celui qu'on a soi-même envoyé — il n'est pas dans INBOX. Sans <code>References</code>
+        (rapatrié en tâche de fond), la moitié des conversations resterait coupée en deux.
+        Les morceaux se recollent dès que le lien apparaît, sans perte.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="envoi">
+      <h2><span class="n">§8</span> Boîte d'envoi & échos</h2>
+      <p class="chapo">Les deux règles d'or (ADR 0003) : jamais d'envoi perdu, jamais d'envoi
+      fantôme. <i>« Le doublon est pire que le retard. »</i></p>
+
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 380" role="img" aria-label="Machine à états de la boîte d'envoi">
+            <defs>
+              <marker id="st" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-accent)"/>
+              </marker>
+              <marker id="stw" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-warm-l)"/>
+              </marker>
+            </defs>
+
+            <!-- geste -->
+            <rect class="bg2" x="40" y="150" width="140" height="60" rx="10"/>
+            <text class="t" x="110" y="176" text-anchor="middle">Geste « Envoyer »</text>
+            <text class="ts" x="110" y="196" text-anchor="middle">1 transaction</text>
+
+            <!-- queued -->
+            <rect class="acc" x="240" y="150" width="130" height="60" rx="10"/>
+            <text class="tb" x="305" y="178" text-anchor="middle">queued</text>
+            <text class="ts" x="305" y="196" text-anchor="middle">journalisé</text>
+
+            <!-- sending -->
+            <rect class="bg" x="440" y="150" width="130" height="60" rx="10"/>
+            <text class="tb" x="505" y="178" text-anchor="middle">sending</text>
+            <text class="ts" x="505" y="196" text-anchor="middle">remis au SMTP</text>
+
+            <!-- sent -->
+            <rect class="acc" x="770" y="60" width="150" height="60" rx="10"/>
+            <text class="tb" x="845" y="88" text-anchor="middle">sent</text>
+            <text class="ts" x="845" y="106" text-anchor="middle">octets → NULL</text>
+
+            <!-- quarantine -->
+            <rect class="warm" x="770" y="250" width="150" height="60" rx="10"/>
+            <text class="tb" x="845" y="278" text-anchor="middle" style="fill:var(--sv-warm-l)">quarantaine</text>
+            <text class="ts" x="845" y="296" text-anchor="middle">l'utilisateur tranche</text>
+
+            <line class="lnacc" x1="180" y1="180" x2="238" y2="180" marker-end="url(#st)"/>
+            <line class="lnacc" x1="370" y1="180" x2="438" y2="180" marker-end="url(#st)"/>
+            <!-- accept -->
+            <path class="lnacc" d="M570,168 C660,150 700,120 768,100" marker-end="url(#st)"/>
+            <text class="ts" x="660" y="128">Ok (tout accepté)</text>
+            <!-- transient -->
+            <path class="ln" d="M505,210 C505,250 420,250 372,196" marker-end="url(#stw)" style="stroke:var(--sv-warm-l)"/>
+            <text class="ts" x="410" y="262" style="fill:var(--sv-warm-l)">Transient → rejouer tel quel</text>
+            <!-- permanent -->
+            <path class="lnacc" d="M570,192 C660,220 700,250 768,272" marker-end="url(#stw)" style="stroke:var(--sv-warm-l)"/>
+            <text class="ts" x="640" y="238" style="fill:var(--sv-warm-l)">Permanent</text>
+
+            <!-- echo -->
+            <rect class="bg2" x="240" y="270" width="330" height="56" rx="10"/>
+            <text class="tb" x="256" y="292">Écho local (destination = « envoyés »)</text>
+            <text class="ts" x="256" y="312">visible en liste AVANT que le serveur suive — meurt à la réconciliation</text>
+            <path class="lndash" d="M305,210 L305,268" marker-end="url(#st)"/>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 7.</b> Le cycle de vie d'un envoi. L'intention est <b>journalisée avant tout réseau</b> (jamais perdu) ; un échec permanent va en quarantaine, jamais renvoyé automatiquement (jamais fantôme). L'écho local rend le geste visible en moins d'une seconde, hors ligne compris.</figcaption>
+      </figure>
+
+      <div class="grille">
+        <div class="carte"><h4>Jamais perdu</h4><p>L'intention entre en base <b>avant</b> le premier octet réseau. Un crash pendant l'envoi laisse un <code>queued</code> qui se rejoue.</p></div>
+        <div class="carte"><h4>Jamais fantôme</h4><p>Un refus permanent met en quarantaine. Aucun renvoi automatique : le doublon est pire que le retard.</p></div>
+        <div class="carte"><h4>Sérialisé</h4><p>Un verrou <code>outbox_flush</code> : deux pompes concurrentes mettraient en quarantaine les envois l'une de l'autre.</p></div>
+        <div class="carte"><h4>Échos de geste</h4><p>Suppression, archivage et envoi ont leur écho de destination (<code>envoyés</code>/<code>archives</code>/<code>corbeille</code>) — jamais dans <code>envelopes</code> (un UID inventé forgerait la clé).</p></div>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="shell">
+      <h2><span class="n">§9</span> Shell Tauri & IPC</h2>
+      <p class="chapo">Le shell desktop branche la fenêtre Tauri sur le cœur. Il porte l'état
+      partagé (verrous, veilleurs, avancement) et expose ~55 commandes à l'UI.</p>
+
+      <h3>La surface IPC</h3>
+      <p>L'UI n'appelle jamais une API Tauri privilégiée directement : elle passe par nos
+      commandes (moindre privilège). Notifications et updater sont <b>pilotés depuis Rust</b> ;
+      seule exception, le sélecteur de fichiers (<code>dialog:allow-open</code>).</p>
+
+      <div class="table-hote">
+        <table>
+          <thead><tr><th>Famille</th><th>Commandes (extrait)</th></tr></thead>
+          <tbody>
+            <tr><td><b>Comptes</b></td><td><code>connect_accounts</code>, <code>add_account</code>, <code>add_microsoft_account</code>, <code>add_generic_account</code>, <code>remove_account</code></td></tr>
+            <tr><td><b>Synchro</b></td><td><code>sync_inbox</code>, <code>sync_inbox_light</code>, <code>sync_apres_geste</code>, <code>sync_progress</code>, <code>sync_activity</code>, <code>reseau_etat</code></td></tr>
+            <tr><td><b>Lecture</b></td><td><code>nav_snapshot</code>, <code>list_category</code>, <code>thread_messages</code>, <code>message_body</code>, <code>message_attachments</code>, <code>save_attachment</code>, <code>search_messages</code></td></tr>
+            <tr><td><b>Gestes</b></td><td><code>mark_seen</code>, <code>mark_flagged</code>, <code>archive_message</code>, <code>move_message</code>, <code>delete_message</code>, <code>list_folders</code></td></tr>
+            <tr><td><b>Composition</b></td><td><code>reply_context</code>, <code>reply_all_context</code>, <code>forward_context</code>, <code>queue_send</code>, <code>flush_outbox</code>, <code>outbox_status</code>/<code>requeue</code>/<code>delete</code></td></tr>
+            <tr><td><b>Brouillons</b></td><td><code>save_draft</code>, <code>list_drafts</code>, <code>delete_draft</code>, <code>attach_files</code>, <code>detach_file</code>, <code>draft_attachments</code>, <code>sync_drafts</code></td></tr>
+            <tr><td><b>Rattrapage</b></td><td><code>backfill_status</code>, <code>backfill_bodies</code>, <code>preview_catchup</code></td></tr>
+            <tr><td><b>Migration</b></td><td><code>migration_check</code>, <code>migration_run</code>, <code>migration_progress</code>, <code>migration_cancel</code></td></tr>
+            <tr><td><b>Système</b></td><td><code>update_check</code>, <code>update_install</code>, <code>app_version</code>, <code>open_link</code>, <code>notif_pref_*</code>, <code>lang_*</code>, <code>telemetry_*</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>L'état partagé (<code>AppState</code>)</h3>
+      <div class="grille">
+        <div class="carte"><h4>Verrous de sérialisation</h4><p><code>outbox_flush</code>, <code>drafts_push</code>, <code>bodies_backfill</code>, et <code>verrous_releve</code> (un par compte) : empêchent deux passes concurrentes de se disputer les mêmes messages.</p></div>
+        <div class="carte"><h4>Avancement partagé</h4><p><code>MigrationShared</code> et <code>SyncShared</code> : des <b>atomiques</b>, pas des Mutex — la passe écrit, le sondage ne doit jamais la faire attendre.</p></div>
+        <div class="carte"><h4>Veilleurs & réseau</h4><p><code>veilleurs</code> (drapeau de vie par compte), <code>en_ligne</code>, <code>sync_reculs</code>, <code>passes_geste</code> (coalescées).</p></div>
+        <div class="carte"><h4>Le verrou global</h4><p><code>commandes</code> : la clé de <code>hors_pompe()</code> — une commande bloquante à la fois, comme quand le thread principal les sérialisait (§10).</p></div>
+      </div>
+
+      <div class="encart">
+        <p class="et">Avant tout le reste</p>
+        <p>Au démarrage, <code>main()</code> exécute d'abord le <b>déménagement Discovery → Wind</b> :
+        ni la base ni le profil WebView2 ne doivent naître côté Wind pendant qu'un poste
+        Discovery attend son renommage. Échec = arrêt net. Puis le hook de télémétrie
+        s'installe (sans toucher la base), et la fenêtre démarre.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="threads">
+      <h2><span class="n">§10</span> Modèle de threads</h2>
+      <p class="chapo">Dans Tauri 2, une commande <b>sans <code>async</code></b> s'exécute sur le
+      thread principal — la pompe de messages Windows. Une seule requête lente y gèle la
+      fenêtre. La réponse : tout ce qui bloque sort de la pompe (ADR 0019).</p>
+
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 380" role="img" aria-label="Modèle de threads hors_pompe">
+            <defs>
+              <marker id="th" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-accent)"/>
+              </marker>
+            </defs>
+
+            <!-- thread principal -->
+            <rect class="warm" x="40" y="40" width="880" height="86" rx="12"/>
+            <text class="tb" x="60" y="66">Thread principal = pompe de messages (la fenêtre)</text>
+            <text class="ts" x="60" y="88">Ne fait QUE pomper : déplacer, redessiner, répondre à Windows (SendMessageTimeout).</text>
+            <text class="ts" x="60" y="106">Exemption nommée : les commandes PURES d'état (ex. app_version) peuvent y rester.</text>
+
+            <!-- commande async -->
+            <rect class="acc" x="40" y="170" width="200" height="60" rx="10"/>
+            <text class="tb" x="140" y="196" text-anchor="middle">commande async</text>
+            <text class="ts" x="140" y="216" text-anchor="middle">ouvre base / keyring / réseau</text>
+
+            <!-- spawn_blocking -->
+            <rect class="bg" x="300" y="160" width="240" height="80" rx="11"/>
+            <text class="tb" x="420" y="186" text-anchor="middle">hors_pompe()</text>
+            <text class="ts" x="420" y="206" text-anchor="middle">tauri spawn_blocking</text>
+            <text class="mono" x="420" y="224" text-anchor="middle">+ verrou global « commandes »</text>
+
+            <!-- exécution -->
+            <rect class="bg2" x="600" y="170" width="320" height="60" rx="10"/>
+            <text class="t" x="760" y="196" text-anchor="middle">Travail bloquant, une à la fois</text>
+            <text class="ts" x="760" y="216" text-anchor="middle">la sérialisation d'avant est CONSERVÉE</text>
+
+            <line class="lnacc" x1="240" y1="200" x2="298" y2="200" marker-end="url(#th)"/>
+            <line class="lnacc" x1="540" y1="200" x2="598" y2="200" marker-end="url(#th)"/>
+            <path class="ln" d="M140,168 C140,140 200,130 480,128" marker-end="url(#th)" style="stroke-dasharray:5 4"/>
+            <text class="ts" x="250" y="150">jamais sur la pompe →</text>
+
+            <!-- gardes -->
+            <rect class="bg" x="40" y="288" width="430" height="64" rx="11"/>
+            <text class="tb" x="60" y="312">Garde : garde-thread-principal.mjs</text>
+            <text class="ts" x="60" y="332">refuse toute commande bloquante non-async (exemption nommée &amp; justifiée)</text>
+            <rect class="bg" x="490" y="288" width="430" height="64" rx="11"/>
+            <text class="tb" x="510" y="312">Sonde : sonde-gel.py</text>
+            <text class="ts" x="510" y="332">budget « aucun gel &gt; 150 ms » · 25,2 s de gels cumulés → 0</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 8.</b> Le thread d'une commande est une décision, pas un détail. Le coût des requêtes n'était pas la racine des gels — leur <b>place</b> l'était. 865 ms sont acceptables sur un thread de fond, inacceptables sur la pompe.</figcaption>
+      </figure>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="securite">
+      <h2><span class="n">§11</span> Sécurité</h2>
+      <p class="chapo">Trois piliers : credentials au coffre de l'OS, rendu HTML en défense en
+      profondeur, et un parcours OAuth2 décrit en données.</p>
+
+      <h3>Authentification — OAuth2 PKCE loopback</h3>
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 320" role="img" aria-label="Parcours OAuth2 PKCE">
+            <defs>
+              <marker id="oa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-accent)"/>
+              </marker>
+            </defs>
+            <rect class="acc" x="40" y="120" width="150" height="70" rx="11"/>
+            <text class="tb" x="115" y="150" text-anchor="middle">Wind</text>
+            <text class="ts" x="115" y="170" text-anchor="middle">mail-auth</text>
+
+            <rect class="bg" x="270" y="40" width="180" height="60" rx="10"/>
+            <text class="t" x="360" y="66" text-anchor="middle">Navigateur système</text>
+            <text class="ts" x="360" y="84" text-anchor="middle">consentement + PKCE</text>
+
+            <rect class="bg" x="270" y="210" width="180" height="60" rx="10"/>
+            <text class="t" x="360" y="236" text-anchor="middle">Écoute loopback</text>
+            <text class="ts" x="360" y="254" text-anchor="middle">127.0.0.1 / localhost</text>
+
+            <rect class="bg" x="540" y="120" width="180" height="70" rx="10"/>
+            <text class="t" x="630" y="146" text-anchor="middle">Point de token</text>
+            <text class="ts" x="630" y="166" text-anchor="middle">échange code + verifier</text>
+            <text class="ts" x="630" y="182" text-anchor="middle">(secret si Google)</text>
+
+            <rect class="warm" x="780" y="120" width="150" height="70" rx="10"/>
+            <text class="tb" x="855" y="146" text-anchor="middle">Coffre OS</text>
+            <text class="ts" x="855" y="166" text-anchor="middle">Credential Mgr</text>
+            <text class="ts" x="855" y="182" text-anchor="middle">access + refresh</text>
+
+            <path class="lnacc" d="M150,120 C200,90 240,80 268,72" marker-end="url(#oa)"/>
+            <text class="ts" x="180" y="96">1. ouvre</text>
+            <path class="lnacc" d="M360,100 C360,140 360,170 360,208" marker-end="url(#oa)"/>
+            <text class="ts" x="368" y="160">2. redirige (code)</text>
+            <path class="lnacc" d="M360,270 C360,300 180,300 130,192" marker-end="url(#oa)"/>
+            <text class="ts" x="150" y="290">3. code capté</text>
+            <path class="lnacc" d="M190,150 C360,150 460,150 538,150" marker-end="url(#oa)"/>
+            <text class="ts" x="430" y="140">4. échange</text>
+            <path class="lnacc" d="M720,155 L778,155" marker-end="url(#oa)"/>
+            <text class="ts" x="726" y="146">5. stocke</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 9.</b> PKCE loopback : le code repasse par une écoute locale, pas de secret exposé côté client public. Un <code>refresh token</code> autorise la reconnexion silencieuse au lancement suivant. Un fournisseur se décrit <b>en données</b> (<code>GOOGLE</code>, <code>MICROSOFT</code>) ; s'il exigeait du code, le <i>seam</i> serait au mauvais endroit.</figcaption>
+      </figure>
+
+      <div class="table-hote">
+        <table>
+          <thead><tr><th></th><th>Google</th><th>Microsoft</th><th>IMAP générique</th></tr></thead>
+          <tbody>
+            <tr><td>Client</td><td>secret <b>requis</b></td><td>public — PKCE seul (secret <b>interdit</b>)</td><td>mot de passe / app password</td></tr>
+            <tr><td>Redirection</td><td><code>127.0.0.1</code></td><td><code>localhost</code> (≠ 127.0.0.1 pour Azure AD)</td><td>—</td></tr>
+            <tr><td>Identité</td><td><code>userinfo</code> (email lu)</td><td><b>déclarée</b> par l'utilisateur</td><td>déclarée</td></tr>
+            <tr><td>Scopes</td><td><code>mail.google.com</code></td><td><code>outlook.office.com/IMAP…</code> (pas Graph)</td><td>—</td></tr>
+            <tr><td>SMTP</td><td>465 (TLS implicite)</td><td>587 (STARTTLS)</td><td>configuré</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Rendu — défense en profondeur</h3>
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 220" role="img" aria-label="Défense en profondeur du rendu HTML">
+            <defs>
+              <marker id="rd" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-accent)"/>
+              </marker>
+            </defs>
+            <rect class="bg2" x="30" y="80" width="150" height="64" rx="10"/>
+            <text class="t" x="105" y="108" text-anchor="middle">HTML brut</text>
+            <text class="ts" x="105" y="126" text-anchor="middle">du message</text>
+
+            <rect class="bg" x="230" y="70" width="170" height="84" rx="10"/>
+            <text class="tb" x="315" y="96" text-anchor="middle">1 · ammonia</text>
+            <text class="ts" x="315" y="116" text-anchor="middle">retire scripts,</text>
+            <text class="ts" x="315" y="132" text-anchor="middle">handlers, URLs dangereuses</text>
+
+            <rect class="bg" x="450" y="70" width="170" height="84" rx="10"/>
+            <text class="tb" x="535" y="96" text-anchor="middle">2 · images distantes</text>
+            <text class="ts" x="535" y="116" text-anchor="middle">→ pixel neutre</text>
+            <text class="ts" x="535" y="132" text-anchor="middle">(pas de pixel espion / fuite IP)</text>
+
+            <rect class="acc" x="670" y="70" width="260" height="84" rx="10"/>
+            <text class="tb" x="800" y="96" text-anchor="middle">3 · iframe sandbox + CSP</text>
+            <text class="ts" x="800" y="116" text-anchor="middle">default-src 'none' — fait foi</text>
+            <text class="ts" x="800" y="132" text-anchor="middle">textContent jamais innerHTML</text>
+
+            <line class="lnacc" x1="180" y1="112" x2="228" y2="112" marker-end="url(#rd)"/>
+            <line class="lnacc" x1="400" y1="112" x2="448" y2="112" marker-end="url(#rd)"/>
+            <line class="lnacc" x1="620" y1="112" x2="668" y2="112" marker-end="url(#rd)"/>
+            <text class="ts" x="480" y="196" text-anchor="middle">Même un contournement des couches 1–2 ne peut ni exécuter ni exfiltrer : la couche 3 fait foi.</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 10.</b> Trois couches indépendantes. Les liens du corps ouvrent le <b>navigateur système</b> (<code>open_link</code>, garde en Rust) ; l'iframe reste inerte (<code>allow-same-origin</code> SANS <code>allow-scripts</code>) et ne navigue jamais.</figcaption>
+      </figure>
+
+      <div class="encart attention">
+        <p class="et">CSP de la fenêtre</p>
+        <p><code>default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data: https: http:; style-src 'self' 'unsafe-inline'</code>
+        — la webview ne parle qu'à l'IPC. Credentials jamais en clair : tout passe par le
+        Credential Manager Windows (<code>keyring</code>).</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="interface">
+      <h2><span class="n">§12</span> Interface Svelte</h2>
+      <p class="chapo">Front web unique (Svelte 5), destiné à être porté partout : Tauri desktop
+      aujourd'hui, mobile et navigateur demain (ADR 0015). Le Système visuel est écrit
+      <b>une fois</b>.</p>
+
+      <div class="grille">
+        <div class="carte"><h4>Composants d'écran</h4><p><code>App</code> orchestre. <code>Nav</code>, <code>Liste</code>, <code>Lecture</code>/<code>Fil</code>, <code>Conversation</code>, <code>Composition</code>, <code>Réglages</code>, <code>Onboarding</code>, <code>GuichetCompte</code>, <code>ModaleMigration</code>.</p></div>
+        <div class="carte"><h4>État réactif ($state)</h4><p>Modules <code>fil.svelte.js</code>, <code>largeurs.svelte.js</code>, <code>texte.svelte.js</code>, <code>volets.svelte.js</code> — l'état vit au store, jamais en booléens locaux réconciliés à la main.</p></div>
+        <div class="carte"><h4>Le fil : un objet, deux cadres</h4><p>L'exclusivité des cadres (<code>fil.cadre</code> : null / volet / plein) vit au store. Toute purge passe par <code>fermerFil()</code>.</p></div>
+        <div class="carte"><h4>3 modes d'affichage</h4><p>Trois volets (défaut), deux volets, ou un volet avec nav en tiroir. Frontières réglables à la souris (capture du pointeur).</p></div>
+        <div class="carte"><h4>28 thèmes « Wada »</h4><p>14 clairs + 14 déclinaisons <code>-nuit</code>, 119 jetons dans <code>systeme.css</code>, choix persisté en <code>localStorage</code>.</p></div>
+        <div class="carte"><h4>Langue — catalogue maison</h4><p><code>catalogue.fr.js</code> / <code>catalogue.en.js</code> (ADR 0016). La langue se lit <b>sans adopter</b> la base (invariant A41).</p></div>
+      </div>
+
+      <div class="encart attention">
+        <p class="et">Piège de plateforme</p>
+        <p><code>prefers-color-scheme</code> est <b>mort</b> dans le WebView2 de Tauri : jamais
+        sombre, zéro événement, même sous une vraie bascule Windows. L'écoute du thème OS passe
+        par l'API fenêtre Tauri (<code>theme()</code> + <code>onThemeChanged</code>) ;
+        <code>matchMedia</code> n'est que le repli hors Tauri. Les barres de défilement sont
+        natives en surimpression, posées par <code>additionalBrowserArgs</code>.</p>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="livraison">
+      <h2><span class="n">§13</span> Livraison & qualité</h2>
+      <p class="chapo">Rien ne quitte la machine sans la gate complète. La livraison est un
+      installeur NSIS et une mise à jour signée minisign (ADR 0013).</p>
+
+      <figure>
+        <div class="cadre-svg">
+          <svg viewBox="0 0 960 430" role="img" aria-label="Gate et chaîne de livraison">
+            <defs>
+              <marker id="gt" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--sv-accent)"/>
+              </marker>
+            </defs>
+
+            <!-- Gate -->
+            <text class="tacc" x="40" y="26">GATE — rejouée au pré-push (.githooks/pre-push)</text>
+            <rect class="bg" x="40" y="40" width="120" height="52" rx="9"/>
+            <text class="t" x="100" y="66" text-anchor="middle">cargo fmt</text>
+            <text class="ts" x="100" y="82" text-anchor="middle">format</text>
+            <rect class="bg" x="180" y="40" width="150" height="52" rx="9"/>
+            <text class="t" x="255" y="66" text-anchor="middle">clippy -D warnings</text>
+            <text class="ts" x="255" y="82" text-anchor="middle">1 warning = rouge</text>
+            <rect class="bg" x="350" y="40" width="200" height="52" rx="9"/>
+            <text class="t" x="450" y="66" text-anchor="middle">test --all-targets + --doc</text>
+            <text class="ts" x="450" y="82" text-anchor="middle">exemples compris</text>
+            <rect class="bg" x="570" y="40" width="150" height="52" rx="9"/>
+            <text class="t" x="645" y="66" text-anchor="middle">e2e (npm test)</text>
+            <text class="ts" x="645" y="82" text-anchor="middle">vraie fenêtre CDP</text>
+            <rect class="acc" x="740" y="40" width="180" height="52" rx="9"/>
+            <text class="tb" x="830" y="66" text-anchor="middle">contrastes · cohérence</text>
+            <text class="ts" x="830" y="82" text-anchor="middle">Système · garde thread</text>
+
+            <line class="lnacc" x1="160" y1="66" x2="178" y2="66" marker-end="url(#gt)"/>
+            <line class="lnacc" x1="330" y1="66" x2="348" y2="66" marker-end="url(#gt)"/>
+            <line class="lnacc" x1="550" y1="66" x2="568" y2="66" marker-end="url(#gt)"/>
+            <line class="lnacc" x1="720" y1="66" x2="738" y2="66" marker-end="url(#gt)"/>
+
+            <text class="ts" x="40" y="120">CI GitHub : Rust seul (fmt, clippy, tests) — un runner ne peut pas ouvrir WebView2 (ADR 0005), d'où le hook local pour l'e2e.</text>
+
+            <!-- Chaîne de livraison -->
+            <text class="tacc" x="40" y="176">CHAÎNE DE LIVRAISON</text>
+            <rect class="bg2" x="40" y="192" width="180" height="62" rx="10"/>
+            <text class="t" x="130" y="218" text-anchor="middle">cargo tauri build</text>
+            <text class="ts" x="130" y="236" text-anchor="middle">NSIS + updater artifacts</text>
+
+            <rect class="bg2" x="260" y="192" width="200" height="62" rx="10"/>
+            <text class="t" x="360" y="214" text-anchor="middle">faire-release.ps1</text>
+            <text class="ts" x="360" y="232" text-anchor="middle">latest.json SANS BOM</text>
+            <text class="ts" x="360" y="248" text-anchor="middle">signature minisign (.sig)</text>
+
+            <rect class="bg2" x="500" y="192" width="200" height="62" rx="10"/>
+            <text class="t" x="600" y="214" text-anchor="middle">Release GitHub</text>
+            <text class="ts" x="600" y="232" text-anchor="middle">tag = version NUE (0.1.8)</text>
+            <text class="ts" x="600" y="248" text-anchor="middle">marquée « Latest »</text>
+
+            <rect class="acc" x="740" y="192" width="180" height="62" rx="10"/>
+            <text class="tb" x="830" y="214" text-anchor="middle">App installée</text>
+            <text class="ts" x="830" y="232" text-anchor="middle">/releases/latest/</text>
+            <text class="ts" x="830" y="248" text-anchor="middle">download/latest.json</text>
+
+            <line class="lnacc" x1="220" y1="223" x2="258" y2="223" marker-end="url(#gt)"/>
+            <line class="lnacc" x1="460" y1="223" x2="498" y2="223" marker-end="url(#gt)"/>
+            <line class="lnacc" x1="700" y1="223" x2="738" y2="223" marker-end="url(#gt)"/>
+
+            <!-- auto-update -->
+            <rect class="warm" x="260" y="300" width="440" height="56" rx="10"/>
+            <text class="tb" x="280" y="324">Auto-update signée — pilotée depuis Rust</text>
+            <text class="ts" x="280" y="344">pubkey minisign embarquée · updater plugin · vérifie .sig avant d'installer</text>
+            <path class="lndash" d="M830,254 C830,300 720,320 702,328" marker-end="url(#gt)"/>
+
+            <text class="ts" x="40" y="392">NSIS et non MSIX : MSIX virtualiserait %APPDATA% et orphelinerait la base. Installation « currentUser ». Signature de code Windows reportée à la bêta.</text>
+          </svg>
+        </div>
+        <figcaption><b>Schéma 11.</b> La gate et la chaîne de publication. Le chemin entre <code>cargo tauri build</code> et l'app de l'utilisateur est du terrain lui aussi : le tag nu et le <code>latest.json</code> sans BOM sont tenus par <code>faire-release.ps1</code> (deux 404 payés avant de le comprendre).</figcaption>
+      </figure>
+
+      <h3>Déterminisme des E2E</h3>
+      <p>Les tests e2e pilotent la <b>vraie fenêtre</b> Tauri via CDP WebView2 (Playwright).
+      Étanches par construction : base jetable (<code>WIND_DB_PATH</code>), comptes factices
+      (<code>WIND_E2E_ACCOUNT</code>), profil WebView2 dédié, port CDP libre par suite
+      (deux suites simultanées ne se marchent plus dessus). Ils ne parlent à <b>aucun serveur</b> :
+      tout le chemin réseau réel ne se prouve que sur le terrain.</p>
+
+      <h3>Migration visible & interruptible (ADR 0012)</h3>
+      <p>L'adoption d'une base héritée est <b>une seule transaction</b> — du DROP conditionnel
+      des tables de fils jusqu'à <code>PRAGMA user_version</code>. Annuler rembobine tout et
+      laisse <code>user_version</code> inchangé : jamais d'adoption partielle, la passe se
+      rejoue entière au prochain lancement. Écran modal au démarrage ; rien ne touche la base
+      avant <code>migration_check</code> (invariant A41).</p>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="decisions">
+      <h2><span class="n">§14</span> Décisions gelées</h2>
+      <p class="chapo">Vingt ADR portent les décisions structurantes. On ne les rouvre pas sans
+      une mesure contraire. En voici l'ossature.</p>
+
+      <div class="table-hote">
+        <table>
+          <thead><tr><th>ADR</th><th>Décision</th><th>À retenir</th></tr></thead>
+          <tbody>
+            <tr><td>0001</td><td>Workspace Cargo multi-crates</td><td><code>mail-core</code> sans dépendance UI/réseau</td></tr>
+            <tr><td>0002</td><td>Shell desktop = Tauri 2 (WebView2)</td><td>La RAM qui fait foi = working set <b>privé</b></td></tr>
+            <tr><td>0003</td><td>Boîte d'envoi SMTP + règles d'or</td><td>Journal avant réseau ; quarantaine anti-fantôme</td></tr>
+            <tr><td>0004</td><td>Recherche = SQLite <b>FTS5</b></td><td>L'index vit DANS la base (transactionnel)</td></tr>
+            <tr><td>0005</td><td>E2E hors CI hébergée</td><td>Un runner ne peut pas ouvrir WebView2 → hook <code>pre-push</code></td></tr>
+            <tr><td>0006</td><td>Microsoft via IMAP + OAuth2, pas Graph</td><td>Scopes de la ressource Outlook ; client public</td></tr>
+            <tr><td>0007</td><td>Rattrapage des corps borné, reprenable, groupé</td><td>Horizon levé par 0010 ; la forme demeure</td></tr>
+            <tr><td>0008</td><td>Conversations = union-find sur en-têtes RFC 5322</td><td>Jamais de repli par sujet ; agrégat recalculé</td></tr>
+            <tr><td>0009</td><td>Portée d'un fil = le <b>compte</b></td><td>« Envoyés » synchronisé ; index partiel</td></tr>
+            <tr><td>0010</td><td><b>Synchronisation intégrale</b> — tout, sans horizon ni quota</td><td>Gate &lt; 1 Go levé ; stocker ≠ regrouper ; garde disque</td></tr>
+            <tr><td>0011</td><td>Journal SQLite en <b>WAL</b></td><td>Une lecture ne bloque plus une synchro longue</td></tr>
+            <tr><td>0012</td><td>Migration <b>visible et interruptible</b></td><td>L'adoption est UNE transaction rembobinable</td></tr>
+            <tr><td>0013</td><td>Installeur <b>NSIS</b> + mise à jour signée</td><td>Pas MSIX ; minisign ; tag nu, latest.json sans BOM</td></tr>
+            <tr><td>0014</td><td>Télémétrie de crash <b>locale, opt-in</b></td><td>Fichier local seul ; message du panic supprimé (PII)</td></tr>
+            <tr><td>0015</td><td>Socle UI v2 = <b>Svelte</b>, front web unique</td><td>Système écrit une fois ; frontière = port de transport</td></tr>
+            <tr><td>0016</td><td>Langue = catalogue maison</td><td>Pas de dépendance i18n ; clés en données</td></tr>
+            <tr><td>0017</td><td>Relève gardée par STATUS</td><td><code>faut_relever</code> saute les dossiers inchangés</td></tr>
+            <tr><td>0018</td><td>Veilleur IDLE</td><td>Un thread/compte, connexion dédiée ; signale, ne stocke pas</td></tr>
+            <tr><td>0019</td><td>Commandes hors du thread principal</td><td><code>hors_pompe</code> = spawn_blocking + verrou global</td></tr>
+            <tr><td>0020</td><td>Le fil : un objet, deux cadres</td><td>Exclusivité au store, jamais de booléen local</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================= -->
+    <section id="budgets">
+      <h2><span class="n">§15</span> Budgets & dette</h2>
+      <p class="chapo">Les budgets sont des gates <b>bloquants</b> : un dépassement arrête la
+      ligne. La dette est assumée en connaissance — chaque report est une ligne motivée.</p>
+
+      <h3>Budgets de performance</h3>
+      <div class="table-hote">
+        <table>
+          <thead><tr><th>Métrique</th><th>Cible</th><th>Dernière mesure</th></tr></thead>
+          <tbody>
+            <tr><td>Démarrage à froid</td><td>&lt; 1 s</td><td><span class="oui">337 ms</span></td></tr>
+            <tr><td>Ouverture d'un message</td><td>&lt; 50 ms</td><td><span class="oui">1–3 ms</span></td></tr>
+            <tr><td>Page de liste</td><td>&lt; 100 ms</td><td><span class="oui">0,58 ms</span> (à 200 000 messages)</td></tr>
+            <tr><td>RAM (working set privé)</td><td>&lt; 200 Mo</td><td><span class="oui">95,5 Mo</span> · 7 processus</td></tr>
+            <tr><td>Gel de la pompe de messages</td><td>aucun &gt; 150 ms</td><td><span class="oui">0 gel</span> sur 40 s, décor 251 k enveloppes</td></tr>
+            <tr><td>Perte de données</td><td>0</td><td><span class="oui">prouvé</span> par crash-récup</td></tr>
+            <tr><td>Recherche</td><td>&lt; 100 ms</td><td><span class="non">113–210 ms</span> — levier ×1,8–2,9, tranché en bêta</td></tr>
+            <tr><td>Adoption d'une base héritée</td><td>&lt; 1 s</td><td><span class="non">3,66 s</span> — assumé (ADR 0012 : une seule fois, annulable)</td></tr>
+            <tr><td>Taille de la base</td><td>levé (ADR 0010)</td><td>garde d'espace disque à ~50 ko/message</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Dette technique (extrait du registre)</h3>
+      <ul>
+        <li><b>D-1</b> — Ouverture p95 (52–55 ms) au-dessus du budget sur les très gros corps (&gt; 1 Mo) : coût d'assainissement HTML. Piste : assainissement paresseux / streaming.</li>
+        <li><b>D-8</b> — Sondes périodiques chères hors pompe (<code>nav_snapshot</code> 865 ms, <code>pending_total</code> 575 ms) : ne gèlent plus rien, mais le coût CPU reste réel. Piste : cache invalidé par génération.</li>
+        <li><b>D-9</b> — L'invariant A41 (« rien ne touche la base avant <code>migration_check</code> ») n'a pas de garde structurelle, seulement un test de sonde.</li>
+        <li><b>Doublons multi-boîtes</b> dans la recherche (un message copié dans plusieurs boîtes remonte plusieurs fois) — à observer en bêta avant de décider d'un dédoublonnage.</li>
+      </ul>
+
+      <div class="encart">
+        <p class="et">Où va Wind ensuite</p>
+        <p>La dernière étape avant le gate 5 est la <b>bêta fermée 20–50 utilisateurs</b>,
+        avec kaizen hebdomadaire sur les frictions <i>observées</i>. Gate 5 : deux semaines
+        sans défaut critique. La Phase 4 (web) réutilisera le cœur intact, derrière le port
+        de transport distant.</p>
+      </div>
+    </section>
+
+    <footer>
+      <p><b>Wind</b> — client courrier de la suite Elements. Document d'architecture dérivé du
+      code à la version 0.1.8. Sources de vérité : <code>docs/PASSATION.md</code>,
+      <code>docs/adr/</code>, <code>docs/PLAN.md</code>. « La performance et la fiabilité ne
+      sont pas des options — ce sont les fonctionnalités. »</p>
+      <a class="anchor-top" href="#">↑ Haut de page</a>
+    </footer>
+  </main>
+</div>
+
+<script>
+  // Bascule de thème : system → light → dark → system.
+  (function () {
+    const root = document.documentElement;
+    const bouton = document.getElementById('bascule');
+    const CLE = 'wind-archi-theme';
+    const etats = ['system', 'light', 'dark'];
+    const libelles = { system: '◐ Système', light: '☀ Clair', dark: '☾ Sombre' };
+    let i = 0;
+    try {
+      const enregistre = localStorage.getItem(CLE);
+      if (enregistre && etats.includes(enregistre)) i = etats.indexOf(enregistre);
+    } catch (e) {}
+    function applique() {
+      const etat = etats[i];
+      if (etat === 'system') root.removeAttribute('data-theme');
+      else root.setAttribute('data-theme', etat);
+      bouton.textContent = libelles[etat];
+      try { localStorage.setItem(CLE, etat); } catch (e) {}
+    }
+    bouton.addEventListener('click', function () { i = (i + 1) % etats.length; applique(); });
+    applique();
+  })();
+
+  // Surlignage de la section active dans le sommaire.
+  (function () {
+    const liens = Array.from(document.querySelectorAll('#toc a'));
+    const cible = new Map();
+    liens.forEach(function (a) {
+      const id = a.getAttribute('href').slice(1);
+      const el = document.getElementById(id);
+      if (el) cible.set(el, a);
+    });
+    const obs = new IntersectionObserver(function (entrees) {
+      entrees.forEach(function (e) {
+        if (e.isIntersecting) {
+          liens.forEach(function (l) { l.classList.remove('actif'); });
+          const a = cible.get(e.target);
+          if (a) a.classList.add('actif');
+        }
+      });
+    }, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+    cible.forEach(function (_a, el) { obs.observe(el); });
+  })();
+</script>
+</body>
+</html>
