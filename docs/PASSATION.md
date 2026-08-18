@@ -79,7 +79,29 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 (PLAN-GELS, ADR 0019) ; auto-update 0.1.6 → 0.1.7 confirmé au terrain.
 Tous les plans de cette ligne sont soldés.
 
-**Dernier chantier soldé : PLAN-RETOURS-2** (2026-08-17, `dfa6224`, A52-A54
+**Dernier chantier soldé : PLAN-RETOURS-3** (2026-08-18, `8819090`, A55-A58,
+terrain complet, CI verte — **commité, pas encore releasé** ; prêt pour une
+0.1.10, décision CE). Quatre retours terrain. (1) **Pourcentage de
+rattrapage** : la barre d'état passe à « N restants · P % » ; `P` = corps
+présents / corpus en portée, fonction pure `backfill_percent` (sœur de
+`sync_percent`, plafonnée à 99 tant qu'un corps manque), dénominateur
+`bodies_total_count` ; le % vit dans le TEXTE (A55). (2) **Spam / non-spam** :
+`report_spam`/`mark_not_spam` réutilisent `MoveTo` — le dossier indésirable
+est résolu par compte (`canonical_folders`), c'est le fournisseur qui apprend ;
+geste par fil, indisponible si pas de dossier Junk (A56). (3) **Supprimer un
+brouillon** depuis la composition — geste destructif avec confirmation inline,
+distinct d'« Annuler » qui conserve (A57). (4) **Réponse par message** :
+Répondre/Répondre-tous/Transférer passent en bas de chaque message ; la barre
+du fil ne garde que le tri + spam. **Constat terrain corrigé le jour même** :
+les 3 gestes sur nos PROPRES messages aussi — répondre y vise les
+destinataires d'origine (À pour Répondre, À+Cc pour Répondre-tous ; fonction
+pure `reply_to`), jamais soi-même (A58). Reports : **D-21** (double COUNT du
+rattrapage, famille D-8, budget tenu au terrain), **D-22** (report_spam
+déjà-spam via recherche). Piège confirmé : la trace terrain (`… 2> fichier`)
+échoue si le chemin n'existe pas — le « Bureau » est redirigé sous OneDrive
+(`C:\Users\<u>\Desktop` absent) ; écrire à la racine du dépôt.
+
+**Chantier soldé précédent : PLAN-RETOURS-2** (2026-08-17, `dfa6224`, A52-A54
 + ADR 0021, terrain complet, **livré en 0.1.9**). (1) **Synchro Gmail « trop
 longue »** : mesurée au terrain (trace `run_sync`, ~135 s en release quand
 22 vues Gmail ont bougé — ~5 s par dossier changé, bridage probable). La

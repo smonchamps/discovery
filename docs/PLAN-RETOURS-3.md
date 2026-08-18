@@ -1,9 +1,18 @@
 # PLAN-RETOURS-3 — quatre retours terrain (rattrapage %, spam, brouillon, réponse par message)
 
-> État : **GO du Chef Ingénieur le 2026-08-17** (STOP 1 franchi, D1-D5
-> tranchées ci-dessous). Fait suite à PLAN-RETOURS-2 (soldé, livré en
-> 0.1.9). Cible de livraison : **0.1.10** (au moins une nouveauté visible
-> ⇒ MINEUR — retour à zéro exclu, §2.9).
+> **CHANTIER SOLDÉ le 2026-08-18 — terrain complet.** Commit `8819090`
+> (`feat: retours 3 …`), CI verte (run 32113377204). GO CE du plan le
+> 2026-08-17 (STOP 1, D1-D5 tranchées ci-dessous) ; passe terrain du
+> 2026-08-18 : R1-R3 validés d'emblée, **R4 corrigé le jour même** (constat
+> terrain : les 3 gestes sur nos propres messages, réponse aux
+> destinataires d'origine — A58 amendé, `reply_to` pur). Système amendé
+> **A55-A58**. Fait suite à PLAN-RETOURS-2 (soldé, livré en 0.1.9). Prêt
+> pour une release **0.1.10** (nouveauté visible ⇒ MINEUR, §2.9) — la
+> release reste une décision CE (`scripts/faire-release.ps1`).
+>
+> Reports assumés à la clôture (§2.6) : **D-21** (double COUNT du corpus
+> par lot du rattrapage — famille D-8, budget tenu au terrain) et **D-22**
+> (report_spam « déjà spam » atteint via la recherche — cosmétique).
 
 ## Constat — instruction sur pièces (genchi genbutsu)
 

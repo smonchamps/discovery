@@ -214,6 +214,36 @@ motivée.)
 - **Rouvre si** : le cycle à 30 min redevient gênant au terrain, ou si le
   bridage est confirmé (croise D-17).
 
+### D-21 · Pourcentage de rattrapage : double COUNT du corpus par lot
+
+- **Fait (2026-08-18, PLAN-RETOURS-3 R1)** : le dénominateur du `%` de
+  rattrapage (A55) ajoute `corpus_total` (un COUNT du corpus par boîte) à
+  côté de `pending_total`, recalculés **à chaque lot** de `backfill_bodies`
+  (50 corps) pendant la boucle de rattrapage — soit deux+ balayages complets
+  par lot sur ~256 k messages × ~40 boîtes. Détecté à la revue
+  `/code-review high`.
+- **Raison du report (§2.6)** : la sonde est **hors pompe** (ne gèle pas la
+  fenêtre) et le terrain a jugé l'app **parfaitement fluide** au rattrapage
+  (2026-08-18) — le budget est tenu. Optimiser sans constat serait du travail
+  sans mesure. **Famille D-8** (sondes périodiques hors pompe, coût CPU réel).
+- **Piste** : une seule requête par boîte rendant `(total, manquants)`
+  ensemble ; ou cacher le total (quasi stable dans une boucle) et ne le
+  rafraîchir qu'au changement franc.
+- **Rouvre si** : le terrain désigne le coût CPU du rattrapage (avec D-8, D-16).
+
+### D-22 · « Signaler comme spam » sur un spam atteint par la recherche
+
+- **Fait (2026-08-18, PLAN-RETOURS-3 R2)** : `report_spam` rend `Ok(())`
+  sans rien déplacer quand le message est **déjà** dans le dossier indésirable
+  (`spam == mailbox`), mais l'UI flashe « signalé comme indésirable » et ferme
+  le fil. Atteignable seulement via la **recherche** (un spam ouvert avec
+  `categorie != 'indesirables'` montre encore le bouton « Signaler »).
+- **Raison du report (§2.6)** : cas de bord (chemin recherche→spam),
+  cosmétique (aucune donnée corrompue) ; le corriger proprement exigerait que
+  l'UI connaisse le dossier Junk de chaque compte (le `Fil` ne l'a pas) —
+  disproportionné pour la fréquence.
+- **Rouvre si** : l'usage réel montre le faux succès gênant.
+
 ## Soldée
 
 ### ~~D-6 · Flake e2e v1 : « étoiler » (parcours-critiques)~~ — soldée le 2026-08-15
