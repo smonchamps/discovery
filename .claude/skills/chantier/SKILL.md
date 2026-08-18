@@ -6,7 +6,7 @@ description: Dérouler un chantier Wind de bout en bout à partir d'un énoncé 
 # /chantier — le workflow standard d'un chantier Wind
 
 L'argument est l'énoncé : `Bug : …` ou `Feature : …`. La méthode de
-PASSATION §2 s'applique intégralement ; ce skill en est le déroulé
+STANDARD §2 s'applique intégralement ; ce skill en est le déroulé
 opératoire. **Deux points d'arrêt sont obligatoires** — la validation du
 plan et la validation terrain. Rien ne les contourne.
 
@@ -18,7 +18,7 @@ plan et la validation terrain. Rien ne les contourne.
   symptôme n'est pas une cause : remonter à la racine (modèle : A38,
   commits 9ebd7b2 → 5698641 — la ceinture d'abord, la racine ensuite).
 - **Feature** : lire le Système (`docs/design/systeme.dc.html`, seul
-  normatif — A18), les ADRs concernés (décisions gelées, PASSATION §5),
+  normatif — A18), les ADRs concernés (décisions gelées, STANDARD §5),
   l'état du code. Sur une zone vaste, les agents `Explore`/`Plan`
   intégrés font la reconnaissance.
 
@@ -55,7 +55,7 @@ avec la date. **Aucun code de production avant le GO.**
   `docs/design/systeme.dc.html` dans le **même commit** (journal A-n).
 - Zéro `unwrap()`/`expect()` en prod ; `thiserror` dans les crates,
   `anyhow` dans les apps. Décision pure et testable, I/O ailleurs
-  (motif PASSATION §4).
+  (motif STANDARD §4).
 
 ## Phase 3 — Qualité
 
@@ -69,7 +69,7 @@ avec la date. **Aucun code de production avant le GO.**
 ## ⛔ STOP 2 — validation terrain
 
 Remettre au CE une **checklist de terrain** : quoi regarder, gestes à
-jouer, chiffres attendus, budgets à re-mesurer (PASSATION §3 — un
+jouer, chiffres attendus, budgets à re-mesurer (STANDARD §3 — un
 budget dépassé arrête la ligne). Fournir **systématiquement, à ce
 moment, les commandes PowerShell nécessaires à la réalisation du test
 terrain** (lancement de l'app, build, préparation des comptes,
@@ -82,7 +82,8 @@ puis re-gate et nouvelle passe terrain.
 - Journal du Système : A-n pour chaque fait notable (DC-D2).
 - PLAN-XXX mis à jour (étapes livrées, commits, verdicts).
 - **ADR** si décision structurante (`docs/adr/`, court, modèle 0004).
-- PASSATION amendée si l'état du projet change (§1, budgets, pièges).
+- ETAT amendé (l'état du projet, budgets re-mesurés) ; STANDARD
+  amendé si piège ou enseignement nouveau (§7, §9).
 - Mémoire persistante mise à jour (état du chantier, dates absolues).
 
 ## Phase 5 — Commit, push, CI

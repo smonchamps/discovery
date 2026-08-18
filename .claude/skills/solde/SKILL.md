@@ -1,6 +1,6 @@
 ---
 name: solde
-description: Clôturer un chantier Wind — vérifier terrain validé et CI verte, marquer le PLAN soldé, amender PASSATION, consigner la dette, mettre à jour la mémoire persistante.
+description: Clôturer un chantier Wind — vérifier terrain validé et CI verte, marquer le PLAN soldé, amender ETAT, consigner la dette, mettre à jour la mémoire persistante.
 ---
 
 # /solde — la clôture standardisée d'un chantier
@@ -21,7 +21,7 @@ ce soit.
 1. **`docs/PLAN-XXX.md`** : en-tête « **CHANTIER SOLDÉ le AAAA-MM-JJ —
    terrain complet** », avec les commits, la date du GO CE, les
    retouches terrain éventuelles et leur A-n (modèle : PLAN-WADA).
-2. **`docs/PASSATION.md`** : l'état (§1) reflète le chantier livré ;
+2. **`docs/ETAT.md`** : l'état reflète le chantier livré ;
    budgets re-mesurés si touchés ; pièges appris ajoutés là où ils
    vivent.
 3. **Dette** : ce qui est reporté part dans `docs/DETTE.md`, nommé,

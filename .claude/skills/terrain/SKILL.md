@@ -6,7 +6,7 @@ description: Traiter un constat terrain du Chef Ingénieur — reproduire, remon
 # /terrain — le constat terrain se corrige le jour même
 
 L'argument est le constat, tel que vu au terrain. C'est la boucle
-genchi genbutsu de PASSATION §2.5 : les retours du terrain se corrigent
+genchi genbutsu de STANDARD §2.5 : les retours du terrain se corrigent
 **le jour même** (modèle : le WAL, ADR 0011 ; les traits d'accent,
 A37/A38).
 

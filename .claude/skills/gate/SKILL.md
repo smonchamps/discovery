@@ -33,6 +33,6 @@ cargo test --workspace --doc
   si le doute persiste, `gh run list` — **la CI est la référence**.
   Le flake connu : le brouillon fantôme (documenté au commit 0956c85).
 - **La toolchain du gate doit être celle de la CI**
-  (`rust-toolchain.toml` + ref épinglée dans `ci.yml`) — PASSATION §7.4.
+  (`rust-toolchain.toml` + ref épinglée dans `ci.yml`) — STANDARD §7.4.
 - Le verdict final est la liste : chaque étape, verte ou rouge, avec
   ses chiffres (nombre de tests, avertissements, paires, valeurs).

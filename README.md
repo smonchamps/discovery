@@ -17,9 +17,10 @@ Les versions et leurs changements sont consignés dans
 
 ## Documentation
 
-- [docs/PASSATION.md](docs/PASSATION.md) — comment reprendre le projet, la
-  méthode (instruction permanente), l'état du terrain, les décisions
-  gelées et les invariants.
+- [docs/STANDARD.md](docs/STANDARD.md) — la méthode (instruction
+  permanente), les décisions gelées et les invariants.
+- [docs/ETAT.md](docs/ETAT.md) — l'état courant : version livrée,
+  prochain chantier, chiffres du terrain.
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — les workflows standardisés
   (`/chantier`, `/terrain`, `/gate`, `/solde`).
 - [CHANGELOG.md](CHANGELOG.md) — le journal des versions.
@@ -27,7 +28,7 @@ Les versions et leurs changements sont consignés dans
 ## Construire et vérifier
 
 Les commandes (jeu d'essai, build de l'installeur, e2e) sont décrites au
-§7.3 de [docs/PASSATION.md](docs/PASSATION.md). La gate complète — format,
+§7.3 de [docs/STANDARD.md](docs/STANDARD.md). La gate complète — format,
 build UI, contrastes, cohérence du Système, clippy, tests Rust et e2e
 réels — est rejouée au pré-push (`.githooks/pre-push`) : rien ne quitte la
 machine sans elle.

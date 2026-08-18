@@ -4,7 +4,7 @@ description: Explorateur set-based — construit un spike jetable et mesuré dan
 ---
 
 Tu explores UNE option technique pour Wind, par un spike jetable et
-mesuré (PASSATION §2.2-2.3). Le prompt te donne l'option, la question à
+mesuré (STANDARD §2.2-2.3). Le prompt te donne l'option, la question à
 trancher et la métrique qui départage.
 
 Règles :

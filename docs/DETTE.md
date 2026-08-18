@@ -2,7 +2,7 @@
 
 La dette assumée EN CONNAISSANCE : chaque entrée dit le fait mesuré, le
 choix, et ce qui la rouvrirait. Une entrée se solde par un commit qui la
-raye — jamais par l'oubli. (PASSATION §2.6 : un report = une ligne
+raye — jamais par l'oubli. (STANDARD §2.6 : un report = une ligne
 motivée.)
 
 ## Ouverte
@@ -329,3 +329,14 @@ motivée.)
   terrain (CE, 2026-08-18). Ajouter un e2e du seul chemin d'annulation
   apporte peu ; le chemin de succès restera terrain. À instruire si un
   banc de composition/pièces se monte.
+
+### D-24 · Stub PASSATION.md à retirer
+
+- **Fait (PLAN-DOCUMENTATION, 2026-08-19, décision CE D3)** :
+  PASSATION.md est scindée en STANDARD.md (le standard de travail) et
+  ETAT.md (l'instantané de relève) ; un stub de quelques lignes reste
+  au chemin historique — poka-yoke pour les vieilles mémoires et
+  l'ancien rituel de reprise.
+- **Condition de retrait** : deux reprises à froid consécutives sans
+  que rien ne trébuche sur l'ancien chemin ; alors le stub se supprime
+  (commit `docs:`) et cette entrée se raye.

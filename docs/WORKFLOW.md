@@ -2,7 +2,7 @@
 
 > Installé le 2026-08-15 (commit `961aab7`, décision CE D1/D2/D3).
 > Ce document explique **comment s'en servir** ; la méthode elle-même
-> vit dans [PASSATION.md](PASSATION.md) §2 et prime sur tout. Les
+> vit dans [STANDARD.md](STANDARD.md) §2 et prime sur tout. Les
 > skills sont dans `.claude/skills/`, versionnées au dépôt : les
 > amender est un commit comme un autre.
 
@@ -27,7 +27,7 @@ le workflow s'arrête net aux deux endroits où c'est lui qui tranche.
    ├─ ⛔ STOP 2  Le CE valide au terrain, sur checklist chiffrée
    │             (un constat → correction le jour même, re-gate, re-terrain)
    │
-   ├─ Phase 4  Documentation — journal A-n, PLAN, ADR, PASSATION, mémoire
+   ├─ Phase 4  Documentation — journal A-n, PLAN, ADR, ETAT, mémoire
    └─ Phase 5  Commit (sans accents) → push → gh run watch → CI verte
 ```
 
@@ -62,7 +62,7 @@ Le CE n'a que **quatre gestes** ; tout le reste est porté par la session.
    prêtes à copier, une par bloc. Dire ce qui est vu — un constat
    déclenche la correction le jour même, dans la même session.
 4. **Fournir les mesures que la session ne peut pas prendre** : rappel
-   PASSATION §7.1, elle ne lit pas la base réelle ni le bandeau. Quand
+   STANDARD §7.1, elle ne lit pas la base réelle ni le bandeau. Quand
    la Phase 0 a besoin d'un chiffre du terrain, elle le demande et
    attend.
 
@@ -88,7 +88,7 @@ Chaque skill embarque les règles payées au fil du projet :
 ## L'agent `spike` — l'exploration set-based
 
 Quand la conception rencontre un point dur, le départage se fait sur
-des chiffres (PASSATION §2.2-2.3) : **un agent `spike` par option**, en
+des chiffres (STANDARD §2.2-2.3) : **un agent `spike` par option**, en
 worktree isolé, chacun construisant un prototype jetable dans `spikes/`
 et rapportant un protocole et des mesures — jamais un avis. Le poste
 principal compare les rapports, le CE tranche. Modèle :
