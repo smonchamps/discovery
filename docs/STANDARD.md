@@ -135,6 +135,36 @@ La release se publie par `scripts/faire-release.ps1 <version>`
 ([ADR 0013](adr/0013-installeur-nsis-maj-signee.md)) ; le tag GitHub reste
 la **version nue**.
 
+### 2.10 Vérifier une release publiée
+
+Depuis la 0.1.10 (2026-08-18), `scripts/faire-release.ps1 <v>` fait
+**toute** la release (validé au terrain) : bump de la seule ligne
+`version` de `apps/desktop/tauri.conf.json`, build signé (clé au
+**chemin** `C:\Keys\wind.key` — `TAURI_SIGNING_PRIVATE_KEY` accepte un
+chemin ; mot de passe saisi à la main), `latest.json` sans BOM, puis —
+après confirmation `OUI` — commit `release: version <v>`, push (gate
+rejouée), tag NU + Release GitHub `--latest`, notes tirées du
+CHANGELOG. Contrôle **a posteriori**, avant d'annoncer verte :
+
+- **La Release est « Latest »** — l'endpoint updater est
+  `…/releases/latest/download/latest.json` :
+  `gh api repos/smonchamps/wind/releases/latest --jq '.tag_name'`
+  doit rendre la nouvelle version.
+- **Trois assets au tag NU** (jamais `v<x>`) : l'exe setup, son
+  `.sig`, `latest.json`.
+- **`latest.json` sans BOM** (premiers octets `7b` = `{`, pas
+  `ef bb bf` — serde_json le refuse en silence).
+- **URL du manifeste au tag NU** (`/releases/download/<v>/…` — le
+  piège du 404).
+- **Signature dans `latest.json` == fichier `.sig`** ; l'URL de l'exe
+  résout (302 puis 200, `Content-Length` = taille de l'asset).
+- **La crypto minisign n'est PAS vérifiable localement** (pas de
+  `minisign` sur ce poste ; `tauri signer` n'a pas de `verify`). Ne
+  jamais forger un PASS : la preuve définitive est l'**auto-update
+  `<n-1> → <n>` constaté au terrain**.
+- `CHANGELOG.md` (racine) porte l'entrée `## [<v>] - <date>` et le
+  lien vers la Release en pied.
+
 ---
 
 ## 3. Le produit
@@ -707,6 +737,22 @@ migration qui dé-échappe la valeur stockée (équivalente au nouveau
 décodage : le contenu est déjà RFC 2047-décodé, seule reste la couche
 d'escape IMAP). Le réflexe des quatre pièges d'adoption (§6.7), sous une
 autre forme.
+
+
+### Une mesure d'I/O disque ne vaut qu'à froid
+
+Mesurer une reconstruction ou une migration **liée au disque** sur une
+copie fraîchement écrite (`Copy-Item`) est un mensonge : la copie
+laisse ses pages en cache RAM, la relecture est servie par la mémoire.
+Fait mesuré (PLAN-RECHERCHE, 2026-08-17) : reconstruction FTS5 sur
+7 Go / 130 k corps — **0,7 s** sur copie fraîche, **~4 min** à froid au
+terrain, écart **×340** (annoncé « ×5-10 au pire »). Le coût dominant
+n'est pas le calcul mais la **relecture des corps** depuis le disque —
+invisible sur cache chaud. Corollaire produit : tout changement de
+schéma FTS5 force une reconstruction qui relit les corps ; sur une
+base fournie, la sortir du chemin de démarrage (modale ADR 0012,
+`pending_adoption` la détecte). **Ne jamais conclure « budget tenu »
+sur une mesure de labo quand le chemin réel est lié au disque.**
 
 ---
 
