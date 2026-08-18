@@ -142,7 +142,7 @@ export const EN = {
   'lecture.imagesBloquees': '{n} remote image blocked to protect your privacy.|{n} remote images blocked to protect your privacy.',
   'lecture.afficherImages': 'Show images',
   'lecture.corps': 'Message content',
-  'lecture.enregistrer': 'Save to Downloads',
+  'lecture.enregistrer': 'Save…',
 
   // --- Conversation (écran 03) ------------------------------------------
   'conv.deplier': 'Expand all',

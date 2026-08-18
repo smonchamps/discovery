@@ -93,11 +93,11 @@ test("un message SANS fil s'ouvre en plein écran — le repli du message seul (
     'Compte rendu du 4 août',
   );
   // Le fil servi est la ligne elle-même : UN message, déplié, avec ses
-  // fichiers réels (message_attachments).
+  // fichiers réels (message_attachments). R2 : nom + poids en une puce.
   await expect(page.locator('[data-testid="message-deplie"]')).toHaveCount(1);
-  await expect(
-    page.locator('[data-testid="conversation"] [data-testid="piece-jointe"]'),
-  ).toContainText('CR_04-08.pdf');
+  const pieceConv = page.locator('[data-testid="conversation"] [data-testid="piece-jointe"]');
+  await expect(pieceConv).toContainText('CR_04-08.pdf');
+  await expect(pieceConv).toContainText('220 Ko');
   await page.locator('[data-testid="retour-boite"]').click();
   await expect(page.locator('[data-testid="conversation"]')).toHaveCount(0);
 });

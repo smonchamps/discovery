@@ -144,7 +144,7 @@ export const FR = {
   'lecture.imagesBloquees': '{n} image distante bloquée pour protéger votre vie privée.|{n} images distantes bloquées pour protéger votre vie privée.',
   'lecture.afficherImages': 'Afficher les images',
   'lecture.corps': 'Contenu du message',
-  'lecture.enregistrer': 'Enregistrer dans Téléchargements',
+  'lecture.enregistrer': 'Enregistrer…',
 
   // --- Conversation (écran 03) ------------------------------------------
   'conv.deplier': 'Tout déplier',

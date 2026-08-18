@@ -37,7 +37,11 @@ en cours porte `person`, W2-D5/D7) ; le compte reste à 44. Terrain A46
 composeur : `open_in_new` n'est plus employé, mais il est **conservé au
 sous-ensemble** (réservé) — le multi-fenêtre revient en chantier dédié,
 régénérer la police pour un seul glyphe serait disproportionné ; le
-compte reste à 46.
+compte reste à 46. A60 (PLAN-RETOURS-4) retire `storage` de l'usage —
+le poids d'une pièce rejoint la puce de son nom (exception « 1 puce =
+1 information », A59/A60) : `storage` n'est plus employé nulle part,
+**conservé réservé** au sous-ensemble comme `open_in_new` ci-dessus ;
+le compte d'usage baisse mais le sous-ensemble ne change pas.
 
 `all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
 `check_circle` `close` `delete` `description` `display_settings`

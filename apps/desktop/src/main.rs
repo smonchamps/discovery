@@ -179,6 +179,7 @@ fn main() {
             commands::search_messages,
             commands::message_body,
             commands::message_attachments,
+            commands::chemin_enregistrement_suggere,
             commands::save_attachment,
             commands::mark_seen,
             commands::mark_flagged,

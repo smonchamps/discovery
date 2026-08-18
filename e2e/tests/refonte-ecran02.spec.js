@@ -607,10 +607,13 @@ test("l'aperçu décode les entités HTML — jamais de résidu &eacute;", async
 test('les fichiers joints se prennent AU VOLET — un message seul n\'a pas de conversation (Annexe A)', async () => {
   // « Compte rendu du 4 août » : message SEUL, une pièce jointe.
   await page.locator('[data-testid="ligne"]', { hasText: 'Compte rendu du 4 août' }).click();
-  await expect(page.locator('[data-testid="lecture-fichiers"]')).toContainText('CR_04-08.pdf');
-  await expect(
-    page.locator('[data-testid="lecture-fichiers"] [data-testid="piece-jointe"]'),
-  ).toBeEnabled();
+  // R2 (PLAN-RETOURS-4, D4) : nom ET poids dans la MEME puce cliquable —
+  // une seule puce par piece, portant les deux informations.
+  const puce = page.locator('[data-testid="lecture-fichiers"] [data-testid="piece-jointe"]');
+  await expect(puce).toHaveCount(1);
+  await expect(puce).toContainText('CR_04-08.pdf');
+  await expect(puce).toContainText('220 Ko');
+  await expect(puce).toBeEnabled();
 });
 
 test('la croix vide la recherche en un clic (verdict terrain)', async () => {
@@ -633,6 +636,25 @@ test("les images distantes restent bloquées, l'opt-in est par message", async (
   await page.locator('[data-testid="ligne"]').first().click();
   await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
   await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
+});
+
+test('R3 : le corps reste sur dalle claire même sous un thème sombre (PLAN-RETOURS-4, D3)', async () => {
+  // La dalle sombre d'A42 rendait illisible le texte à couleurs
+  // d'expéditeur (terrain 2026-08-18). Le corps bake désormais TOUJOURS
+  // une dalle claire (mail-render Palette::default — fond blanc, encre
+  // sombre), quel que soit le thème : le front ne transmet plus de
+  // palette. On force un thème -nuit AVANT d'ouvrir le message (ouvrirFil
+  // vide le cache des corps → relève fraîche sous ce thème) ; l'ancien
+  // code aurait baké un fond sombre ici — réintroduire une palette de
+  // thème casserait ce test.
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'estampe-nuit'; });
+  await page.locator('[data-testid="ligne"]', { hasText: 'renouvellement du domaine' }).click();
+  await expect(page.locator('[data-testid="garde-images"]')).toBeVisible();
+  const srcdoc = await page.locator('iframe.corps').first().getAttribute('srcdoc');
+  expect(srcdoc).toContain('background:#ffffff');
+  expect(srcdoc).toContain('color:#222222');
+  expect(srcdoc).not.toContain('color-scheme:dark');
+  await page.evaluate(() => { delete document.documentElement.dataset.theme; });
 });
 
 test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente muette', async () => {

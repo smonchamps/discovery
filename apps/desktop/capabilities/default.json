@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Fenêtre principale : commandes du noyau, plus le seul sélecteur de fichiers (pièces jointes, PJ-D5).",
+  "description": "Fenêtre principale : commandes du noyau, plus le sélecteur de fichiers (pièces jointes à joindre, PJ-D5) et le dialogue « Enregistrer sous » (téléchargement d'une pièce reçue, R1/PLAN-RETOURS-4).",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
 }

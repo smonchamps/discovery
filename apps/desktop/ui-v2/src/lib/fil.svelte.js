@@ -10,7 +10,6 @@
 // (assaini côté cœur), chargé au dépliage seulement, affiché dans une
 // iframe sandbox par message — jamais innerHTML.
 import { appel } from './transport.js';
-import { paletteLecture } from './theme.js';
 
 const VIDE = () => ({
   messages: [],
@@ -107,14 +106,12 @@ async function chargerMessage(m, avecImages = false) {
         ? await appel('echo_body', {
             id: Number(m.mailbox.slice(5)),
             showImages: avecImages,
-            palette: paletteLecture(),
           })
         : await appel('message_body', {
             accountId: m.account_id,
             mailbox: m.mailbox,
             uid: m.uid,
             showImages: avecImages,
-            palette: paletteLecture(),
           });
       // Le jeton d'ouverture garde chaque écriture : une réponse
       // tardive (images accordées puis sélection changée) n'écrase

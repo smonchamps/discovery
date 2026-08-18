@@ -18,7 +18,7 @@ use mail_core::AccountConfig;
 use mail_core::{Action, MailServer, OutboxState, Store, SyncEngine};
 use mail_imap::ImapServer;
 use mail_smtp::SmtpMailer;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::AppState;
@@ -1769,23 +1769,6 @@ pub struct BodyView {
     pub attachment_count: usize,
 }
 
-/// L'encre et le fond du thème affiché, lus par le front aux jetons
-/// calculés (revue A42) — bakés au document par `mail_render::Palette`,
-/// qui refuse tout ce qui n'est pas `#rrggbb`.
-#[derive(Deserialize)]
-pub struct PaletteLecture {
-    pub encre: Option<String>,
-    pub fond: Option<String>,
-}
-
-impl PaletteLecture {
-    fn baker(palette: Option<Self>) -> mail_render::Palette {
-        palette
-            .map(|p| mail_render::Palette::new(p.encre.as_deref(), p.fond.as_deref()))
-            .unwrap_or_default()
-    }
-}
-
 /// Corps d'un message : cache local d'abord (aucun réseau), serveur du
 /// compte sinon. Document auto-CSP chargé dans une iframe `sandbox` —
 /// les trois couches de défense de la Phase 0.
@@ -1797,7 +1780,6 @@ pub async fn message_body(
     mailbox: String,
     uid: u32,
     show_images: bool,
-    palette: Option<PaletteLecture>,
 ) -> Result<BodyView, String> {
     let html = raw_body(&app, &state, account_id, &mailbox, uid).await?;
     // APRÈS raw_body : si le corps vient d'être rapatrié, ses pièces
@@ -1813,11 +1795,19 @@ pub async fn message_body(
         mail_render::ImagePolicy::BlockRemote
     };
     let sanitized = mail_render::sanitize_with(&html, policy);
-    // Revue A42 : l'encre et le fond du thème actif, bakés au document
-    // (l'iframe ne voit jamais les jetons de l'hôte).
-    let palette = PaletteLecture::baker(palette);
+    // R3 (PLAN-RETOURS-4, D3, 2026-08-18) : le corps s'affiche TOUJOURS
+    // sur dalle claire (`Palette::default` = encre sombre / fond blanc),
+    // quel que soit le thème. La dalle sombre d'A42 rendait illisible le
+    // texte à couleurs d'expéditeur (fréquent : infolettres pensées pour
+    // fond blanc — terrain 2026-08-18) ; le courriel se lit tel qu'il a
+    // été composé, comme chez les clients mûrs. Le texte SANS couleur
+    // propre était déjà lisible ; celui qui en porte l'est désormais aussi.
     Ok(BodyView {
-        document: mail_render::email_document(&sanitized.html, policy, &palette),
+        document: mail_render::email_document(
+            &sanitized.html,
+            policy,
+            &mail_render::Palette::default(),
+        ),
         remote_images_blocked: sanitized.remote_images_blocked,
         attachment_count,
     })
@@ -1903,11 +1893,31 @@ pub async fn message_attachments(
     .await
 }
 
-/// Enregistre une pièce jointe dans le dossier Téléchargements et
-/// retourne son chemin.
-///
-/// Les octets ne sont jamais en cache : ils sont retéléchargés ici, une
-/// fois, à la demande de l'utilisateur.
+/// Le chemin d'enregistrement PROPOSÉ pour une pièce (R1, PLAN-RETOURS-4,
+/// D2) : dossier Téléchargements + nom assaini rendu unique. Le nom vient
+/// de l'UI (déjà affiché dans la puce) — inutile de rouvrir la base pour
+/// le relire ; `safe_file_name` reste l'autorité de désinfection du nom
+/// venu du réseau (défense en profondeur, même si le dialogue laisse
+/// ensuite l'utilisateur trancher dossier ET nom finals).
+#[tauri::command]
+pub async fn chemin_enregistrement_suggere(app: AppHandle, name: String) -> Result<String, String> {
+    hors_pompe(app, move |app| {
+        let directory = app
+            .path()
+            .download_dir()
+            .map_err(|err| format!("dossier Téléchargements introuvable : {err}"))?;
+        Ok(unique_path(&directory, &safe_file_name(&name))
+            .to_string_lossy()
+            .into_owned())
+    })
+    .await
+}
+
+/// Enregistre une pièce jointe au chemin CHOISI par l'utilisateur (R1,
+/// PLAN-RETOURS-4, D2) et retourne ce chemin. Le dialogue « Enregistrer
+/// sous » est ouvert côté UI (`plugin:dialog|save`) ; ici on ne fait que
+/// rapatrier les octets — jamais en cache, retéléchargés à la demande —
+/// et les écrire à l'endroit voulu.
 #[tauri::command]
 pub async fn save_attachment(
     app: AppHandle,
@@ -1916,21 +1926,9 @@ pub async fn save_attachment(
     mailbox: String,
     uid: u32,
     index: usize,
+    dest: String,
 ) -> Result<String, String> {
     let path = db_path(&app)?;
-    let store = Store::open(&path).map_err(|err| err.to_string())?;
-    let attachment = store
-        .attachments(account_id, &mailbox, uid)
-        .map_err(|err| err.to_string())?
-        .into_iter()
-        .find(|candidate| candidate.index == index)
-        .ok_or_else(|| "pièce jointe inconnue".to_string())?;
-    drop(store);
-
-    let directory = app
-        .path()
-        .download_dir()
-        .map_err(|err| format!("dossier Téléchargements introuvable : {err}"))?;
     let session = auth_for(&path, &state, account_id)?;
     let bytes = tauri::async_runtime::spawn_blocking(move || -> Result<Vec<u8>, String> {
         let (mut server, _refreshed) = connect_imap(&session)?;
@@ -1943,9 +1941,8 @@ pub async fn save_attachment(
     .await
     .map_err(|err| err.to_string())??;
 
-    let target = unique_path(&directory, &safe_file_name(&attachment.name));
-    std::fs::write(&target, &bytes).map_err(|err| format!("écriture impossible : {err}"))?;
-    Ok(target.to_string_lossy().into_owned())
+    std::fs::write(&dest, &bytes).map_err(|err| format!("écriture impossible : {err}"))?;
+    Ok(dest)
 }
 
 /// Réduit un nom venu du RÉSEAU à un nom de fichier inoffensif.
@@ -2188,12 +2185,7 @@ fn queue_removal(
 /// le texte d'envoi est déjà échappé mais repasse par la même porte).
 /// Purement local — un écho n'a rien à demander au serveur.
 #[tauri::command]
-pub async fn echo_body(
-    app: AppHandle,
-    id: i64,
-    show_images: bool,
-    palette: Option<PaletteLecture>,
-) -> Result<BodyView, String> {
+pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<BodyView, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let (html, attachment_count) = store
@@ -2206,9 +2198,13 @@ pub async fn echo_body(
             mail_render::ImagePolicy::BlockRemote
         };
         let sanitized = mail_render::sanitize_with(&html, policy);
-        let palette = PaletteLecture::baker(palette);
+        // R3 : dalle claire toujours (voir `message_body`) — même porte S1.
         Ok(BodyView {
-            document: mail_render::email_document(&sanitized.html, policy, &palette),
+            document: mail_render::email_document(
+                &sanitized.html,
+                policy,
+                &mail_render::Palette::default(),
+            ),
             remote_images_blocked: sanitized.remote_images_blocked,
             attachment_count,
         })

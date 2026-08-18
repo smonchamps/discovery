@@ -41,3 +41,19 @@ export const choisirFichiers = async () => {
   if (!choix) return [];
   return Array.isArray(choix) ? choix : [choix];
 };
+
+// Le dialogue « Enregistrer sous » natif (plugin dialog), pour telecharger
+// une piece recue (R1/PLAN-RETOURS-4). Meme canal invoke que le reste ;
+// `defaultPath` pre-remplit dossier + nom (Telechargements + nom assaini,
+// fourni par le coeur). Rend le chemin choisi, ou null si l'utilisateur
+// annule.
+//
+// Couture e2e (symetrique de `choisirFichiers`) : un chemin pose dans
+// `window.__e2eDestination` est rendu tel quel, le dialogue natif — non
+// pilotable par Playwright — ne s'ouvre jamais.
+export const choisirDestination = async (cheminParDefaut) => {
+  const injecte = globalThis.window?.__e2eDestination;
+  if (injecte !== undefined) return injecte || null;
+  const choix = await appel('plugin:dialog|save', { options: { defaultPath: cheminParDefaut } });
+  return choix || null;
+};

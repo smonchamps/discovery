@@ -16,7 +16,7 @@
   import {
     fil, cleMsg, basculerMessage, toutDeplier, toutReplier, afficherImages,
   } from './lib/fil.svelte.js';
-  import { appel } from './lib/transport.js';
+  import { appel, choisirDestination } from './lib/transport.js';
   import { brancherLiens } from './lib/liens.js';
   import { quand, quandLong } from './lib/quand.js';
   import { initiales } from './lib/initiales.js';
@@ -141,11 +141,20 @@
     if (enregistrements[k]) return;
     enregistrements[k] = true;
     try {
+      // R1 (PLAN-RETOURS-4, D2) : le chemin proposé (Téléchargements +
+      // nom assaini par le cœur), puis le dialogue « Enregistrer sous »
+      // — l'utilisateur choisit dossier ET nom. Annuler = rien, ni
+      // toast ni erreur ; le rapatriement des octets n'a lieu qu'après
+      // le choix (jamais de fetch inutile si l'on renonce).
+      const defaut = await appel('chemin_enregistrement_suggere', { name: piece.name });
+      const dest = await choisirDestination(defaut);
+      if (!dest) return;
       const chemin = await appel('save_attachment', {
         accountId: m.account_id,
         mailbox: m.mailbox,
         uid: m.uid,
         index: piece.index,
+        dest,
       });
       onflash(t('toast.pieceEnregistree', { chemin }));
     } catch (err) {
@@ -230,14 +239,18 @@
               {#if nbPiecesDe(m) > 0}
                 <div class="fichiers" data-testid="lecture-fichiers">
                   <p class="titre-fichiers">{t('conv.fichiersJoints')}</p>
+                  <!-- R2 (PLAN-RETOURS-4, D4) : nom ET poids dans la MÊME
+                       puce cliquable — exception assumée à « 1 puce = 1
+                       information », icône unique (même objet manipulable
+                       que la puce du composeur, pas deux lectures). -->
                   <div class="puces">
                     {#each fil.pieces[k] ?? [] as piece (piece.index)}
                       <button type="button" class="puce bouton" data-testid="piece-jointe"
                               disabled={enregistrements[`${k}#${piece.index}`]}
                               onclick={() => enregistrer(m, piece)}
                               title={t('lecture.enregistrer')}>
-                        <span class="ms" aria-hidden="true">description</span>{piece.name}</button>
-                      <span class="puce"><span class="ms" aria-hidden="true">storage</span>{piece.size}</span>
+                        <span class="ms" aria-hidden="true">description</span>
+                        <span class="nom">{piece.name}</span><span class="taille">{piece.size}</span></button>
                     {/each}
                   </div>
                 </div>
@@ -417,6 +430,10 @@
   }
   .fichiers .puces { gap:8px; }
   .fichiers .puce { height:28px; }
+  /* R2 : nom + poids dans la puce (dessin de la puce du composeur) —
+     le nom à l'encre pleine, le poids atténué, l'espacement au gap. */
+  .fichiers .puce .nom { color:var(--ink); }
+  .fichiers .puce .taille { font-size:12px; color:var(--muted); }
   .actions {
     flex:none; padding:14px 26px; border-top:1px solid var(--border);
     display:flex; gap:12px; flex-wrap:wrap;

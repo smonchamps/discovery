@@ -114,17 +114,11 @@ export function themeAffiche() {
   return document.documentElement.dataset.theme ?? 'nature';
 }
 
-// L'encre et le fond du thème affiché, lus aux jetons calculés — bakés
-// par le cœur dans le document du corps de message (revue A42 : plus de
-// dalle blanche #ffffff sur les 14 thèmes sombres). L'iframe sandbox ne
-// voit jamais les jetons de l'hôte : les valeurs voyagent par l'appel.
-export function paletteLecture() {
-  const jetons = getComputedStyle(document.documentElement);
-  return {
-    encre: jetons.getPropertyValue('--ink').trim(),
-    fond: jetons.getPropertyValue('--surface').trim(),
-  };
-}
+// R3 (PLAN-RETOURS-4, D3, 2026-08-18) : `paletteLecture()` est RETIRÉE.
+// Le corps d'un message s'affiche désormais sur dalle claire dans tous
+// les thèmes (le cœur bake `Palette::default` — voir `message_body`) :
+// la dalle sombre d'A42 rendait illisible le texte à couleurs
+// d'expéditeur. Le front n'a donc plus de palette à transmettre.
 
 // L'unique endroit qui décide du thème AFFICHÉ : quand le suivi de
 // l'OS est actif et que l'OS est sombre, la déclinaison -nuit du thème
