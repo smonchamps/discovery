@@ -12,6 +12,29 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.1.10] - 2026-08-18
+
+Quatre retours du terrain.
+
+### Ajouté
+
+- **Signaler un courrier comme indésirable**, et l'inverse : un bouton
+  « Signaler comme spam » déplace la conversation vers le dossier
+  indésirable de votre messagerie — c'est elle qui apprend. Depuis le
+  dossier Indésirables, « Ce n'est pas un spam » la ramène en Réception.
+- **Supprimer un brouillon** directement depuis la fenêtre de composition,
+  d'un seul geste et après confirmation — distinct de « Annuler », qui,
+  lui, conserve le brouillon.
+- **Répondre message par message** : les boutons Répondre, Répondre à tous
+  et Transférer sont désormais au bas de chaque message d'une conversation,
+  pour répondre précisément à celui que vous lisez — vos propres messages
+  compris, auquel cas la réponse repart vers les destinataires d'origine.
+
+### Modifié
+
+- Le **rattrapage des messages** affiche un pourcentage de progression dans
+  la barre d'état, à côté du nombre de messages restants.
+
 ## [0.1.9] - 2026-08-17
 
 Quatre retours du terrain.
