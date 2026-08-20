@@ -26,7 +26,19 @@ réseau, `boites.first()` sensible à la casse, erreurs avalées, premier
 cycle complet non garanti, `backfill_status` sorti de `hors_pompe` sans
 exemption ADR 0019).
 
-**Dernière version livrée : 0.2.0** (publiée 2026-08-20, **auto-update
+**Dernière version livrée : 0.2.1** (publiée 2026-08-20, release
+**vérifiée a posteriori** STANDARD.md §2.10 : Latest, 3 assets au tag
+nu, `latest.json` sans BOM, URL au tag nu, signature == `.sig`, exe
+résout 200 / 5 014 053 octets ; **auto-update 0.2.0 → 0.2.1 à
+confirmer au terrain** — c'est la preuve définitive de la chaîne
+signée). La 0.2.1 porte le **défilement profond réparé**
+(PLAN-DEFILEMENT-PROFOND, CORRECTIF §2.9) : la liste ne se fige plus
+au drag de la barre, l'écran vide ne ment plus, démarrage et premiers
+affichages immédiats. Enseignement gravé au passage (STANDARD §2.9 ⚠️,
+oubli commis trois fois) : **les notes utilisateur au CHANGELOG
+s'écrivent AVANT `faire-release.ps1`** — le script refuse sans elles.
+
+**La version précédente, 0.2.0** (publiée 2026-08-20, **auto-update
 0.1.11 → 0.2.0 confirmé au terrain le 2026-08-20** — la chaîne signée
 ADR 0013 reste prouvée vivante ; release **vérifiée a posteriori**
 STANDARD.md §2.10 : Latest, 3 assets au tag nu, `latest.json` sans BOM,
@@ -35,7 +47,7 @@ La 0.2.0 porte le **composeur enrichi HTML** (PLAN-COMPOSITION-HTML,
 première capacité nouvelle du 0.x → MINEUR §2.9) et la **reconnexion
 d'un compte au jeton mort** depuis Réglages > Comptes.
 
-**La version précédente, 0.1.11** (publiée 2026-08-19, `6977778`,
+**La 0.1.11** (publiée 2026-08-19, `6977778`,
 auto-update **0.1.10 → 0.1.11 confirmé au terrain le 2026-08-19** — mise à
 jour depuis l'app, la chaîne signée ADR 0013 reste prouvée vivante ;
 release **vérifiée a posteriori** : Latest, 3 assets, `latest.json` sans
