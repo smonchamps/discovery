@@ -14,18 +14,26 @@
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
-**Prochain chantier planifié : le composeur enrichi HTML** (R4 de
-PLAN-RETOURS-4, reporté en chantier dédié — décision CE D1 du
-2026-08-18). Une barre de mise en forme réelle : police, taille, gras /
-italique / souligné / barré, couleur du texte, alignement, listes à
-puces et numérotée, retrait −/+, effacer la mise en forme. C'est une
-**tranche verticale** — corps HTML de bout en bout (mail-core + migration
-des brouillons, mail-smtp en `multipart/alternative`, citation HTML,
-éditeur `contenteditable`) qui touche les **règles d'or de l'envoi**
-(ADR 0003) et exige une migration rembobinable (invariant #7). À ouvrir
-par `/chantier` (PLAN-COMPOSITION-HTML), avec son propre terrain et sa
-release. R4 **ajoute une capacité nouvelle** → sa release sera un
-**MINEUR : 0.2.0** (STANDARD.md §2.9, première bascule `y`+1 du 0.x).
+**Premier geste : publier la release 0.2.0** — le composeur enrichi
+HTML est **livré, terrain complet, CI verte** (`537a1e4`,
+PLAN-COMPOSITION-HTML soldé le 2026-08-20) mais **pas encore publié**.
+C'est une capacité nouvelle → **MINEUR 0.2.0** (STANDARD.md §2.9,
+première bascule `y`+1 du 0.x) :
+`scripts/faire-release.ps1 0.2.0` (clé `C:\Keys\wind.key`, mot de passe
+à la main, confirmation `OUI`), puis vérification de release
+(STANDARD.md §2.10) et auto-update 0.1.11 → 0.2.0 confirmé au terrain.
+
+**Chantier à reprendre de zéro : perf-lecture** (corps à la demande
+bridé à ~7 s au lancement, terrain du 2026-08-19). Son WIP non commité
+a été **retiré sur décision CE du 2026-08-20** (« qualité trop
+aléatoire ») ; le sujet repart par `/chantier` dans une session dédiée.
+Matière disponible : les six constats de la revue du 2026-08-20 sur ce
+WIP, consignés au § revue de
+[PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md) (le `await` du
+prefetch qui bloquait le lancement, le verrou tenu pendant l'I/O
+réseau, `boites.first()` sensible à la casse, erreurs avalées, premier
+cycle complet non garanti, `backfill_status` sorti de `hors_pompe` sans
+exemption ADR 0019).
 
 **Dernière version livrée : 0.1.11** (publiée 2026-08-19, `6977778`,
 auto-update **0.1.10 → 0.1.11 confirmé au terrain le 2026-08-19** — mise à
@@ -62,7 +70,28 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 (PLAN-GELS, ADR 0019) ; auto-update 0.1.6 → 0.1.7 confirmé au terrain.
 Tous les plans de cette ligne sont soldés.
 
-**Dernier chantier soldé : PLAN-DOCUMENTATION** (2026-08-19, `78a2a91`
+**Dernier chantier soldé : PLAN-COMPOSITION-HTML** (2026-08-20,
+`537a1e4`, A62-A63 + ADR 0022, terrain complet, CI verte — **à publier
+en 0.2.0**). Le composeur passe au **corps riche de bout en bout** :
+colonne `body_html` à côté du texte (drafts + outbox, migration
+rembobinable, NULL sur l'existant), envoi `multipart/alternative`
+(texte dérivé du même HTML par LA frontière unique `frontiere_corps`),
+reflet Brouillons et tirage pareil (un brouillon riche re-rapatrié
+garde sa mise en forme), écho Envoyés en HTML, citation `blockquote`,
+éditeur `contenteditable` + `execCommand` legacy (sortie = allowlist
+ammonia exacte), barre R4 stricte (D1-D3 : sans Lien/Citation, familles
+génériques + 4 crans, nuancier 12 teintes), icônes 46 → 58. **Images
+distantes par geste (D5 terrain)** : réponse au pixel neutre (une
+citation `AllowRemote` chargeait les pixels espions au clic Répondre —
+revue), transfert conserve les images. **Deux constats terrain corrigés
+le jour même (A63)** : reconnexion d'un compte au jeton mort
+(`invalid_grant`) depuis Réglages > Comptes (`reconnect_account`, garde
+d'identité, e2e dédié) ; l'avis de déconnexion mène aux Réglages.
+Revue à regard neuf : 10 trouvailles confirmées, corrigées (dont trois
+pièges du contenteditable gravés au STANDARD §9). Reports : DETTE D-25.
+e2e : 92 → **94**.
+
+**Chantier soldé précédent : PLAN-DOCUMENTATION** (2026-08-19, `78a2a91`
 → `8cf8ac3`, CI verte, terrain E4 : reprise à froid et test du stub
 propres). La documentation est restructurée en trois gestes kaizen :
 **la méthode vit dans [STANDARD.md](STANDARD.md)** (numérotation

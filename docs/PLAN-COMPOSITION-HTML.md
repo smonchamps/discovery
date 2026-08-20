@@ -1,12 +1,18 @@
 # PLAN-COMPOSITION-HTML — composeur enrichi HTML (R4)
 
-> Chantier ouvert le 2026-08-19 (`/chantier`), issu du report R4 de
-> PLAN-RETOURS-4 (décision CE D1 du 2026-08-18). Release attendue :
-> **0.2.0** — première capacité nouvelle du 0.x (MINEUR, STANDARD §2.9,
-> déjà consigné à l'ETAT).
+> **CHANTIER SOLDÉ le 2026-08-20 — terrain complet.** Commit `537a1e4`
+> (main), CI verte (run 32365447767). GO CE du plan (STOP 1) :
+> 2026-08-19 (D1-D3). Terrain (STOP 2) : points 1-8 « OK au terrain »
+> et D5 tranché le 2026-08-20 ; deux constats terrain corrigés le jour
+> même (reconnexion d'un compte au jeton mort — A63 ; l'avis de
+> déconnexion mène aux Réglages). Journal Système **A62** (composeur
+> riche) et **A63** (reconnexion). Revue à regard neuf : 10 trouvailles
+> confirmées, corrigées. Reports : DETTE **D-25**. Release **0.2.0** à
+> publier (`scripts/faire-release.ps1`, geste CE).
 >
-> **GO CE du plan (STOP 1) : 2026-08-19**, décisions D1-D3 consignées
-> au § Décisions CE.
+> Chantier ouvert le 2026-08-19 (`/chantier`), issu du report R4 de
+> PLAN-RETOURS-4 (décision CE D1 du 2026-08-18). Release :
+> **0.2.0** — première capacité nouvelle du 0.x (MINEUR, STANDARD §2.9).
 
 Demande du Chef Ingénieur (R4, 2026-08-18) : une vraie barre de mise en
 forme dans le composeur — Police · Taille · Gras / Italique / Souligné /

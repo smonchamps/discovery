@@ -343,3 +343,24 @@ motivée.)
 - **Avancement** : première reprise comptée le 2026-08-19 (E4 du
   chantier — reprise ordinaire propre, et le stub a rattrapé l'ancien
   rituel collé volontairement). Une reprise propre de plus et il tombe.
+
+### D-25 · Composeur riche : quatre écarts assumés de la revue
+
+- **Fait (PLAN-COMPOSITION-HTML, revue du 2026-08-20)** : quatre écarts
+  relevés par la revue à regard neuf, assumés sans correctif —
+  1. le miroir JS `texteEnHtml` (Composition.svelte) duplique
+     `mail_core::texte_en_html` (8 lignes, documenté des deux côtés) :
+     le supprimer exigerait de servir la conversion par le Rust, ce qui
+     re-créerait le churn texte→riche que la garde anti-churn vient de
+     tuer ; une divergence d'échappement resterait invisible aux tests ;
+  2. `mail_smtp::draft_bytes` porte 8 arguments positionnels dont six
+     `&str` consécutifs (allow clippy posé) : une inversion Cc/Cci à
+     l'appel compilerait — le chemin le moins testé (reflet Brouillons) ;
+  3. `DraftContent` n'a pas de `Default` : le prochain champ retouche
+     ~45 littéraux de test mécaniquement ;
+  4. le triptyque e2e de vidage d'un contenteditable (clic + Ctrl+A +
+     Suppr) est recopié trois fois dans les specs.
+- **Condition de reprise** : au prochain chantier qui touche les
+  brouillons ou l'envoi, régler 2 et 3 (grouper les paramètres, dériver
+  `Default`) ; 1 se rouvre seulement si un troisième convertisseur
+  apparaît ; 4 au prochain spec qui en aurait besoin (helper partagé).
