@@ -14,16 +14,7 @@
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
-**Premier geste : publier la release 0.2.0** — le composeur enrichi
-HTML est **livré, terrain complet, CI verte** (`537a1e4`,
-PLAN-COMPOSITION-HTML soldé le 2026-08-20) mais **pas encore publié**.
-C'est une capacité nouvelle → **MINEUR 0.2.0** (STANDARD.md §2.9,
-première bascule `y`+1 du 0.x) :
-`scripts/faire-release.ps1 0.2.0` (clé `C:\Keys\wind.key`, mot de passe
-à la main, confirmation `OUI`), puis vérification de release
-(STANDARD.md §2.10) et auto-update 0.1.11 → 0.2.0 confirmé au terrain.
-
-**Chantier à reprendre de zéro : perf-lecture** (corps à la demande
+**Prochain chantier : perf-lecture, à reprendre de zéro** (corps à la demande
 bridé à ~7 s au lancement, terrain du 2026-08-19). Son WIP non commité
 a été **retiré sur décision CE du 2026-08-20** (« qualité trop
 aléatoire ») ; le sujet repart par `/chantier` dans une session dédiée.
@@ -35,7 +26,16 @@ réseau, `boites.first()` sensible à la casse, erreurs avalées, premier
 cycle complet non garanti, `backfill_status` sorti de `hors_pompe` sans
 exemption ADR 0019).
 
-**Dernière version livrée : 0.1.11** (publiée 2026-08-19, `6977778`,
+**Dernière version livrée : 0.2.0** (publiée 2026-08-20, **auto-update
+0.1.11 → 0.2.0 confirmé au terrain le 2026-08-20** — la chaîne signée
+ADR 0013 reste prouvée vivante ; release **vérifiée a posteriori**
+STANDARD.md §2.10 : Latest, 3 assets au tag nu, `latest.json` sans BOM,
+URL au tag nu, signature == `.sig`, exe résout 200 / 5 008 012 octets).
+La 0.2.0 porte le **composeur enrichi HTML** (PLAN-COMPOSITION-HTML,
+première capacité nouvelle du 0.x → MINEUR §2.9) et la **reconnexion
+d'un compte au jeton mort** depuis Réglages > Comptes.
+
+**La version précédente, 0.1.11** (publiée 2026-08-19, `6977778`,
 auto-update **0.1.10 → 0.1.11 confirmé au terrain le 2026-08-19** — mise à
 jour depuis l'app, la chaîne signée ADR 0013 reste prouvée vivante ;
 release **vérifiée a posteriori** : Latest, 3 assets, `latest.json` sans
