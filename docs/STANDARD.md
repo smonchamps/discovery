@@ -135,10 +135,19 @@ La release se publie par `scripts/faire-release.ps1 <version>`
 ([ADR 0013](adr/0013-installeur-nsis-maj-signee.md)) ; le tag GitHub reste
 la **version nue**.
 
+⚠️ **Les notes utilisateur D'ABORD, systématiquement** : écrire (et
+committer) l'entrée `## [<version>]` de `CHANGELOG.md` **avant** de
+lancer le script — il refuse net sans elle (« CHANGELOG.md n'a pas
+d'entree… »), c'est son premier contrôle. Oubli commis **au moins trois
+fois** en session (dernière : 0.2.1, 2026-08-20) : le réflexe fait
+partie de la préparation de release, pas de l'après-coup.
+
 ### 2.10 Vérifier une release publiée
 
 Depuis la 0.1.10 (2026-08-18), `scripts/faire-release.ps1 <v>` fait
-**toute** la release (validé au terrain) : bump de la seule ligne
+**toute** la release (validé au terrain) — à condition que l'entrée
+`## [<v>]` du CHANGELOG existe déjà (§2.9, son premier contrôle) :
+bump de la seule ligne
 `version` de `apps/desktop/tauri.conf.json`, build signé (clé au
 **chemin** `C:\Keys\wind.key` — `TAURI_SIGNING_PRIVATE_KEY` accepte un
 chemin ; mot de passe saisi à la main), `latest.json` sans BOM, puis —
