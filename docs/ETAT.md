@@ -29,9 +29,9 @@ exemption ADR 0019).
 **Dernière version livrée : 0.2.1** (publiée 2026-08-20, release
 **vérifiée a posteriori** STANDARD.md §2.10 : Latest, 3 assets au tag
 nu, `latest.json` sans BOM, URL au tag nu, signature == `.sig`, exe
-résout 200 / 5 014 053 octets ; **auto-update 0.2.0 → 0.2.1 à
-confirmer au terrain** — c'est la preuve définitive de la chaîne
-signée). La 0.2.1 porte le **défilement profond réparé**
+résout 200 / 5 014 053 octets ; **auto-update 0.2.0 → 0.2.1 confirmé
+au terrain le 2026-08-20** — la chaîne signée ADR 0013 reste prouvée
+vivante). La 0.2.1 porte le **défilement profond réparé**
 (PLAN-DEFILEMENT-PROFOND, CORRECTIF §2.9) : la liste ne se fige plus
 au drag de la barre, l'écran vide ne ment plus, démarrage et premiers
 affichages immédiats. Enseignement gravé au passage (STANDARD §2.9 ⚠️,
