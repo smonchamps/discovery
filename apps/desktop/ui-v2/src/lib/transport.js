@@ -20,9 +20,24 @@ const brut = invoke
 // resolution — l'assertion « une recharge ne montre jamais l'attente »
 // doit observer l'ecran PENDANT le vol d'une resservie. Hors e2e la
 // variable n'existe pas : le chemin est identique a avant.
+//
+// Couture e2e (PLAN-DEFILEMENT-PROFOND E1) : un tableau pose dans
+// `window.__e2eJournal` recoit un releve {commande, depart, arrivee}
+// par appel — l'assertion « jamais plus de N pages en vol » compte les
+// vols ouverts a chaque instant. Meme regle : hors e2e, rien.
 export const appel = (commande, args) => {
   const retenue = globalThis.window?.__e2eRetenue;
-  return retenue ? retenue.then(() => brut(commande, args)) : brut(commande, args);
+  const vol = retenue ? retenue.then(() => brut(commande, args)) : brut(commande, args);
+  const journal = globalThis.window?.__e2eJournal;
+  if (journal) {
+    const releve = { commande, depart: performance.now(), arrivee: null };
+    journal.push(releve);
+    const poser = () => {
+      releve.arrivee = performance.now();
+    };
+    vol.then(poser, poser);
+  }
+  return vol;
 };
 
 // Le selecteur de fichiers natif (plugin dialog), par le MEME canal

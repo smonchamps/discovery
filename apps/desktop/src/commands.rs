@@ -1576,9 +1576,15 @@ fn arrival_notification_problem(
         .map(|err| format!("notification non affichée : {err}"))
 }
 
+// La page ne porte PLUS de total (terrain 2026-08-20,
+// PLAN-DEFILEMENT-PROFOND) : le comptage d'une intégrale Gmail (sonde
+// NOT EXISTS par ligne) coûte ~240 ms sur 200 k — plus que la page
+// elle-même — et retardait chaque premier rendu. Le total vit dans la
+// commande séparée [`category_total`], demandée par le front APRÈS
+// l'affichage des lignes ; une page plus courte que sa limite dit
+// d'elle-même la fin de la liste.
 #[derive(Serialize)]
 pub struct MessagePage {
-    pub total: u64,
     pub offset: usize,
     pub rows: Vec<MessageRow>,
     pub elapsed_us: u64,
@@ -1646,14 +1652,12 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
 pub struct NavAccount {
     pub account_id: i64,
     pub email: String,
-    pub reception_total: u64,
+    // La nav ne dit QUE le non-lu (A29) : la sonde à 10 s ne paie que
+    // ces deux compteurs — l'inventaire complet (`nav_counts`, dont le
+    // total d'une intégrale à ~240 ms la sonde) ne se recalcule plus au
+    // battement (terrain 2026-08-20, PLAN-DEFILEMENT-PROFOND).
     pub reception_non_lues: u64,
-    pub envoyes: u64,
-    pub brouillons: u64,
-    pub indesirables_total: u64,
     pub indesirables_non_lus: u64,
-    pub archives: u64,
-    pub corbeille: u64,
 }
 
 /// L'état complet de la nav en UN appel : comptes et compteurs par
@@ -1667,20 +1671,14 @@ pub async fn nav_snapshot(app: AppHandle) -> Result<Vec<NavAccount>, String> {
             let dossiers = store
                 .canonical_folders(compte.id)
                 .map_err(|err| err.to_string())?;
-            let compteurs = store
-                .nav_counts(compte.id, &dossiers)
+            let (reception_non_lues, indesirables_non_lus) = store
+                .nav_unread_counts(compte.id, &dossiers)
                 .map_err(|err| err.to_string())?;
             sortie.push(NavAccount {
                 account_id: compte.id,
                 email: compte.email,
-                reception_total: compteurs.reception_total,
-                reception_non_lues: compteurs.reception_non_lues,
-                envoyes: compteurs.envoyes,
-                brouillons: compteurs.brouillons,
-                indesirables_total: compteurs.indesirables_total,
-                indesirables_non_lus: compteurs.indesirables_non_lus,
-                archives: compteurs.archives,
-                corbeille: compteurs.corbeille,
+                reception_non_lues,
+                indesirables_non_lus,
             });
         }
         Ok(sortie)
@@ -1705,9 +1703,6 @@ pub async fn list_category(
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let limit = limit.min(LIST_LIMIT_MAX);
         if category == "reception" {
-            let total = store
-                .unified_count_scoped(account_id, non_lus)
-                .map_err(|err| err.to_string())?;
             let rows = store
                 .unified_recent_scoped(account_id, non_lus, offset, limit)
                 .map_err(|err| err.to_string())?
@@ -1715,67 +1710,122 @@ pub async fn list_category(
                 .map(to_message_row)
                 .collect();
             return Ok(MessagePage {
-                total,
                 offset,
                 rows,
                 elapsed_us: timer.elapsed().as_micros() as u64,
             });
         }
-        let comptes: Vec<i64> = match account_id {
-            Some(id) => vec![id],
-            None => store
-                .accounts()
-                .map_err(|err| err.to_string())?
-                .into_iter()
-                .map(|compte| compte.id)
-                .collect(),
-        };
-        let mut boites = Vec::new();
-        // Les Archives d'une INTÉGRALE Gmail (« Tous les messages ») privent
-        // la catégorie des messages vivant dans une autre canonique — sinon
-        // elle montre toute la boîte (défaut terrain, 2026-08-12).
-        let mut exclure = Vec::new();
-        for compte in &comptes {
-            let dossiers = store
-                .canonical_folders(*compte)
-                .map_err(|err| err.to_string())?;
-            if let Some(nom) = dossiers.boite(&category)
-                && let Some(state) = store
-                    .sync_state(*compte, &nom)
-                    .map_err(|err| err.to_string())?
-            {
-                boites.push(state.mailbox_id);
-                if category == "archives" && dossiers.archives_integrale {
-                    exclure.extend(
-                        store
-                            .canoniques_hors_archives(*compte, &dossiers)
-                            .map_err(|err| err.to_string())?,
-                    );
-                }
-            }
-        }
+        let portee = resoudre_categorie(&store, &category, account_id)?;
         // E3 (PLAN-REACTIVITE) : les échos locaux des destinations de geste
         // entrent dans la page et le total — la Corbeille montre la
         // suppression, Envoyés l'envoi, à la seconde du geste.
         let echos = mail_core::DESTINATIONS_ECHO
             .contains(&category.as_str())
-            .then_some((category.as_str(), comptes.as_slice()));
-        let (tous, jamais_lus) = store
-            .category_totals(&boites, &exclure, echos)
-            .map_err(|err| err.to_string())?;
-        let total = if non_lus { jamais_lus } else { tous };
+            .then_some((category.as_str(), portee.comptes.as_slice()));
         let rows = store
-            .category_page(&boites, non_lus, &exclure, echos, offset, limit)
+            .category_page(
+                &portee.boites,
+                non_lus,
+                &portee.exclure,
+                echos,
+                offset,
+                limit,
+            )
             .map_err(|err| err.to_string())?
             .into_iter()
             .map(to_message_row)
             .collect();
         Ok(MessagePage {
-            total,
             offset,
             rows,
             elapsed_us: timer.elapsed().as_micros() as u64,
         })
+    })
+    .await
+}
+
+/// Comptes en portée, boîtes résolues et exclusion d'intégrale d'une
+/// catégorie hors réception — la résolution PARTAGÉE de la page
+/// (`list_category`) et du comptage (`category_total`).
+struct PorteeCategorie {
+    comptes: Vec<i64>,
+    boites: Vec<i64>,
+    exclure: Vec<i64>,
+}
+
+fn resoudre_categorie(
+    store: &Store,
+    category: &str,
+    account_id: Option<i64>,
+) -> Result<PorteeCategorie, String> {
+    let comptes: Vec<i64> = match account_id {
+        Some(id) => vec![id],
+        None => store
+            .accounts()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(|compte| compte.id)
+            .collect(),
+    };
+    let mut boites = Vec::new();
+    // Les Archives d'une INTÉGRALE Gmail (« Tous les messages ») privent
+    // la catégorie des messages vivant dans une autre canonique — sinon
+    // elle montre toute la boîte (défaut terrain, 2026-08-12).
+    let mut exclure = Vec::new();
+    for compte in &comptes {
+        let dossiers = store
+            .canonical_folders(*compte)
+            .map_err(|err| err.to_string())?;
+        if let Some(nom) = dossiers.boite(category)
+            && let Some(state) = store
+                .sync_state(*compte, &nom)
+                .map_err(|err| err.to_string())?
+        {
+            boites.push(state.mailbox_id);
+            if category == "archives" && dossiers.archives_integrale {
+                exclure.extend(
+                    store
+                        .canoniques_hors_archives(*compte, &dossiers)
+                        .map_err(|err| err.to_string())?,
+                );
+            }
+        }
+    }
+    Ok(PorteeCategorie {
+        comptes,
+        boites,
+        exclure,
+    })
+}
+
+/// Le total d'une catégorie — la commande SÉPARÉE du service des pages
+/// (terrain 2026-08-20, PLAN-DEFILEMENT-PROFOND) : le comptage d'une
+/// intégrale (sonde NOT EXISTS par ligne, ~240 ms sur 200 k) ne doit
+/// jamais retarder un premier rendu — le front l'appelle quand sa
+/// pompe de pages est au repos, et la barre de défilement s'ajuste à
+/// l'arrivée.
+#[tauri::command]
+pub async fn category_total(
+    app: AppHandle,
+    category: String,
+    account_id: Option<i64>,
+    non_lus: bool,
+) -> Result<u64, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        if category == "reception" {
+            return store
+                .unified_count_scoped(account_id, non_lus)
+                .map_err(|err| err.to_string());
+        }
+        let portee = resoudre_categorie(&store, &category, account_id)?;
+        let echos = mail_core::DESTINATIONS_ECHO
+            .contains(&category.as_str())
+            .then_some((category.as_str(), portee.comptes.as_slice()));
+        let (tous, jamais_lus) = store
+            .category_totals(&portee.boites, &portee.exclure, echos)
+            .map_err(|err| err.to_string())?;
+        Ok(if non_lus { jamais_lus } else { tous })
     })
     .await
 }

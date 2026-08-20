@@ -285,6 +285,30 @@ impl Store {
         })
     }
 
+    /// Les deux seuls compteurs que la nav AFFICHE (A29 : la nav ne dit
+    /// que le non-lu) — le chemin de la sonde à 10 s. Les huit
+    /// compteurs de [`Store::nav_counts`] restent l'inventaire complet
+    /// (tests d'invariants, écrans à venir) mais ne se paient plus à la
+    /// cadence de la nav : le total des archives d'une intégrale (sonde
+    /// `NOT EXISTS` par ligne) coûtait ~240 ms par compte et par sonde,
+    /// posé devant chaque premier rendu (terrain 2026-08-20,
+    /// PLAN-DEFILEMENT-PROFOND).
+    pub fn nav_unread_counts(
+        &self,
+        account_id: i64,
+        dossiers: &CanonicalFolders,
+    ) -> Result<(u64, u64), Error> {
+        let reception: i64 = self.conn().query_row(
+            "SELECT COALESCE(SUM(unseen > 0), 0)
+             FROM threads WHERE account_id = ?1 AND inbox_size > 0",
+            params![account_id],
+            |row| row.get(0),
+        )?;
+        let (_, indesirables) =
+            self.compte_boite(account_id, dossiers.indesirables.as_deref(), &[])?;
+        Ok((reception as u64, indesirables))
+    }
+
     /// La boîte unifiée, bornée à un compte quand la nav filtre par
     /// « Boîte », aux non-lues quand l'onglet du prototype l'exige —
     /// même squelette de pagination que [`Store::unified_recent`].
@@ -615,6 +639,49 @@ mod tests {
         assert_eq!(counts.archives, 3);
         // Brouillons : aucun brouillon local -> zéro, jamais une erreur.
         assert_eq!(counts.brouillons, 0);
+    }
+
+    /// PLAN-DEFILEMENT-PROFOND (terrain 2026-08-20) : la sonde de nav
+    /// ne paie plus que les deux compteurs AFFICHÉS (A29 : la nav ne
+    /// dit que le non-lu) — et dit exactement ce que l'inventaire
+    /// complet dirait. Parité verrouillée : si `nav_counts` évolue,
+    /// la version légère doit suivre ou ce test crie.
+    #[test]
+    fn les_compteurs_legers_de_nav_disent_ce_que_l_inventaire_dit() {
+        let mut store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("a@exemple.fr", "gmail")
+            .unwrap();
+        let inbox = store.create_mailbox(account, "INBOX", 1).unwrap();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    envelope(1, "lu", 100, true),
+                    envelope(2, "non lu", 200, false),
+                ],
+            )
+            .unwrap();
+        let spam = store.create_mailbox(account, "Spam", 1).unwrap();
+        store
+            .upsert_envelopes(
+                spam,
+                &[
+                    envelope(1, "indésirable", 300, false),
+                    envelope(2, "indésirable lu", 400, true),
+                ],
+            )
+            .unwrap();
+        store
+            .replace_folders(account, &[dossier("INBOX"), dossier("Spam")])
+            .unwrap();
+        let canon = store.canonical_folders(account).unwrap();
+        let complet = store.nav_counts(account, &canon).unwrap();
+        let (reception, indesirables) = store.nav_unread_counts(account, &canon).unwrap();
+        assert_eq!(reception, complet.reception_non_lues);
+        assert_eq!(indesirables, complet.indesirables_non_lus);
+        assert_eq!(reception, 1);
+        assert_eq!(indesirables, 1);
     }
 
     /// B-D1 (PLAN-BROUILLONS) : le compteur compte la table `drafts` du

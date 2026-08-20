@@ -342,11 +342,14 @@ bandeau. La recherche gagne en profondeur à mesure.
 - **Tri par date de la recherche** — **armé** (A50, PLAN-RECHERCHE) : au-delà
   de 10 k correspondances (`WIDE_QUERY_THRESHOLD`), le classement bascule sur
   la date, le plancher BM25 dépassant sinon le budget. Plus un report.
-- **Défilement profond de la LISTE** : `OFFSET` coûte ~230 ms à 150 000
-  conversations. La recherche a résolu le même mur (l'`OFFSET` **hydrate les
-  lignes sautées**) par une **pagination en deux temps** — clés ordonnées
-  puis hydratation de la seule page (A51, PLAN-CHARGER-PLUS) ; le même patron
-  s'appliquerait à la liste.
+- **Défilement profond de la LISTE** — la PANNE est morte
+  (PLAN-DEFILEMENT-PROFOND, A64, 2026-08-20) : file bornée à UN vol,
+  écran vide honnête, comptages hors du chemin d'affichage
+  (`category_total` séparé, nav allégée à ses deux non-lus). Reste
+  ASSUMÉ (décision CE D1, DETTE **D-26**) : le parcours d'index
+  O(offset) d'une page profonde hors réception (~129 ms à l'offset
+  80 000 sur 200 k, cœur seul) — une seule vole à la fois, l'écran dit
+  le chargement ; à rouvrir si le terrain dépasse ~1 s la page.
 - **Envoi de pièces jointes** (lecture seule en v1) ; **filtre « a une
   pièce jointe »**. (Le **`to:` dans la recherche** est LIVRÉ — A49.)
 - **CONDSTORE réel, IDLE/push** — reports de Phase 1 inchangés.

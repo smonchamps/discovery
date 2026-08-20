@@ -56,7 +56,29 @@
   let sondees = $state(false);
   let selection = $state(null);
   let premierePageMs = $state(null);
+  // PLAN-DEFILEMENT-PROFOND E2 + terrain du 2026-08-20 :
+  // `sourceRepondue` — une page de la SOURCE courante est arrivée ;
+  // avant cette preuve l'écran montre l'attente, jamais « Aucun
+  // message ici. ». `totalPrecis` — le total affiché est exact : soit
+  // une page plus courte que sa limite l'a dit d'elle-même (fin de
+  // liste — les petits dossiers ne paient JAMAIS de comptage), soit
+  // `category_total` a répondu. Entre les deux, `total` est un
+  // PLANCHER tiré des lignes servies : les lignes s'affichent sans
+  // attendre le comptage (~240 ms par intégrale, plus à froid), la
+  // barre de défilement s'ajuste à l'arrivée du vrai total.
+  let sourceRepondue = $state(false);
+  let totalPrecis = $state(false);
 
+  // Deux compteurs (revue 2026-08-20) : `source` ne bouge qu'au
+  // changement de (catégorie, compte, onglet) — un vol né d'une AUTRE
+  // source est jeté à l'arrivée ; `generation` bouge aussi à chaque
+  // recharge — un vol de la MÊME source à génération antérieure reste
+  // bon à AFFICHER (stale-while-revalidate), sa page reste dépareillée
+  // donc resservie. Sans cette distinction, des recharges plus
+  // rapprochées que le règlement d'une page profonde (rattrapage des
+  // corps : une recharge PAR LOT, des jours durant) condamneraient
+  // chaque résultat à l'arrivée — squelette à demeure.
+  let source = 0;
   let generation = 0;
   let pages = new Map();
   let chipsParPage = new Map();
@@ -113,15 +135,110 @@
     return Math.min(i, Math.max(0, total - 1));
   }
 
-  function servirPage(p) {
-    // Le dossier Brouillons ne se sert pas ici : sa page vient de
-    // `list_drafts` (PLAN-BROUILLONS, B-D1), pas de `list_category`.
-    if (categorie === 'brouillons') return Promise.resolve();
-    if (servieA.get(p) === generation || pending.has(p)) {
-      return pending.get(p) || Promise.resolve();
+  // PLAN-DEFILEMENT-PROFOND E1 : au plus VOL_MAX pages en vol
+  // (`pending` est la jauge — une seule vérité), et à chaque vol libre
+  // on lance la page la plus utile de la fenêtre COURANTE — jamais
+  // celles d'une position dépassée. Avant : l'effet servait chaque page
+  // traversée par chaque position d'un drag tenu (~161 appels pour 2 s
+  // de barre, mesurés au banc) ; la file sérialisée de `hors_pompe`
+  // (ADR 0019) se drainait en minutes sur la vraie base et TOUTES les
+  // commandes attendaient derrière.
+  //
+  // UN seul vol (terrain 2026-08-20) : le cœur sérialise de toute
+  // façon (verrou global) — deux vols ne paralléliseraient rien, ils
+  // ne feraient qu'allonger d'une page dépassée l'attente de la page
+  // utile à l'arrêt du geste. La fenêtre à cheval se sert en deux
+  // allers successifs, exactement ce que le cœur aurait fait.
+  const VOL_MAX = 1;
+
+  // La page la plus utile : celles de la fenêtre visible, la plus
+  // proche de `premier` d'abord ; en dernier recours la page 0
+  // dépareillée (elle porte le total frais d'une recharge). Null si
+  // tout ce qui compte est servi ou déjà en vol.
+  // Les vols en cours sont clés par (source, page) : un vol d'une
+  // AUTRE source n'occulte jamais la même page de la source neuve — la
+  // jauge (`pending.size`) les compte tous, les recherches par clé ne
+  // voient que la source courante.
+  const cleVol = (p) => `${source}:${p}`;
+
+  function pageUtile() {
+    const de = Math.floor(debut / PAGE);
+    const a = Math.floor(Math.max(0, fin - 1) / PAGE);
+    const pivot = Math.floor(premier / PAGE);
+    const candidats = [];
+    for (let p = de; p <= a; p++) candidats.push(p);
+    candidats.sort((x, y) => Math.abs(x - pivot) - Math.abs(y - pivot));
+    candidats.push(0);
+    for (const p of candidats) {
+      if (servieA.get(p) !== generation && !pending.has(cleVol(p))) return p;
     }
+    return null;
+  }
+
+  function pomper() {
+    if (categorie === 'brouillons') return;
+    // La page 0 d'une source qui n'a pas encore répondu passe DEVANT la
+    // jauge (revue 2026-08-20) : une bascule de dossier part tout de
+    // suite, même si une page profonde de l'ancienne source vole
+    // encore — le débord est borné (une seule, `pending` la retient).
+    if (!sourceRepondue && servieA.get(0) !== generation && !pending.has(cleVol(0))) {
+      lancer(0);
+    }
+    while (pending.size < VOL_MAX) {
+      const p = pageUtile();
+      if (p === null) break;
+      lancer(p);
+    }
+    // Le comptage — jamais devant des lignes : seulement quand la pompe
+    // est au repos, et jamais si une page courte a déjà dit le total.
+    if (
+      pending.size === 0 &&
+      sourceRepondue &&
+      totalServiA !== generation &&
+      !totalEnVol
+    ) {
+      lancerTotal();
+    }
+  }
+
+  // Le total de la source, à part des pages (terrain 2026-08-20) : le
+  // comptage d'une intégrale coûte plus que la page — il suit le
+  // premier rendu, il ne le précède jamais.
+  let totalEnVol = false;
+  let totalServiA = -1;
+  function lancerTotal() {
+    const neeSource = source;
     const nee = generation;
+    totalEnVol = true;
+    appel('category_total', {
+      category: categorie,
+      accountId: compte,
+      nonLus: onglet === 'nonlus',
+    })
+      .then((n) => {
+        if (neeSource !== source) return;
+        total = n;
+        totalPrecis = true;
+        totalServiA = nee;
+      })
+      .catch((err) => {
+        console.error(`category_total ${categorie} :`, err);
+      })
+      .finally(() => {
+        totalEnVol = false;
+      });
+  }
+
+  function lancer(p) {
+    const neeSource = source;
+    const nee = generation;
+    const cle = cleVol(p);
     const t0 = performance.now();
+    // Un échec ne repompe pas (revue 2026-08-20) : la même page serait
+    // resélectionnée à l'instant — tempête de relances à vitesse
+    // microtâche sur toute erreur persistante. L'essai suivant attend
+    // un geste ou un effet, comme avant.
+    let echoue = false;
     const promesse = appel('list_category', {
       category: categorie,
       accountId: compte,
@@ -130,8 +247,23 @@
       limit: PAGE,
     })
       .then(async (page) => {
-        if (nee !== generation) return; // source changée : page périmée
-        total = page.total;
+        // Autre source : résultat jeté. Même source, génération
+        // antérieure (recharge pendant le vol) : les lignes restent
+        // bonnes à afficher — consignées à LEUR génération, la page
+        // demeure dépareillée et se ressert (stale-while-revalidate).
+        if (neeSource !== source) return;
+        sourceRepondue = true;
+        // La page ne porte plus de total (terrain 2026-08-20) : les
+        // lignes elles-mêmes le disent — une page COURTE marque la fin
+        // exacte de la liste, une page pleine pose un PLANCHER que la
+        // barre de défilement suit en attendant `category_total`.
+        if (page.rows.length < PAGE) {
+          total = p * PAGE + page.rows.length;
+          totalPrecis = true;
+          totalServiA = nee;
+        } else {
+          total = Math.max(total, (p + 1) * PAGE);
+        }
         // Le delta de puces, pas le compte brut : une page REMPLACÉE
         // affichait déjà les siennes — l'ancrage du défilement ne doit
         // bouger que de la différence (première servie : avant = 0).
@@ -141,7 +273,6 @@
         let n = 0;
         for (const l of page.rows) if (aPuces(l)) n += 1;
         chipsParPage.set(p, n);
-        pending.delete(p);
         if (premierePageMs === null) premierePageMs = performance.now() - t0;
         const delta = n - avant;
         if (delta !== 0 && (p + 1) * PAGE <= premier && cadre) {
@@ -153,11 +284,29 @@
         }
       })
       .catch((err) => {
-        pending.delete(p);
+        echoue = true;
         console.error(`list_category ${categorie} page ${p} :`, err);
+      })
+      .finally(() => {
+        pending.delete(cle);
+        // Un vol s'est libéré : la fenêtre COURANTE choisit la suite.
+        if (!echoue) pomper();
       });
-    pending.set(p, promesse);
+    pending.set(cle, promesse);
     return promesse;
+  }
+
+  function servirPage(p) {
+    // Le dossier Brouillons ne se sert pas ici : sa page vient de
+    // `list_drafts` (PLAN-BROUILLONS, B-D1), pas de `list_category`.
+    // Conservée pour `allerEtServir` (banc P1, e2e) : un saut délibéré
+    // vise exactement ses pages — il sert sans attendre la jauge (le
+    // débord d'un saut est assumé, une fenêtre au plus).
+    if (categorie === 'brouillons') return Promise.resolve();
+    if (servieA.get(p) === generation) return Promise.resolve();
+    // La clé qualifiée ne voit que la source courante : jamais une
+    // promesse d'une autre source, qui se réglerait sans rien écrire.
+    return pending.get(cleVol(p)) ?? lancer(p);
   }
 
   // Nouvelle source -> repartir du haut, tout jeter, resservir. SEULE la
@@ -168,17 +317,27 @@
     void compte;
     void onglet;
     untrack(() => {
+      source += 1;
       generation += 1;
       pages = new Map();
       chipsParPage = new Map();
       servieA = new Map();
-      pending = new Map();
+      // `pending` reste : les vols ouverts occupent la jauge jusqu'à
+      // leur règlement — leur résultat d'une autre source est jeté, et
+      // leur clôture repompe la fenêtre de la source neuve (la page 0
+      // de celle-ci passe devant la jauge, voir pomper).
       total = 0;
+      sourceRepondue = false;
+      totalPrecis = false;
       premier = 0;
       selection = null;
+      // La première page se re-mesure PAR source (revue 2026-08-20) :
+      // figée à la toute première, `etat().premierePageMs` aurait menti
+      // aux bancs — le statut de démarrage, lui, est déjà capturé.
+      premierePageMs = null;
       if (cadre) cadre.scrollTop = 0;
       version += 1;
-      servirPage(0);
+      pomper();
     });
   });
 
@@ -199,11 +358,9 @@
   });
 
   $effect(() => {
-    const de = Math.floor(debut / PAGE);
-    const a = Math.floor(Math.max(0, fin - 1) / PAGE);
-    untrack(() => {
-      for (let p = de; p <= a; p++) servirPage(p);
-    });
+    void debut;
+    void fin;
+    untrack(pomper);
   });
 
   function surDefilement() {
@@ -284,7 +441,12 @@
   $effect(() => {
     // Le dossier Brouillons compte ses lignes à lui — la barre de
     // statut dit « Brouillons · N éléments » sur la même mécanique.
-    const n = lignesBrouillons !== null ? lignesBrouillons.length : total;
+    // Ailleurs, le compte ne se dit qu'une fois EXACT (E2 + terrain
+    // 2026-08-20) : null tant que le vrai total n'est pas là — le
+    // statut ne dira jamais « 0 éléments » sur une boîte qui n'a pas
+    // parlé, ni un plancher provisoire comme s'il était le compte.
+    const n =
+      lignesBrouillons !== null ? lignesBrouillons.length : totalPrecis ? total : null;
     untrack(() => ontotal(n));
   });
 
@@ -354,7 +516,10 @@
     return performance.now() - t0;
   }
   export function etat() {
-    return { total, premier, h1, h2, premierePageMs };
+    // `totalPrecis` : les bancs qui sautent « sur toute la profondeur »
+    // (mesure-v2) doivent attendre le VRAI total — le plancher tiré des
+    // premières lignes ne couvre que l'écran.
+    return { total, totalPrecis, premier, h1, h2, premierePageMs };
   }
   export function ligneA(index) {
     const page = pages.get(Math.floor(index / PAGE));
@@ -397,14 +562,10 @@
     // les pages hors écran, gardées telles quelles, se resservent au
     // défilement (génération dépareillée).
     generation += 1;
-    pending = new Map();
-    // L'écran d'abord — tout le rang visible, pas la seule page de
-    // `premier` (une fenêtre à cheval laissait sa seconde page sans
-    // resservie) — puis la page 0, qui porte le total frais.
-    const de = Math.floor(debut / PAGE);
-    const a = Math.floor(Math.max(0, fin - 1) / PAGE);
-    for (let p = de; p <= a; p++) servirPage(p);
-    servirPage(0);
+    // La pompe ressert l'écran — tout le rang visible page à page,
+    // puis la page 0 dépareillée (le total frais) ; les vols ouverts
+    // gardent leurs places et repompent en se réglant (E1).
+    pomper();
     // Une recherche ACTIVE se resert aussi : archiver un résultat doit
     // le retirer des résultats — la régression #4 de v1, même trou.
     if (resultats !== null) {
@@ -439,6 +600,14 @@
         </article>
       </div>
     {/if}
+    {#snippet attente()}
+      <article class="ligne attente" data-testid="ligne-attente">
+        <span class="avatar" aria-hidden="true"></span>
+        <div class="l1"><span class="exp">…</span><span class="heure"></span></div>
+        <p class="objet">…</p>
+        <p class="apercu"></p>
+      </article>
+    {/snippet}
     {#snippet rangee(ligne)}
       <div class="ligne"
            class:nonlu={ligne.thread_unseen > 0}
@@ -542,8 +711,19 @@
         {/each}
       </div>
     {:else}
-      {#if total === 0 && premierePageMs !== null}
+      {#if total === 0 && sourceRepondue}
+        <!-- La page 0 a répondu zéro ligne : le vide est PROUVÉ, sans
+             comptage (une page courte dit le total d'elle-même). -->
         <div class="vide"><p>{t('liste.vide')}</p></div>
+      {:else if total === 0}
+        <!-- La source courante n'a pas encore répondu : l'attente se
+             montre, le vide ne s'affirme jamais sans preuve
+             (PLAN-DEFILEMENT-PROFOND E2). -->
+        <div class="fenetre-recherche" data-testid="attente-source">
+          {#each Array.from({ length: 6 }) as _, i (i)}
+            {@render attente()}
+          {/each}
+        </div>
       {/if}
       <div class="espace" style="height:{hauteurEspace}px">
         <div class="fenetre" style="transform:translateY({decalage(debut)}px)">
@@ -551,12 +731,7 @@
             {#if ligne}
               {@render rangee(ligne)}
             {:else}
-              <article class="ligne attente" data-testid="ligne-attente">
-                <span class="avatar" aria-hidden="true"></span>
-                <div class="l1"><span class="exp">…</span><span class="heure"></span></div>
-                <p class="objet">…</p>
-                <p class="apercu"></p>
-              </article>
+              {@render attente()}
             {/if}
           {/each}
         </div>

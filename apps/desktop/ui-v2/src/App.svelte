@@ -218,8 +218,14 @@
       return { texte, fil: null, alerte: false };
     }
     if (categorie !== 'reception') {
+      // Un compte non PROUVÉ (null : la source n'a pas encore répondu,
+      // PLAN-DEFILEMENT-PROFOND E2) ne s'affiche pas — le nom de la
+      // boîte seul, jamais un « 0 éléments » d'attente.
       return {
-        texte: t('statut.categorie', { boite: t(LIBELLES[categorie]), n: totalListe }),
+        texte:
+          totalListe === null
+            ? t(LIBELLES[categorie])
+            : t('statut.categorie', { boite: t(LIBELLES[categorie]), n: totalListe }),
         fil: null,
         alerte: false,
       };

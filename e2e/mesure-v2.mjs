@@ -128,6 +128,10 @@ try {
   console.log(`démarrage  : ${demarrage.toFixed(0)} ms (spawn -> première ligne, horloge murale)`);
   console.log('interne    :', await page.locator('#perf').textContent());
 
+  // Le total est ASYNCHRONE depuis PLAN-DEFILEMENT-PROFOND (les lignes
+  // d'abord, le comptage au repos de la pompe) : les 300 sauts doivent
+  // couvrir la vraie profondeur, pas le plancher des premières lignes.
+  await page.waitForFunction(() => window.__mesure.etat().totalPrecis);
   const etat = await page.evaluate(() => window.__mesure.etat());
   console.log(`décor      : ${etat.total} lignes · gabarit ${etat.h1} px`);
 

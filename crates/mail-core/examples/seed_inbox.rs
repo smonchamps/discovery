@@ -217,21 +217,31 @@ fn main() -> Result<(), mail_core::Error> {
     // Dossiers de destination : le déplacement se joue entièrement en
     // local (cache + journal), donc l'E2E peut l'exercer hors ligne.
     // « Archiv&AOk-s » est en UTF-7 modifié — le décodage doit se voir.
-    store.replace_folders(
-        account,
-        &[
-            mail_core::Folder {
-                wire: "Archiv&AOk-s".to_string(),
-                display: "Archivés".to_string(),
-                selectable: true,
-            },
-            mail_core::Folder {
-                wire: "Factures".to_string(),
-                display: "Factures".to_string(),
-                selectable: true,
-            },
-        ],
-    )?;
+    // La boîte seedée elle-même entre au cache quand elle n'est pas
+    // INBOX — sans sa ligne `folders`, la canonique ne résout pas et la
+    // catégorie resterait vide (décor du défilement profond,
+    // PLAN-DEFILEMENT-PROFOND ; « Archivés » ne matche pas les motifs
+    // « archive(s) », l'accent l'écarte).
+    let mut dossiers = vec![
+        mail_core::Folder {
+            wire: "Archiv&AOk-s".to_string(),
+            display: "Archivés".to_string(),
+            selectable: true,
+        },
+        mail_core::Folder {
+            wire: "Factures".to_string(),
+            display: "Factures".to_string(),
+            selectable: true,
+        },
+    ];
+    if boite != "INBOX" {
+        dossiers.push(mail_core::Folder {
+            wire: boite.to_string(),
+            display: boite.to_string(),
+            selectable: true,
+        });
+    }
+    store.replace_folders(account, &dossiers)?;
     store.update_state(mailbox_id, count, None)?;
 
     println!(

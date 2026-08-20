@@ -364,3 +364,28 @@ motivée.)
   brouillons ou l'envoi, régler 2 et 3 (grouper les paramètres, dériver
   `Default`) ; 1 se rouvre seulement si un troisième convertisseur
   apparaît ; 4 au prochain spec qui en aurait besoin (helper partagé).
+
+### D-26 · Pagination profonde des catégories : coût O(offset) assumé
+
+- **Fait (PLAN-DEFILEMENT-PROFOND, 2026-08-20, décision CE D1)** : hors
+  réception, `category_page` paie `LIMIT offset+limit` par boîte + tri
+  fusionné — la page de 200 coûte 10 ms à l'offset 0, 66 ms à 10 000,
+  157 ms à 40 000, **247 ms à 80 000** (SQL brut, base seedée 120 000,
+  release). Le budget « page de liste < 100 ms » (STANDARD §3) est
+  crevé dès ~20 000 ; la réception, elle, tient (patron `threads` +
+  `idx_threads_date_globale`, 14,6 ms à l'offset 200 000). La clause
+  d'exclusion de l'intégrale Gmail coûte peu (index partiel
+  `idx_envelopes_message`).
+- **Pourquoi assumé** : depuis A64, une seule page profonde vole à la
+  fois (file bornée, VOL_MAX = 1) et l'écran dit le chargement — la
+  latence d'UNE page isolée est vivable ; c'était la rafale ×
+  sérialisation qui faisait la panne de plusieurs minutes. Resserre du
+  terrain (2026-08-20) : le comptage (`category_totals`, sonde
+  NOT EXISTS par ligne d'intégrale, ~240 ms sur 200 k) ne se paie plus
+  qu'à la page 0 — la page profonde nue passe de 368 à ~129 ms sur le
+  décor intégrale.
+- **Condition de reprise** : si le terrain mesure une page profonde
+  au-delà de ~1 s sur la vraie base (256 k, 4 comptes), ou si un
+  chantier « liste sans limite » s'ouvre (le report existant de la
+  recherche virtualisée) — le patron deux-temps de la recherche (A51)
+  est le point de départ.

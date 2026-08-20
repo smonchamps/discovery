@@ -21,7 +21,11 @@ const app = mount(App, { target: document.getElementById('app') });
 // en v1 — le banc attend ce signal.
 const attente = setInterval(() => {
   const { liste } = app.api();
-  if (liste && liste.etat().premierePageMs !== null) {
+  // `totalPrecis` aussi : depuis PLAN-DEFILEMENT-PROFOND le comptage
+  // suit les lignes — la ligne de perf ne doit pas figer le PLANCHER
+  // des premières lignes comme s'il était le nombre de conversations.
+  const etat = liste?.etat();
+  if (etat && etat.premierePageMs !== null && etat.totalPrecis) {
     clearInterval(attente);
     app.marquerDemarrage();
   }

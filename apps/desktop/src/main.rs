@@ -175,6 +175,7 @@ fn main() {
             commands::sync_inbox_light,
             commands::nav_snapshot,
             commands::list_category,
+            commands::category_total,
             commands::preview_catchup,
             commands::thread_messages,
             commands::search_messages,

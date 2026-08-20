@@ -61,6 +61,17 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
         `cargo run -p mail-core --example seed_inbox -- "${db}" ${compte.messages} ${compte.email}`,
         { cwd: root, stdio: 'inherit' },
       );
+      // `archives: N` : une boîte Archives de N messages, sans corps —
+      // le décor du défilement profond (PLAN-DEFILEMENT-PROFOND). Le
+      // seeder inscrit la boîte au cache `folders` (la canonique
+      // archives résout), les dossiers Archivés/Factures des autres
+      // comptes restent intacts.
+      if (compte.archives) {
+        execSync(
+          `cargo run -p mail-core --example seed_inbox -- "${db}" ${compte.archives} ${compte.email} 0 0 Archives`,
+          { cwd: root, stdio: 'inherit' },
+        );
+      }
     }
     // `deconnecte: true` : le compte vit au REGISTRE (seedé ci-dessus)
     // mais ne reçoit pas de session — l'état « jeton mort » du réel,
