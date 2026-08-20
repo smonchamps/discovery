@@ -12,6 +12,31 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.2.1] - 2026-08-20
+
+La liste ne se fige plus, et tout s'affiche plus vite.
+
+### Corrigé
+
+- **Défiler vite à la barre ne bloque plus l'application** : tirer
+  rapidement la barre de défilement d'un grand dossier (Archives, par
+  exemple) laissait la liste en blocs « … », puis affichait à tort
+  « Aucun message ici. » dans tous les dossiers pendant plusieurs
+  minutes. La liste ne demande plus que ce qu'elle montre : à l'arrêt
+  du geste, les messages apparaissent aussitôt, et changer de dossier
+  répond immédiatement.
+- **L'écran vide ne ment plus** : « Aucun message ici. » ne s'affiche
+  qu'une fois la boîte réellement consultée — pendant le chargement,
+  des lignes d'attente le disent honnêtement.
+
+### Modifié
+
+- **Le démarrage et le premier affichage d'un dossier sont
+  immédiats** : les comptages internes (dont le plus coûteux, celui des
+  Archives Gmail) ne retardent plus l'affichage des messages — le
+  nombre d'éléments et la barre de défilement s'ajustent juste après,
+  d'eux-mêmes.
+
 ## [0.2.0] - 2026-08-20
 
 La mise en forme arrive dans le composeur.
