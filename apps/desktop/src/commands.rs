@@ -315,6 +315,71 @@ async fn add_oauth_account(
     Ok(info)
 }
 
+/// Reconnecte un compte du registre dont le jeton est mort — constat
+/// terrain du 2026-08-20 : `invalid_grant` (jeton expiré ou révoqué)
+/// laissait l'utilisateur DÉMUNI, aucun geste ne relançait le
+/// consentement. Même parcours navigateur que l'ajout, sur la ligne
+/// EXISTANTE : rien n'est re-synchronisé, rien n'est perdu.
+///
+/// Garde d'identité : le consentement doit revenir avec l'adresse du
+/// compte visé. Google choisit l'identité au navigateur — un autre
+/// choix ne doit pas silencieusement connecter un AUTRE compte sous le
+/// geste « reconnecter X » ; Microsoft reçoit l'adresse déclarée, la
+/// garde y est structurelle. Un compte IMAP générique n'a pas de jeton :
+/// refus franc avec la marche à suivre.
+#[tauri::command]
+pub async fn reconnect_account(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    account_id: i64,
+) -> Result<AccountInfo, String> {
+    let account = {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .accounts()
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .find(|account| account.id == account_id)
+            .ok_or_else(|| "compte inconnu".to_string())?
+    };
+    if account.provider == "imap" {
+        return Err(
+            "compte IMAP générique : retirez puis rajoutez le compte pour ressaisir le mot de passe"
+                .to_string(),
+        );
+    }
+    let provider = mail_auth::for_account_kind(&account.provider)
+        .ok_or_else(|| format!("fournisseur inconnu : {}", account.provider))?;
+    // Google livre l'identité ; Microsoft exige l'adresse déclarée.
+    let declared =
+        (provider.account_kind != mail_auth::GOOGLE.account_kind).then(|| account.email.clone());
+    let session = tauri::async_runtime::spawn_blocking(move || {
+        Authenticator::from_env(provider)
+            .map_err(|err| err.to_string())?
+            .authenticate_interactive(declared.as_deref())
+            .map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+    if !session
+        .email
+        .trim()
+        .eq_ignore_ascii_case(account.email.trim())
+    {
+        return Err(format!(
+            "le consentement a été donné pour {}, pas pour {} — rejouez la reconnexion en choisissant le bon compte",
+            session.email, account.email
+        ));
+    }
+    lock_accounts(&state)?.insert(account.email.clone(), AccountSession::OAuth(session));
+    // Le compte retrouve son veilleur IDLE sans attendre un relancement.
+    crate::veilleur::reconcilier(&app);
+    Ok(AccountInfo {
+        id: account.id,
+        email: account.email,
+    })
+}
+
 /// Filtre minimal d'adresse : ce qui suit est vérifié par le fournisseur
 /// lui-même au consentement. On ne cherche pas à valider RFC 5322 ici,
 /// seulement à refuser ce qui ne peut manifestement pas être une adresse.
@@ -1436,17 +1501,22 @@ fn pull_drafts(server: &mut ImapServer, store: &Store, account_id: i64) -> Resul
             // Disparu entre la liste et la lecture : sans conséquence.
             continue;
         };
-        // Le corps arrive sous les deux formes MIME possibles ; c'est ici,
-        // et pas dans l'adaptateur, qu'on sait rendre du HTML en texte.
-        let body = draft.text.unwrap_or_else(|| {
-            draft
-                .html
-                .as_deref()
-                .map(mail_render::body_text)
-                .unwrap_or_default()
-        });
+        // Le corps arrive sous les deux formes MIME possibles ; il passe
+        // par LA frontière (`frontiere_corps`) comme tout corps qui entre
+        // en base : HTML assaini conservé (un brouillon riche poussé puis
+        // re-rapatrié garde sa mise en forme), texte dérivé — le texte
+        // MIME ne sert que de repli quand il n'y a pas de HTML.
+        let texte = draft.text.unwrap_or_default();
+        let (body, body_html) = frontiere_corps(texte, draft.html.as_deref());
         store
-            .import_remote_draft(account_id, uid, &draft.to_raw, &draft.subject, &body)
+            .import_remote_draft(
+                account_id,
+                uid,
+                &draft.to_raw,
+                &draft.subject,
+                &body,
+                body_html.as_deref(),
+            )
             .map_err(|err| err.to_string())?;
     }
     Ok(())
@@ -2300,8 +2370,13 @@ pub struct ComposeContext {
     /// vide pour une réponse simple ou un transfert.
     pub cc: String,
     pub subject: String,
-    /// Citation pré-remplie ; l'utilisateur écrit au-dessus (top-posting).
-    pub body: String,
+    /// Citation pré-remplie, RICHE (PLAN-COMPOSITION-HTML) : attribution
+    /// puis blockquote du corps assaini `BlockRemote` (rien de ce qui
+    /// est reposé dans l'éditeur ne charge le réseau — §6.4) ; vide si
+    /// le corps est inaccessible (on répond sans citation).
+    /// L'utilisateur écrit au-dessus (top-posting) ; le repli text/plain
+    /// de l'envoi est dérivé du même HTML par `frontiere_corps`.
+    pub body_html: String,
     /// `true` : l'envoi portera In-Reply-To (réponse dans le fil).
     pub reply: bool,
 }
@@ -2388,14 +2463,7 @@ pub async fn reply_context(
         return Err("destinataire inconnu — resynchronisez la boîte".to_string());
     }
     let to = destinataires.join(", ");
-    let body = match raw_body(&app, &state, account_id, &mailbox, uid).await {
-        Ok(html) => mail_core::quote_reply(
-            envelope.sender.as_deref(),
-            quote_date(&envelope).as_deref(),
-            &mail_render::body_text(&html),
-        ),
-        Err(_) => String::new(),
-    };
+    let body_html = citation_reply(&app, &state, account_id, &mailbox, uid, &envelope).await;
     Ok(ComposeContext {
         account_id,
         mailbox,
@@ -2403,9 +2471,32 @@ pub async fn reply_context(
         to,
         cc: String::new(),
         subject: mail_core::reply_subject(envelope.subject.as_deref()),
-        body,
+        body_html,
         reply: true,
     })
+}
+
+/// La citation riche d'une réponse — un corps inaccessible rend une
+/// citation vide (on répond sans elle). Le corps cité est assaini
+/// `BlockRemote` : cette chaîne sera REPOSÉE dans l'éditeur
+/// (`innerHTML`, document principal) — une image distante y chargerait
+/// le pixel espion du message au simple clic « Répondre » (§6.4).
+async fn citation_reply(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    account_id: i64,
+    mailbox: &str,
+    uid: u32,
+    envelope: &mail_core::Envelope,
+) -> String {
+    match raw_body(app, state, account_id, mailbox, uid).await {
+        Ok(html) => mail_core::quote_reply_html(
+            envelope.sender.as_deref(),
+            quote_date(envelope).as_deref(),
+            &mail_render::sanitize(&html).html,
+        ),
+        Err(_) => String::new(),
+    }
 }
 
 /// Pré-remplissage d'un « Répondre à tous » : expéditeur + À + Cc du
@@ -2461,14 +2552,7 @@ pub async fn reply_all_context(
     if to.is_empty() {
         return Err("adresse de l'expéditeur inconnue — resynchronisez la boîte".to_string());
     }
-    let body = match raw_body(&app, &state, account_id, &mailbox, uid).await {
-        Ok(html) => mail_core::quote_reply(
-            envelope.sender.as_deref(),
-            quote_date(&envelope).as_deref(),
-            &mail_render::body_text(&html),
-        ),
-        Err(_) => String::new(),
-    };
+    let body_html = citation_reply(&app, &state, account_id, &mailbox, uid, &envelope).await;
     Ok(ComposeContext {
         account_id,
         mailbox,
@@ -2476,7 +2560,7 @@ pub async fn reply_all_context(
         to: to.join(", "),
         cc: cc.join(", "),
         subject: mail_core::reply_subject(envelope.subject.as_deref()),
-        body,
+        body_html,
         reply: true,
     })
 }
@@ -2507,6 +2591,13 @@ pub async fn forward_context(
 ) -> Result<ComposeContext, String> {
     let envelope = envelope_of(&app, account_id, &mailbox, uid)?;
     let html = raw_body(&app, &state, account_id, &mailbox, uid).await?;
+    // Verdict terrain D5 (2026-08-20) : un transfert TRANSMET — les
+    // images distantes sont CONSERVÉES (`AllowRemote`), le destinataire
+    // reçoit le message entier. L'exception §6.4 est assumée et
+    // consignée : composer le transfert charge ces images dans
+    // l'éditeur, comme un « afficher les images » implicite — c'est le
+    // geste de transférer qui le dit. La RÉPONSE, elle, reste au pixel
+    // neutre (`citation_reply`).
     Ok(ComposeContext {
         account_id,
         mailbox,
@@ -2514,11 +2605,11 @@ pub async fn forward_context(
         to: String::new(),
         cc: String::new(),
         subject: mail_core::forward_subject(envelope.subject.as_deref()),
-        body: mail_core::quote_forward(
+        body_html: mail_core::quote_forward_html(
             envelope.sender.as_deref(),
             quote_date(&envelope).as_deref(),
             envelope.subject.as_deref(),
-            &mail_render::body_text(&html),
+            &mail_render::sanitize_with(&html, mail_render::ImagePolicy::AllowRemote).html,
         ),
         reply: false,
     })
@@ -2558,6 +2649,7 @@ pub async fn queue_send(
     bcc: String,
     subject: String,
     body: String,
+    body_html: Option<String>,
     reply_to_mailbox: Option<String>,
     reply_to_uid: Option<u32>,
     draft_id: Option<i64>,
@@ -2565,6 +2657,9 @@ pub async fn queue_send(
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
         let from = account_email(&store, account_id)?;
+        // Corps riche : LA frontière (`frontiere_corps`) — assaini, texte
+        // dérivé. Le `body` reçu ne sert qu'au chemin texte.
+        let (corps_texte, corps_riche) = frontiere_corps(body, body_html.as_deref());
         // Sans la boîte, on ne résout RIEN — on ne devine pas.
         //
         // Un UID seul ne désigne plus un message depuis que le compte en a
@@ -2578,16 +2673,17 @@ pub async fn queue_send(
             .zip(reply_to_mailbox)
             .and_then(|(uid, mailbox)| store.envelope(account_id, &mailbox, uid).ok().flatten())
             .and_then(|envelope| envelope.message_id);
-        let draft = mail_core::compose(
+        let mut draft = mail_core::compose(
             &from,
             &to,
             &cc,
             &bcc,
             &subject,
-            &body,
+            &corps_texte,
             in_reply_to.as_deref(),
         )
         .map_err(|err| err.to_string())?;
+        draft.body_html = corps_riche;
         // Avec un brouillon-ancre, ses pièces rejoignent le journal dans la
         // MÊME transaction (PJ-D2) ; sans lui (composition jamais sauvée,
         // donc sans pièce possible), le chemin historique suffit.
@@ -3138,6 +3234,10 @@ pub struct DraftRow {
     pub bcc: String,
     pub subject: String,
     pub body: String,
+    /// Corps riche tel que stocké — `None` pour un brouillon texte : la
+    /// reprise le convertit à l'ouverture (échappement + retours),
+    /// l'inverse exact de la dérivation texte côté sauvegarde.
+    pub body_html: Option<String>,
     pub reply_to_uid: Option<u32>,
     /// La boîte qui donne son sens à `reply_to_uid` (ADR 0009) — la
     /// reprise doit la restituer au composeur, sans quoi la chaîne
@@ -3177,8 +3277,44 @@ pub struct DraftContentArg {
     bcc: String,
     subject: String,
     body: String,
+    /// Corps riche de l'éditeur (PLAN-COMPOSITION-HTML) — absent ou vide
+    /// = brouillon texte. Assaini côté Rust avant toute écriture.
+    body_html: Option<String>,
     reply_to_uid: Option<u32>,
     reply_to_mailbox: Option<String>,
+}
+
+/// LA frontière du corps riche (PLAN-COMPOSITION-HTML) — le point unique
+/// par lequel tout corps entre en base (brouillon, journal d'envoi,
+/// tirage) : assaini par ammonia, texte du repli DÉRIVÉ du même HTML
+/// (une seule autorité, jamais deux vérités).
+///
+/// `AllowRemote` ICI : la frontière ne re-neutralise pas ce que l'amont
+/// a décidé. La politique des images distantes se joue AU CONTEXTE
+/// (verdict terrain D5, 2026-08-20) — une RÉPONSE cite en pixel neutre
+/// (`citation_reply`, §6.4 : reposée dans l'éditeur, elle ne doit rien
+/// charger) et l'assainissement étant idempotent, elle reste neutre en
+/// repassant ici ; un TRANSFERT conserve ses images (le destinataire
+/// reçoit le message entier), un collage volontaire aussi.
+///
+/// Un HTML vide, blanc, ou dont le RENDU texte est vide (le `<br>`
+/// résiduel d'un contenteditable vidé) vaut « pas de HTML » : chemin
+/// texte — sans quoi la partie text/plain d'un envoi partirait vide.
+fn frontiere_corps(body: String, body_html: Option<&str>) -> (String, Option<String>) {
+    let riche = body_html
+        .filter(|html| !html.trim().is_empty())
+        .map(|html| mail_render::sanitize_with(html, mail_render::ImagePolicy::AllowRemote).html);
+    match riche {
+        Some(html) => {
+            let texte = mail_render::body_text(&html);
+            if texte.trim().is_empty() {
+                (body, None)
+            } else {
+                (texte, Some(html))
+            }
+        }
+        None => (body, None),
+    }
 }
 
 #[tauri::command]
@@ -3191,6 +3327,10 @@ pub async fn save_draft(
 ) -> Result<DraftSavedRow, String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        // Même frontière que l'envoi (`frontiere_corps`) : HTML assaini,
+        // texte dérivé (aperçus et repli).
+        let (corps_texte, corps_riche) =
+            frontiere_corps(content.body.clone(), content.body_html.as_deref());
         let saved = store
             .save_draft(
                 account_id,
@@ -3200,8 +3340,9 @@ pub async fn save_draft(
                     to_raw: &content.to,
                     cc_raw: &content.cc,
                     bcc_raw: &content.bcc,
+                    body_html: corps_riche.as_deref(),
                     subject: &content.subject,
-                    body: &content.body,
+                    body: &corps_texte,
                     reply_to_uid: content.reply_to_uid,
                     reply_to_mailbox: content.reply_to_mailbox.as_deref(),
                 },
@@ -3233,6 +3374,7 @@ pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
                 bcc: draft.bcc_raw,
                 subject: draft.subject,
                 body: draft.body,
+                body_html: draft.body_html,
                 reply_to_uid: draft.reply_to_uid,
                 reply_to_mailbox: draft.reply_to_mailbox,
                 thread_id: draft.thread_id,
@@ -3359,6 +3501,7 @@ pub async fn attach_files(
                             to_raw: "",
                             cc_raw: "",
                             bcc_raw: "",
+                            body_html: None,
                             subject: "",
                             body: "",
                             reply_to_uid: None,
@@ -3484,6 +3627,7 @@ pub async fn fetch_source_attachment(
                         to_raw: "",
                         cc_raw: "",
                         bcc_raw: "",
+                        body_html: None,
                         subject: "",
                         body: "",
                         reply_to_uid: None,
@@ -3666,6 +3810,7 @@ fn run_draft_sync_all(
                 &draft.bcc_raw,
                 &draft.subject,
                 &draft.body,
+                draft.body_html.as_deref(),
                 &pieces,
             ) {
                 Ok(bytes) => bytes,

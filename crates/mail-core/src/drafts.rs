@@ -45,6 +45,10 @@ pub struct DraftContent<'a> {
     pub bcc_raw: &'a str,
     pub subject: &'a str,
     pub body: &'a str,
+    /// Corps riche (PLAN-COMPOSITION-HTML) — `None` = brouillon texte.
+    /// `body` reste TOUJOURS peuplé (texte dérivé côté app) : c'est lui
+    /// que lisent les aperçus et le repli text/plain.
+    pub body_html: Option<&'a str>,
     pub reply_to_uid: Option<Uid>,
     /// La boîte qui donne son sens à `reply_to_uid` : les UID repartent
     /// de 1 à chaque boîte (ADR 0009), un UID seul ne désigne rien.
@@ -78,6 +82,9 @@ pub struct SavedDraft {
     pub bcc_raw: String,
     pub subject: String,
     pub body: String,
+    /// Corps riche — `None` pour un brouillon texte (d'avant la colonne,
+    /// ou rapatrié du serveur) ; l'éditeur convertit à l'ouverture.
+    pub body_html: Option<String>,
     /// UID du message auquel ce brouillon répond, s'il y en a un.
     pub reply_to_uid: Option<Uid>,
     /// La boîte du message visé — `None` pour une composition libre ou
@@ -180,6 +187,7 @@ impl Store {
             bcc_raw,
             subject,
             body,
+            body_html,
             reply_to_uid,
             reply_to_mailbox,
         } = content;
@@ -213,6 +221,7 @@ impl Store {
                         bcc_raw,
                         subject,
                         body,
+                        body_html,
                         reply_to_uid,
                         reply_to_mailbox,
                         now,
@@ -231,14 +240,15 @@ impl Store {
                 // chaque fermeture re-pousserait une copie identique vers
                 // Gmail (churn observé en validation terrain).
                 self.conn().execute(
-                    "INSERT INTO drafts (id, account_id, to_raw, cc_raw, bcc_raw, subject, body, reply_to_uid, reply_to_mailbox, updated_epoch)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                    "INSERT INTO drafts (id, account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, updated_epoch)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
                      ON CONFLICT(id) DO UPDATE SET
                        to_raw = excluded.to_raw,
                        cc_raw = excluded.cc_raw,
                        bcc_raw = excluded.bcc_raw,
                        subject = excluded.subject,
                        body = excluded.body,
+                       body_html = excluded.body_html,
                        reply_to_uid = excluded.reply_to_uid,
                        reply_to_mailbox = excluded.reply_to_mailbox,
                        updated_epoch = MAX(excluded.updated_epoch, drafts.updated_epoch + 1)
@@ -247,9 +257,10 @@ impl Store {
                         OR drafts.bcc_raw IS NOT excluded.bcc_raw
                         OR drafts.subject IS NOT excluded.subject
                         OR drafts.body IS NOT excluded.body
+                        OR drafts.body_html IS NOT excluded.body_html
                         OR drafts.reply_to_uid IS NOT excluded.reply_to_uid
                         OR drafts.reply_to_mailbox IS NOT excluded.reply_to_mailbox",
-                    params![id, account_id, to_raw, cc_raw, bcc_raw, subject, body, reply_to_uid, reply_to_mailbox, now],
+                    params![id, account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, now],
                 )?;
                 // Relu, et non supposé : le `WHERE` ci-dessus peut avoir
                 // laissé l'horodatage intact (sauvegarde identique), et
@@ -274,6 +285,7 @@ impl Store {
                     bcc_raw,
                     subject,
                     body,
+                    body_html,
                     reply_to_uid,
                     reply_to_mailbox,
                     now,
@@ -293,14 +305,15 @@ impl Store {
         bcc_raw: &str,
         subject: &str,
         body: &str,
+        body_html: Option<&str>,
         reply_to_uid: Option<Uid>,
         reply_to_mailbox: Option<&str>,
         now: i64,
     ) -> Result<i64, Error> {
         self.conn().execute(
-            "INSERT INTO drafts (account_id, to_raw, cc_raw, bcc_raw, subject, body, reply_to_uid, reply_to_mailbox, updated_epoch)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![account_id, to_raw, cc_raw, bcc_raw, subject, body, reply_to_uid, reply_to_mailbox, now],
+            "INSERT INTO drafts (account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, updated_epoch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, now],
         )?;
         Ok(self.conn().last_insert_rowid())
     }
@@ -504,6 +517,11 @@ impl Store {
     /// cycle suivant ne le repoussera pas. Le repousser tel quel créerait
     /// une seconde copie distante d'un message qu'on vient de lire — un
     /// aller-retour qui se doublerait à chaque passage.
+    /// `body_html` (PLAN-COMPOSITION-HTML) : sans lui, un brouillon
+    /// RICHE poussé puis re-rapatrié (UIDVALIDITY changée, édition
+    /// webmail) revenait en texte nu — la mise en forme détruite en
+    /// silence par le chantier même qui l'avait créée.
+    #[allow(clippy::too_many_arguments)]
     pub fn import_remote_draft(
         &self,
         account_id: i64,
@@ -511,14 +529,17 @@ impl Store {
         to_raw: &str,
         subject: &str,
         body: &str,
+        body_html: Option<&str>,
     ) -> Result<i64, Error> {
         let now = Utc::now().timestamp_millis();
         self.conn().execute(
             "INSERT INTO drafts
-             (account_id, to_raw, subject, body, reply_to_uid, updated_epoch,
+             (account_id, to_raw, subject, body, body_html, reply_to_uid, updated_epoch,
               remote_uid, pushed_epoch)
-             VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, ?5)",
-            params![account_id, to_raw, subject, body, now, remote_uid],
+             VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7, ?6)",
+            params![
+                account_id, to_raw, subject, body, body_html, now, remote_uid
+            ],
         )?;
         Ok(self.conn().last_insert_rowid())
     }
@@ -697,7 +718,8 @@ fn touch_draft(conn: &rusqlite::Connection, draft_id: i64) -> Result<i64, Error>
 // brouillons se comptent en dizaines — le coût est nul.
 const DRAFT_SELECT: &str = "SELECT d.id, d.account_id, d.to_raw, d.subject, d.body,
         d.reply_to_uid, d.reply_to_mailbox, re.thread_id,
-        d.updated_epoch, d.remote_uid, d.pushed_epoch, d.cc_raw, d.bcc_raw
+        d.updated_epoch, d.remote_uid, d.pushed_epoch, d.cc_raw, d.bcc_raw,
+        d.body_html
  FROM drafts d
  LEFT JOIN mailboxes rm ON rm.account_id = d.account_id AND rm.name = d.reply_to_mailbox
  LEFT JOIN envelopes re ON re.mailbox_id = rm.id AND re.uid = d.reply_to_uid";
@@ -717,6 +739,7 @@ fn row_to_draft(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedDraft> {
         pushed_epoch: row.get(10)?,
         cc_raw: row.get(11)?,
         bcc_raw: row.get(12)?,
+        body_html: row.get(13)?,
     })
 }
 
@@ -744,6 +767,7 @@ mod tests {
                     to_raw: "adresse-incomp",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Sujet",
                     body: "corps\nsur deux lignes",
                     reply_to_uid: Some(42),
@@ -763,6 +787,105 @@ mod tests {
         assert_eq!(draft.reply_to_uid, Some(42));
     }
 
+    /// PLAN-COMPOSITION-HTML : le corps riche survit à la sauvegarde et à
+    /// la relecture ; un brouillon sans HTML relit `None` — jamais un
+    /// pseudo-contenu (c'est `None` qui dit « chemin texte »).
+    #[test]
+    fn save_draft_roundtrips_body_html() {
+        let (riche_store, compte_riche) = store();
+        riche_store
+            .save_draft(
+                compte_riche,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    cc_raw: "",
+                    bcc_raw: "",
+                    subject: "Sujet",
+                    body: "gras",
+                    body_html: Some("<b>gras</b>"),
+                    reply_to_uid: None,
+                    reply_to_mailbox: None,
+                },
+            )
+            .unwrap();
+        let riche = &riche_store.drafts().unwrap()[0];
+        assert_eq!(riche.body_html.as_deref(), Some("<b>gras</b>"));
+        assert_eq!(riche.body, "gras", "le texte dérivé reste peuplé");
+
+        let (nu_store, compte) = store();
+        nu_store
+            .save_draft(
+                compte,
+                None,
+                None,
+                DraftContent {
+                    to_raw: "a@b.fr",
+                    cc_raw: "",
+                    bcc_raw: "",
+                    subject: "Sujet",
+                    body: "texte",
+                    body_html: None,
+                    reply_to_uid: None,
+                    reply_to_mailbox: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(nu_store.drafts().unwrap()[0].body_html, None);
+    }
+
+    /// Le tirage conserve la mise en forme : un brouillon riche poussé
+    /// puis re-rapatrié revient AVEC son HTML — et naît propre (pas à
+    /// re-pousser), comme tout import.
+    #[test]
+    fn import_remote_draft_keeps_the_rich_body() {
+        let (store, account) = store();
+        store
+            .import_remote_draft(account, 42, "a@b.fr", "s", "gras", Some("<b>gras</b>"))
+            .unwrap();
+        let draft = &store.drafts().unwrap()[0];
+        assert_eq!(draft.body_html.as_deref(), Some("<b>gras</b>"));
+        assert_eq!(draft.body, "gras");
+        assert!(
+            store.drafts_to_push(account).unwrap().is_empty(),
+            "un import naît propre"
+        );
+    }
+
+    /// Le corps riche compte dans la détection « contenu identique » :
+    /// une mise en forme SEULE (même texte dérivé) doit re-pousser le
+    /// brouillon — sinon le reflet Gmail garderait la version d'avant.
+    #[test]
+    fn body_html_change_marks_the_draft_dirty() {
+        let (store, account) = store();
+        let contenu = |html: Option<&'static str>| DraftContent {
+            to_raw: "a@b.fr",
+            cc_raw: "",
+            bcc_raw: "",
+            subject: "s",
+            body: "texte",
+            body_html: html,
+            reply_to_uid: None,
+            reply_to_mailbox: None,
+        };
+        let id = store
+            .save_draft(account, None, None, contenu(Some("texte")))
+            .unwrap()
+            .id;
+        let epoch = store.drafts_to_push(account).unwrap()[0].updated_epoch;
+        store.record_draft_pushed(id, Some(101), epoch).unwrap();
+
+        store
+            .save_draft(account, Some(id), None, contenu(Some("<b>texte</b>")))
+            .unwrap();
+        assert_eq!(
+            store.drafts_to_push(account).unwrap().len(),
+            1,
+            "la mise en forme seule doit re-pousser"
+        );
+    }
+
     /// A54 : Cc/Cci survivent à la sauvegarde et à la relecture — la couche
     /// qui empêche leur perte à la reprise d'un brouillon. Un brouillon
     /// sans copie relit des chaînes VIDES, jamais un pseudo-contenu.
@@ -778,6 +901,7 @@ mod tests {
                     to_raw: "a@b.fr",
                     cc_raw: "c@b.fr, d@b.fr",
                     bcc_raw: "secret@b.fr",
+                    body_html: None,
                     subject: "Sujet",
                     body: "corps",
                     reply_to_uid: None,
@@ -799,6 +923,7 @@ mod tests {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Sujet",
                     body: "corps",
                     reply_to_uid: None,
@@ -823,6 +948,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "v1",
                     body: "texte",
                     reply_to_uid: None,
@@ -840,6 +966,7 @@ mod tests {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "v2",
                     body: "texte enrichi",
                     reply_to_uid: None,
@@ -870,6 +997,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "précieux",
                     reply_to_uid: None,
@@ -889,6 +1017,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "précieux",
                     reply_to_uid: None,
@@ -914,6 +1043,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "premier",
                     body: "a",
                     reply_to_uid: None,
@@ -930,6 +1060,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "second",
                     body: "b",
                     reply_to_uid: None,
@@ -955,6 +1086,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "b",
                     reply_to_uid: None,
@@ -979,6 +1111,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "v1",
                     reply_to_uid: None,
@@ -1011,6 +1144,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "v2",
                     reply_to_uid: None,
@@ -1040,6 +1174,7 @@ mod tests {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "texte",
                     reply_to_uid: Some(1),
@@ -1060,6 +1195,7 @@ mod tests {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "texte",
                     reply_to_uid: Some(1),
@@ -1088,6 +1224,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "v1",
                     reply_to_uid: None,
@@ -1110,6 +1247,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "v2 éditée en vol",
                     reply_to_uid: None,
@@ -1137,6 +1275,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "v1",
                     reply_to_uid: None,
@@ -1166,6 +1305,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "poussé",
                     body: "b",
                     reply_to_uid: None,
@@ -1184,6 +1324,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "local",
                     body: "b",
                     reply_to_uid: None,
@@ -1220,6 +1361,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "a",
                     body: "x",
                     reply_to_uid: None,
@@ -1237,6 +1379,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "b",
                     body: "y",
                     reply_to_uid: None,
@@ -1293,6 +1436,7 @@ mod tests {
                     to_raw: "",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "s",
                     body: "b",
                     reply_to_uid: None,
@@ -1356,6 +1500,7 @@ mod tests_concurrence {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Devis",
                     body: "version composeur",
                     reply_to_uid: None,
@@ -1374,6 +1519,7 @@ mod tests_concurrence {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Devis",
                     body: "version venue d'ailleurs",
                     reply_to_uid: None,
@@ -1392,6 +1538,7 @@ mod tests_concurrence {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Devis",
                     body: "version composeur",
                     reply_to_uid: None,
@@ -1429,6 +1576,7 @@ mod tests_concurrence {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Devis",
                     body: "un",
                     reply_to_uid: None,
@@ -1447,6 +1595,7 @@ mod tests_concurrence {
                         to_raw: "a@b.fr",
                         cc_raw: "",
                         bcc_raw: "",
+                        body_html: None,
                         subject: "Devis",
                         body: texte,
                         reply_to_uid: None,
@@ -1473,6 +1622,7 @@ mod tests_concurrence {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Devis",
                     body: "un",
                     reply_to_uid: None,
@@ -1489,6 +1639,7 @@ mod tests_concurrence {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Devis",
                     body: "deux",
                     reply_to_uid: None,
@@ -1523,6 +1674,7 @@ mod tests_concurrence {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Devis",
                     body: "version composeur",
                     reply_to_uid: None,
@@ -1547,6 +1699,7 @@ mod tests_concurrence {
                     to_raw: "x@y.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Autre",
                     body: "z",
                     reply_to_uid: None,
@@ -1567,7 +1720,14 @@ mod tests_concurrence {
         }
         for uid in plan.fetch {
             store
-                .import_remote_draft(account, uid, "a@b.fr", "Devis", "version venue d'ailleurs")
+                .import_remote_draft(
+                    account,
+                    uid,
+                    "a@b.fr",
+                    "Devis",
+                    "version venue d'ailleurs",
+                    None,
+                )
                 .unwrap();
         }
 
@@ -1581,6 +1741,7 @@ mod tests_concurrence {
                     to_raw: "a@b.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Devis",
                     body: "version composeur",
                     reply_to_uid: None,
@@ -1618,6 +1779,7 @@ mod tests_tirage {
             to_raw: "alice@exemple.fr".to_string(),
             cc_raw: String::new(),
             bcc_raw: String::new(),
+            body_html: None,
             subject: "Devis".to_string(),
             body: "Bonjour".to_string(),
             reply_to_uid: None,
@@ -1753,6 +1915,7 @@ mod tests_fil {
             to_raw: "marie@exemple.fr",
             cc_raw: "",
             bcc_raw: "",
+            body_html: None,
             subject: "Re : Devis",
             body: "Bonjour Marie,",
             reply_to_uid: uid,
@@ -1875,6 +2038,7 @@ mod tests_pieces {
                     to_raw: "vous@exemple.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Photos",
                     body: "corps",
                     reply_to_uid: None,

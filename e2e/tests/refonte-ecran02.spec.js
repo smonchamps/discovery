@@ -546,7 +546,9 @@ test("répondre préremplit depuis le coeur : adresse, Re :, amorce, citation �
   await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(
     'Re : Relecture du contrat Vantis',
   );
-  const corps = await page.locator('[data-testid="composition-corps"]').inputValue();
+  const corps = await page.locator('[data-testid="composition-corps"]').innerText();
+  // L'ÉCART amorce → citation fait partie du contrat (une ligne vide,
+  // pas quatre) : l'assertion mesure les deux sauts, pas juste l'amorce.
   expect(corps.startsWith('Bonjour Camille,\n\n')).toBe(true);
   expect(corps).toContain('a écrit :');
   // E3 (PJ-D4) : une réponse ne porte PAS les pièces d'origine — la
@@ -690,7 +692,11 @@ test('le brouillon vit en liste : mention sur le fil, reprise au dossier, fente 
   // quitte le dossier SANS attendre la sonde (onbrouillon).
   await page.locator('[data-testid="composition-a"]').fill('');
   await page.locator('[data-testid="composition-objet"]').fill('');
-  await page.locator('[data-testid="composition-corps"]').fill('');
+  // `fill('')` sur un contenteditable est un no-op Chromium : on vide
+  // comme l'utilisateur — tout sélectionner, supprimer.
+  await page.locator('[data-testid="composition-corps"]').click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
   await page.locator('[data-testid="composition-annuler"]').click();
   await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(2);
@@ -722,7 +728,7 @@ test('la conversation porte le brouillon en dernière position, le clic reprend 
   await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(
     'Re : Relecture du contrat Vantis',
   );
-  await expect(page.locator('[data-testid="composition-corps"]')).toHaveValue(/Merci pour la v4/);
+  await expect(page.locator('[data-testid="composition-corps"]')).toContainText('Merci pour la v4');
   // Fermer conserve : le bloc reste, la conversation n'a pas bougé.
   await page.locator('[data-testid="composition-annuler"]').click();
   await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
@@ -1231,9 +1237,12 @@ test('vider puis fermer ne ressuscite jamais le brouillon — la sauvegarde en v
     });
   });
   await page.waitForTimeout(2300);
-  // Le vidage et le geste, pendant le vol.
+  // Le vidage et le geste, pendant le vol. (`fill('')` ne vide pas un
+  // contenteditable : Ctrl+A + Suppr, comme l'utilisateur.)
   await page.locator('[data-testid="composition-objet"]').fill('');
-  await page.locator('[data-testid="composition-corps"]').fill('');
+  await page.locator('[data-testid="composition-corps"]').click();
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Delete');
   await page.locator('[data-testid="composition-annuler"]').click();
   await page.evaluate(() => {
     window.__e2eLiberer?.();

@@ -295,6 +295,17 @@ Faciles à casser **en silence**. À vérifier à chaque revue.
    transaction que le message : index FTS5, table `threads`.
 4. **Sécurité du rendu** : HTML assaini par `ammonia`, images distantes
    bloquées, iframe sandboxée + CSP, `textContent` jamais `innerHTML`.
+   **Exception unique, bornée (A62)** : l'éditeur riche du composeur
+   pose par `innerHTML` — c'est sa fonction — mais n'accepte QUE du
+   HTML passé par la frontière ammonia côté Rust (`frontiere_corps`,
+   citations comprises). Les images distantes s'y décident PAR GESTE
+   (verdict terrain D5, 2026-08-20) : une RÉPONSE cite au pixel neutre —
+   la revue du 2026-08-20 a montré le piège exact, une citation assainie
+   en `AllowRemote` chargeait les pixels espions du message cité au
+   simple clic « Répondre » (la CSP du document principal laisse
+   `img-src https:`) ; un TRANSFERT, lui, CONSERVE les images — le
+   destinataire reçoit le message entier, et composer le transfert vaut
+   « afficher les images » implicite, c'est le geste qui le dit.
 5. **Credentials jamais en clair** : Credential Manager Windows via
    `keyring`.
 6. **UIDVALIDITY** : si elle change, la boîte repart de zéro et **tout le
@@ -753,6 +764,28 @@ schéma FTS5 force une reconstruction qui relit les corps ; sur une
 base fournie, la sortir du chemin de démarrage (modale ADR 0012,
 `pending_adoption` la détecte). **Ne jamais conclure « budget tenu »
 sur une mesure de labo quand le chemin réel est lié au disque.**
+
+### Un contenteditable n'est ni un input ni un textarea — trois pièges payés
+
+Payés le même jour (PLAN-COMPOSITION-HTML, e2e du 2026-08-20) :
+
+1. **Playwright `fill('')` est un no-op** dessus — `insertText` d'une
+   chaîne vide ne supprime pas la sélection dans Chromium. Vider comme
+   l'utilisateur : Ctrl+A puis Suppr. Et `fill(texte)` écrit dans
+   l'élément **focalisé** au moment de l'insertion (pas atomique comme
+   sur un input) : toute pré-mise au point programmée du focus peut
+   détourner la frappe vers un autre champ — la garde « un focus déjà
+   posé prime » est produit, pas test.
+2. **Les routeurs clavier ne le voient pas** : un garde
+   `instanceof HTMLInputElement || HTMLTextAreaElement` laisse ses
+   touches fuir vers les raccourcis globaux (Suppr supprimait la
+   conversation pendant la frappe). Ajouter `isContentEditable` à toute
+   détection de saisie.
+3. **Sa re-sérialisation n'est jamais fidèle** : relire `innerHTML`
+   d'un contenu qu'on vient d'y poser rend des styles et entités
+   normalisés — toute détection « contenu identique » qui compare au
+   stocké se déclenche à tort (churn). Sans frappe de l'utilisateur,
+   ré-émettre les valeurs stockées, jamais le DOM.
 
 ---
 

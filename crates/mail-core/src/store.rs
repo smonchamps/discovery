@@ -139,6 +139,10 @@ CREATE TABLE IF NOT EXISTS drafts (
     bcc_raw       TEXT NOT NULL DEFAULT '',
     subject       TEXT NOT NULL,
     body          TEXT NOT NULL,
+    -- Corps riche du brouillon (PLAN-COMPOSITION-HTML). NULL = brouillon
+    -- texte (d'avant la colonne, ou rapatrié du serveur) ; `body` reste
+    -- TOUJOURS peuplé — le texte dérivé sert d'aperçu et de repli.
+    body_html     TEXT,
     reply_to_uid  INTEGER,
     -- La boîte qui donne son sens à reply_to_uid (ADR 0009) — le lien
     -- brouillon -> conversation (PLAN-BROUILLONS, B-D2). NULL avant la
@@ -188,6 +192,10 @@ CREATE TABLE IF NOT EXISTS outbox (
     bcc_addrs    TEXT NOT NULL DEFAULT '',
     subject      TEXT NOT NULL,
     body_text    TEXT NOT NULL,
+    -- Corps riche de l'envoi (PLAN-COMPOSITION-HTML) : ce que porte la
+    -- partie text/html du multipart/alternative. NULL = envoi texte seul
+    -- (chemin historique, octet pour octet inchangé).
+    body_html    TEXT,
     in_reply_to  TEXT,
     state        TEXT NOT NULL DEFAULT 'queued',
     attempts     INTEGER NOT NULL DEFAULT 0,
@@ -2088,6 +2096,9 @@ fn migrate(
             // Cc/Cci d'un brouillon — vides sur l'existant (PLAN-RETOURS-2).
             ("cc_raw", "TEXT NOT NULL DEFAULT ''"),
             ("bcc_raw", "TEXT NOT NULL DEFAULT ''"),
+            // Corps riche — NULL sur l'existant, chemin texte intact
+            // (PLAN-COMPOSITION-HTML).
+            ("body_html", "TEXT"),
         ],
     )?;
     // Cc/Cci du journal d'envoi — vides sur l'existant (PLAN-RETOURS-2).
@@ -2097,6 +2108,8 @@ fn migrate(
         &[
             ("cc_addrs", "TEXT NOT NULL DEFAULT ''"),
             ("bcc_addrs", "TEXT NOT NULL DEFAULT ''"),
+            // Corps riche — NULL sur l'existant (PLAN-COMPOSITION-HTML).
+            ("body_html", "TEXT"),
         ],
     )?;
     // Les corps deja en base valent 0 : ils datent d'avant les pieces
@@ -2658,6 +2671,7 @@ mod tests {
                         to_raw: "a@b.fr",
                         cc_raw: "",
                         bcc_raw: "",
+                        body_html: None,
                         subject: sujet,
                         body: "brouillon",
                         reply_to_uid: None,
@@ -2676,6 +2690,7 @@ mod tests {
                         bcc: Vec::new(),
                         subject: sujet.to_string(),
                         body_text: "corps".to_string(),
+                        body_html: None,
                         in_reply_to: None,
                     },
                 )
@@ -3554,6 +3569,65 @@ mod tests {
             .adopt_or_create_account("deux@exemple.fr", "gmail")
             .unwrap();
         assert_ne!(second, 1, "le placeholder ne se revendique qu'une fois");
+
+        drop(store);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// PLAN-COMPOSITION-HTML E1 : une base héritée (d'avant le corps
+    /// HTML) gagne les colonnes `body_html` de `drafts` et `outbox` à
+    /// l'ouverture — NULL sur l'existant, le chemin texte intact.
+    /// Sur base de FICHIER : c'est la passe réelle qui est prouvée,
+    /// pas un schéma neuf (invariant #7).
+    #[test]
+    fn legacy_database_gains_body_html_columns_with_null_on_existing_rows() {
+        let path =
+            std::env::temp_dir().join(format!("wind-test-body-html-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE drafts (
+                    id INTEGER PRIMARY KEY, to_raw TEXT NOT NULL,
+                    subject TEXT NOT NULL, body TEXT NOT NULL,
+                    reply_to_uid INTEGER, updated_epoch INTEGER NOT NULL,
+                    remote_uid INTEGER, pushed_epoch INTEGER
+                );
+                CREATE TABLE outbox (
+                    id INTEGER PRIMARY KEY, message_id TEXT NOT NULL,
+                    sender TEXT NOT NULL, recipients TEXT NOT NULL,
+                    subject TEXT NOT NULL, body_text TEXT NOT NULL,
+                    in_reply_to TEXT, state TEXT NOT NULL DEFAULT 'queued',
+                    attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT,
+                    queued_epoch INTEGER NOT NULL
+                );
+                INSERT INTO drafts (to_raw, subject, body, updated_epoch)
+                    VALUES ('x@y.fr', 's', 'texte brut', 10);
+                INSERT INTO outbox (message_id, sender, recipients, subject, body_text, queued_epoch)
+                    VALUES ('<m@x>', 'moi@y.fr', 'toi@y.fr', 's', 'b', 20);",
+            )
+            .unwrap();
+        }
+
+        let store = Store::open(&path).unwrap();
+        for table in ["drafts", "outbox"] {
+            assert!(
+                table_columns(store.conn(), table)
+                    .unwrap()
+                    .contains("body_html"),
+                "{table} doit gagner body_html à l'ouverture"
+            );
+        }
+        let ancien: Option<String> = store
+            .conn()
+            .query_row("SELECT body_html FROM drafts", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(ancien, None, "l'existant reste NULL : chemin texte intact");
+        let ancien: Option<String> = store
+            .conn()
+            .query_row("SELECT body_html FROM outbox", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(ancien, None);
 
         drop(store);
         let _ = std::fs::remove_file(&path);

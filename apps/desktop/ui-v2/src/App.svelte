@@ -47,6 +47,10 @@
   let prete = $state(false);
 
   let comptes = $state([]);
+  // Les adresses actuellement CONNECTÉES (une session vit côté Rust) —
+  // sous-ensemble du registre `comptes` ; la différence, ce sont les
+  // comptes au jeton mort, que Réglages sait désormais reconnecter.
+  let connectes = $state([]);
   // L'écran 01 ne s'affiche qu'une fois la nav CONNUE vide — jamais
   // pendant le premier chargement, sinon il clignoterait à chaque
   // démarrage.
@@ -559,6 +563,10 @@
   async function connecter() {
     try {
       const bilan = await appel('connect_accounts');
+      // Les adresses qui tiennent une session : Réglages > Comptes en
+      // dérive l'état par compte — un jeton mort se VOIT et se répare
+      // sur place (« Reconnecter », constat terrain 2026-08-20).
+      connectes = bilan.accounts.map((a) => a.email);
       if (bilan.problems.length > 0) {
         // Dire LEQUEL manque et pourquoi — une pastille absente sans
         // explication laisse l'utilisateur démuni (leçon v1).
@@ -567,10 +575,14 @@
           icone: 'link_off',
           texte: t('avis.connexion', { details: bilan.problems.join(' ; ') }),
           actions: [
-            { libelle: t('action.reessayer'), principale: true, faire: async () => {
-              avisConnexion = null;
-              await connecter();
-              synchroniser();
+            // Terrain 2026-08-20 : « Réessayer » rejouait la connexion
+            // SILENCIEUSE — condamnée avec un jeton mort. La porte utile
+            // est Réglages > Comptes, où l'état se voit et « Reconnecter »
+            // relance le consentement (A63). L'avis reste affiché : il
+            // tombera de lui-même à la reconnexion (connecter() le
+            // reposera ou l'effacera).
+            { libelle: t('entete.reglages'), principale: true, faire: () => {
+              reglages?.ouvrir();
             } },
             { libelle: t('action.ignorer'), faire: () => { avisConnexion = null; } },
           ],
@@ -830,8 +842,14 @@
   // s (étoile) et v (déplacer) suivent D2 : coupés à la bascule.
   function surTouche(event) {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
+    // L'éditeur riche du composeur (PLAN-COMPOSITION-HTML) est un
+    // contenteditable : ni input ni textarea, mais une SAISIE — sans
+    // `isContentEditable`, taper « c », « e » ou Suppr dans le corps
+    // déclenchait les raccourcis globaux (Suppr supprimait la
+    // conversation sélectionnée pendant la frappe — vu à l'e2e).
     const saisie = event.target instanceof HTMLInputElement
-      || event.target instanceof HTMLTextAreaElement;
+      || event.target instanceof HTMLTextAreaElement
+      || event.target.isContentEditable;
     if (saisie) {
       if (event.key === 'Escape') {
         if (event.target === champRecherche) recherche = '';
@@ -1272,8 +1290,9 @@
                  onflash={flash} onenvoye={apresEnvoi}
                  oncourrier={apresCourrierEnvoye}
                  onbrouillon={sonderBrouillons} />
-    <Reglages bind:this={reglages} {comptes} onajoute={compteAjoute}
-              onsupprime={compteRetire} />
+    <Reglages bind:this={reglages} {comptes} {connectes} onajoute={compteAjoute}
+              onsupprime={compteRetire}
+              onreconnecte={async () => { await connecter(); synchroniser(); }} />
   {/if}
 
   <ModaleMigration bind:this={modaleMigration} />

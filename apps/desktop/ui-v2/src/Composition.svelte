@@ -19,11 +19,24 @@
   // la frappe, conflit d'édition (`forked`) JAMAIS tu, fermer = conserver
   // (un contenu vidé par l'utilisateur est le seul cas où fermer jette).
   //
-  // Inertes comme au prototype : la barre de format G/I/S/Liste/Lien/
-  // Citation. (« Rendre indépendante » RETIRÉE — A53, D2 : le multi-
-  // fenêtre est reporté en chantier dédié. Cc/Cci sont désormais CÂBLÉS
+  // La barre de mise en forme est RÉELLE (PLAN-COMPOSITION-HTML, R4) :
+  // le corps est un `contenteditable` piloté par `execCommand` en mode
+  // legacy (`styleWithCSS` éteint) — sa sortie (b/i/u/strike, font
+  // color/face/size, align, listes, blockquote) est mot pour mot le
+  // vocabulaire que l'allowlist ammonia conserve. Le HTML est ASSAINI
+  // côté Rust à chaque écriture (save_draft, queue_send) ; le texte du
+  // repli en est DÉRIVÉ là-bas aussi — une seule autorité. Lien et
+  // Citation sont RETIRÉS de la barre (décision CE D1, périmètre R4
+  // strict). (« Rendre indépendante » RETIRÉE — A53, D2. Cc/Cci CÂBLÉS
   // — A54.) Écart dit : la ligne « De » montre l'adresse seule — le cœur
   // ne stocke ni nom d'affichage ni étiquette de compte.
+  //
+  // Un brouillon réouvert puis fermé SANS FRAPPE repart À L'OCTET PRÈS
+  // (les valeurs stockées sont ré-émises telles quelles, jamais relues
+  // du DOM) : le navigateur re-sérialise `innerHTML` normalisé (styles,
+  // entités) — relire l'éditeur marquerait le brouillon modifié à chaque
+  // ouverture et re-pousserait une copie vers Gmail, le churn exact que
+  // la détection « contenu identique » du cœur est venue tuer.
   //
   // « Joindre » est RÉEL (PLAN-PIECES-JOINTES E2) : sélecteur natif,
   // octets copiés au brouillon dès le geste (PJ-D1 — le brouillon-ancre
@@ -31,6 +44,7 @@
   // (PJ-D3), retrait par puce, poids total. Chaque geste rend l'epoch
   // du brouillon et on L'ADOPTE : sans cela, l'autosave suivant verrait
   // un conflit fantôme et bifurquerait le brouillon.
+  import { tick } from 'svelte';
   import { appel, choisirFichiers } from './lib/transport.js';
   import { t } from './lib/texte.svelte.js';
 
@@ -62,7 +76,16 @@
   let champCc = $state(null);
   let champCci = $state(null);
   let objet = $state('');
-  let corps = $state('');
+  // Le corps vit dans le DOM du `contenteditable` (`champCorps`), pas en
+  // état Svelte. Tant que `corpsModifie` est faux, la sauvegarde ré-émet
+  // les valeurs INITIALES (posées par `poserCorps`) — l'anti-churn ; dès
+  // la première frappe, `innerHTML` devient la vérité. `corpsVersion`
+  // est le pouls réactif du corps : les dérivés Svelte ne voient pas le
+  // DOM, ils voient ce compteur.
+  let corpsModifie = false;
+  let corpsTexteInitial = '';
+  let corpsHtmlInitial = null;
+  let corpsVersion = $state(0);
   // Les pièces RÉELLES du brouillon (métadonnées) — ce que le composeur
   // montre est ce que le message emporte, sans exception (PJ-D4).
   let pieces = $state([]);
@@ -102,6 +125,8 @@
 
   let champA = $state(null);
   let champCorps = $state(null);
+  let zoneCorps = $state(null);
+  let carte = $state(null);
 
   const KICKERS = {
     new: 'compo.nouveau',
@@ -121,6 +146,56 @@
   const sujetRe = (s) => (/^re\s*:/i.test(s ?? '') ? s : t('compo.re', { sujet: s ?? '' }));
   const sujetTr = (s) => (/^(tr|fwd|fw)\s*:/i.test(s ?? '') ? s : t('compo.tr', { sujet: s ?? '' }));
 
+  // Miroir de `texte_en_html` du cœur : échappé, retours préservés — la
+  // reprise d'un brouillon TEXTE (et lui seul) passe par là.
+  function texteEnHtml(texte) {
+    const echappe = (texte ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;');
+    return `<div>${echappe.replaceAll('\n', '<br>')}</div>`;
+  }
+
+  const corpsHtml = () => champCorps?.innerHTML ?? '';
+
+  // Ce que la sauvegarde et l'envoi remettent au Rust. Sans frappe, les
+  // valeurs INITIALES repartent à l'octet près (anti-churn, tous
+  // brouillons — texte ET riches : la re-sérialisation du navigateur
+  // n'est jamais fidèle). Modifié : le HTML de l'éditeur seul — le
+  // texte du repli est dérivé côté Rust (`frontiere_corps`), le `body`
+  // transmis serait jeté, on ne le calcule pas.
+  function chargeCorps() {
+    if (!corpsModifie) {
+      return { body: corpsTexteInitial, bodyHtml: corpsHtmlInitial };
+    }
+    return { body: '', bodyHtml: corpsHtml() };
+  }
+
+  // Pose le contenu de l'éditeur. `tick()` d'abord : le nœud n'existe
+  // qu'une fois la surimpression rendue — poser avant serait perdu.
+  // `htmlInitial: null` = brouillon TEXTE (la sauvegarde sans frappe ne
+  // doit pas le convertir) ; par défaut, le HTML posé est l'initial.
+  async function poserCorps(html, { texteInitial = '', htmlInitial = html } = {}) {
+    corpsModifie = false;
+    corpsTexteInitial = texteInitial;
+    corpsHtmlInitial = htmlInitial;
+    await tick();
+    if (champCorps) champCorps.innerHTML = html;
+    corpsVersion += 1;
+  }
+
+  function surFrappeCorps() {
+    // Chromium laisse un <br> orphelin après « tout sélectionner puis
+    // supprimer » : le corps est vide mais plus `:empty` — sans cette
+    // renormalisation, le placeholder ne reviendrait jamais.
+    if (champCorps && !champCorps.textContent && champCorps.innerHTML !== '') {
+      champCorps.innerHTML = '';
+    }
+    corpsModifie = true;
+    corpsVersion += 1;
+    programmerSauvegarde();
+  }
+
   function compteDe(accountId) {
     const connu = comptes.find((c) => c.account_id === accountId);
     return connu ? { account_id: connu.account_id, email: connu.email } : null;
@@ -135,7 +210,6 @@
     montrerCc = false;
     montrerCci = false;
     objet = '';
-    corps = '';
     pieces = [];
     rapatriements = [];
     refus = null;
@@ -145,10 +219,16 @@
     brouillonId = null;
     brouillonEpoch = null;
     demandeSuppr = false;
+    // Le nuancier et la photo de sélection sont des états de MODULE :
+    // ils survivraient à la fermeture de la carte — un Range du corps
+    // précédent colorierait un fantôme.
+    montrerCouleurs = false;
+    selectionCorps = null;
     expediteur = source
       ? compteDe(source.account_id)
       : compteDe(compte) ?? (comptes.length > 0 ? compteDe(comptes[0].account_id) : null);
     visible = true;
+    await poserCorps('');
 
     if (nouveauMode !== 'new' && source) {
       const enReponse = nouveauMode === 'reply' || nouveauMode === 'reply_all';
@@ -167,15 +247,21 @@
           cc = contexte.cc ?? '';
           if (cc) montrerCc = true;
           const prenom = (source.sender ?? '').split(' ')[0];
-          // La citation du cœur mène par deux sauts (la place du curseur en
-          // v1) ; l'amorce du prototype les apporte déjà — sans cette taille,
+          // La citation riche du cœur mène par deux <br> (la place du
+          // curseur) ; l'amorce les apporte déjà — sans cette taille,
           // quatre lignes vides sépareraient l'amorce de la citation.
-          const citation = contexte.body.replace(/^\n+/, '');
-          corps = prenom ? `${t('compo.bonjour', { prenom })}\n\n${citation}` : contexte.body;
+          const citation = contexte.body_html ?? '';
+          const contenu = prenom
+            ? `${texteEnHtml(t('compo.bonjour', { prenom }))}<div><br></div>${citation.replace(/^(<br>)+/, '')}`
+            : citation;
+          // La frappe déjà posée PRIME : le contexte peut mettre des
+          // secondes (corps à rapatrier) — écraser ce que l'utilisateur
+          // a tapé entre-temps serait pire qu'une citation absente.
+          if (!corpsModifie) await poserCorps(contenu);
           replyToMailbox = source.mailbox;
           replyToUid = source.uid;
-        } else {
-          corps = contexte.body;
+        } else if (!corpsModifie) {
+          await poserCorps(contexte.body_html ?? '');
         }
       } catch (err) {
         if (mien !== jeton) return;
@@ -236,12 +322,28 @@
     // Top-posting : le curseur se pose AU-DESSUS de la citation.
     setTimeout(() => {
       if (mien !== jeton || !visible) return;
+      // Ne JAMAIS voler un focus déjà posé dans la carte : si
+      // l'utilisateur a commencé à taper pendant l'ouverture, la
+      // pré-mise au point n'a plus lieu d'être — sinon sa frappe
+      // déménage de champ en plein mot (course vue à l'e2e : le corps
+      // atterrissait dans le À). La carte est tenue par référence,
+      // jamais par un sélecteur d'attribut de test.
+      if (carte?.contains(document.activeElement)) return;
       if (a && champCorps) {
         champCorps.focus();
-        champCorps.setSelectionRange(0, 0);
-        // Le focus a pu défiler vers le caret de fin avant la repose à 0 :
+        // L'équivalent contenteditable du `setSelectionRange(0, 0)` du
+        // textarea : un Range replié au tout début du corps.
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.setStart(champCorps, 0);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        // Le focus a pu défiler vers le caret de fin avant la repose à
+        // 0 — et le CONTENEUR de défilement est `.zone-corps`, pas
+        // l'éditeur (le scrollTop de l'éditeur est toujours 0) :
         // l'amorce doit être VISIBLE, pas seulement première.
-        champCorps.scrollTop = 0;
+        if (zoneCorps) zoneCorps.scrollTop = 0;
       } else {
         champA?.focus();
       }
@@ -264,7 +366,13 @@
     montrerCc = cc.trim() !== '';
     montrerCci = cci.trim() !== '';
     objet = brouillon.subject;
-    corps = brouillon.body;
+    // Brouillon riche : son HTML tel quel. Brouillon texte : converti
+    // pour l'éditeur (`htmlInitial: null` — sans frappe il ne devient
+    // pas riche). Dans les deux cas l'anti-churn ré-émettra le stocké.
+    poserCorps(brouillon.body_html ?? texteEnHtml(brouillon.body), {
+      texteInitial: brouillon.body,
+      htmlInitial: brouillon.body_html ?? null,
+    });
     pieces = [];
     rapatriements = [];
     refus = null;
@@ -283,14 +391,33 @@
     brouillonId = brouillon.id;
     brouillonEpoch = brouillon.updated_epoch;
     demandeSuppr = false;
+    montrerCouleurs = false;
+    selectionCorps = null;
     visible = true;
-    setTimeout(() => champCorps?.focus(), 0);
+    setTimeout(() => {
+      // Même garde que `ouvrir()` : le focus déjà posé prime.
+      if (carte?.contains(document.activeElement)) return;
+      champCorps?.focus();
+    }, 0);
   }
 
   // Un brouillon sans texte mais avec pièce n'est PAS vide : fermer le
-  // conserve, le contrat des brouillons couvre les octets.
-  const vide = () =>
-    !a.trim() && !cc.trim() && !cci.trim() && !objet.trim() && !corps.trim() && pieces.length === 0;
+  // conserve, le contrat des brouillons couvre les octets. Le corps se
+  // juge sur son TEXTE (`textContent` — pas de reflow) ; la lecture de
+  // `corpsVersion` rend la fonction RÉACTIVE à la frappe du corps, que
+  // Svelte ne voit pas dans le DOM (sans elle, « Supprimer le
+  // brouillon » n'apparaissait qu'à l'autosave).
+  function vide() {
+    void corpsVersion;
+    return (
+      !a.trim() &&
+      !cc.trim() &&
+      !cci.trim() &&
+      !objet.trim() &&
+      !(champCorps?.textContent ?? '').trim() &&
+      pieces.length === 0
+    );
+  }
 
   // R3 : le geste « Supprimer le brouillon » n'a de sens que s'il y a une
   // matière à jeter — un brouillon déjà persisté, ou du contenu en cours.
@@ -319,11 +446,21 @@
   async function sauverSeul() {
     if (!visible || vide() || !expediteur) return null;
     try {
+      const { body, bodyHtml } = chargeCorps();
       const bilan = await appel('save_draft', {
         accountId: expediteur.account_id,
         id: brouillonId,
         baseEpoch: brouillonEpoch,
-        content: { to: a, cc, bcc: cci, subject: objet, body: corps, replyToUid, replyToMailbox },
+        content: {
+          to: a,
+          cc,
+          bcc: cci,
+          subject: objet,
+          body,
+          bodyHtml,
+          replyToUid,
+          replyToMailbox,
+        },
       });
       if (!visible) {
         // Le panneau s'est fermé pendant la sauvegarde (envoi parti) :
@@ -433,13 +570,15 @@
     clearTimeout(minuterie);
     if (volSauvegarde) await volSauvegarde;
     try {
+      const { body, bodyHtml } = chargeCorps();
       await appel('queue_send', {
         accountId: expediteur.account_id,
         to: a,
         cc,
         bcc: cci,
         subject: objet.trim(),
-        body: corps,
+        body,
+        bodyHtml,
         replyToMailbox,
         replyToUid,
         // Le brouillon-ancre : ses pièces rejoignent le journal dans la
@@ -624,11 +763,87 @@
   function renoncer(entree) {
     rapatriements = rapatriements.filter((r) => r.index !== entree.index);
   }
+
+  // --- La barre de mise en forme (R4, décisions CE D1-D3) --------------
+  //
+  // `execCommand` en mode legacy : `styleWithCSS` éteint à chaque geste,
+  // pour que la sortie (<b>, <font>, align…) reste le vocabulaire exact
+  // de l'allowlist ammonia — jamais de style CSS généré à traduire.
+  //
+  // La sélection SURVIT aux contrôles qui prennent le focus (les
+  // <select> Police/Taille) : photographiée à chaque `selectionchange`
+  // dans le corps, reposée avant chaque commande.
+  let selectionCorps = null;
+  let actifs = $state({});
+  // D3 : nuancier fixe — douze teintes sûres sur la dalle claire du
+  // corps (le courriel est composé pour un fond blanc, A61).
+  const COULEURS = [
+    '#000000',
+    '#666666',
+    '#cc0000',
+    '#e69138',
+    '#bf9000',
+    '#38761d',
+    '#45818e',
+    '#3d85c6',
+    '#1155cc',
+    '#674ea7',
+    '#a64d79',
+    '#85200c',
+  ];
+  let montrerCouleurs = $state(false);
+
+  function surSelection() {
+    if (!visible || !champCorps) return;
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0 && champCorps.contains(selection.anchorNode)) {
+      selectionCorps = selection.getRangeAt(0).cloneRange();
+      majActifs();
+    }
+  }
+
+  function majActifs() {
+    actifs = {
+      gras: document.queryCommandState('bold'),
+      italique: document.queryCommandState('italic'),
+      souligne: document.queryCommandState('underline'),
+      barre: document.queryCommandState('strikeThrough'),
+      puces: document.queryCommandState('insertUnorderedList'),
+      numerotee: document.queryCommandState('insertOrderedList'),
+    };
+  }
+
+  function commande(nom, valeur = null) {
+    if (!champCorps) return;
+    champCorps.focus();
+    if (selectionCorps) {
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(selectionCorps);
+    }
+    document.execCommand('styleWithCSS', false, false);
+    document.execCommand(nom, false, valeur);
+    corpsModifie = true;
+    montrerCouleurs = false;
+    majActifs();
+    programmerSauvegarde();
+  }
+
+  // Les <select> reviennent à leur étiquette après le geste : ce sont
+  // des COMMANDES (appliquer une police à la sélection), pas des états —
+  // une sélection mêlée n'a pas UNE police à montrer.
+  function commandeSelect(evenement, nom) {
+    const valeur = evenement.target.value;
+    evenement.target.value = '';
+    if (valeur) commande(nom, valeur);
+  }
 </script>
+
+<svelte:document onselectionchange={surSelection} />
 
 {#if visible}
   <div class="scrim" data-testid="composition">
-    <div class="carte" role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
+    <div class="carte" bind:this={carte} role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
       <!-- Terrain A46 : l'entête ne répète plus l'objet — le champ
            Objet le dit, juste dessous. -->
       <div class="tete">
@@ -695,9 +910,18 @@
                  placeholder={t('compo.objetPlaceholder')} data-testid="composition-objet">
         </div>
       </div>
-      <div class="zone-corps">
-        <textarea bind:this={champCorps} bind:value={corps} oninput={programmerSauvegarde}
-                  placeholder={t('compo.corpsPlaceholder')} data-testid="composition-corps"></textarea>
+      <div class="zone-corps" bind:this={zoneCorps}>
+        <!-- L'éditeur riche (R4) : contenteditable, contenu posé par
+             `poserCorps`, lu par `chargeCorps` — jamais de bind. Le
+             placeholder vit en CSS (:empty::before). La sélection est
+             suivie par le seul `selectionchange` du document (il couvre
+             clavier ET souris — pas de doublon onkeyup/onmouseup). -->
+        <div class="corps-editeur" contenteditable="true" role="textbox" aria-multiline="true"
+             tabindex="0"
+             bind:this={champCorps} oninput={surFrappeCorps}
+             data-placeholder={t('compo.corpsPlaceholder')}
+             aria-label={t('compo.corpsPlaceholder')}
+             data-testid="composition-corps"></div>
       </div>
       {#if pieces.length > 0 || rapatriements.length > 0}
         <div class="fichiers" data-testid="composition-pieces">
@@ -740,13 +964,109 @@
           <span class="ms" aria-hidden="true">warning</span>{refus}
         </div>
       {/if}
-      <div class="format">
-        <span class="bouton-format gras">{t('compo.gras')}</span>
-        <span class="bouton-format italique">{t('compo.italique')}</span>
-        <span class="bouton-format souligne">{t('compo.souligne')}</span>
-        <span class="puce"><span class="ms" aria-hidden="true">format_list_bulleted</span>{t('compo.liste')}</span>
-        <span class="puce"><span class="ms" aria-hidden="true">link</span>{t('compo.lien')}</span>
-        <span class="puce"><span class="ms" aria-hidden="true">format_quote</span>{t('compo.citation')}</span>
+      <!-- La barre RÉELLE (R4, D1 : exactement les boutons demandés —
+           Lien et Citation retirés). `onmousedown` neutralisé partout :
+           un bouton de format ne vole jamais la sélection du corps. -->
+      <div class="format" data-testid="composition-format">
+        <select class="select-format" aria-label={t('compo.police')} title={t('compo.police')}
+                data-testid="composition-format-police"
+                onchange={(e) => commandeSelect(e, 'fontName')}>
+          <option value="" disabled selected hidden>{t('compo.police')}</option>
+          <option value="sans-serif">{t('compo.policeSans')}</option>
+          <option value="serif">{t('compo.policeSerif')}</option>
+          <option value="monospace">{t('compo.policeMono')}</option>
+        </select>
+        <select class="select-format" aria-label={t('compo.taille')} title={t('compo.taille')}
+                data-testid="composition-format-taille"
+                onchange={(e) => commandeSelect(e, 'fontSize')}>
+          <option value="" disabled selected hidden>{t('compo.taille')}</option>
+          <option value="2">{t('compo.taillePetit')}</option>
+          <option value="3">{t('compo.tailleNormal')}</option>
+          <option value="4">{t('compo.tailleGrand')}</option>
+          <option value="6">{t('compo.tailleTresGrand')}</option>
+        </select>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" class="bouton-format" class:actif={actifs.gras}
+                aria-label={t('compo.gras')} title={t('compo.gras')} aria-pressed={actifs.gras}
+                data-testid="composition-format-gras"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('bold')}>
+          <span class="ms" aria-hidden="true">format_bold</span></button>
+        <button type="button" class="bouton-format" class:actif={actifs.italique}
+                aria-label={t('compo.italique')} title={t('compo.italique')} aria-pressed={actifs.italique}
+                data-testid="composition-format-italique"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('italic')}>
+          <span class="ms" aria-hidden="true">format_italic</span></button>
+        <button type="button" class="bouton-format" class:actif={actifs.souligne}
+                aria-label={t('compo.souligne')} title={t('compo.souligne')} aria-pressed={actifs.souligne}
+                data-testid="composition-format-souligne"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('underline')}>
+          <span class="ms" aria-hidden="true">format_underlined</span></button>
+        <button type="button" class="bouton-format" class:actif={actifs.barre}
+                aria-label={t('compo.barre')} title={t('compo.barre')} aria-pressed={actifs.barre}
+                data-testid="composition-format-barre"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('strikeThrough')}>
+          <span class="ms" aria-hidden="true">strikethrough_s</span></button>
+        <span class="groupe-couleur">
+          <button type="button" class="bouton-format"
+                  aria-label={t('compo.couleur')} title={t('compo.couleur')}
+                  data-testid="composition-format-couleur"
+                  onmousedown={(e) => e.preventDefault()}
+                  onclick={() => (montrerCouleurs = !montrerCouleurs)}>
+            <span class="ms" aria-hidden="true">format_color_text</span></button>
+          {#if montrerCouleurs}
+            <div class="palette" data-testid="composition-palette">
+              {#each COULEURS as couleur (couleur)}
+                <button type="button" class="teinte" style="background:{couleur}"
+                        aria-label={couleur}
+                        onmousedown={(e) => e.preventDefault()}
+                        onclick={() => commande('foreColor', couleur)}></button>
+              {/each}
+            </div>
+          {/if}
+        </span>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" class="bouton-format"
+                aria-label={t('compo.alignerGauche')} title={t('compo.alignerGauche')}
+                data-testid="composition-format-gauche"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('justifyLeft')}>
+          <span class="ms" aria-hidden="true">format_align_left</span></button>
+        <button type="button" class="bouton-format"
+                aria-label={t('compo.alignerCentre')} title={t('compo.alignerCentre')}
+                data-testid="composition-format-centre"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('justifyCenter')}>
+          <span class="ms" aria-hidden="true">format_align_center</span></button>
+        <button type="button" class="bouton-format"
+                aria-label={t('compo.alignerDroite')} title={t('compo.alignerDroite')}
+                data-testid="composition-format-droite"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('justifyRight')}>
+          <span class="ms" aria-hidden="true">format_align_right</span></button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" class="bouton-format" class:actif={actifs.puces}
+                aria-label={t('compo.listePuces')} title={t('compo.listePuces')} aria-pressed={actifs.puces}
+                data-testid="composition-format-puces"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('insertUnorderedList')}>
+          <span class="ms" aria-hidden="true">format_list_bulleted</span></button>
+        <button type="button" class="bouton-format" class:actif={actifs.numerotee}
+                aria-label={t('compo.listeNumerotee')} title={t('compo.listeNumerotee')} aria-pressed={actifs.numerotee}
+                data-testid="composition-format-numerotee"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('insertOrderedList')}>
+          <span class="ms" aria-hidden="true">format_list_numbered</span></button>
+        <button type="button" class="bouton-format"
+                aria-label={t('compo.retraitMoins')} title={t('compo.retraitMoins')}
+                data-testid="composition-format-retrait-moins"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('outdent')}>
+          <span class="ms" aria-hidden="true">format_indent_decrease</span></button>
+        <button type="button" class="bouton-format"
+                aria-label={t('compo.retraitPlus')} title={t('compo.retraitPlus')}
+                data-testid="composition-format-retrait-plus"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('indent')}>
+          <span class="ms" aria-hidden="true">format_indent_increase</span></button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" class="bouton-format"
+                aria-label={t('compo.effacerFormat')} title={t('compo.effacerFormat')}
+                data-testid="composition-format-effacer"
+                onmousedown={(e) => e.preventDefault()} onclick={() => commande('removeFormat')}>
+          <span class="ms" aria-hidden="true">format_clear</span></button>
       </div>
       {#if demandeSuppr}
         <!-- R3/D3 : la confirmation vit DANS le pied, à la place des
@@ -842,13 +1162,23 @@
 
   .zone-corps {
     padding:20px 22px; display:flex; flex-direction:column;
-    min-height:220px; flex:1;
+    min-height:220px; flex:1; overflow:auto;
   }
-  textarea {
+  .corps-editeur {
     flex:1; width:100%; min-height:180px; font-size:15px; line-height:1.65;
-    color:var(--ink); border:none; outline:none; resize:none;
+    color:var(--ink); border:none; outline:none;
     background:transparent; font-family:inherit;
+    overflow-wrap:break-word;
   }
+  /* Le placeholder du textarea, refait : visible tant que le corps est
+     vide, dans la teinte atténuée. */
+  .corps-editeur:empty::before {
+    content:attr(data-placeholder); color:var(--muted); pointer-events:none;
+  }
+  /* La citation riche : le filet gauche que `quote_reply_html` pose en
+     style inline est la référence ; ceci ne stylise que les blockquotes
+     nés du retrait (indent), sans style propre. */
+  .corps-editeur :global(blockquote) { margin:0 0 0 0.8ex; }
 
   .fichiers { padding:0 22px 14px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
 
@@ -891,17 +1221,45 @@
 
   .format {
     flex:none; padding:8px 18px; border-top:1px solid var(--border);
-    background:var(--panel); display:flex; align-items:center; gap:8px;
+    background:var(--panel); display:flex; align-items:center; gap:6px;
+    flex-wrap:wrap;
   }
   .bouton-format {
-    height:32px; min-width:32px; padding:0 10px; display:inline-flex;
+    height:32px; min-width:32px; padding:0 6px; display:inline-flex;
     align-items:center; justify-content:center; font-size:13px;
-    color:var(--ink); background:var(--surface);
+    color:var(--ink2); background:var(--surface); cursor:pointer;
     border:1px solid var(--border); border-radius:6px;
   }
-  .gras { font-weight:600; }
-  .italique { font-style:italic; }
-  .souligne { text-decoration:underline; }
+  .bouton-format:hover { background:var(--sel); color:var(--ink); }
+  /* L'état actif dit ce que porte la sélection (aria-pressed idem). */
+  .bouton-format.actif {
+    background:var(--sel); color:var(--accent); border-color:var(--accent);
+  }
+  .bouton-format .ms { font-size:18px; }
+  .select-format {
+    height:32px; padding:0 8px; font:inherit; font-size:13px;
+    color:var(--ink2); background:var(--surface); cursor:pointer;
+    border:1px solid var(--border); border-radius:6px;
+  }
+  .select-format option { background:var(--surface); color:var(--ink); }
+  .sep {
+    width:1px; height:20px; background:var(--border); flex:none;
+    margin:0 4px;
+  }
+  /* Le nuancier (D3) : douze teintes fixes, au-dessus de la barre. */
+  .groupe-couleur { position:relative; display:inline-flex; }
+  .palette {
+    position:absolute; bottom:38px; left:0; z-index:1;
+    display:grid; grid-template-columns:repeat(6, 22px); gap:6px;
+    padding:10px; background:var(--surface);
+    border:1px solid var(--border); border-radius:8px;
+    box-shadow:var(--shadow);
+  }
+  .teinte {
+    height:22px; width:22px; min-width:0; padding:0;
+    border:1px solid var(--border); border-radius:4px; cursor:pointer;
+  }
+  .teinte:hover { outline:2px solid var(--accent); outline-offset:1px; }
 
   .pied {
     flex:none; padding:14px 22px 18px; border-top:1px solid var(--border);

@@ -21,7 +21,15 @@
   // l'écran 01 ne vient qu'à zéro compte ; la porte permanente vit ici.
   // Le retrait vit sur la même rangée : `onsupprime(id)` remonte à
   // l'App, qui recharge nav et liste.
-  let { comptes = [], onajoute = () => {}, onsupprime = () => {} } = $props();
+  let {
+    comptes = [],
+    // Les adresses qui tiennent une session (App.connecter) : un compte
+    // du registre absent d'ici a un jeton mort — il se répare sur place.
+    connectes = [],
+    onajoute = () => {},
+    onsupprime = () => {},
+    onreconnecte = () => {},
+  } = $props();
 
   const GROUPES = [
     { id: 'comptes', icone: 'person', libelle: 'groupe.comptes' },
@@ -92,6 +100,8 @@
     ajoutOuvert = false;
     retrait = null;
     retraitErreur = null;
+    reconnexion = null;
+    reconnexionErreur = null;
     groupe = 'comptes';
     maj = null;
     visible = true;
@@ -119,6 +129,24 @@
   function demanderRetrait(id) {
     retrait = retrait === id ? null : id;
     retraitErreur = null;
+  }
+  // Reconnexion d'un compte au jeton mort (constat terrain 2026-08-20) :
+  // le consentement navigateur se rejoue depuis la rangée — l'échec se
+  // dit SUR PLACE et le geste se rejoue, comme le retrait.
+  const estDeconnecte = (c) => !connectes.includes(c.email);
+  let reconnexion = $state(null);
+  let reconnexionErreur = $state(null);
+  async function reconnecter(c) {
+    reconnexion = c.account_id;
+    reconnexionErreur = null;
+    try {
+      await appel('reconnect_account', { accountId: c.account_id });
+      onreconnecte();
+    } catch (err) {
+      reconnexionErreur = { id: c.account_id, texte: t('reglages.reconnexionImpossible', { err }) };
+    } finally {
+      reconnexion = null;
+    }
   }
   async function confirmerRetrait() {
     const id = retrait;
@@ -224,11 +252,29 @@
                 <div class="compte">
                   <span class="ms" aria-hidden="true">person</span>
                   <span class="adresse">{c.email}</span>
+                  {#if estDeconnecte(c)}
+                    <!-- Jeton mort : l'état se DIT (link_off, le glyphe de
+                         la reconnexion — même sens qu'à la fente d'avis)
+                         et se répare sur place. -->
+                    <span class="deconnecte" data-testid="compte-deconnecte">
+                      <span class="ms" aria-hidden="true">link_off</span>{t('reglages.deconnecte')}</span>
+                    <button type="button" class="reconnecter" data-testid="compte-reconnecter"
+                            disabled={reconnexion === c.account_id}
+                            aria-label={t('reglages.reconnecterCompte', { email: c.email })}
+                            onclick={() => reconnecter(c)}>
+                      {reconnexion === c.account_id
+                        ? t('reglages.reconnexionEnCours')
+                        : t('reglages.reconnecter')}</button>
+                  {/if}
                   <button type="button" class="retirer" data-testid="compte-retirer"
                           aria-label={t('reglages.retirerCompte', { email: c.email })}
                           onclick={() => demanderRetrait(c.account_id)}>
                     <span class="ms" aria-hidden="true">delete</span></button>
                 </div>
+                {#if reconnexionErreur?.id === c.account_id}
+                  <p class="erreur-reconnexion" data-testid="reconnexion-erreur">
+                    {reconnexionErreur.texte}</p>
+                {/if}
                 {#if retrait === c.account_id}
                   <!-- La confirmation vit SOUS la rangée, dans la carte
                        signature : un geste destructeur ne part jamais du
@@ -507,6 +553,32 @@
     border-radius:6px; cursor:pointer;
   }
   .ajouter:hover { background:var(--sel); }
+
+  /* Jeton mort : l'état se dit en alerte (link_off + « Déconnecté »),
+     poussé à droite avec le geste de réparation — la rangée d'un compte
+     sain, elle, ne change pas. */
+  .deconnecte {
+    margin-left:auto; flex:none; display:inline-flex; align-items:center;
+    gap:6px; font-size:12.5px; font-weight:600; color:var(--alert);
+    white-space:nowrap;
+  }
+  .deconnecte .ms { color:var(--alert); font-size:15px; }
+  .reconnecter {
+    height:28px; padding:0 12px; flex:none; display:inline-flex;
+    align-items:center; font-size:12.5px; font-weight:600;
+    color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; cursor:pointer;
+    white-space:nowrap;
+  }
+  .reconnecter:hover:not(:disabled) { background:var(--sel); }
+  .reconnecter:disabled { opacity:.6; cursor:default; }
+  /* Un compte déconnecté a déjà son état à droite : la corbeille du
+     retrait perd son ressort automatique. */
+  .compte:has(.deconnecte) .retirer { margin-left:0; }
+  .erreur-reconnexion {
+    margin:0; padding:0 16px 6px; font-size:12px; line-height:1.4;
+    color:var(--alert);
+  }
 
   /* Le retrait : discret au repos (la rangée reste une rangée), l'alerte
      ne se montre qu'au survol — le rouge permanent crierait sur chaque

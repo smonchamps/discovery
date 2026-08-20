@@ -29,6 +29,12 @@ pub struct Draft {
     pub bcc: Vec<String>,
     pub subject: String,
     pub body_text: String,
+    /// Corps riche (PLAN-COMPOSITION-HTML), déjà assaini par l'appelant
+    /// (la frontière ammonia vit côté app, seule à dépendre de
+    /// mail-render). `None` = envoi texte seul, chemin historique.
+    /// `compose()` rend `None` ; l'appelant qui a du HTML le pose —
+    /// le texte reste TOUJOURS peuplé, c'est lui le repli.
+    pub body_html: Option<String>,
     /// Message-ID du message auquel on répond (fil de discussion).
     pub in_reply_to: Option<String>,
 }
@@ -64,6 +70,7 @@ pub fn compose(
         bcc,
         subject: single_line(subject),
         body_text: body_text.to_string(),
+        body_html: None,
         in_reply_to: in_reply_to.and_then(normalize_message_id),
     })
 }
@@ -186,22 +193,71 @@ pub fn reply_to(is_own: bool, sender: Option<&str>, to_addrs: &[String]) -> Vec<
     }
 }
 
+/// La ligne d'attribution d'une citation — l'autorité UNIQUE des deux
+/// variantes (texte et riche) : un libellé qui bouge bouge partout.
+fn attribution(sender: Option<&str>, date: Option<&str>) -> String {
+    let sender = sender.unwrap_or("(expéditeur inconnu)");
+    match date {
+        Some(date) => format!("Le {date}, {sender} a écrit :"),
+        None => format!("{sender} a écrit :"),
+    }
+}
+
+/// L'en-tête d'un transfert (séparateur, De/Date/Objet) — même règle :
+/// une seule source pour les variantes texte et riche.
+fn entete_transfert(sender: Option<&str>, date: Option<&str>, subject: Option<&str>) -> String {
+    let mut entete = String::from("---------- Message transféré ----------\n");
+    entete.push_str(&format!(
+        "De : {}\n",
+        sender.unwrap_or("(expéditeur inconnu)")
+    ));
+    if let Some(date) = date {
+        entete.push_str(&format!("Date : {date}\n"));
+    }
+    entete.push_str(&format!("Objet : {}", subject.unwrap_or("(sans objet)")));
+    entete
+}
+
 /// Bloc de citation d'une réponse, à placer SOUS le curseur (top-posting) :
 /// une ligne d'attribution puis chaque ligne du texte préfixée de « > ».
 pub fn quote_reply(sender: Option<&str>, date: Option<&str>, body_text: &str) -> String {
     if body_text.trim().is_empty() {
         return String::new();
     }
-    let sender = sender.unwrap_or("(expéditeur inconnu)");
-    let attribution = match date {
-        Some(date) => format!("Le {date}, {sender} a écrit :"),
-        None => format!("{sender} a écrit :"),
-    };
     let quoted: String = body_text
         .lines()
         .map(|line| format!("> {line}\n"))
         .collect();
-    format!("\n\n{attribution}\n{}", quoted.trim_end())
+    format!("\n\n{}\n{}", attribution(sender, date), quoted.trim_end())
+}
+
+/// Citation riche d'une réponse (PLAN-COMPOSITION-HTML) : l'attribution
+/// ÉCHAPPÉE (l'expéditeur vient du monde réel), puis le corps — déjà
+/// assaini par l'appelant — dans un `<blockquote>` au filet gauche,
+/// la forme que tous les clients mûrs donnent au texte cité. Le style
+/// inline traverse `clean_style` (ni url ni exécution) et l'allowlist.
+pub fn quote_reply_html(sender: Option<&str>, date: Option<&str>, body_html: &str) -> String {
+    if body_html.trim().is_empty() {
+        return String::new();
+    }
+    format!(
+        "<br><br>{}<blockquote style=\"margin:0 0 0 0.8ex;border-left:2px solid #ccc;padding-left:1ex\">{body_html}</blockquote>",
+        crate::echo::texte_en_html(&attribution(sender, date)),
+    )
+}
+
+/// Bloc riche d'un transfert : l'en-tête d'origine (De/Date/Objet)
+/// échappé, puis le corps HTML tel quel — un transfert transmet.
+pub fn quote_forward_html(
+    sender: Option<&str>,
+    date: Option<&str>,
+    subject: Option<&str>,
+    body_html: &str,
+) -> String {
+    format!(
+        "<br><br>{}<br>{body_html}",
+        crate::echo::texte_en_html(&entete_transfert(sender, date, subject)),
+    )
 }
 
 /// Bloc d'un transfert : l'en-tête d'origine (De/Date/Objet) puis le texte
@@ -212,20 +268,11 @@ pub fn quote_forward(
     subject: Option<&str>,
     body_text: &str,
 ) -> String {
-    let mut block = String::from("\n\n---------- Message transféré ----------\n");
-    block.push_str(&format!(
-        "De : {}\n",
-        sender.unwrap_or("(expéditeur inconnu)")
-    ));
-    if let Some(date) = date {
-        block.push_str(&format!("Date : {date}\n"));
-    }
-    block.push_str(&format!(
-        "Objet : {}\n\n{}",
-        subject.unwrap_or("(sans objet)"),
+    format!(
+        "\n\n{}\n\n{}",
+        entete_transfert(sender, date, subject),
         body_text.trim_end(),
-    ));
-    block
+    )
 }
 
 /// Un sujet vit sur une seule ligne : tout caractère de contrôle devient
@@ -541,6 +588,79 @@ mod tests {
     #[test]
     fn reply_to_recu_sans_expediteur_est_vide() {
         assert!(reply_to(false, None, &["x@y.fr".to_string()]).is_empty());
+    }
+
+    /// PLAN-COMPOSITION-HTML E2 : la citation riche d'une réponse — une
+    /// attribution ÉCHAPPÉE puis le corps assaini dans un blockquote.
+    /// L'expéditeur vient du monde réel : un nom à chevrons ne doit
+    /// jamais s'injecter dans notre HTML.
+    #[test]
+    fn quote_reply_html_attributes_then_blockquotes() {
+        let quote = quote_reply_html(
+            Some("Alice <alice@ex.fr>"),
+            Some("2026-08-19 10:23"),
+            "<p>première</p>",
+        );
+        assert!(
+            quote.contains("Le 2026-08-19 10:23, Alice &lt;alice@ex.fr&gt; a écrit :"),
+            "{quote}"
+        );
+        assert!(
+            quote.contains("<blockquote"),
+            "le corps cité vit dans un blockquote : {quote}"
+        );
+        assert!(
+            quote.contains("<p>première</p></blockquote>"),
+            "le HTML d'origine est cité tel quel : {quote}"
+        );
+        let attribution = quote.find("a écrit :").unwrap();
+        let bloc = quote.find("<blockquote").unwrap();
+        assert!(
+            attribution < bloc,
+            "l'attribution précède le bloc : {quote}"
+        );
+    }
+
+    #[test]
+    fn quote_reply_html_degrades_gracefully_without_metadata() {
+        let quote = quote_reply_html(None, None, "<p>texte</p>");
+        assert!(quote.contains("(expéditeur inconnu) a écrit :"), "{quote}");
+    }
+
+    #[test]
+    fn quote_reply_html_of_empty_body_is_empty() {
+        assert_eq!(quote_reply_html(Some("Alice"), None, "  \n "), "");
+    }
+
+    /// Le bloc riche d'un transfert : l'en-tête d'origine (De/Date/Objet)
+    /// échappé, puis le corps HTML tel quel — un transfert transmet.
+    #[test]
+    fn quote_forward_html_carries_headers_and_body() {
+        let block = quote_forward_html(
+            Some("Alice <alice@ex.fr>"),
+            Some("2026-08-19 10:23"),
+            Some("Devis <urgent>"),
+            "<p>le corps</p>",
+        );
+        assert!(
+            block.contains("---------- Message transféré ----------"),
+            "{block}"
+        );
+        assert!(block.contains("De : Alice &lt;alice@ex.fr&gt;"), "{block}");
+        assert!(block.contains("Date : 2026-08-19 10:23"), "{block}");
+        assert!(block.contains("Objet : Devis &lt;urgent&gt;"), "{block}");
+        assert!(
+            block.contains("<p>le corps</p>"),
+            "le HTML d'origine suit tel quel : {block}"
+        );
+    }
+
+    #[test]
+    fn quote_forward_html_uses_placeholders_for_missing_metadata() {
+        let block = quote_forward_html(None, None, None, "<p>corps</p>");
+        assert!(block.contains("De : (expéditeur inconnu)"), "{block}");
+        assert!(!block.contains("Date :"), "{block}");
+        assert!(block.contains("Objet : (sans objet)"), "{block}");
     }
 
     #[test]

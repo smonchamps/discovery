@@ -1,6 +1,6 @@
 # Icônes vendorisées — sous-ensemble Material Symbols Rounded (R0-S3)
 
-**46 glyphes**, **21 500 octets** (21,0 Kio) woff2, servis depuis le dépôt.
+**58 glyphes**, **23 616 octets** (23,1 Kio) woff2, servis depuis le dépôt.
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
@@ -42,15 +42,28 @@ le poids d'une pièce rejoint la puce de son nom (exception « 1 puce =
 1 information », A59/A60) : `storage` n'est plus employé nulle part,
 **conservé réservé** au sous-ensemble comme `open_in_new` ci-dessus ;
 le compte d'usage baisse mais le sous-ensemble ne change pas.
+A62 (PLAN-COMPOSITION-HTML, 2026-08-20) ajoute les **12 glyphes de la
+barre de mise en forme réelle** — `format_bold`, `format_italic`,
+`format_underlined`, `strikethrough_s`, `format_color_text`,
+`format_align_left`, `format_align_center`, `format_align_right`,
+`format_list_numbered`, `format_indent_decrease`,
+`format_indent_increase`, `format_clear` — et retire de l'usage `link`
+et `format_quote` (D1 : Lien et Citation quittent la barre), tous deux
+**conservés réservés** comme `storage`/`open_in_new` ; le sous-ensemble
+passe de 46 à **58**, cache-buster `?v=58`.
 
 `all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
 `check_circle` `close` `delete` `description` `display_settings`
-`drafts` `edit_note` `edit_square` `error` `format_list_bulleted`
-`format_quote` `forum` `group_add` `hourglass_empty` `inbox` `info`
-`inventory_2` `keyboard` `link` `link_off` `mark_email_unread` `menu`
-`notifications` `open_in_full` `open_in_new` `person` `person_add`
-`reply` `reply_all` `report` `search` `send` `settings` `storage`
-`sync` `system_update_alt` `unfold_less` `unfold_more` `visibility_off`
+`drafts` `edit_note` `edit_square` `error` `format_align_center`
+`format_align_left` `format_align_right` `format_bold` `format_clear`
+`format_color_text` `format_indent_decrease` `format_indent_increase`
+`format_italic` `format_list_bulleted` `format_list_numbered`
+`format_quote` `format_underlined` `forum` `group_add`
+`hourglass_empty` `inbox` `info` `inventory_2` `keyboard` `link`
+`link_off` `mark_email_unread` `menu` `notifications` `open_in_full`
+`open_in_new` `person` `person_add` `reply` `reply_all` `report`
+`search` `send` `settings` `storage` `strikethrough_s` `sync`
+`system_update_alt` `unfold_less` `unfold_more` `visibility_off`
 `volunteer_activism` `warning`
 
 Ajouter un glyphe = régénérer le fichier (ci-dessous), tenir cette
@@ -115,7 +128,8 @@ curl -s -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?fam
 ## Preuve ([apercu.html](apercu.html))
 
 Page servie localement sous CSP `default-src 'none'; font-src 'self'` :
-**PASS — police locale chargée, 47/47 ligatures repliées** (les 46 glyphes
-+ le témoin FILL 1/600 ; rejouée le 2026-08-16, terrain A46).
+**PASS — police locale chargée, 59/59 ligatures repliées** (les 58 glyphes
++ le témoin FILL 1/600 ; rejouée le 2026-08-20, A62 — 12 glyphes de la
+barre de mise en forme ajoutés).
 Vérification objective : une ligature résolue se replie sur ~1 em ; un
 nom resté en toutes lettres est bien plus large.

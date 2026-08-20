@@ -169,6 +169,7 @@ fn main() {
             commands::add_account,
             commands::add_microsoft_account,
             commands::add_generic_account,
+            commands::reconnect_account,
             commands::remove_account,
             commands::sync_inbox,
             commands::sync_inbox_light,

@@ -115,6 +115,9 @@ pub struct OutboxMessage {
     pub bcc: Vec<String>,
     pub subject: String,
     pub body_text: String,
+    /// Corps riche (PLAN-COMPOSITION-HTML) — la partie text/html du
+    /// multipart/alternative ; `None` = envoi texte seul (historique).
+    pub body_html: Option<String>,
     pub in_reply_to: Option<String>,
     /// Les pièces, dans l'ordre du geste (PJ-D2).
     pub attachments: Vec<OutboxAttachment>,
@@ -125,7 +128,8 @@ pub struct OutboxMessage {
 }
 
 const OUTBOX_SELECT: &str = "SELECT id, account_id, message_id, sender, recipients, subject,
-        body_text, in_reply_to, state, attempts, last_error, queued_epoch, cc_addrs, bcc_addrs
+        body_text, in_reply_to, state, attempts, last_error, queued_epoch, cc_addrs, bcc_addrs,
+        body_html
  FROM outbox";
 
 impl Store {
@@ -136,8 +140,8 @@ impl Store {
         self.conn().execute(
             "INSERT INTO outbox
              (account_id, message_id, sender, recipients, cc_addrs, bcc_addrs, subject, body_text,
-              in_reply_to, state, queued_epoch)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+              body_html, in_reply_to, state, queued_epoch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 account_id,
                 draft.message_id,
@@ -147,6 +151,7 @@ impl Store {
                 draft.bcc.join(&sep),
                 draft.subject,
                 draft.body_text,
+                draft.body_html,
                 draft.in_reply_to,
                 OutboxState::Queued.as_str(),
                 Utc::now().timestamp(),
@@ -335,6 +340,7 @@ fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
         bcc: split_recipients(&bcc_addrs),
         subject: row.get(5)?,
         body_text: row.get(6)?,
+        body_html: row.get(14)?,
         in_reply_to: row.get(7)?,
         // Chargées par `load_outbox_attachments`, jamais ici : une ligne
         // ne connaît pas ses pièces.
@@ -482,6 +488,24 @@ mod tests {
         assert_eq!(message.in_reply_to.as_deref(), Some("<origine@exemple.fr>"));
         assert_eq!(message.attempts, 0);
         assert_eq!(message.last_error, None);
+    }
+
+    /// PLAN-COMPOSITION-HTML : le corps riche survit à l'enqueue et à la
+    /// relecture — c'est lui que la vidange remettra à mail-smtp pour la
+    /// partie text/html. Un envoi texte relit `None`, chemin historique.
+    #[test]
+    fn enqueue_roundtrips_body_html() {
+        let (store, account) = store();
+        let mut riche = draft("Sujet");
+        riche.body_html = Some("<b>corps</b>".to_string());
+        store.enqueue_outbox(account, &riche).unwrap();
+        let nu = draft("Sujet 2");
+        store.enqueue_outbox(account, &nu).unwrap();
+
+        let queued = store.outbox_to_send(account).unwrap();
+        assert_eq!(queued[0].body_html.as_deref(), Some("<b>corps</b>"));
+        assert_eq!(queued[0].body_text, "corps", "le texte reste le repli");
+        assert_eq!(queued[1].body_html, None);
     }
 
     /// A54 : Cc/Cci du journal survivent à l'enqueue et à la relecture ;
@@ -781,6 +805,7 @@ mod tests_pieces {
                     to_raw: "vous@exemple.fr",
                     cc_raw: "",
                     bcc_raw: "",
+                    body_html: None,
                     subject: "Photos",
                     body: "corps",
                     reply_to_uid: None,

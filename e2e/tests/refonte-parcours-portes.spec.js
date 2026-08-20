@@ -65,11 +65,14 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(page.locator('[data-testid="composition-a"]')).toHaveValue(/@exemple\.fr$/);
     // Forme du prototype (« Re : »), citation réelle du cœur.
     await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(/^Re : /);
+    // L'éditeur est riche (PLAN-COMPOSITION-HTML) : la citation vit dans
+    // un blockquote, plus en préfixes « > » — le texte se lit au nœud.
     const corps = page.locator('[data-testid="composition-corps"]');
-    await expect(corps).toHaveValue(/a écrit :/);
-    await expect(corps).toHaveValue(/> Corps du message n°199/);
+    await expect(corps).toContainText('a écrit :');
+    await expect(corps).toContainText('Corps du message n°199');
+    await expect(corps.locator('blockquote')).toContainText('Corps du message n°199');
 
-    const cite = await corps.inputValue();
+    const cite = await corps.innerText();
     await corps.fill(`Réponse E2E.\n${cite}`);
     await page.locator('[data-testid="composition-envoyer"]').click();
     await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
@@ -98,15 +101,68 @@ test.describe('décor v1 : un compte, 200 messages', () => {
     await expect(ligne).toContainText('(sans destinataire)');
     await ligne.click();
     await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue('Brouillon E2E');
-    await expect(page.locator('[data-testid="composition-corps"]')).toHaveValue('Texte précieux.');
+    await expect(page.locator('[data-testid="composition-corps"]')).toHaveText('Texte précieux.');
     // Vider puis fermer : le seul cas où fermer supprime — la ligne
     // quitte le dossier sans attendre la sonde.
     await page.locator('[data-testid="composition-objet"]').fill('');
-    await page.locator('[data-testid="composition-corps"]').fill('');
+    // `fill('')` sur un contenteditable est un no-op Chromium (insertText
+    // vide ne supprime pas la sélection) : on vide comme l'utilisateur —
+    // tout sélectionner, supprimer.
+    await page.locator('[data-testid="composition-corps"]').click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Delete');
     await page.locator('[data-testid="composition-annuler"]').click();
     await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(0);
     // Retour en Réception : la suite de la chaîne sérielle joue sur la
     // boîte.
+    await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
+    await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
+  });
+
+  test('mise en forme : le gras s’applique, le brouillon RICHE survit à la reprise (PLAN-COMPOSITION-HTML)', async () => {
+    await page.keyboard.press('c');
+    await page.locator('[data-testid="composition-objet"]').fill('Brouillon riche E2E');
+    const corps = page.locator('[data-testid="composition-corps"]');
+    await corps.click();
+    await page.keyboard.type('mot');
+    // Tout sélectionner DANS l'éditeur, appliquer Gras : la sortie est
+    // le vocabulaire ammonia (<b>), l'état actif se dit (aria-pressed).
+    await page.keyboard.press('Control+a');
+    await page.locator('[data-testid="composition-format-gras"]').click();
+    await expect(page.locator('[data-testid="composition-format-gras"]')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(await corps.evaluate((n) => n.innerHTML)).toContain('<b>');
+
+    // « Effacer la mise en forme » nettoie — puis on remet le gras pour
+    // prouver la SURVIE à l'aller-retour brouillon (assaini côté Rust).
+    await page.locator('[data-testid="composition-format-effacer"]').click();
+    expect(await corps.evaluate((n) => n.innerHTML)).not.toContain('<b>');
+    await page.locator('[data-testid="composition-format-gras"]').click();
+    await page.keyboard.press('Escape'); // sortir du champ…
+    await page.keyboard.press('Escape'); // …fermer : conserver
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Brouillon enregistré.');
+
+    await page.locator('[data-testid="nav-dossier"][data-categorie="brouillons"]').click();
+    const ligne = page.locator('[data-testid="ligne-brouillon"]', {
+      hasText: 'Brouillon riche E2E',
+    });
+    await ligne.click();
+    await expect(page.locator('[data-testid="composition-objet"]')).toHaveValue(
+      'Brouillon riche E2E',
+    );
+    await expect(corps).toHaveText('mot');
+    expect(await corps.evaluate((n) => n.innerHTML)).toContain('<b>');
+
+    // Nettoyage : vider puis fermer — le brouillon quitte le dossier.
+    // (Même piège : `fill('')` ne vide pas un contenteditable.)
+    await page.locator('[data-testid="composition-objet"]').fill('');
+    await corps.click();
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Delete');
+    await page.locator('[data-testid="composition-annuler"]').click();
+    await expect(page.locator('[data-testid="ligne-brouillon"]')).toHaveCount(0);
     await page.locator('[data-testid="nav-dossier"][data-categorie="reception"]').click();
     await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
   });

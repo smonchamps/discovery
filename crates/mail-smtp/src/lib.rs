@@ -168,14 +168,23 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
             .references(parent.clone());
     }
     if message.attachments.is_empty() {
-        return builder
-            .body(message.body_text.clone())
-            .map_err(|err| SendError::Permanent(format!("construction du message : {err}")));
+        // Corps riche : multipart/alternative — le texte d'abord (RFC
+        // 2046, du plus simple au plus fidèle), le HTML ensuite. Sans
+        // HTML, le chemin texte historique, octet pour octet.
+        return match &message.body_html {
+            None => builder.body(message.body_text.clone()),
+            Some(html) => builder.multipart(corps_alternatif(&message.body_text, html)),
+        }
+        .map_err(|err| SendError::Permanent(format!("construction du message : {err}")));
     }
-    // multipart/mixed : le texte d'abord, puis chaque pièce telle que le
-    // journal la porte (PJ-D2) — les octets viennent du journal, jamais
-    // d'un fichier relu à l'envoi.
-    let mut parts = MultiPart::mixed().singlepart(SinglePart::plain(message.body_text.clone()));
+    // multipart/mixed : le corps d'abord (texte seul, ou alternative
+    // texte+HTML emboîtée), puis chaque pièce telle que le journal la
+    // porte (PJ-D2) — les octets viennent du journal, jamais d'un
+    // fichier relu à l'envoi.
+    let mut parts = match &message.body_html {
+        None => MultiPart::mixed().singlepart(SinglePart::plain(message.body_text.clone())),
+        Some(html) => MultiPart::mixed().multipart(corps_alternatif(&message.body_text, html)),
+    };
     for piece in &message.attachments {
         // Des octets absents signent un journal purgé (PJ-D7) : par
         // construction, un message purgé est `sent`, donc jamais revenu
@@ -192,6 +201,13 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
     builder
         .multipart(parts)
         .map_err(|err| SendError::Permanent(format!("construction du message : {err}")))
+}
+
+/// L'alternative texte+HTML d'un corps riche — LE constructeur commun
+/// des quatre chemins (envoi/brouillon × avec/sans pièces) : l'ordre des
+/// parties et le repli se décident ICI, une fois.
+fn corps_alternatif(texte: &str, html: &str) -> MultiPart {
+    MultiPart::alternative_plain_html(texte.to_string(), html.to_string())
 }
 
 /// La partie MIME d'une pièce — LE constructeur commun de l'envoi et du
@@ -217,6 +233,9 @@ fn file_part(name: &str, mime: &str, bytes: Vec<u8>) -> Result<SinglePart, SendE
 ///
 /// Les pièces suivent (PJ-D6) : le reflet distant montre le brouillon
 /// ENTIER, même constructeur de partie que l'envoi.
+// Les champs plats d'un brouillon, tous des chaînes du même registre —
+// le même compromis que `insert_draft` côté cœur.
+#[allow(clippy::too_many_arguments)]
 pub fn draft_bytes(
     from: &str,
     to_raw: &str,
@@ -224,6 +243,7 @@ pub fn draft_bytes(
     bcc_raw: &str,
     subject: &str,
     body: &str,
+    body_html: Option<&str>,
     pieces: &[DraftAttachmentFull],
 ) -> Result<Vec<u8>, SendError> {
     let mut builder = Message::builder()
@@ -249,12 +269,19 @@ pub fn draft_bytes(
         }
     }
     if pieces.is_empty() {
-        return builder
-            .body(body.to_string())
-            .map(|message| message.formatted())
-            .map_err(|err| SendError::Permanent(format!("construction du brouillon : {err}")));
+        // Même bascule que l'envoi : le reflet montre le brouillon riche
+        // en multipart/alternative, le brouillon texte reste mono-partie.
+        return match body_html {
+            None => builder.body(body.to_string()),
+            Some(html) => builder.multipart(corps_alternatif(body, html)),
+        }
+        .map(|message| message.formatted())
+        .map_err(|err| SendError::Permanent(format!("construction du brouillon : {err}")));
     }
-    let mut parts = MultiPart::mixed().singlepart(SinglePart::plain(body.to_string()));
+    let mut parts = match body_html {
+        None => MultiPart::mixed().singlepart(SinglePart::plain(body.to_string())),
+        Some(html) => MultiPart::mixed().multipart(corps_alternatif(body, html)),
+    };
     for piece in pieces {
         parts = parts.singlepart(file_part(&piece.name, &piece.mime, piece.bytes.clone())?);
     }
@@ -290,6 +317,7 @@ mod tests {
             bcc: vec![],
             subject: "Bonjour".to_string(),
             body_text: "Premier essai.\nDeuxième ligne.".to_string(),
+            body_html: None,
             in_reply_to: in_reply_to.map(str::to_string),
             attachments: vec![],
             state: OutboxState::Queued,
@@ -386,6 +414,52 @@ mod tests {
         assert!(!raw.contains("multipart/mixed"));
     }
 
+    /// PLAN-COMPOSITION-HTML E3 : un corps riche part en
+    /// multipart/alternative — le texte d'abord (RFC 2046 : du plus
+    /// simple au plus fidèle), le HTML ensuite. Jamais de HTML seul :
+    /// le repli texte est systématique.
+    #[test]
+    fn html_body_travels_as_multipart_alternative_with_plain_fallback() {
+        let mut message = outbox_message(None);
+        message.body_html = Some("<b>Premier essai.</b>".to_string());
+        let raw = formatted(&message);
+
+        assert!(raw.contains("multipart/alternative"), "{raw}");
+        assert!(raw.contains("text/plain"), "{raw}");
+        assert!(raw.contains("text/html"), "{raw}");
+        assert!(raw.contains("<b>Premier essai.</b>"), "{raw}");
+        assert!(
+            raw.contains("Premier essai.\r\n") || raw.contains("Premier essai.\n"),
+            "le repli texte doit partir aussi : {raw}"
+        );
+        let plain = raw.find("text/plain").unwrap();
+        let html = raw.find("text/html").unwrap();
+        assert!(plain < html, "le texte précède le HTML : {raw}");
+        assert!(!raw.contains("multipart/mixed"), "sans pièce : {raw}");
+    }
+
+    /// Avec pièces, l'alternative s'emboîte dans le mixed :
+    /// mixed(alternative(texte, html), pièce…) — la forme canonique.
+    #[test]
+    fn html_body_with_pieces_nests_alternative_inside_mixed() {
+        let mut message = outbox_message(None);
+        message.body_html = Some("<b>corps</b>".to_string());
+        message.attachments = vec![piece("rapport.pdf", Some(vec![0xFF, 0xD8, 0xFF, 0xE0]))];
+        let raw = formatted(&message);
+
+        assert!(raw.contains("multipart/mixed"), "{raw}");
+        assert!(raw.contains("multipart/alternative"), "{raw}");
+        assert!(raw.contains("<b>corps</b>"), "{raw}");
+        assert!(raw.contains("Content-Disposition: attachment"), "{raw}");
+        assert!(raw.contains("rapport.pdf"), "{raw}");
+        let mixed = raw.find("multipart/mixed").unwrap();
+        let alternative = raw.find("multipart/alternative").unwrap();
+        assert!(
+            mixed < alternative,
+            "l'alternative vit DANS le mixed : {raw}"
+        );
+    }
+
     fn piece(name: &str, bytes: Option<Vec<u8>>) -> OutboxAttachment {
         OutboxAttachment {
             name: name.to_string(),
@@ -480,6 +554,7 @@ mod tests {
             "",
             "Brouillon",
             "corps",
+            None,
             &[],
         )
         .expect("brouillon constructible");
@@ -500,6 +575,7 @@ mod tests {
             "",
             "s",
             "c",
+            None,
             &[],
         );
         assert!(result.is_err(), "attendu : non poussable en l'état");
@@ -516,6 +592,7 @@ mod tests {
             "",
             "Brouillon",
             "corps",
+            None,
             &[DraftAttachmentFull {
                 name: "devis.pdf".to_string(),
                 mime: "application/pdf".to_string(),
@@ -537,12 +614,46 @@ mod tests {
         );
     }
 
+    /// PLAN-COMPOSITION-HTML : le reflet Brouillons montre le brouillon
+    /// riche ENTIER — multipart/alternative, comme l'envoi.
+    #[test]
+    fn draft_bytes_with_html_is_multipart_alternative() {
+        let raw = draft_bytes(
+            "moi@exemple.fr",
+            "valide@exemple.fr",
+            "",
+            "",
+            "Brouillon",
+            "corps",
+            Some("<b>corps</b>"),
+            &[],
+        )
+        .expect("brouillon constructible");
+        let text = String::from_utf8_lossy(&raw);
+        assert!(text.contains("multipart/alternative"), "{text}");
+        assert!(text.contains("text/html"), "{text}");
+        assert!(text.contains("<b>corps</b>"), "{text}");
+        assert!(
+            text.contains("corps"),
+            "le repli texte doit suivre : {text}"
+        );
+    }
+
     /// Un brouillon sans pièce reste mono-partie — le chemin historique
     /// ne paie pas le multipart.
     #[test]
     fn draft_bytes_without_pieces_stays_single_part() {
-        let raw = draft_bytes("moi@exemple.fr", "valide@exemple.fr", "", "", "s", "c", &[])
-            .expect("brouillon constructible");
+        let raw = draft_bytes(
+            "moi@exemple.fr",
+            "valide@exemple.fr",
+            "",
+            "",
+            "s",
+            "c",
+            None,
+            &[],
+        )
+        .expect("brouillon constructible");
         assert!(!String::from_utf8_lossy(&raw).contains("multipart/mixed"));
     }
 

@@ -168,10 +168,11 @@ impl Store {
     /// SEULEMENT là : la requête refuse tout autre état, par
     /// construction ET par garde. Rend `true` si un écho est né.
     pub fn echo_envoi(&self, outbox_id: i64) -> Result<bool, Error> {
-        let row: Option<(i64, String, String, String, String, i64)> = self
+        type EnvoiRow = (i64, String, String, String, String, Option<String>, i64);
+        let row: Option<EnvoiRow> = self
             .conn()
             .query_row(
-                "SELECT account_id, message_id, sender, subject, body_text, queued_epoch
+                "SELECT account_id, message_id, sender, subject, body_text, body_html, queued_epoch
                  FROM outbox WHERE id = ?1 AND state = 'sent'",
                 [outbox_id],
                 |row| {
@@ -182,11 +183,14 @@ impl Store {
                         row.get(3)?,
                         row.get(4)?,
                         row.get(5)?,
+                        row.get(6)?,
                     ))
                 },
             )
             .optional()?;
-        let Some((account_id, message_id, sender, subject, body_text, queued_epoch)) = row else {
+        let Some((account_id, message_id, sender, subject, body_text, body_html, queued_epoch)) =
+            row
+        else {
             return Ok(false);
         };
         if self.present_en_destination(account_id, "envoyes", &message_id)? {
@@ -197,7 +201,11 @@ impl Store {
             [outbox_id],
             |row| row.get(0),
         )?;
-        let html = texte_en_html(&body_text);
+        // Un envoi riche montre SON HTML (PLAN-COMPOSITION-HTML) — le
+        // ré-échapper afficherait les balises ; un envoi texte garde le
+        // rendu échappé historique. La lecture ré-assainit dans les deux
+        // cas (S1).
+        let html = body_html.unwrap_or_else(|| texte_en_html(&body_text));
         let preview = crate::body::extraire_apercu(&html);
         self.conn().execute(
             "INSERT INTO echos (account_id, destination, message_id, sender,
@@ -560,6 +568,38 @@ mod tests {
             .unwrap();
         let (html, _) = store.echo_vue(echo_id).unwrap().unwrap();
         assert!(html.contains("corps<br>ligne 2"), "{html}");
+    }
+
+    /// PLAN-COMPOSITION-HTML : l'écho d'un envoi RICHE porte le HTML
+    /// composé tel quel — jamais le texte ré-échappé (la mise en forme
+    /// se verrait en balises dans Envoyés). L'assainissement de lecture
+    /// repasse derrière comme pour tout corps (S1).
+    #[test]
+    fn l_echo_d_un_envoi_riche_porte_le_html_compose() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("t@exemple.fr", "gmail")
+            .unwrap();
+        let mut draft =
+            crate::compose("t@exemple.fr", "a@b.fr", "", "", "objet", "corps", None).unwrap();
+        draft.body_html = Some("<div><b>corps</b></div>".to_string());
+        store.enqueue_outbox(account, &draft).unwrap();
+        let id = store.outbox_to_send(account).unwrap()[0].id;
+        store
+            .set_outbox_state(id, crate::OutboxState::Sent)
+            .unwrap();
+        assert!(store.echo_envoi(id).unwrap());
+
+        let echo_id: i64 = store
+            .conn()
+            .query_row("SELECT id FROM echos", [], |row| row.get(0))
+            .unwrap();
+        let (html, _) = store.echo_vue(echo_id).unwrap().unwrap();
+        assert!(html.contains("<b>corps</b>"), "{html}");
+        assert!(
+            !html.contains("&lt;b&gt;"),
+            "le HTML ne doit pas être ré-échappé : {html}"
+        );
     }
 
     /// Les comptes avec du travail : actions en attente OU échos — le

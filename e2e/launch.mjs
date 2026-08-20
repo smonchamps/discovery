@@ -62,7 +62,13 @@ export async function launchAppV2({ vierge = false, comptes = null } = {}) {
         { cwd: root, stdio: 'inherit' },
       );
     }
-    return attacher(db, comptes.map((compte) => compte.email));
+    // `deconnecte: true` : le compte vit au REGISTRE (seedé ci-dessus)
+    // mais ne reçoit pas de session — l'état « jeton mort » du réel,
+    // celui que Réglages sait désormais réparer (terrain 2026-08-20).
+    return attacher(
+      db,
+      comptes.filter((compte) => !compte.deconnecte).map((compte) => compte.email),
+    );
   }
   execSync(`cargo run -p mail-core --example seed_clarity -- "${db}"`, {
     cwd: root,
