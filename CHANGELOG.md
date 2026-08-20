@@ -12,6 +12,38 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.2.0] - 2026-08-20
+
+La mise en forme arrive dans le composeur.
+
+### Ajouté
+
+- **Une vraie barre de mise en forme** dans la fenêtre de composition :
+  police (sans serif, serif, monospace), taille (quatre crans), gras,
+  italique, souligné, barré, couleur du texte (nuancier de douze
+  teintes), alignement gauche/centre/droite, listes à puces et
+  numérotée, retrait, et « Effacer la mise en forme ». Les raccourcis
+  Ctrl+B/I/U fonctionnent aussi.
+- Vos messages partent désormais **en HTML avec un repli texte
+  automatique** : les destinataires voient votre mise en forme, et les
+  clients texte reçoivent toujours une version lisible.
+- **La citation d'une réponse** apparaît dans un bloc au filet gauche,
+  comme dans les clients mûrs — votre réponse s'écrit au-dessus.
+- **Les brouillons conservent la mise en forme**, y compris après un
+  aller-retour avec le dossier Brouillons de votre messagerie.
+- **Reconnecter un compte** : quand la connexion d'un compte expire ou
+  est révoquée, Réglages > Comptes le signale (« Déconnecté ») et un
+  bouton « Reconnecter » relance l'autorisation dans le navigateur —
+  sans rien perdre ni re-synchroniser. L'avis d'accueil mène
+  directement à cette page.
+
+### Modifié
+
+- **Les images distantes, selon le geste** : la citation d'une réponse
+  les remplace par un pixel neutre (aucun traceur du message cité ne se
+  charge à votre insu) ; un transfert, lui, transmet le message entier,
+  images comprises.
+
 ## [0.1.11] - 2026-08-19
 
 Trois retours du terrain.
