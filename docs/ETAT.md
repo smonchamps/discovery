@@ -70,8 +70,32 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 (PLAN-GELS, ADR 0019) ; auto-update 0.1.6 → 0.1.7 confirmé au terrain.
 Tous les plans de cette ligne sont soldés.
 
-**Dernier chantier soldé : PLAN-COMPOSITION-HTML** (2026-08-20,
-`537a1e4`, A62-A63 + ADR 0022, terrain complet, CI verte — **à publier
+**Dernier chantier soldé : PLAN-DEFILEMENT-PROFOND** (2026-08-20,
+`70e44e3`, A64, terrain complet — trois passes le même jour —, CI
+verte, run 32382945877). Le bug terrain du drag tenu dans Archives
+(blocs « .. », puis « Aucun message ici. » dans TOUS les dossiers
+pendant des minutes) est mort à la racine : la liste demandait **une
+page par position traversée** (~161 appels pour 2 s de barre, mesurés)
+dans la file sérialisée de `hors_pompe`, et le changement de source
+affichait un vide non prouvé. Désormais : **un seul vol de page à la
+fois** (dernière fenêtre gagne, la page 0 d'une source neuve passe
+devant la jauge), **écran vide honnête** (squelette tant que la source
+n'a pas répondu), et — terrain des 2e/3e passes — **les comptages ont
+quitté le chemin d'affichage** : la page ne porte plus de total (une
+page courte dit la fin exacte d'elle-même ; `category_total` séparé,
+demandé la pompe au repos), et `nav_snapshot` ne paie plus que les
+deux non-lus que la nav AFFICHE (il recalculait toutes les 10 s huit
+compteurs par compte, dont le total d'intégrale à ~240 ms la sonde —
+le calcul le plus cher de l'application, jeté). Chiffres : attente
+bout-en-bout p50 2 408 → **17 ms** (banc `mesure-defilement.mjs`,
+versé au dépôt, décision D2) ; premier affichage d'Archives 253 →
+**14 ms** de cœur (SQL, décor intégrale 200 k). Reports : **D-26**
+(page profonde O(offset) assumée, décision D1 — ~129 ms à l'offset
+80 000, un seul vol, écran qui dit le chargement). e2e : 94 → **97**.
+À publier en **0.2.1** (CORRECTIF, §2.9).
+
+**Chantier soldé précédent : PLAN-COMPOSITION-HTML** (2026-08-20,
+`537a1e4`, A62-A63 + ADR 0022, terrain complet, CI verte — **livré
 en 0.2.0**). Le composeur passe au **corps riche de bout en bout** :
 colonne `body_html` à côté du texte (drafts + outbox, migration
 rembobinable, NULL sur l'existant), envoi `multipart/alternative`
@@ -222,6 +246,7 @@ est automatique au premier lancement Wind.)
 
 | Poste | Mesure (2026-07-26) | Levier |
 |---|---|---|
+| Page profonde d'une catégorie (hors réception) | ~129 ms à l'offset 80 000 (cœur seul, décor 200 k, 2026-08-20) | **assumé** (décision CE D1, DETTE D-26) : parcours d'index O(offset) ; un seul vol à la fois, écran qui dit le chargement, comptage hors chemin (A64) — à rouvrir si le terrain dépasse ~1 s la page |
 | Adoption d'une base héritée | 3,66 s à 200 000 messages, une seule fois | **réglé en forme par l'ADR 0012** : visible, annulable, rembobinable — la durée est assumée, la passe est unique |
 | Recherche | ~~113–210 ms~~ → **~66 ms ✅** (2026-08-17) | **réglé** : `prefix='2 3'` + destinataires indexés + **soupape tri-date armée** au-delà de 10 k corr. (`WIDE_QUERY_THRESHOLD`) ; mesuré sur la VRAIE base (251 k / 7 Go), pire cas préfixe 3 car. (36 k corr.) à ~66 ms (PLAN-RECHERCHE, A50) |
 

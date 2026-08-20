@@ -1,5 +1,17 @@
 # PLAN-DEFILEMENT-PROFOND — le drag de la barre ne doit plus affamer l'application
 
+> **CHANTIER SOLDÉ le 2026-08-20 — terrain complet.** Commit `70e44e3`
+> (main), CI verte (run 32382945877). GO CE du plan (STOP 1) :
+> 2026-08-20 (D1 : coût O(offset) assumé ; D2 : banc versé au dépôt).
+> Terrain (STOP 2) : TROIS passes le même jour — la panne du drag morte
+> à la première, puis deux constats de premier affichage corrigés dans
+> la session (2-3 s à l'arrêt du geste, 3-5 s au démarrage/premier
+> clic Archives → racine : les comptages sur le chemin d'affichage) ;
+> troisième passe « OK au terrain ». Journal Système **A64**. Revue à
+> regard neuf : 10 trouvailles confirmées, corrigées. Reports : DETTE
+> **D-26**. e2e : 94 → **97**. Version : CORRECTIF (0.2.1 au moment de
+> publier).
+>
 > Chantier ouvert le 2026-08-20 (`/chantier`), sur constat terrain du
 > CE : dans Archives, un défilement rapide à la barre (clic tenu)
 > jusqu'à ~1/3 de la liste laisse des blocs « .. », puis la liste se
