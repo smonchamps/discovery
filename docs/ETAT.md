@@ -25,15 +25,44 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.4.0** (publiée 2026-08-21, release
-**vérifiée** STANDARD.md §2.10 : Latest, 3 assets au tag nu,
-`latest.json` sans BOM 876 o, URL au tag nu, signature == `.sig`, exe
-résout 200 / 5 055 194 octets ; **auto-update 0.3.0 → 0.4.0 confirmé
-au terrain le 2026-08-21** — la chaîne signée ADR 0013 reste prouvée
-vivante). La 0.4.0 porte les quatre retours de PLAN-RETOURS-6
-(MINEUR, D5), ci-dessous.
+**Dernière version livrée : 0.5.0** (publiée 2026-08-21, release
+**vérifiée** STANDARD.md §2.10 le 2026-08-22 : Latest, 3 assets au tag
+nu, `latest.json` sans BOM 876 o, URL au tag nu, signature == `.sig`,
+exe résout 200 / 5 066 813 octets ; **auto-update 0.4.0 → 0.5.0
+confirmé au terrain** — la chaîne signée ADR 0013 reste prouvée
+vivante). La 0.5.0 porte les quatre retours de PLAN-RETOURS-7
+(MINEUR, D6), ci-dessous.
 
-**Dernier chantier soldé : [PLAN-RETOURS-6](PLAN-RETOURS-6.md)**
+**Dernier chantier soldé : [PLAN-RETOURS-7](PLAN-RETOURS-7.md)**
+(2026-08-22, `2cb9460`, A70-A73, **terrain complet en deux passes le
+2026-08-21** — le constat visuel corrigé dans la session —, CI verte,
+**livré en 0.5.0**). (1) **Survol descriptif des pièces jointes** :
+un voile couvre la puce au survol et au focus clavier — glyphe
+`download` + « Enregistrer » (D1 : le vocabulaire du produit, pas
+« télécharger ») — même géométrie, la rangée ne reflue pas ; jamais
+sur la puce inerte d'un écho. (2) **Pièces jointes en tête du
+message**, entre l'entête et le corps (la garde d'images reste collée
+au corps) ; premier e2e à verrouiller l'ordre DOM. (3) **Écran 03 à
+plat** (renverse « l'écran 03 garde sa carte pleine » d'A46) : plus
+de carte englobante, scène en un seul flot, colonne centrée 960 px
+(D2) — la forme à plat est désormais LA forme unique du composant Fil
+dans ses deux cadres. (4) **Épingler une conversation** (Réception
+seule D4, barre du fil D3, en tête SEULEMENT D5) : table `pins`
+locale à clé d'enveloppe (survit à la reconstruction des fils ;
+JAMAIS `flagged`, écrasé par la synchro), section épinglée préposée à
+la page 0 — le flot paginé ET les totaux l'excluent (exclusion
+partagée, garde de plan étendue : la sous-requête part de `pins` par
+`CROSS JOIN` directif, sinon SQLite sans ANALYZE scannait `envelopes`
+entière sur le chemin le plus chaud, ~24 ms mesurés à 200 k) ; l'état
+du bouton est SEMÉ de la ligne servie (zéro aller-retour à
+l'ouverture) ; la ligne épinglée porte le dessin de la tuile de nav
+(`--tuile`/`--tuileInk`, constat terrain corrigé le jour même) ; le
+vide de la liste exige la réponse des DEUX sources (flot + épingles).
+3 glyphes neufs (61 → 64, `?v=64`, preuve 65/65). Reports : DETTE
+**D-28** (épingle orpheline si le message-clé quitte sa boîte — cas
+limite assumé). e2e : 103 → **108** ; tests Rust 355 → **357**.
+
+**Le chantier soldé précédent : [PLAN-RETOURS-6](PLAN-RETOURS-6.md)**
 (2026-08-21, `13d4bed`, A66-A69, **terrain complet en trois passes le
 même jour** — chaque constat corrigé dans la session —, CI verte,
 **livré en 0.4.0**). (1) **Signature par compte** (Réglages >
@@ -87,6 +116,13 @@ boîte d'envoi ne retente qu'en fin de cycle ou au geste — envois
 jamais perdus, règles d'or tenues). Pièges gravés : STANDARD §9
 (`2> fichier` sur l'exe fenêtré lancé nu ne capte rien — tracer via un
 lanceur qui attend). e2e : 97 → **99**.
+
+**La version précédente, 0.4.0** (publiée 2026-08-21, release
+**vérifiée** §2.10 : Latest, 3 assets au tag nu, `latest.json` sans
+BOM 876 o, signature == `.sig`, exe 200 / 5 055 194 octets ;
+**auto-update 0.3.0 → 0.4.0 confirmé au terrain le 2026-08-21**). La
+0.4.0 porte les quatre retours de PLAN-RETOURS-6 : signatures par
+compte, envoi différé, marquage « important », entête du composeur.
 
 **La version précédente, 0.3.0** (publiée 2026-08-21, release
 **vérifiée** §2.10 : Latest, 3 assets au tag nu, `latest.json` sans
@@ -463,6 +499,12 @@ bandeau. La recherche gagne en profondeur à mesure.
   n'affiche AUCUN indicateur pour `X-Priority`/`Importance` (marqueur
   algorithmique maison) — Outlook/Thunderbird montrent le « ! » ;
   l'en-tête se vérifie par « Afficher l'original ».
+- **Épingle orpheline si le message-clé quitte sa boîte** (DETTE
+  **D-28**, PLAN-RETOURS-7) : l'épingle est portée par la seule
+  enveloppe du geste — un tiers qui supprime exactement ce message la
+  fait sauter en silence. Cas limite assumé ; jamais d'affichage faux
+  (la jointure écarte les orphelines). À rouvrir si le terrain ou la
+  bêta rapporte des épingles qui « sautent ».
 - **Filtre « a une pièce jointe »**. (L'**envoi de pièces jointes**
   est LIVRÉ — PLAN-PIECES-JOINTES soldé, `38cd812`/`27ed056` ; le
   **`to:` dans la recherche** est LIVRÉ — A49.)

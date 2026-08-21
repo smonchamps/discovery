@@ -1,5 +1,25 @@
 # PLAN-RETOURS-7 — survol des pièces, pièces en tête, écran 03 à plat, épingles
 
+> **CHANTIER SOLDÉ le 2026-08-22 — terrain complet.** Ouvert le
+> 2026-08-21, GO CE du plan le même jour (STOP 1, D1-D6), implémenté
+> en TDD (RED montré sur le cœur), revue à regard neuf 8 angles
+> (10 trouvailles : 9 corrigées avant la gate — dont le scan
+> d'`envelopes` de la sous-requête des épingles, mesuré ~24 ms/page à
+> 200 k, mort par `CROSS JOIN` directif + garde de plan étendue —,
+> 1 assumée : DETTE **D-28**), gate complète verte TROIS fois (avant
+> terrain, après le constat, au pre-push), **terrain validé en deux
+> passes le 2026-08-21** (1re : 4 OK + 1 constat visuel corrigé dans
+> la session — la ligne épinglée au dessin de la tuile de nav ; 2e :
+> validé), **livré en 0.5.0** (publiée le 2026-08-21, release
+> **vérifiée** STANDARD §2.10 le 2026-08-22 : Latest, 3 assets au tag
+> nu, `latest.json` sans BOM 876 o, signature == `.sig`, exe résout
+> 200 / 5 066 813 octets ; **auto-update 0.4.0 → 0.5.0 confirmé au
+> terrain** — chaîne signée ADR 0013 prouvée vivante). Commits :
+> `2cb9460` (feat, CI verte run 32530730575), `deb7fbe` (release, CI
+> verte run 32531496335). Journal Système **A70-A73**, 3 glyphes neufs
+> (sous-ensemble 61 → 64, `?v=64`, preuve apercu 65/65). Tests Rust
+> 355 → **357**, e2e 103 → **108**.
+>
 > Chantier ouvert le 2026-08-21 (`/chantier`), sur quatre retours CE :
 > (1) amélioration — au survol d'une pièce jointe, icône et texte
 > « télécharger » pour que l'UX dise l'action à venir ; (2)
