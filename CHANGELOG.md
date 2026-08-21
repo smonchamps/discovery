@@ -12,6 +12,31 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.3.0] - 2026-08-21
+
+Les adresses se complètent toutes seules, et l'envoi en cours dit vrai.
+
+### Ajouté
+
+- **Autocomplétion des adresses** dans les champs À, Cc et Cci : dès
+  deux lettres tapées, Wind suggère les adresses qu'il connaît — les
+  gens qui vous écrivent (avec leur nom) et ceux à qui vous avez
+  écrit — classées des plus récentes et fréquentes aux autres. Flèches
+  puis Entrée, ou un clic, insèrent l'adresse ; Échap ferme le menu.
+  Les expéditeurs de vos Indésirables et de la Corbeille ne sont
+  jamais proposés.
+
+### Corrigé
+
+- **L'envoi en attente de synchronisation s'affiche correctement**
+  dans « Envoyés » : juste après un envoi, l'entrée temporaire (qui
+  patiente le temps que votre messagerie range sa copie) disait
+  « À : envoyes » et montrait une section « Fichiers joints » vide.
+  Elle dit désormais le vrai destinataire et le nom et le poids de
+  chaque pièce envoyée (non téléchargeables pendant cette courte
+  attente — la vraie copie prend le relais quelques instants plus
+  tard).
+
 ## [0.2.1] - 2026-08-20
 
 La liste ne se fige plus, et tout s'affiche plus vite.
