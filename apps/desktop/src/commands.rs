@@ -2013,6 +2013,38 @@ pub async fn message_attachments(
     .await
 }
 
+#[derive(Serialize)]
+pub struct CorrespondantRow {
+    pub address: String,
+    pub name: Option<String>,
+}
+
+/// Les suggestions d'adresses pour un préfixe tapé dans À/Cc/Cci
+/// (PLAN-RETOURS-5, D3/D4) : l'annuaire des correspondants — table
+/// petite, appris du courrier vu — classé récence + fréquence. Lecture
+/// locale, aucun réseau.
+#[tauri::command]
+pub async fn completer_adresses(
+    app: AppHandle,
+    prefixe: String,
+    limite: usize,
+) -> Result<Vec<CorrespondantRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let trouves = store
+            .completer_adresses(&prefixe, limite.min(16))
+            .map_err(|err| err.to_string())?;
+        Ok(trouves
+            .into_iter()
+            .map(|c| CorrespondantRow {
+                address: c.address,
+                name: c.name,
+            })
+            .collect())
+    })
+    .await
+}
+
 /// Le chemin d'enregistrement PROPOSÉ pour une pièce (R1, PLAN-RETOURS-4,
 /// D2) : dossier Téléchargements + nom assaini rendu unique. Le nom vient
 /// de l'UI (déjà affiché dans la puce) — inutile de rouvrir la base pour
@@ -2328,6 +2360,29 @@ pub async fn echo_body(app: AppHandle, id: i64, show_images: bool) -> Result<Bod
             remote_images_blocked: sanitized.remote_images_blocked,
             attachment_count,
         })
+    })
+    .await
+}
+
+/// Les pièces d'un écho d'envoi, en métadonnées seules (PLAN-RETOURS-5,
+/// D2) : nom, mime, taille depuis le journal d'envoi — les octets sont
+/// purgés à `sent`, les puces sont inertes pendant la fenêtre de
+/// réconciliation. Un écho de geste rend une liste vide.
+#[tauri::command]
+pub async fn echo_attachments(app: AppHandle, id: i64) -> Result<Vec<AttachmentRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let found = store.echo_attachments(id).map_err(|err| err.to_string())?;
+        Ok(found
+            .into_iter()
+            .enumerate()
+            .map(|(index, piece)| AttachmentRow {
+                index,
+                size: mail_core::human_size(piece.size),
+                name: piece.name,
+                mime: piece.mime,
+            })
+            .collect())
     })
     .await
 }
@@ -3208,10 +3263,36 @@ fn run_flush_all(
             }
         }
     }
-    summary.queued = store
+    let restants = store
         .outbox_in_state(OutboxState::Queued)
-        .map_err(|err| err.to_string())?
-        .len();
+        .map_err(|err| err.to_string())?;
+    summary.queued = restants.len();
+    // La trace terrain de la vidange (§6.8 — lisible en `2> fichier`,
+    // l'app release est sous-système windows) : le bilan, puis la
+    // dernière erreur de chaque envoi resté en file — c'est elle que la
+    // barre d'état ne montre pas (« en attente » n'est pas fautif) et
+    // qu'un constat terrain doit pouvoir lire.
+    eprintln!(
+        "vidange : {} parti(s), {} differe(s), {} refuse(s), {} quarantaine, {} en file{}",
+        summary.sent,
+        summary.deferred,
+        summary.rejected,
+        summary.quarantined,
+        summary.queued,
+        summary
+            .error
+            .as_deref()
+            .map(|err| format!(" · connexion : {err}"))
+            .unwrap_or_default(),
+    );
+    for message in &restants {
+        if let Some(err) = &message.last_error {
+            eprintln!(
+                "vidange : envoi {} « {} » attend ({} tentative(s)) : {err}",
+                message.id, message.subject, message.attempts
+            );
+        }
+    }
     Ok((summary, refreshed_list))
 }
 

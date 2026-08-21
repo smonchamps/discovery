@@ -21,6 +21,17 @@
 use chrono::{DateTime, Duration, Local, Utc};
 use mail_core::{Attachment, DraftContent, Envelope, Store, Uid};
 
+/// Le serveur d'envoi du décor : il accepte tout — de quoi mener un
+/// envoi jusqu'à `sent` par le VRAI chemin (`flush_outbox`), écho
+/// compris (PLAN-RETOURS-5).
+struct TransportDecor;
+
+impl mail_core::MailTransport for TransportDecor {
+    fn send(&mut self, _message: &mail_core::OutboxMessage) -> Result<(), mail_core::SendError> {
+        Ok(())
+    }
+}
+
 const UIDV: u32 = 424243;
 
 fn quand(jours: i64, heure: u32, minute: u32) -> Option<DateTime<Utc>> {
@@ -181,6 +192,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &[],
     )?;
     remplissage(&mut store, envoyes, 2, 11, "Message envoyé", 4, true)?;
+
+    // PLAN-RETOURS-5 : la fenêtre de réconciliation en décor — un envoi
+    // AVEC pièce, accepté par le serveur (transport du décor), dont la
+    // copie serveur n'arrivera jamais : son ÉCHO vit dans Envoyés. La
+    // liste doit dire ses vrais destinataires (jamais « envoyes ») et
+    // sa pièce se lit en métadonnées, puce inerte.
+    let brouillon_echo = store
+        .save_draft(
+            travail,
+            None,
+            None,
+            DraftContent {
+                to_raw: "c.rousseau@atelier-nord.fr",
+                cc_raw: "",
+                bcc_raw: "",
+                body_html: None,
+                subject: "Bordereau signé",
+                body: "Le bordereau signé est joint.",
+                reply_to_uid: None,
+                reply_to_mailbox: None,
+            },
+        )?
+        .id;
+    store.add_draft_attachment(
+        brouillon_echo,
+        "Bordereau-signe.pdf",
+        "application/pdf",
+        &vec![7u8; 20_480],
+    )?;
+    let envoi_echo = mail_core::compose(
+        "paul.merand@atelier-nord.fr",
+        "c.rousseau@atelier-nord.fr",
+        "",
+        "",
+        "Bordereau signé",
+        "Le bordereau signé est joint.",
+        None,
+    )?;
+    store.enqueue_outbox_from_draft(travail, &envoi_echo, brouillon_echo)?;
+    store.delete_draft(brouillon_echo)?;
+    mail_core::flush_outbox(&mut TransportDecor, &mut store, travail)?;
 
     let mut reception = vec![
         message(

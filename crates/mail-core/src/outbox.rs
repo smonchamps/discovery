@@ -157,7 +157,15 @@ impl Store {
                 Utc::now().timestamp(),
             ],
         )?;
-        Ok(self.conn().last_insert_rowid())
+        let outbox_id = self.conn().last_insert_rowid();
+        // PLAN-RETOURS-5 (D4) : une adresse qu'on écrit est une adresse
+        // connue — l'annuaire l'apprend dès la mise en file, sans
+        // attendre qu'elle revienne par la synchro d'Envoyés.
+        let maintenant = Utc::now().timestamp();
+        for adresse in draft.to.iter().chain(&draft.cc).chain(&draft.bcc) {
+            crate::correspondants::noter(self.conn(), adresse, None, maintenant)?;
+        }
+        Ok(outbox_id)
     }
 
     /// Journalise l'intention d'envoi ET copie les pièces du brouillon

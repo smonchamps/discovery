@@ -14,17 +14,20 @@
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
-**Prochain chantier : perf-lecture, à reprendre de zéro** (corps à la demande
-bridé à ~7 s au lancement, terrain du 2026-08-19). Son WIP non commité
-a été **retiré sur décision CE du 2026-08-20** (« qualité trop
-aléatoire ») ; le sujet repart par `/chantier` dans une session dédiée.
-Matière disponible : les six constats de la revue du 2026-08-20 sur ce
-WIP, consignés au § revue de
-[PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md) (le `await` du
-prefetch qui bloquait le lancement, le verrou tenu pendant l'I/O
-réseau, `boites.first()` sensible à la casse, erreurs avalées, premier
-cycle complet non garanti, `backfill_status` sorti de `hors_pompe` sans
-exemption ADR 0019).
+**Chantier en cours : [PLAN-RETOURS-5](PLAN-RETOURS-5.md)** (ouvert le
+2026-08-21, GO CE le jour même) : l'écho d'envoi qui dit vrai dans
+« Envoyés » (destinataires réels, pièces en nom + poids inertes,
+preuve de réconciliation) et l'autocomplétion des adresses À/Cc/Cci
+(menu nom + adresse, insertion en adresse nue). Publication prévue :
+**0.3.0** (MINEUR, D5).
+
+**perf-lecture est éteint** (décision CE D1 du 2026-08-21) : le
+symptôme (corps à la demande bridé à ~7 s au lancement, terrain du
+2026-08-19) est mort au terrain depuis la 0.2.1 — les comptages ont
+quitté le chemin d'affichage (A64). À rouvrir seulement si le terrain
+le redit ; le WIP d'alors avait été retiré (décision CE du
+2026-08-20), sa matière reste au § revue de
+[PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
 **Dernière version livrée : 0.2.1** (publiée 2026-08-20, release
 **vérifiée a posteriori** STANDARD.md §2.10 : Latest, 3 assets au tag
@@ -387,8 +390,9 @@ bandeau. La recherche gagne en profondeur à mesure.
   O(offset) d'une page profonde hors réception (~129 ms à l'offset
   80 000 sur 200 k, cœur seul) — une seule vole à la fois, l'écran dit
   le chargement ; à rouvrir si le terrain dépasse ~1 s la page.
-- **Envoi de pièces jointes** (lecture seule en v1) ; **filtre « a une
-  pièce jointe »**. (Le **`to:` dans la recherche** est LIVRÉ — A49.)
+- **Filtre « a une pièce jointe »**. (L'**envoi de pièces jointes**
+  est LIVRÉ — PLAN-PIECES-JOINTES soldé, `38cd812`/`27ed056` ; le
+  **`to:` dans la recherche** est LIVRÉ — A49.)
 - **CONDSTORE réel, IDLE/push** — reports de Phase 1 inchangés.
 - **Dossier CASA Google** — chemin critique du lancement public, côté
   produit-owner.

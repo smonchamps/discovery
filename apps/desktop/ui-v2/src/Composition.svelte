@@ -128,6 +128,85 @@
   let zoneCorps = $state(null);
   let carte = $state(null);
 
+  // L'autocomplétion des adresses (PLAN-RETOURS-5, D3-D4) : le menu
+  // suit le champ actif (À, Cc, Cci), suggère l'annuaire des
+  // correspondants sur le SEGMENT en cours (après la dernière virgule)
+  // et insère l'adresse NUE (D3 — le nom se montre, ne s'insère pas).
+  // Débobinage 150 ms + dernier-préfixe-gagne (jeton) : une frappe
+  // rapide ne part jamais en rafale dans la file sérialisée (leçon
+  // PLAN-DEFILEMENT-PROFOND).
+  let suggestions = $state([]);
+  let champSuggere = $state(null); // 'a' | 'cc' | 'cci' | null
+  let choixSuggere = $state(0);
+  let jetonSuggere = 0;
+  let minuterieSuggere = null;
+
+  const segmentCourant = (valeur) => valeur.split(',').pop().trim();
+
+  function fermerSuggestions() {
+    jetonSuggere += 1;
+    clearTimeout(minuterieSuggere);
+    suggestions = [];
+    champSuggere = null;
+    choixSuggere = 0;
+  }
+
+  function surFrappeAdresse(champ, valeur) {
+    programmerSauvegarde();
+    const prefixe = segmentCourant(valeur);
+    clearTimeout(minuterieSuggere);
+    if (prefixe.length < 2) {
+      fermerSuggestions();
+      return;
+    }
+    minuterieSuggere = setTimeout(async () => {
+      const mien = ++jetonSuggere;
+      try {
+        const trouvees = await appel('completer_adresses', { prefixe, limite: 8 });
+        if (mien !== jetonSuggere || !visible) return;
+        suggestions = trouvees;
+        champSuggere = trouvees.length > 0 ? champ : null;
+        choixSuggere = 0;
+      } catch (err) {
+        console.error('completer_adresses :', err);
+      }
+    }, 150);
+  }
+
+  function insererSuggestion(choisie) {
+    const champ = champSuggere;
+    if (!champ || !choisie) return;
+    const valeurs = { a, cc, cci };
+    const morceaux = valeurs[champ].split(',');
+    morceaux[morceaux.length - 1] = ` ${choisie.address}`;
+    const neuve = morceaux.join(',').replace(/^ /, '');
+    if (champ === 'a') a = neuve;
+    else if (champ === 'cc') cc = neuve;
+    else cci = neuve;
+    fermerSuggestions();
+    ({ a: champA, cc: champCc, cci: champCci })[champ]?.focus();
+    programmerSauvegarde();
+  }
+
+  function clavierAdresse(ev) {
+    if (!champSuggere || suggestions.length === 0) return;
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      choixSuggere = (choixSuggere + 1) % suggestions.length;
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      choixSuggere = (choixSuggere - 1 + suggestions.length) % suggestions.length;
+    } else if (ev.key === 'Enter' || ev.key === 'Tab') {
+      ev.preventDefault();
+      insererSuggestion(suggestions[choixSuggere]);
+    } else if (ev.key === 'Escape') {
+      // Le menu se ferme, le focus RESTE au champ : on coupe la route
+      // du Échap global (App) qui rendrait le focus à la liste.
+      ev.stopPropagation();
+      fermerSuggestions();
+    }
+  }
+
   const KICKERS = {
     new: 'compo.nouveau',
     reply: 'action.repondre',
@@ -227,6 +306,7 @@
     expediteur = source
       ? compteDe(source.account_id)
       : compteDe(compte) ?? (comptes.length > 0 ? compteDe(comptes[0].account_id) : null);
+    fermerSuggestions();
     visible = true;
     await poserCorps('');
 
@@ -393,6 +473,7 @@
     demandeSuppr = false;
     montrerCouleurs = false;
     selectionCorps = null;
+    fermerSuggestions();
     visible = true;
     setTimeout(() => {
       // Même garde que `ouvrir()` : le focus déjà posé prime.
@@ -495,6 +576,7 @@
   export async function fermer() {
     if (!visible) return;
     clearTimeout(minuterie);
+    fermerSuggestions();
     // La sauvegarde en vol d'abord : elle peut porter un contenu
     // d'AVANT le vidage et ressusciter ce que le geste supprime — on
     // décide du sort du brouillon sur un sol immobile, jamais pendant
@@ -841,6 +923,27 @@
 
 <svelte:document onselectionchange={surSelection} />
 
+<!-- Le menu de suggestions (PLAN-RETOURS-5) : nom d'affichage montré,
+     adresse NUE insérée (D3). Un seul menu à la fois, sous le champ
+     actif ; `onmousedown` neutralisé pour que le clic n'emporte pas le
+     focus (le blur fermerait le menu avant le clic). -->
+{#snippet menuSuggestions()}
+  <ul class="suggestions" role="listbox" aria-label={t('compo.suggestions')}
+      data-testid="composition-suggestions">
+    {#each suggestions as choisie, i (choisie.address)}
+      <li role="option" aria-selected={i === choixSuggere}>
+        <button type="button" class="suggestion" class:choisie={i === choixSuggere}
+                data-testid="suggestion-adresse" tabindex="-1"
+                onmousedown={(e) => e.preventDefault()}
+                onclick={() => insererSuggestion(choisie)}>
+          {#if choisie.name}<span class="nom">{choisie.name}</span>{/if}
+          <span class="adresse">{choisie.address}</span>
+        </button>
+      </li>
+    {/each}
+  </ul>
+{/snippet}
+
 {#if visible}
   <div class="scrim" data-testid="composition">
     <div class="carte" bind:this={carte} role="dialog" aria-modal="true" aria-label={t(KICKERS[mode])}>
@@ -875,8 +978,11 @@
         </div>
         <div class="rang">
           <span class="etiquette">{t('conv.a')}</span>
-          <input type="text" bind:this={champA} bind:value={a} oninput={programmerSauvegarde}
+          <input type="text" bind:this={champA} bind:value={a}
+                 oninput={(e) => surFrappeAdresse('a', e.currentTarget.value)}
+                 onkeydown={clavierAdresse} onblur={fermerSuggestions}
                  placeholder={t('compo.destinataire')} data-testid="composition-a">
+          {#if champSuggere === 'a'}{@render menuSuggestions()}{/if}
           <!-- A54 : Cc/Cci ouvrent leur rang à la demande (ou d'office si
                un contenu est déjà là — reprise, « Répondre à tous »). -->
           {#if !montrerCc}
@@ -893,15 +999,21 @@
         {#if montrerCc}
           <div class="rang">
             <span class="etiquette">{t('compo.cc')}</span>
-            <input type="text" bind:this={champCc} bind:value={cc} oninput={programmerSauvegarde}
+            <input type="text" bind:this={champCc} bind:value={cc}
+                   oninput={(e) => surFrappeAdresse('cc', e.currentTarget.value)}
+                   onkeydown={clavierAdresse} onblur={fermerSuggestions}
                    placeholder={t('compo.destinataire')} data-testid="composition-cc">
+            {#if champSuggere === 'cc'}{@render menuSuggestions()}{/if}
           </div>
         {/if}
         {#if montrerCci}
           <div class="rang">
             <span class="etiquette">{t('compo.cci')}</span>
-            <input type="text" bind:this={champCci} bind:value={cci} oninput={programmerSauvegarde}
+            <input type="text" bind:this={champCci} bind:value={cci}
+                   oninput={(e) => surFrappeAdresse('cci', e.currentTarget.value)}
+                   onkeydown={clavierAdresse} onblur={fermerSuggestions}
                    placeholder={t('compo.destinataire')} data-testid="composition-cci">
+            {#if champSuggere === 'cci'}{@render menuSuggestions()}{/if}
           </div>
         {/if}
         <div class="rang">
@@ -1147,7 +1259,26 @@
   .rang {
     height:44px; display:flex; align-items:center; gap:14px;
     border-bottom:1px solid var(--border);
+    /* Le menu de suggestions s'ancre au rang de SON champ. */
+    position:relative;
   }
+  .suggestions {
+    position:absolute; top:100%; left:66px; z-index:5;
+    min-width:280px; max-width:440px;
+    margin:2px 0 0; padding:6px; list-style:none;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; gap:2px;
+  }
+  .suggestion {
+    width:100%; display:flex; align-items:baseline; gap:8px;
+    padding:6px 8px; border:none; background:transparent; border-radius:6px;
+    cursor:pointer; font-size:13px; text-align:left; font-family:inherit;
+  }
+  .suggestion:hover { background:var(--hover); }
+  .suggestion.choisie { background:var(--sel); }
+  .suggestion .nom { color:var(--ink); font-weight:600; white-space:nowrap; }
+  .suggestion .adresse { color:var(--muted); overflow:hidden; text-overflow:ellipsis; }
   .etiquette { width:52px; font-size:13px; color:var(--muted); flex:none; }
   .valeur { flex:1; font-size:13px; color:var(--ink); }
   select.valeur {

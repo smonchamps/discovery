@@ -198,6 +198,8 @@ fn main() {
             commands::flush_outbox,
             commands::sync_apres_geste,
             commands::echo_body,
+            commands::echo_attachments,
+            commands::completer_adresses,
             commands::outbox_status,
             commands::outbox_requeue,
             commands::outbox_delete,

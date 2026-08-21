@@ -11,6 +11,7 @@ mod attachment;
 mod backfill;
 mod body;
 mod compose;
+mod correspondants;
 mod crash;
 mod drafts;
 mod echo;
@@ -41,6 +42,7 @@ pub use compose::{
     Draft, compose, forward_subject, quote_forward, quote_forward_html, quote_reply,
     quote_reply_html, reply_all_split, reply_subject, reply_to,
 };
+pub use correspondants::Correspondant;
 pub use crash::{CrashReport, RawPanic, redact};
 pub use drafts::{
     DraftAttachmentFull, DraftAttachmentMeta, DraftAttachmentSaved, DraftContent, DraftPull,

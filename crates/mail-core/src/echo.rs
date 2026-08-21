@@ -102,10 +102,11 @@ impl Store {
                 Option<String>,
                 Option<String>,
                 Option<i64>,
+                Option<String>,
             );
             let enveloppe: Option<Matiere> = tx
                 .query_row(
-                    "SELECT subject, sender, sender_address, message_id, date_epoch
+                    "SELECT subject, sender, sender_address, message_id, date_epoch, to_addrs
                      FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
                     params![mailbox_id, uid],
                     |row| {
@@ -115,11 +116,13 @@ impl Store {
                             row.get(2)?,
                             row.get(3)?,
                             row.get(4)?,
+                            row.get(5)?,
                         ))
                     },
                 )
                 .optional()?;
-            if let Some((subject, sender, sender_address, Some(message_id), date_epoch)) = enveloppe
+            if let Some((subject, sender, sender_address, Some(message_id), date_epoch, to_addrs)) =
+                enveloppe
                 && !self.present_en_destination(account_id, destination, &message_id)?
             {
                 let corps: Option<(Option<String>, Option<String>)> = tx
@@ -139,8 +142,8 @@ impl Store {
                 tx.execute(
                     "INSERT INTO echos (account_id, destination, message_id, sender,
                         sender_address, subject, date_epoch, preview, html,
-                        attachment_count, origin_action_id, created_epoch)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, unixepoch())",
+                        attachment_count, to_addrs, origin_action_id, created_epoch)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, unixepoch())",
                     params![
                         account_id,
                         destination,
@@ -152,6 +155,7 @@ impl Store {
                         preview,
                         html,
                         pieces,
+                        to_addrs,
                         action_id
                     ],
                 )?;
@@ -168,11 +172,21 @@ impl Store {
     /// SEULEMENT là : la requête refuse tout autre état, par
     /// construction ET par garde. Rend `true` si un écho est né.
     pub fn echo_envoi(&self, outbox_id: i64) -> Result<bool, Error> {
-        type EnvoiRow = (i64, String, String, String, String, Option<String>, i64);
+        type EnvoiRow = (
+            i64,
+            String,
+            String,
+            String,
+            String,
+            Option<String>,
+            i64,
+            String,
+        );
         let row: Option<EnvoiRow> = self
             .conn()
             .query_row(
-                "SELECT account_id, message_id, sender, subject, body_text, body_html, queued_epoch
+                "SELECT account_id, message_id, sender, subject, body_text, body_html,
+                        queued_epoch, recipients
                  FROM outbox WHERE id = ?1 AND state = 'sent'",
                 [outbox_id],
                 |row| {
@@ -184,12 +198,21 @@ impl Store {
                         row.get(4)?,
                         row.get(5)?,
                         row.get(6)?,
+                        row.get(7)?,
                     ))
                 },
             )
             .optional()?;
-        let Some((account_id, message_id, sender, subject, body_text, body_html, queued_epoch)) =
-            row
+        let Some((
+            account_id,
+            message_id,
+            sender,
+            subject,
+            body_text,
+            body_html,
+            queued_epoch,
+            recipients,
+        )) = row
         else {
             return Ok(false);
         };
@@ -207,11 +230,13 @@ impl Store {
         // cas (S1).
         let html = body_html.unwrap_or_else(|| texte_en_html(&body_text));
         let preview = crate::body::extraire_apercu(&html);
+        // `outbox.recipients` est déjà joint par '\n' (TO_SEPARATOR) —
+        // le format exact de `envelopes.to_addrs` : copie telle quelle.
         self.conn().execute(
             "INSERT INTO echos (account_id, destination, message_id, sender,
                 sender_address, subject, date_epoch, preview, html,
-                attachment_count, origin_outbox_id, created_epoch)
-             VALUES (?1, 'envoyes', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, unixepoch())",
+                attachment_count, to_addrs, origin_outbox_id, created_epoch)
+             VALUES (?1, 'envoyes', ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, unixepoch())",
             params![
                 account_id,
                 message_id,
@@ -222,10 +247,38 @@ impl Store {
                 preview,
                 html,
                 pieces,
+                recipients,
                 outbox_id
             ],
         )?;
         Ok(true)
+    }
+
+    /// Les pièces d'un écho d'envoi, en MÉTADONNÉES seules (nom, mime,
+    /// taille — les octets sont purgés à `sent`, PJ-D7) : de quoi
+    /// afficher des puces honnêtes pendant la fenêtre de réconciliation,
+    /// jamais un titre « Fichiers joints » sans rien dessous. Un écho de
+    /// geste (`origin_outbox_id` NULL) n'en a pas : liste vide.
+    pub fn echo_attachments(&self, echo_id: i64) -> Result<Vec<crate::OutboxAttachment>, Error> {
+        let rows = self
+            .conn()
+            .prepare(
+                "SELECT oa.name, oa.mime, oa.size
+                 FROM echos ec
+                 JOIN outbox_attachments oa ON oa.outbox_id = ec.origin_outbox_id
+                 WHERE ec.id = ?1
+                 ORDER BY oa.id",
+            )?
+            .query_map([echo_id], |row| {
+                Ok(crate::OutboxAttachment {
+                    name: row.get(0)?,
+                    mime: row.get(1)?,
+                    size: row.get::<_, i64>(2)? as u64,
+                    bytes: None,
+                })
+            })?
+            .collect::<Result<_, _>>()?;
+        Ok(rows)
     }
 
     /// Combien d'échos une catégorie porte — le complément des compteurs
@@ -600,6 +653,114 @@ mod tests {
             !html.contains("&lt;b&gt;"),
             "le HTML ne doit pas être ré-échappé : {html}"
         );
+    }
+
+    /// PLAN-RETOURS-5 (terrain 2026-08-21 : « À : envoyes » pendant la
+    /// fenêtre de réconciliation) : l'écho d'envoi porte les VRAIS
+    /// destinataires, copiés du journal d'envoi au format des
+    /// enveloppes (`\n`).
+    #[test]
+    fn l_echo_d_envoi_porte_les_destinataires() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("t@exemple.fr", "gmail")
+            .unwrap();
+        let draft = crate::compose(
+            "t@exemple.fr",
+            "a@b.fr, c@d.fr",
+            "",
+            "",
+            "objet",
+            "corps",
+            None,
+        )
+        .unwrap();
+        store.enqueue_outbox(account, &draft).unwrap();
+        let id = store.outbox_to_send(account).unwrap()[0].id;
+        store
+            .set_outbox_state(id, crate::OutboxState::Sent)
+            .unwrap();
+        assert!(store.echo_envoi(id).unwrap());
+
+        let to: Option<String> = store
+            .conn()
+            .query_row("SELECT to_addrs FROM echos", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(to.as_deref(), Some("a@b.fr\nc@d.fr"));
+    }
+
+    /// Le geste verse aussi les destinataires du message déplacé — la
+    /// colonne des enveloppes est déjà au bon format, copie telle quelle.
+    #[test]
+    fn le_geste_verse_les_destinataires_a_l_echo() {
+        let (mut store, _account, inbox, _) = store_avec_corbeille();
+        let mut env = envelope(1, "à jeter", 100);
+        env.to_addrs = vec!["x@y.fr".to_string(), "z@w.fr".to_string()];
+        store.upsert_envelopes(inbox, &[env]).unwrap();
+
+        store
+            .geste_avec_echo(inbox, 1, Action::Delete, Some("corbeille"))
+            .unwrap();
+
+        let to: Option<String> = store
+            .conn()
+            .query_row("SELECT to_addrs FROM echos", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(to.as_deref(), Some("x@y.fr\nz@w.fr"));
+    }
+
+    /// Les pièces d'un écho d'envoi se lisent en MÉTADONNÉES (nom, mime,
+    /// taille) depuis le journal d'envoi — les octets sont purgés à
+    /// `sent` (PJ-D7), jamais un titre « Fichiers joints » sans rien
+    /// dessous. Un écho de geste n'en a pas : liste vide.
+    #[test]
+    fn les_pieces_de_l_echo_d_envoi_se_lisent_en_metadonnees() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("t@exemple.fr", "gmail")
+            .unwrap();
+        let draft =
+            crate::compose("t@exemple.fr", "a@b.fr", "", "", "objet", "corps", None).unwrap();
+        let draft_id = store
+            .save_draft(
+                account,
+                None,
+                None,
+                crate::DraftContent {
+                    to_raw: "a@b.fr",
+                    cc_raw: "",
+                    bcc_raw: "",
+                    body_html: None,
+                    subject: "objet",
+                    body: "corps",
+                    reply_to_uid: None,
+                    reply_to_mailbox: None,
+                },
+            )
+            .unwrap()
+            .id;
+        store
+            .add_draft_attachment(draft_id, "rapport.pdf", "application/pdf", &[1, 2, 3])
+            .unwrap();
+        let id = store
+            .enqueue_outbox_from_draft(account, &draft, draft_id)
+            .unwrap();
+        store
+            .set_outbox_state(id, crate::OutboxState::Sent)
+            .unwrap();
+        store.purge_sent_attachment_bytes(id).unwrap();
+        assert!(store.echo_envoi(id).unwrap());
+        let echo_id: i64 = store
+            .conn()
+            .query_row("SELECT id FROM echos", [], |row| row.get(0))
+            .unwrap();
+
+        let pieces = store.echo_attachments(echo_id).unwrap();
+        assert_eq!(pieces.len(), 1);
+        assert_eq!(pieces[0].name, "rapport.pdf");
+        assert_eq!(pieces[0].mime, "application/pdf");
+        assert_eq!(pieces[0].size, 3);
+        assert!(pieces[0].bytes.is_none(), "métadonnées seules");
     }
 
     /// Les comptes avec du travail : actions en attente OU échos — le

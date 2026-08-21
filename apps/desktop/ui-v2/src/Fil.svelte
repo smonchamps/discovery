@@ -14,7 +14,7 @@
   // allow-scripts par message déplié, corps servi par le cœur,
   // liens interceptés (lib/liens.js).
   import {
-    fil, cleMsg, basculerMessage, toutDeplier, toutReplier, afficherImages,
+    fil, cleMsg, basculerMessage, toutDeplier, toutReplier, afficherImages, estEcho,
   } from './lib/fil.svelte.js';
   import { appel, choisirDestination } from './lib/transport.js';
   import { brancherLiens } from './lib/liens.js';
@@ -236,19 +236,27 @@
               <iframe class="corps" sandbox="allow-same-origin" srcdoc={fil.corps[k] ?? ''}
                       title={t('lecture.corps')} use:corpsAuto
                       onload={(ev) => brancherLiens(ev.currentTarget)}></iframe>
-              {#if nbPiecesDe(m) > 0}
+              <!-- Un écho de GESTE n'a pas de métadonnées par pièce
+                   (elles meurent avec la source) : la section ne se
+                   montre que si des puces existent — jamais un titre
+                   sans rien dessous (PLAN-RETOURS-5). -->
+              {#if nbPiecesDe(m) > 0 && (!estEcho(m) || (fil.pieces[k] ?? []).length > 0)}
                 <div class="fichiers" data-testid="lecture-fichiers">
                   <p class="titre-fichiers">{t('conv.fichiersJoints')}</p>
                   <!-- R2 (PLAN-RETOURS-4, D4) : nom ET poids dans la MÊME
                        puce cliquable — exception assumée à « 1 puce = 1
                        information », icône unique (même objet manipulable
                        que la puce du composeur, pas deux lectures). -->
+                  <!-- Les puces d'un écho sont INERTES (PLAN-RETOURS-5,
+                       D2) : les octets ont quitté le journal à l'envoi —
+                       nom et poids se montrent, rien ne s'enregistre
+                       pendant la fenêtre de réconciliation. -->
                   <div class="puces">
                     {#each fil.pieces[k] ?? [] as piece (piece.index)}
                       <button type="button" class="puce bouton" data-testid="piece-jointe"
-                              disabled={enregistrements[`${k}#${piece.index}`]}
-                              onclick={() => enregistrer(m, piece)}
-                              title={t('lecture.enregistrer')}>
+                              disabled={estEcho(m) || enregistrements[`${k}#${piece.index}`]}
+                              onclick={() => !estEcho(m) && enregistrer(m, piece)}
+                              title={estEcho(m) ? undefined : t('lecture.enregistrer')}>
                         <span class="ms" aria-hidden="true">description</span>
                         <span class="nom">{piece.name}</span><span class="taille">{piece.size}</span></button>
                     {/each}

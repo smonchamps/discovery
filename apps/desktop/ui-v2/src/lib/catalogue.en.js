@@ -169,6 +169,7 @@ export const EN = {
   'compo.sansObjet': 'no subject',
   'compo.compteEmetteur': 'Sending account',
   'compo.destinataire': 'Recipient',
+  'compo.suggestions': 'Suggested addresses',
   'compo.objetPlaceholder': 'Message subject',
   'compo.corpsPlaceholder': 'Your message…',
   'compo.cc': 'Cc',

@@ -171,6 +171,7 @@ export const FR = {
   'compo.sansObjet': 'sans objet',
   'compo.compteEmetteur': 'Compte émetteur',
   'compo.destinataire': 'Destinataire',
+  'compo.suggestions': 'Adresses suggérées',
   'compo.objetPlaceholder': 'Objet du message',
   'compo.corpsPlaceholder': 'Votre message…',
   'compo.cc': 'Cc',

@@ -1260,6 +1260,69 @@ test('vider puis fermer ne ressuscite jamais le brouillon — la sauvegarde en v
   await expect(page.locator('[data-testid="ligne"]').first()).toBeVisible();
 });
 
+// PLAN-RETOURS-5 (terrain 2026-08-21) : pendant la fenêtre de
+// réconciliation, l'entrée temporaire d'Envoyés (l'écho d'envoi) dit
+// ses VRAIS destinataires — jamais « À : envoyes » — et sa pièce se
+// montre en métadonnées (nom + poids), puce INERTE : les octets sont
+// partis avec l'envoi, rien ne s'enregistre tant que la copie serveur
+// n'est pas arrivée (D2 — l'écho meurt à la réconciliation, prouvé au
+// cœur par `la_vraie_ligne_tue_l_echo`).
+test("l'écho d'envoi dit ses destinataires et sa pièce — jamais « À : envoyes » (RETOURS-5)", async () => {
+  await dossier('envoyes').click();
+  const ligne = page.locator('[data-testid="ligne"]', { hasText: 'Bordereau signé' });
+  await expect(ligne).toBeVisible();
+  await expect(ligne).toContainText('c.rousseau@atelier-nord.fr');
+  await expect(ligne).not.toContainText('envoyes');
+
+  await ligne.click();
+  const volet = page.locator('[data-testid="volet-lecture"]');
+  await expect(volet.locator('[data-testid="fil-sujet"]')).toContainText('Bordereau signé');
+  // La tête du message déplié : « adresse · à DESTINATAIRE ».
+  await expect(volet.locator('.adr').first()).toContainText('c.rousseau@atelier-nord.fr');
+  // La pièce du journal d'envoi : nom + poids dans la puce, inerte.
+  const piece = volet.locator('[data-testid="piece-jointe"]');
+  await expect(piece).toHaveCount(1);
+  await expect(piece).toContainText('Bordereau-signe.pdf');
+  await expect(piece).toContainText('20 Ko');
+  await expect(piece).toBeDisabled();
+  await dossier('reception').click();
+});
+
+// PLAN-RETOURS-5 (D3-D4) : l'autocomplétion des adresses — l'annuaire
+// des correspondants (appris du courrier du décor) suggère sur le
+// préfixe, le menu MONTRE le nom d'affichage, l'insertion pose
+// l'adresse NUE. Au clavier (Entrée) comme au clic, dans Cc comme
+// dans À.
+test("l'autocomplétion suggère les adresses connues — nom montré, adresse nue insérée (RETOURS-5)", async () => {
+  await page.locator('[data-testid="ecrire"]').click();
+  const champA = page.locator('[data-testid="composition-a"]');
+  await champA.fill('rousseau');
+  const menu = page.locator('[data-testid="composition-suggestions"]');
+  await expect(menu).toBeVisible();
+  const premiere = page.locator('[data-testid="suggestion-adresse"]').first();
+  await expect(premiere).toContainText('Camille Rousseau');
+  await expect(premiere).toContainText('c.rousseau@atelier-nord.fr');
+  await champA.press('Enter');
+  await expect(champA).toHaveValue('c.rousseau@atelier-nord.fr');
+  await expect(menu).toHaveCount(0);
+
+  // Cc, au CLIC — un destinataire connu par l'adresse.
+  await page.locator('[data-testid="composition-bouton-cc"]').click();
+  const champCc = page.locator('[data-testid="composition-cc"]');
+  await champCc.fill('s.nar');
+  await expect(menu).toBeVisible();
+  await page.locator('[data-testid="suggestion-adresse"]').first().click();
+  await expect(champCc).toHaveValue('s.nardi@atelier-nord.fr');
+  await expect(menu).toHaveCount(0);
+
+  // Nettoyage : champs vidés — le brouillon né de la frappe est jeté
+  // à la fermeture (« un brouillon vidé de son texte est jeté »).
+  await champA.fill('');
+  await champCc.fill('');
+  await page.locator('[data-testid="composition-annuler"]').click();
+  await expect(page.locator('[data-testid="composition"]')).toHaveCount(0);
+});
+
 // ——— Revue v3 : exclusivité des cadres (joué en fin de chaîne — il archive) ———
 
 test("archiver au raccourci depuis l'écran 03 ferme le cadre — jamais de plein écran fantôme (revue v3)", async () => {

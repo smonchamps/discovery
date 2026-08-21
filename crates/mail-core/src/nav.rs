@@ -501,9 +501,12 @@ impl Store {
                    SELECT a.id, a.email, 0, ec.subject, ec.sender, ec.sender_address,
                         ec.message_id, ec.date_epoch, 1, 0, ec.attachment_count,
                         NULL, NULL, 'echo:' || ec.id, ec.preview,
-                        -- R4 : un echo est NOTRE copie d'un envoi — sa
-                        -- destination EST le destinataire a afficher.
-                        ec.destination, NULL, 1, 0,
+                        -- PLAN-RETOURS-5 : les VRAIS destinataires de
+                        -- l'echo (copies du journal d'envoi ou de
+                        -- l'enveloppe source) — jamais le slug de
+                        -- destination (« A : envoyes », terrain
+                        -- 2026-08-21).
+                        ec.to_addrs, NULL, 1, 0,
                         page.date_epoch AS tri_date, page.uid AS tri_uid,
                         page.mailbox_id AS tri_boite
                    FROM page
@@ -747,6 +750,45 @@ mod tests {
         let canon = store.canonical_folders(account).unwrap();
         let counts = store.nav_counts(account, &canon).unwrap();
         assert_eq!(counts.brouillons, 1, "le local compte, le miroir non");
+    }
+
+    /// PLAN-RETOURS-5 (terrain 2026-08-21) : la ligne d'écho d'envoi
+    /// dit ses VRAIS destinataires — jamais le slug de catégorie
+    /// (« À : envoyes » à l'écran pendant la fenêtre de réconciliation).
+    #[test]
+    fn la_ligne_d_echo_d_envoi_dit_ses_destinataires() {
+        let store = Store::open_in_memory().unwrap();
+        let account = store
+            .adopt_or_create_account("t@exemple.fr", "gmail")
+            .unwrap();
+        let draft = crate::compose(
+            "t@exemple.fr",
+            "a@b.fr, c@d.fr",
+            "",
+            "",
+            "objet",
+            "corps",
+            None,
+        )
+        .unwrap();
+        store.enqueue_outbox(account, &draft).unwrap();
+        let id = store.outbox_to_send(account).unwrap()[0].id;
+        store
+            .set_outbox_state(id, crate::OutboxState::Sent)
+            .unwrap();
+        assert!(store.echo_envoi(id).unwrap());
+
+        let comptes = [account];
+        let page = store
+            .category_page(&[], false, &[], Some(("envoyes", &comptes)), 0, 10)
+            .unwrap();
+        assert_eq!(page.len(), 1);
+        assert!(page[0].mailbox.starts_with("echo:"), "{}", page[0].mailbox);
+        assert_eq!(
+            page[0].envelope.to_addrs,
+            vec!["a@b.fr".to_string(), "c@d.fr".to_string()],
+            "les destinataires réels, jamais « envoyes »"
+        );
     }
 
     /// E3 (PLAN-REACTIVITE) : les échos entrent dans la page À LEUR

@@ -375,10 +375,15 @@ Bash). Syntaxes différentes.
   sous-système *windows*, aucune console attachée, `eprintln` (la trace
   `run_sync`) n'a nulle part où s'écrire. Pour lire une trace au terrain :
   soit **débogage** (`cargo run -p wind-desktop`, console attachée, mais
-  durées CPU gonflées), soit **rediriger** (`… --release 2> fichier`, la
-  redirection fournit un handle même à une appli fenêtrée — timing release
-  exact). Payé au chantier PLAN-RETOURS-2 (un « pas de trace » pris à tort
-  pour « pas de synchro »).
+  durées CPU gonflées), soit **rediriger via un lanceur qui ATTEND**
+  (`cargo run … --release 2> fichier` — cargo, appli console, tient le
+  handle jusqu'au bout ; timing release exact). ⚠️ **Lancer l'exe NU ne
+  trace RIEN** (`& …\wind-desktop.exe 2> fichier` depuis PowerShell) :
+  PowerShell n'attend pas un exécutable fenêtré et cesse de lire son
+  stderr aussitôt l'invite rendue — fichier créé, vide À JAMAIS, même
+  quand les traces partent bel et bien. Payé deux fois : PLAN-RETOURS-2
+  (un « pas de trace » pris pour « pas de synchro »), PLAN-RETOURS-5
+  (deux passes terrain brûlées sur un fichier vide, 2026-08-21).
 - **Un commit ne peut pas être chaîné avec `git --no-pager …`** : le hook
   `block-no-verify` bloque le préfixe `--no-`. Séparer les commandes.
 - **`prefers-color-scheme` est MORT dans le WebView2 de Tauri** : jamais

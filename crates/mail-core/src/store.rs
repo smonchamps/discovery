@@ -238,11 +238,28 @@ CREATE TABLE IF NOT EXISTS echos (
     preview          TEXT,
     html             TEXT,
     attachment_count INTEGER NOT NULL DEFAULT 0,
+    -- PLAN-RETOURS-5 : les destinataires de l'echo, au format des
+    -- enveloppes (adresses jointes par '\n') — la liste d'Envoyes dit
+    -- « A : X », jamais le slug de destination. NULL sur l'existant
+    -- (echos morts a la reconciliation de toute facon).
+    to_addrs         TEXT,
     origin_action_id INTEGER,
     origin_outbox_id INTEGER,
     created_epoch    INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_echos_destination ON echos(destination, account_id);
+-- L'annuaire des correspondants (PLAN-RETOURS-5, D4) : appris du
+-- courrier vu (expediteurs hors indesirables/corbeille, destinataires
+-- de NOS envois), jamais un carnet edite. Adresse en minuscules
+-- (dedoublonnage), le nom d'affichage le plus recent gagne. Table
+-- PETITE interrogee a la frappe — jamais un parcours d'envelopes par
+-- frappe dans la file serialisee (lecon PLAN-DEFILEMENT-PROFOND).
+CREATE TABLE IF NOT EXISTS correspondants (
+    address    TEXT PRIMARY KEY,
+    name       TEXT,
+    last_epoch INTEGER NOT NULL DEFAULT 0,
+    hits       INTEGER NOT NULL DEFAULT 0
+);
 ";
 
 /// Avancement de l'adoption d'une base héritée, pour l'affichage.
@@ -579,7 +596,12 @@ impl Store {
             // tard pour annuler : la réponse est ignorée.
             let _ = on_progress(AdoptionProgress { done: total, total });
         }
-        Ok(Self(conn))
+        let store = Self(conn);
+        // L'annuaire des correspondants se rattrape UNE fois sur
+        // l'existant (PLAN-RETOURS-5) : set-based, marque en `prefs` —
+        // sur une base à jour, un SELECT et rien d'autre.
+        store.rattraper_correspondants()?;
+        Ok(store)
     }
 
     /// Préférence booléenne persistée en base. Absente = `default` : une
@@ -1052,6 +1074,9 @@ impl Store {
         mailbox_id: i64,
         envelopes: &[Envelope],
     ) -> Result<(), Error> {
+        // Ce que l'annuaire des correspondants apprend de CETTE boîte —
+        // résolu une fois par lot, comme le fil (PLAN-RETOURS-5, D4).
+        let (noter_expediteurs, noter_destinataires) = self.role_annuaire(mailbox_id)?;
         let tx = self.0.transaction()?;
         // Résolu UNE fois : la boîte ne change pas dans un lot, et le fil
         // se raisonne désormais au compte (ADR 0009). Le faire par message
@@ -1099,7 +1124,16 @@ impl Store {
                 tx.prepare("SELECT html FROM bodies WHERE mailbox_id = ?1 AND uid = ?2")?;
             let mut refs_stmt =
                 tx.prepare("SELECT refs FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
+            let mut deja_stmt =
+                tx.prepare("SELECT 1 FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2")?;
             for envelope in envelopes {
+                // L'annuaire n'apprend que des messages NEUFS : une
+                // re-synchronisation (drapeaux CONDSTORE, re-relève) ne
+                // gonfle pas la fréquence d'un correspondant.
+                let nouveau = deja_stmt
+                    .query_row(params![mailbox_id, envelope.uid], |_| Ok(()))
+                    .optional()?
+                    .is_none();
                 stmt.execute(params![
                     mailbox_id,
                     envelope.uid,
@@ -1114,6 +1148,23 @@ impl Store {
                     join_addrs(&envelope.to_addrs),
                     join_addrs(&envelope.cc_addrs),
                 ])?;
+
+                if nouveau {
+                    let date = envelope.date.map(|d| d.timestamp()).unwrap_or(0);
+                    if noter_expediteurs && let Some(adresse) = envelope.sender_address.as_deref() {
+                        crate::correspondants::noter(
+                            &tx,
+                            adresse,
+                            envelope.sender.as_deref(),
+                            date,
+                        )?;
+                    }
+                    if noter_destinataires {
+                        for adresse in envelope.to_addrs.iter().chain(envelope.cc_addrs.iter()) {
+                            crate::correspondants::noter(&tx, adresse, None, date)?;
+                        }
+                    }
+                }
 
                 // Les `References` déjà acquises comptent dans le
                 // rattachement : une re-synchronisation ne doit pas
@@ -1753,6 +1804,26 @@ impl Store {
              WHERE mailbox_id = ?1 AND uid = ?2",
             params![mailbox_id, uid, to.join("\n"), cc.join("\n")],
         )?;
+        // PLAN-RETOURS-5 (D4, revue) : ces destinataires rattrapés sont
+        // ceux de NOS envois d'avant le stockage des À/Cc — sans ceci,
+        // ils n'entreraient jamais dans l'annuaire (le rattrapage
+        // d'ouverture est passé avant eux). Le surcoût (deux lectures)
+        // est invisible derrière l'aller-retour serveur qui précède.
+        let (_, noter_destinataires) = self.role_annuaire(mailbox_id)?;
+        if noter_destinataires && (!to.is_empty() || !cc.is_empty()) {
+            let date: Option<i64> = self
+                .0
+                .query_row(
+                    "SELECT date_epoch FROM envelopes WHERE mailbox_id = ?1 AND uid = ?2",
+                    params![mailbox_id, uid],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .flatten();
+            for adresse in to.iter().chain(cc.iter()) {
+                crate::correspondants::noter(self.conn(), adresse, None, date.unwrap_or(0))?;
+            }
+        }
         Ok(())
     }
 
@@ -2115,6 +2186,8 @@ fn migrate(
     // Les corps deja en base valent 0 : ils datent d'avant les pieces
     // jointes, et le rattrapage devra les relire une fois.
     add_missing_columns(conn, "bodies", &[("scanned", "INTEGER NOT NULL DEFAULT 0")])?;
+    // Destinataires de l'echo — NULL sur l'existant (PLAN-RETOURS-5).
+    add_missing_columns(conn, "echos", &[("to_addrs", "TEXT")])?;
     // L'aperçu de liste (écran 02 de la refonte) se calcule à l'ÉCRITURE
     // du corps ; les corps antérieurs le rattrapent PAR LOTS
     // (`preview_catchup`, appelé par le shell au fil du sondage) — jamais

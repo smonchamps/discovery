@@ -127,16 +127,20 @@ async function chargerMessage(m, avecImages = false) {
   }
   // Les métadonnées de pièces : HORS du chemin mesuré (elles arrivent
   // après le corps, jamais avant), gatées sur le compte d'après-scan.
-  // Les pièces d'un écho n'ont pas de métadonnées par pièce pendant la
-  // fenêtre de réconciliation.
+  // Un écho les tire du journal d'envoi (echo_attachments — nom et
+  // taille seuls, les octets sont purgés) : jamais un titre « Fichiers
+  // joints » sans rien dessous (PLAN-RETOURS-5, D2).
   const nb = fil.nbPieces[k] ?? m.attachment_count;
-  if (nb > 0 && !estEcho(m) && fil.pieces[k] === undefined) {
+  if (nb > 0 && fil.pieces[k] === undefined) {
     fil.pieces[k] = [];
-    appel('message_attachments', {
-      accountId: m.account_id,
-      mailbox: m.mailbox,
-      uid: m.uid,
-    })
+    const lecture = estEcho(m)
+      ? appel('echo_attachments', { id: Number(m.mailbox.slice(5)) })
+      : appel('message_attachments', {
+          accountId: m.account_id,
+          mailbox: m.mailbox,
+          uid: m.uid,
+        });
+    lecture
       .then((lues) => {
         if (mien === jeton) fil.pieces[k] = lues;
       })

@@ -389,3 +389,25 @@ motivée.)
   chantier « liste sans limite » s'ouvre (le report existant de la
   recherche virtualisée) — le patron deux-temps de la recherche (A51)
   est le point de départ.
+
+### D-27 · La boîte d'envoi ne retente qu'en fin de cycle ou au geste
+
+- **Fait (terrain PLAN-RETOURS-5, 2026-08-21)** : au premier lancement,
+  deux envois cliqués juste après l'ouverture sont restés « en
+  attente » pendant toute la session — la vidange déclenchée par le
+  clic « Envoyer » est passée avant que les sessions des comptes ne
+  soient prêtes, et la boîte d'envoi n'a AUCUNE retentative propre :
+  elle ne repart qu'à la fin d'un cycle complet (long sur la vraie
+  base), à la passe légère du clic « Synchroniser », ou au retour
+  réseau. Les messages sont partis à la première vidange réellement
+  déclenchée (clic Synchroniser de la session suivante) — jamais
+  perdus, jamais doublés : les règles d'or ont tenu.
+- **Pourquoi assumé** : le cas ne se présente qu'à l'envoi dans les
+  toutes premières secondes d'un lancement ; en régime établi, la
+  vidange d'après-envoi part et aboutit (vérifié au même terrain).
+  La barre d'état dit honnêtement « N envois en attente ».
+- **Condition de reprise** : si le terrain revoit un envoi en attente
+  au-delà d'un cycle, ou au premier retour utilisateur en bêta.
+  Piste : une retentative bornée déclenchée à l'établissement des
+  sessions (le déclencheur du retour en ligne, R-D3, existe déjà —
+  l'y raccorder), jamais un minuteur de martèlement.
