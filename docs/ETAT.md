@@ -14,12 +14,8 @@
 
 **Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
-**Chantier en cours : [PLAN-RETOURS-5](PLAN-RETOURS-5.md)** (ouvert le
-2026-08-21, GO CE le jour même) : l'écho d'envoi qui dit vrai dans
-« Envoyés » (destinataires réels, pièces en nom + poids inertes,
-preuve de réconciliation) et l'autocomplétion des adresses À/Cc/Cci
-(menu nom + adresse, insertion en adresse nue). Publication prévue :
-**0.3.0** (MINEUR, D5).
+**Prochain chantier : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
+§4, dernière étape avant le gate 5) — rien n'est engagé.
 
 **perf-lecture est éteint** (décision CE D1 du 2026-08-21) : le
 symptôme (corps à la demande bridé à ~7 s au lancement, terrain du
@@ -29,7 +25,42 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.2.1** (publiée 2026-08-20, release
+**Dernière version livrée : 0.3.0** (publiée 2026-08-21, release
+**vérifiée** STANDARD.md §2.10 : Latest, 3 assets au tag nu,
+`latest.json` sans BOM, URL au tag nu, signature == `.sig`, exe résout
+200 / 5 038 998 octets ; **auto-update 0.2.1 → 0.3.0 confirmé au
+terrain le 2026-08-21** — la chaîne signée ADR 0013 reste prouvée
+vivante). La 0.3.0 porte l'**autocomplétion des adresses** À/Cc/Cci
+(MINEUR, D5) et l'**écho d'envoi qui dit vrai** (PLAN-RETOURS-5,
+ci-dessous).
+
+**Dernier chantier soldé : [PLAN-RETOURS-5](PLAN-RETOURS-5.md)**
+(2026-08-21, `6f94922`, A65, terrain complet — cinq points, le point 2
+instruit puis rejoué —, CI verte, **livré en 0.3.0**). (1) **L'entrée
+temporaire d'Envoyés dit vrai** : l'écho local d'un envoi
+(PLAN-REACTIVITE E3, mécanisme intact) affichait « À : envoyes » (le
+slug de destination servi comme destinataire par la tranche des échos
+de nav) et un titre « Fichiers joints » vide (métadonnées jamais
+rapatriées). Désormais : colonne `echos.to_addrs` remplie à la
+naissance (envoi : `outbox.recipients` ; geste : `envelopes.to_addrs`),
+pièces en nom + poids depuis le journal d'envoi (`echo_attachments`),
+puces INERTES pendant la fenêtre (D2) ; l'écho de geste ne montre plus
+de section vide (revue). (2) **Autocomplétion des adresses** (D3-D5) :
+annuaire des correspondants — table dédiée, JAMAIS un parcours
+d'enveloppes par frappe (leçon A64) — appris du courrier vu
+(expéditeurs hors indésirables/corbeille avec leur nom, destinataires
+de nos envois), rattrapé UNE fois sur l'existant à l'ouverture
+(142 ms/200 k, marque `prefs`) ; suggestion « Nom + adresse », insertion
+en **adresse nue** (D3, chemin d'envoi et garde anti-injection
+intacts) ; 22 ms au pire cas (budget < 50 ms). (3) ETAT remis
+d'équerre (perf-lecture éteint D1, report « envoi de pièces jointes »
+retiré — livré depuis PLAN-PIECES-JOINTES). Reports : **D-27** (la
+boîte d'envoi ne retente qu'en fin de cycle ou au geste — envois
+jamais perdus, règles d'or tenues). Pièges gravés : STANDARD §9
+(`2> fichier` sur l'exe fenêtré lancé nu ne capte rien — tracer via un
+lanceur qui attend). e2e : 97 → **99**.
+
+**La version précédente, 0.2.1** (publiée 2026-08-20, release
 **vérifiée a posteriori** STANDARD.md §2.10 : Latest, 3 assets au tag
 nu, `latest.json` sans BOM, URL au tag nu, signature == `.sig`, exe
 résout 200 / 5 014 053 octets ; **auto-update 0.2.0 → 0.2.1 confirmé
@@ -85,7 +116,7 @@ v1 retirée (PLAN-RETRAIT-V1), sur une fenêtre qui ne gèle plus
 (PLAN-GELS, ADR 0019) ; auto-update 0.1.6 → 0.1.7 confirmé au terrain.
 Tous les plans de cette ligne sont soldés.
 
-**Dernier chantier soldé : PLAN-DEFILEMENT-PROFOND** (2026-08-20,
+**Chantier soldé précédent : PLAN-DEFILEMENT-PROFOND** (2026-08-20,
 `70e44e3`, A64, terrain complet — trois passes le même jour —, CI
 verte, run 32382945877). Le bug terrain du drag tenu dans Archives
 (blocs « .. », puis « Aucun message ici. » dans TOUS les dossiers
@@ -107,7 +138,7 @@ versé au dépôt, décision D2) ; premier affichage d'Archives 253 →
 **14 ms** de cœur (SQL, décor intégrale 200 k). Reports : **D-26**
 (page profonde O(offset) assumée, décision D1 — ~129 ms à l'offset
 80 000, un seul vol, écran qui dit le chargement). e2e : 94 → **97**.
-À publier en **0.2.1** (CORRECTIF, §2.9).
+Publié en **0.2.1** (CORRECTIF, §2.9).
 
 **Chantier soldé précédent : PLAN-COMPOSITION-HTML** (2026-08-20,
 `537a1e4`, A62-A63 + ADR 0022, terrain complet, CI verte — **livré

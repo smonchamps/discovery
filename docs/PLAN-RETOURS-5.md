@@ -1,18 +1,24 @@
 # PLAN-RETOURS-5 — l'écho d'envoi dit vrai, l'adresse se complète
 
-> **Implémentation complète et TERRAIN VALIDÉ le 2026-08-21** (GO CE du
-> plan le même jour ; STOP 2 : cinq points de checklist OK — dont le
-> point 2 rejoué en régime établi : « l'entrée temporaire s'affiche
-> correctement puis disparaît »). Reste : commit, CI verte, publication
-> 0.3.0. Journal Système **A65**. Chiffres : `completer_adresses` pire
-> cas (préfixe 1 lettre, 50 000 correspondants) **22 ms** (banc
-> `banc_completer_50k`, release) ; rattrapage unique de l'existant
-> **142 ms** sur 200 000 enveloppes (banc `banc_rattrapage_200k`) ;
-> tests Rust 347 → **348**, e2e 97 → **99**. Reports : **D-27** (la
-> boîte d'envoi ne retente qu'en fin de cycle ou au geste — constat né
-> du terrain, envois jamais perdus). Enseignement gravé (STANDARD §9) :
-> lancer l'exe release NU avec `2> fichier` ne trace RIEN — le lanceur
-> doit ATTENDRE le processus (`cargo run … --release 2> fichier`).
+> **CHANTIER SOLDÉ le 2026-08-21 — terrain complet.** Chantier ouvert,
+> GO CE du plan (STOP 1, D1-D5), implémenté, terrain validé (STOP 2,
+> cinq points — le point 2 instruit puis rejoué en régime établi :
+> « l'entrée temporaire s'affiche correctement puis disparaît »),
+> **livré en 0.3.0** (publiée et vérifiée §2.10 le même jour,
+> auto-update 0.2.1 → 0.3.0 **confirmé au terrain** — chaîne signée
+> ADR 0013 prouvée vivante), le tout le MÊME jour. Commits : `6f94922`
+> (feat, CI verte run 32475242855), `5951925` (notes CHANGELOG),
+> `5a017d2` (release). Journal Système **A65**. Revue à regard neuf :
+> 2 trouvailles confirmées, corrigées ; 1 assumée. Chiffres :
+> `completer_adresses` pire cas (préfixe 1 lettre, 50 000
+> correspondants) **22 ms** (banc `banc_completer_50k`, release) ;
+> rattrapage unique de l'existant **142 ms** sur 200 000 enveloppes
+> (banc `banc_rattrapage_200k`) ; tests Rust 347 → **348**, e2e
+> 97 → **99**. Reports : **D-27** (la boîte d'envoi ne retente qu'en
+> fin de cycle ou au geste — né du terrain, envois jamais perdus).
+> Enseignement gravé (STANDARD §9) : lancer l'exe release NU avec
+> `2> fichier` ne trace RIEN — le lanceur doit ATTENDRE le processus
+> (`cargo run … --release 2> fichier`).
 >
 > Chantier ouvert le 2026-08-21 (`/chantier`), sur trois retours CE :
 > (1) ETAT périmé — les chantiers perf-lecture et envoi de pièces
