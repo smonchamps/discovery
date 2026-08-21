@@ -47,6 +47,7 @@
   import { tick } from 'svelte';
   import { appel, choisirFichiers } from './lib/transport.js';
   import { t } from './lib/texte.svelte.js';
+  import { quandLong } from './lib/quand.js';
 
   let {
     comptes = [],
@@ -86,6 +87,11 @@
   let corpsTexteInitial = '';
   let corpsHtmlInitial = null;
   let corpsVersion = $state(0);
+  // R1 (PLAN-RETOURS-6) : vrai quand le corps ne porte que ce que WIND
+  // a posé (la signature) — pas un mot de l'utilisateur. Sans cette
+  // marque, chaque « Nouveau message » ouvert puis fermé sèmerait un
+  // brouillon fantôme (la signature rend le corps non vide).
+  let corpsAuto = false;
   // Les pièces RÉELLES du brouillon (métadonnées) — ce que le composeur
   // montre est ce que le message emporte, sans exception (PJ-D4).
   let pieces = $state([]);
@@ -97,6 +103,13 @@
   // suivant qui aboutit (ajout accepté ou retrait).
   let refus = $state(null);
   let envoiEnCours = $state(false);
+  // R3 (PLAN-RETOURS-6) : le marquage « important » — un état du
+  // MESSAGE (sauvé avec le brouillon, porté par le journal d'envoi,
+  // en-têtes de priorité côté SMTP), pas un état d'écran.
+  let important = $state(false);
+  // R2 : la carte « Envoyer plus tard » (échéance en heure locale).
+  let montrerDiffere = $state(false);
+  let dateDiffere = $state('');
   // La source d'un transfert (account_id, mailbox, uid) — « Réessayer »
   // doit savoir d'où rapatrier.
   let sourceTransfert = null;
@@ -280,6 +293,43 @@
     return connu ? { account_id: connu.account_id, email: connu.email } : null;
   }
 
+  // Terrain 2026-08-21 : la signature SUIT le compte émetteur. Changer
+  // le « De » recharge celle du nouveau compte — tant que l'utilisateur
+  // n'a pas touché au corps (une frappe posée prime, on ne réécrit
+  // jamais son texte). `gabaritCorps` est la recette posée à
+  // l'ouverture : (signature|null) → HTML du corps — elle regarnit
+  // l'amorce et la citation d'une réponse à l'identique, seule la
+  // signature change. Une reprise de brouillon n'a pas de gabarit (son
+  // texte est la seule vérité) : pas de recomposition. Jeton dédié :
+  // un changement rapide de compte ne pose que la DERNIÈRE signature,
+  // et jamais sur une carte refermée.
+  let gabaritCorps = null;
+  // Vrai quand le gabarit SANS signature rend un corps vide : le corps
+  // recomposé ne porte alors QUE la signature — il compte pour vide
+  // (garde anti-churn), une citation reste un contenu réel.
+  let gabaritSeul = false;
+  let jetonSignature = 0;
+  async function changerExpediteur(email) {
+    const choisi = comptes.find((c) => c.email === email);
+    if (!choisi) return;
+    expediteur = { account_id: choisi.account_id, email: choisi.email };
+    programmerSauvegarde();
+    if (corpsModifie || !gabaritCorps) return;
+    const mienne = ++jetonSignature;
+    let lue = null;
+    try {
+      lue = await appel('signature_get', { accountId: choisi.account_id });
+    } catch (err) {
+      console.error('signature_get :', err);
+    }
+    if (mienne !== jetonSignature || !visible || corpsModifie) return;
+    // D4 : en réponse/transfert, la PORTÉE du nouveau compte décide.
+    const sig = lue?.html ?? null;
+    const applicable = mode === 'new' || lue?.replies ? sig : null;
+    await poserCorps(gabaritCorps(applicable));
+    corpsAuto = gabaritSeul && Boolean(applicable);
+  }
+
   export async function ouvrir(nouveauMode, source = null) {
     const mien = ++jeton;
     mode = nouveauMode;
@@ -298,6 +348,16 @@
     brouillonId = null;
     brouillonEpoch = null;
     demandeSuppr = false;
+    important = false;
+    montrerDiffere = false;
+    dateDiffere = '';
+    corpsAuto = false;
+    // Un rechargement de signature en vol (changement de compte d'une
+    // session précédente) ne doit jamais atterrir sur CETTE carte ; le
+    // gabarit de la carte précédente meurt avec elle.
+    jetonSignature += 1;
+    gabaritCorps = null;
+    gabaritSeul = false;
     // Le nuancier et la photo de sélection sont des états de MODULE :
     // ils survivraient à la fermeture de la carte — un Range du corps
     // précédent colorierait un fantôme.
@@ -309,6 +369,34 @@
     fermerSuggestions();
     visible = true;
     await poserCorps('');
+
+    // R1 : la signature du compte émetteur, lue une fois à l'ouverture.
+    // Un échec vaut « pas de signature » — jamais un blocage.
+    let signature = null;
+    if (expediteur) {
+      try {
+        signature = await appel('signature_get', { accountId: expediteur.account_id });
+      } catch (err) {
+        console.error('signature_get :', err);
+      }
+      if (mien !== jeton) return;
+    }
+    const sig = signature?.html ?? null;
+    // D4 : la portée « aussi dans les réponses et transferts » est un
+    // réglage par compte — un nouveau message porte toujours sa
+    // signature, une réponse seulement si le compte l'a choisi.
+    const sigRepliques = sig && signature.replies ? sig : null;
+
+    if (nouveauMode === 'new') {
+      // Deux lignes vides puis la signature : le curseur reste au
+      // sommet. `corpsAuto` — fermer sans frappe ne sème rien.
+      gabaritCorps = (s) => (s ? `<div><br></div><div><br></div>${s}` : '');
+      gabaritSeul = true;
+      if (sig && !corpsModifie) {
+        await poserCorps(gabaritCorps(sig));
+        corpsAuto = true;
+      }
+    }
 
     if (nouveauMode !== 'new' && source) {
       const enReponse = nouveauMode === 'reply' || nouveauMode === 'reply_all';
@@ -331,17 +419,31 @@
           // curseur) ; l'amorce les apporte déjà — sans cette taille,
           // quatre lignes vides sépareraient l'amorce de la citation.
           const citation = contexte.body_html ?? '';
-          const contenu = prenom
-            ? `${texteEnHtml(t('compo.bonjour', { prenom }))}<div><br></div>${citation.replace(/^(<br>)+/, '')}`
-            : citation;
+          // R1/D4 : la signature d'une réponse se pose ENTRE l'amorce
+          // et la citation — l'usage des clients mûrs. Le GABARIT
+          // survit à l'ouverture : changer de compte émetteur recompose
+          // le même corps avec la signature du nouveau compte (terrain
+          // 2026-08-21), amorce et citation regarnies à l'identique.
+          const citationNette = citation.replace(/^(<br>)+/, '');
+          gabaritCorps = prenom
+            ? (s) =>
+                `${texteEnHtml(t('compo.bonjour', { prenom }))}<div><br></div>${s ? `${s}<div><br></div>` : ''}${citationNette}`
+            : (s) =>
+                s ? `<div><br></div>${s}<div><br></div>${citationNette}` : citation;
+          const contenu = gabaritCorps(sigRepliques);
           // La frappe déjà posée PRIME : le contexte peut mettre des
           // secondes (corps à rapatrier) — écraser ce que l'utilisateur
           // a tapé entre-temps serait pire qu'une citation absente.
           if (!corpsModifie) await poserCorps(contenu);
           replyToMailbox = source.mailbox;
           replyToUid = source.uid;
-        } else if (!corpsModifie) {
-          await poserCorps(contexte.body_html ?? '');
+        } else {
+          // Transfert : la signature (si la portée du compte la met en
+          // réponse/transfert) précède le bloc transféré, qui apporte
+          // ses propres séparateurs. Même gabarit recomposable.
+          const bloc = contexte.body_html ?? '';
+          gabaritCorps = (s) => (s ? `<div><br></div>${s}${bloc}` : bloc);
+          if (!corpsModifie) await poserCorps(gabaritCorps(sigRepliques));
         }
       } catch (err) {
         if (mien !== jeton) return;
@@ -357,10 +459,17 @@
           );
           return;
         }
-        // Réponse sans citation : le cœur le permet, on écrit quand même.
+        // Réponse sans citation : le cœur le permet, on écrit quand
+        // même — la signature aussi, si la portée du compte le dit.
         objet = sujetRe(source.subject);
         replyToMailbox = source.mailbox;
         replyToUid = source.uid;
+        gabaritCorps = (s) => (s ? `<div><br></div><div><br></div>${s}` : '');
+        gabaritSeul = true;
+        if (sigRepliques && !corpsModifie) {
+          await poserCorps(gabaritCorps(sigRepliques));
+          corpsAuto = true;
+        }
       }
       // Le transfert transmet ses pièces POUR DE VRAI (PJ-D4) : chacune
       // est rapatriée du serveur et versée au brouillon — une puce par
@@ -471,6 +580,16 @@
     brouillonId = brouillon.id;
     brouillonEpoch = brouillon.updated_epoch;
     demandeSuppr = false;
+    // R3 : la reprise restitue le marquage — l'état vit au brouillon.
+    important = brouillon.important ?? false;
+    montrerDiffere = false;
+    dateDiffere = '';
+    corpsAuto = false;
+    // Une reprise n'a pas de gabarit : son texte est la seule vérité —
+    // changer de compte n'y recompose jamais rien.
+    jetonSignature += 1;
+    gabaritCorps = null;
+    gabaritSeul = false;
     montrerCouleurs = false;
     selectionCorps = null;
     fermerSuggestions();
@@ -490,12 +609,17 @@
   // brouillon » n'apparaissait qu'à l'autosave).
   function vide() {
     void corpsVersion;
+    // R1 : un corps que WIND a posé seul (la signature) sans une frappe
+    // de l'utilisateur compte pour vide — sans quoi chaque composition
+    // ouverte puis fermée sèmerait un brouillon fantôme.
+    const corpsVide =
+      (corpsAuto && !corpsModifie) || !(champCorps?.textContent ?? '').trim();
     return (
       !a.trim() &&
       !cc.trim() &&
       !cci.trim() &&
       !objet.trim() &&
-      !(champCorps?.textContent ?? '').trim() &&
+      corpsVide &&
       pieces.length === 0
     );
   }
@@ -541,6 +665,7 @@
           bodyHtml,
           replyToUid,
           replyToMailbox,
+          important,
         },
       });
       if (!visible) {
@@ -632,7 +757,38 @@
     if (avaitBrouillon) onflash(t('toast.brouillonSupprime'));
   }
 
-  async function envoyer() {
+  function envoyer() {
+    return envoyerAvec(null);
+  }
+
+  // R2 : ouvre la carte « Envoyer plus tard », préréglée à +1 h ronde.
+  const formatLocal = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` +
+    `T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+
+  function ouvrirDiffere() {
+    const dansUneHeure = new Date(Date.now() + 3600 * 1000);
+    dansUneHeure.setSeconds(0, 0);
+    dateDiffere = formatLocal(dansUneHeure);
+    montrerDiffere = true;
+  }
+
+  function programmerEnvoi() {
+    const quand = new Date(dateDiffere);
+    // Une échéance passée (ou illisible) ne programme rien : le refus
+    // se dit, la carte reste ouverte pour corriger.
+    if (Number.isNaN(quand.getTime()) || quand.getTime() <= Date.now()) {
+      onflash(t('erreur.differePasse'));
+      return;
+    }
+    montrerDiffere = false;
+    envoyerAvec(Math.floor(quand.getTime() / 1000));
+  }
+
+  // `echeance` (secondes epoch) : null = envoi immédiat ; sinon l'envoi
+  // est JOURNALISÉ tout de suite (règle d'or) et la vidange ne le
+  // prendra qu'à l'heure dite (R2, filtre côté cœur).
+  async function envoyerAvec(echeance) {
     if (envoiEnCours) return; // double-clic = un seul envoi
     if (!expediteur) {
       onflash(t('erreur.aucunCompte'));
@@ -666,6 +822,8 @@
         // Le brouillon-ancre : ses pièces rejoignent le journal dans la
         // même transaction (PJ-D2).
         draftId: brouillonId,
+        important,
+        sendAtEpoch: echeance,
       });
     } catch (err) {
       onflash(t('erreur.envoi', { err }));
@@ -677,11 +835,24 @@
     const regle = brouillonId;
     clearTimeout(minuterie);
     visible = false;
-    onflash(t('toast.envoye'));
+    // R2 : le toast d'un envoi programmé dit l'ÉCHÉANCE, jamais
+    // « envoyé » — rien n'est parti, l'écho ne naîtra qu'au départ.
+    onflash(
+      echeance
+        ? t('toast.programme', { quand: quandLong(echeance) })
+        : t('toast.envoye'),
+    );
     if (regle !== null) {
       await appel('delete_draft', { id: regle })
         .catch((err) => console.error('delete_draft (après envoi) :', err));
       onbrouillon();
+    }
+    if (echeance) {
+      // Rien à vidanger ni à réconcilier maintenant : la barre d'état
+      // dira l'envoi programmé (sonde 10 s), et c'est elle qui lancera
+      // la vidange à l'échéance.
+      onenvoye();
+      return;
     }
     // Vidange en arrière-plan ; hors ligne, la file attend — l'incident
     // visible est la fente d'avis (P5). Vidange faite ET fructueuse :
@@ -963,11 +1134,7 @@
                  le prototype figeait la ligne, v1 avait le sélecteur. -->
             <select class="valeur" data-testid="composition-de" aria-label={t('compo.compteEmetteur')}
                     value={expediteur?.email ?? ''}
-                    onchange={(e) => {
-                      const choisi = comptes.find((c) => c.email === e.target.value);
-                      if (choisi) expediteur = { account_id: choisi.account_id, email: choisi.email };
-                      programmerSauvegarde();
-                    }}>
+                    onchange={(e) => changerExpediteur(e.target.value)}>
               {#each comptes as c (c.account_id)}
                 <option value={c.email}>{c.email}</option>
               {/each}
@@ -1179,6 +1346,16 @@
                 data-testid="composition-format-effacer"
                 onmousedown={(e) => e.preventDefault()} onclick={() => commande('removeFormat')}>
           <span class="ms" aria-hidden="true">format_clear</span></button>
+        <span class="sep" aria-hidden="true"></span>
+        <!-- R3 (terrain 2026-08-21) : « Important » vit DANS la barre de
+             mise en forme, au format de ses voisins (icône seule) — une
+             bascule d'état du message (aria-pressed), pas une action. -->
+        <button type="button" class="bouton-format" class:actif={important}
+                aria-label={t('compo.importantTitre')} title={t('compo.importantTitre')}
+                aria-pressed={important} data-testid="composition-important"
+                onmousedown={(e) => e.preventDefault()}
+                onclick={() => { important = !important; programmerSauvegarde(); }}>
+          <span class="ms" aria-hidden="true">priority_high</span></button>
       </div>
       {#if demandeSuppr}
         <!-- R3/D3 : la confirmation vit DANS le pied, à la place des
@@ -1198,6 +1375,32 @@
           <button type="button" class="principal" data-testid="composition-envoyer"
                   disabled={envoiEnCours} onclick={envoyer}>
             <span class="ms" aria-hidden="true">send</span>{t('action.envoyer')}</button>
+          <!-- R2 : « Envoyer plus tard » — la carte s'ouvre au-dessus du
+               pied (même idiome que le nuancier), échéance préréglée à
+               +1 h, contrôle natif date+heure. -->
+          <span class="groupe-differe">
+            <button type="button" data-testid="composition-plus-tard"
+                    disabled={envoiEnCours} onclick={ouvrirDiffere}>
+              <span class="ms" aria-hidden="true">schedule_send</span>{t('compo.plusTard')}</button>
+            {#if montrerDiffere}
+              <div class="differe" data-testid="composition-differe">
+                <label class="differe-label">{t('compo.differeQuand')}
+                  <input type="datetime-local" bind:value={dateDiffere}
+                         data-testid="composition-differe-date">
+                </label>
+                <!-- D1 : la sémantique locale se DIT — jamais une
+                     promesse de serveur qu'on ne tient pas. -->
+                <p class="differe-note">{t('compo.differeNote')}</p>
+                <div class="differe-actions">
+                  <button type="button" class="principal" data-testid="composition-differe-confirmer"
+                          onclick={programmerEnvoi}>
+                    <span class="ms" aria-hidden="true">schedule_send</span>{t('compo.programmer')}</button>
+                  <button type="button" class="annuler" data-testid="composition-differe-annuler"
+                          onclick={() => (montrerDiffere = false)}>{t('action.annuler')}</button>
+                </div>
+              </div>
+            {/if}
+          </span>
           <button type="button" onclick={joindre} data-testid="composition-joindre">
             <span class="ms" aria-hidden="true">attach_file</span>{t('compo.joindre')}</button>
           <button type="button" onclick={enregistrerBrouillon} data-testid="composition-brouillon">
@@ -1230,9 +1433,13 @@
     border-radius:10px; box-shadow:var(--shadow);
     display:flex; flex-direction:column; overflow:hidden;
   }
+  /* A66 : l'entête porte le même fond que le pied de page de Wind
+     (la barre d'état, --panel) — et que la barre de mise en forme en
+     bas de carte : la carte s'encadre haut/bas dans la même teinte. */
   .tete {
     height:48px; flex:none; padding:0 16px 0 22px; display:flex;
     align-items:center; gap:14px; border-bottom:1px solid var(--border);
+    background:var(--panel);
   }
   .kicker {
     font-size:12px; letter-spacing:.1em; text-transform:uppercase;
@@ -1396,11 +1603,15 @@
     flex:none; padding:14px 22px 18px; border-top:1px solid var(--border);
     display:flex; align-items:center; gap:12px;
   }
+  /* Terrain 2026-08-21 : un libellé de bouton ne se replie JAMAIS sur
+     deux lignes — le pied wrappe par bouton entier s'il manque de place. */
   button {
     height:32px; padding:0 16px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink); background:var(--surface);
     border:1px solid var(--border); border-radius:6px; cursor:pointer;
+    white-space:nowrap;
   }
+  .pied { flex-wrap:wrap; }
   button:hover { background:var(--sel); }
   .principal {
     font-weight:600; color:var(--onAccent); background:var(--accent);
@@ -1417,6 +1628,27 @@
   /* Le ressort pousse le geste destructif et « Annuler » à droite,
      séparés du cluster Envoyer/Joindre/Enregistrer. */
   .essor { flex:1; }
+  /* R2 : la carte « Envoyer plus tard », au-dessus du pied — le même
+     idiome de surimpression locale que le nuancier. */
+  .groupe-differe { position:relative; display:inline-flex; }
+  .differe {
+    position:absolute; bottom:40px; left:0; z-index:3; width:320px;
+    padding:14px; background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; box-shadow:var(--shadow);
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .differe-label {
+    display:flex; align-items:center; gap:10px;
+    font-size:13px; color:var(--ink2); white-space:nowrap;
+  }
+  .differe-label input {
+    flex:1; min-width:0; height:32px; padding:0 8px; font:inherit;
+    font-size:13px; color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px;
+  }
+  .differe-note { margin:0; font-size:12px; color:var(--muted); line-height:1.5; }
+  .differe-actions { display:flex; align-items:center; gap:12px; }
+
   /* R3 : « Supprimer le brouillon » et sa confirmation — teinte d'alerte,
      jamais la couleur d'accent (qui appelle au clic). */
   .supprimer { color:var(--alert); border-color:var(--border); }

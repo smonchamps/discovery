@@ -805,8 +805,9 @@ test('les réglages appliquent et persistent le thème', async () => {
 
 test("les réglages en deux volets se parcourent au clic ET au clavier (A13)", async () => {
   await page.locator('[data-testid="reglages"]').click();
-  // Le rail porte les six groupes ; Comptes est le groupe d'ouverture.
-  await expect(page.locator('[data-testid="reglages-groupe"]')).toHaveCount(6);
+  // Le rail porte les sept groupes (Signature entrée avec RETOURS-6) ;
+  // Comptes est le groupe d'ouverture.
+  await expect(page.locator('[data-testid="reglages-groupe"]')).toHaveCount(7);
   await expect(page.locator('[data-testid="reglages-comptes"]')).toBeVisible();
   // Au clic : Raccourcis — la table D3 en référence, lecture seule.
   await page.locator('[data-testid="reglages-groupe"][data-groupe="raccourcis"]').click();

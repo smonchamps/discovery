@@ -1,6 +1,6 @@
 # Icônes vendorisées — sous-ensemble Material Symbols Rounded (R0-S3)
 
-**58 glyphes**, **23 616 octets** (23,1 Kio) woff2, servis depuis le dépôt.
+**61 glyphes**, **25 564 octets** (25,0 Kio) woff2, servis depuis le dépôt.
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
@@ -51,6 +51,11 @@ barre de mise en forme réelle** — `format_bold`, `format_italic`,
 et `format_quote` (D1 : Lien et Citation quittent la barre), tous deux
 **conservés réservés** comme `storage`/`open_in_new` ; le sous-ensemble
 passe de 46 à **58**, cache-buster `?v=58`.
+A66-A69 (PLAN-RETOURS-6, 2026-08-21) ajoutent **3 glyphes** :
+`priority_high` (bouton « Important » du composeur, R3),
+`schedule_send` (« Envoyer plus tard » et l'avis d'un envoi programmé,
+R2) et `signature` (groupe Signature des Réglages, R1) ; le
+sous-ensemble passe de 58 à **61**, cache-buster `?v=61`.
 
 `all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
 `check_circle` `close` `delete` `description` `display_settings`
@@ -61,10 +66,11 @@ passe de 46 à **58**, cache-buster `?v=58`.
 `format_quote` `format_underlined` `forum` `group_add`
 `hourglass_empty` `inbox` `info` `inventory_2` `keyboard` `link`
 `link_off` `mark_email_unread` `menu` `notifications` `open_in_full`
-`open_in_new` `person` `person_add` `reply` `reply_all` `report`
-`search` `send` `settings` `storage` `strikethrough_s` `sync`
-`system_update_alt` `unfold_less` `unfold_more` `visibility_off`
-`volunteer_activism` `warning`
+`open_in_new` `person` `person_add` `priority_high` `reply`
+`reply_all` `report` `schedule_send` `search` `send` `settings`
+`signature` `storage` `strikethrough_s` `sync` `system_update_alt`
+`unfold_less` `unfold_more` `visibility_off` `volunteer_activism`
+`warning`
 
 Ajouter un glyphe = régénérer le fichier (ci-dessous), tenir cette
 liste à jour — l'inventaire est le contrat — **et** incrémenter le
@@ -128,8 +134,8 @@ curl -s -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?fam
 ## Preuve ([apercu.html](apercu.html))
 
 Page servie localement sous CSP `default-src 'none'; font-src 'self'` :
-**PASS — police locale chargée, 59/59 ligatures repliées** (les 58 glyphes
-+ le témoin FILL 1/600 ; rejouée le 2026-08-20, A62 — 12 glyphes de la
-barre de mise en forme ajoutés).
+**PASS — police locale chargée, 62/62 ligatures repliées** (les 61 glyphes
++ le témoin FILL 1/600 ; rejouée le 2026-08-21, A66-A69 — 3 glyphes de
+PLAN-RETOURS-6 ajoutés).
 Vérification objective : une ligature résolue se replie sur ~1 em ; un
 nom resté en toutes lettres est bien plus large.

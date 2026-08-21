@@ -16,7 +16,7 @@
 //! fournisseurs l'exigeront (Phase 3, multi-comptes).
 
 use lettre::address::Envelope;
-use lettre::message::header::ContentType;
+use lettre::message::header::{ContentType, Header, HeaderName, HeaderValue};
 use lettre::message::{Attachment as FilePart, Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::SmtpTransportBuilder;
 use lettre::transport::smtp::authentication::{Credentials, Mechanism};
@@ -143,6 +143,46 @@ fn build_envelope(message: &OutboxMessage) -> Result<Envelope, SendError> {
         .map_err(|err| SendError::Permanent(format!("enveloppe SMTP : {err}")))
 }
 
+/// En-tête `X-Priority: 1` d'un envoi marqué important (R3,
+/// PLAN-RETOURS-6). `lettre` n'a pas d'en-tête de priorité intégré ;
+/// la paire X-Priority + Importance est celle que posent Outlook et
+/// Thunderbird — et que lisent Gmail et les autres. Toujours « 1 » :
+/// Wind ne connaît qu'un cran (important), pas une échelle.
+#[derive(Debug, Clone)]
+struct XPriority;
+
+impl Header for XPriority {
+    fn name() -> HeaderName {
+        HeaderName::new_from_ascii_str("X-Priority")
+    }
+
+    fn parse(_s: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(Self)
+    }
+
+    fn display(&self) -> HeaderValue {
+        HeaderValue::new(Self::name(), "1".to_string())
+    }
+}
+
+/// En-tête `Importance: high` — le second de la paire (RFC 2156/4021).
+#[derive(Debug, Clone)]
+struct Importance;
+
+impl Header for Importance {
+    fn name() -> HeaderName {
+        HeaderName::new_from_ascii_str("Importance")
+    }
+
+    fn parse(_s: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Ok(Self)
+    }
+
+    fn display(&self) -> HeaderValue {
+        HeaderValue::new(Self::name(), "high".to_string())
+    }
+}
+
 /// Traduit un message de la boîte d'envoi en message RFC 5322.
 ///
 /// Le Message-ID est CELUI du journal — jamais regénéré : c'est lui qui
@@ -166,6 +206,11 @@ fn build_message(message: &OutboxMessage) -> Result<Message, SendError> {
         builder = builder
             .in_reply_to(parent.clone())
             .references(parent.clone());
+    }
+    // R3 : le marquage vient du journal — c'est lui qui part, jamais un
+    // état d'écran. Ordinaire = aucun en-tête (chemin historique intact).
+    if message.important {
+        builder = builder.header(XPriority).header(Importance);
     }
     if message.attachments.is_empty() {
         // Corps riche : multipart/alternative — le texte d'abord (RFC
@@ -319,6 +364,8 @@ mod tests {
             body_text: "Premier essai.\nDeuxième ligne.".to_string(),
             body_html: None,
             in_reply_to: in_reply_to.map(str::to_string),
+            important: false,
+            send_at_epoch: None,
             attachments: vec![],
             state: OutboxState::Queued,
             attempts: 0,
@@ -383,6 +430,25 @@ mod tests {
             rcpts.iter().any(|a| a == "invisible@exemple.fr"),
             "le Cci DOIT être un destinataire d'enveloppe : {rcpts:?}"
         );
+    }
+
+    /// R3 (PLAN-RETOURS-6) : un envoi marqué important porte LA paire
+    /// d'en-têtes que lisent les clients mûrs — `X-Priority: 1` et
+    /// `Importance: high`. Un envoi ordinaire n'en porte aucun.
+    #[test]
+    fn important_message_carries_priority_headers() {
+        let mut message = outbox_message(None);
+        message.important = true;
+        let raw = formatted(&message);
+        assert!(raw.contains("X-Priority: 1"), "{raw}");
+        assert!(raw.contains("Importance: high"), "{raw}");
+    }
+
+    #[test]
+    fn ordinary_message_has_no_priority_headers() {
+        let raw = formatted(&outbox_message(None));
+        assert!(!raw.contains("X-Priority"), "{raw}");
+        assert!(!raw.contains("Importance"), "{raw}");
     }
 
     #[test]

@@ -8,6 +8,7 @@
   //
   // Règle : un groupe ne s'expédie qu'avec du contenu RÉEL — aucun
   // réglage inventé pour meubler, aucun groupe vide.
+  import { tick } from 'svelte';
   import {
     FICHES, appliquerTheme, themeAffiche, suiviOs, appliquerSuiviOs,
   } from './lib/theme.js';
@@ -36,6 +37,9 @@
     { id: 'themes', icone: 'bookmark', libelle: 'groupe.themes' },
     { id: 'affichage', icone: 'display_settings', libelle: 'groupe.affichage' },
     { id: 'notifications', icone: 'notifications', libelle: 'groupe.notifications' },
+    // R1 (PLAN-RETOURS-6) : le gestionnaire de signature — du contenu
+    // réel (un éditeur par compte), la règle des groupes est tenue.
+    { id: 'signature', icone: 'signature', libelle: 'groupe.signature' },
     { id: 'raccourcis', icone: 'keyboard', libelle: 'groupe.raccourcis' },
     { id: 'apropos', icone: 'info', libelle: 'groupe.apropos' },
   ];
@@ -200,6 +204,96 @@
       appliquerLangue(avant);
       langue = avant;
     });
+  }
+
+  // R1 (PLAN-RETOURS-6, D3/D4) : la signature par compte. Un éditeur
+  // riche RÉDUIT (gras/italique/souligné — le vocabulaire passe la même
+  // frontière ammonia que le composeur, à l'enregistrement côté Rust)
+  // et la PORTÉE (aussi dans les réponses/transferts ?) — un choix par
+  // compte, applicable à tous d'un geste (D4, mot pour mot).
+  let signatures = $state({}); // account_id -> { replies, etat }
+  let champsSignature = {}; // account_id -> contenteditable (hors réactivité)
+  async function chargerSignatures() {
+    for (const c of comptes) {
+      try {
+        const lue = await appel('signature_get', { accountId: c.account_id });
+        signatures[c.account_id] = { replies: lue.replies, etat: null };
+        // Le nœud n'existe qu'une fois le groupe rendu — poser avant
+        // serait perdu (même raison que `poserCorps` au composeur).
+        await tick();
+        const champ = champsSignature[c.account_id];
+        if (champ) champ.innerHTML = lue.html ?? '';
+      } catch (err) {
+        console.error('signature_get :', err);
+      }
+    }
+  }
+  $effect(() => {
+    if (visible && groupe === 'signature') chargerSignatures();
+  });
+  // `styleWithCSS` éteint, comme au composeur : la sortie reste le
+  // vocabulaire exact de l'allowlist (b/i/u), jamais du style généré.
+  function commandeSignature(nom) {
+    document.execCommand('styleWithCSS', false, false);
+    document.execCommand(nom, false, null);
+  }
+  async function enregistrerSignature(c, { replies = null, etat = 'ok' } = {}) {
+    const sig = signatures[c.account_id] ?? { replies: false };
+    const voulu = replies ?? sig.replies;
+    try {
+      await appel('signature_set', {
+        accountId: c.account_id,
+        html: champsSignature[c.account_id]?.innerHTML ?? '',
+        replies: voulu,
+      });
+      signatures[c.account_id] = { replies: voulu, etat };
+      return true;
+    } catch (err) {
+      signatures[c.account_id] = {
+        ...sig,
+        etat: { erreur: t('erreur.signature', { err }) },
+      };
+      return false;
+    }
+  }
+  function effacerSignature(c) {
+    const champ = champsSignature[c.account_id];
+    if (champ) champ.innerHTML = '';
+    enregistrerSignature(c);
+  }
+  // La bascule ENREGISTRE (le choix s'applique tout de suite, comme les
+  // autres interrupteurs des Réglages) — et emporte le texte courant de
+  // l'éditeur : un seul chemin d'écriture.
+  function basculerRepliques(c) {
+    const sig = signatures[c.account_id] ?? { replies: false };
+    enregistrerSignature(c, { replies: !sig.replies });
+  }
+  // D4, précisé au terrain (2026-08-21) : « appliquer à tous les
+  // comptes » copie la SIGNATURE ET la PORTÉE de ce compte chez tous
+  // les autres — et ça se VOIT : leurs éditeurs et leurs interrupteurs
+  // se mettent à jour à l'écran, pas seulement en base.
+  async function appliquerATous(c) {
+    const html = champsSignature[c.account_id]?.innerHTML ?? '';
+    const voulu = signatures[c.account_id]?.replies ?? false;
+    await enregistrerSignature(c, { replies: voulu, etat: 'tous' });
+    for (const autre of comptes) {
+      if (autre.account_id === c.account_id) continue;
+      try {
+        await appel('signature_set', {
+          accountId: autre.account_id,
+          html,
+          replies: voulu,
+        });
+        const champ = champsSignature[autre.account_id];
+        if (champ) champ.innerHTML = html;
+        signatures[autre.account_id] = { replies: voulu, etat: null };
+      } catch (err) {
+        signatures[autre.account_id] = {
+          ...(signatures[autre.account_id] ?? { replies: false }),
+          etat: { erreur: t('erreur.signature', { err }) },
+        };
+      }
+    }
   }
 
   // Le même flux que la fente d'avis (ADR 0013) : update_check en
@@ -394,6 +488,80 @@
                   <span class="bille"></span>
                 </button>
               </div>
+            </div>
+          {:else if groupe === 'signature'}
+            <p class="section">{t('groupe.signature')}</p>
+            <div class="rangees" data-testid="reglages-signature">
+              <p class="desc-groupe">{t('reglages.signatureDesc')}</p>
+              {#each comptes as c (c.account_id)}
+                <div class="bloc-signature" data-testid="signature-compte">
+                  <span class="adresse-signature">
+                    <span class="ms" aria-hidden="true">person</span>{c.email}</span>
+                  <!-- La barre réduite (D3) : gras/italique/souligné —
+                       onmousedown neutralisé, un bouton de format ne vole
+                       jamais la sélection de l'éditeur (idiome A62). -->
+                  <div class="barre-signature">
+                    <button type="button" class="bouton-format" aria-label={t('compo.gras')}
+                            title={t('compo.gras')} data-testid="signature-gras"
+                            onmousedown={(e) => e.preventDefault()}
+                            onclick={() => commandeSignature('bold')}>
+                      <span class="ms" aria-hidden="true">format_bold</span></button>
+                    <button type="button" class="bouton-format" aria-label={t('compo.italique')}
+                            title={t('compo.italique')} data-testid="signature-italique"
+                            onmousedown={(e) => e.preventDefault()}
+                            onclick={() => commandeSignature('italic')}>
+                      <span class="ms" aria-hidden="true">format_italic</span></button>
+                    <button type="button" class="bouton-format" aria-label={t('compo.souligne')}
+                            title={t('compo.souligne')} data-testid="signature-souligne"
+                            onmousedown={(e) => e.preventDefault()}
+                            onclick={() => commandeSignature('underline')}>
+                      <span class="ms" aria-hidden="true">format_underlined</span></button>
+                  </div>
+                  <div class="editeur-signature" contenteditable="true" role="textbox"
+                       aria-multiline="true" tabindex="0"
+                       data-placeholder={t('reglages.signaturePlaceholder')}
+                       aria-label={t('reglages.signaturePlaceholder')}
+                       data-testid="signature-editeur"
+                       bind:this={champsSignature[c.account_id]}
+                       oninput={() => {
+                         const sig = signatures[c.account_id];
+                         if (sig?.etat) signatures[c.account_id] = { ...sig, etat: null };
+                       }}></div>
+                  <div class="reglage">
+                    <span class="libelles">
+                      <span class="nom">{t('reglages.signatureRepliques')}</span>
+                      <span class="desc">{t('reglages.signatureRepliquesDesc')}</span>
+                    </span>
+                    <button type="button" class="bascule" role="switch"
+                            aria-checked={signatures[c.account_id]?.replies ?? false}
+                            aria-label={t('reglages.signatureRepliques')}
+                            data-testid="signature-repliques"
+                            onclick={() => basculerRepliques(c)}>
+                      <span class="bille"></span>
+                    </button>
+                  </div>
+                  <div class="boutons-signature">
+                    <button type="button" class="ajouter" data-testid="signature-enregistrer"
+                            onclick={() => enregistrerSignature(c)}>
+                      <span class="ms" aria-hidden="true">signature</span>{t('action.enregistrer')}</button>
+                    <button type="button" class="ajouter" data-testid="signature-effacer"
+                            onclick={() => effacerSignature(c)}>{t('action.effacer')}</button>
+                    {#if comptes.length > 1}
+                      <button type="button" class="ajouter" data-testid="signature-tous"
+                              onclick={() => appliquerATous(c)}>
+                        {t('reglages.signatureTous')}</button>
+                    {/if}
+                  </div>
+                  {#if signatures[c.account_id]?.etat === 'ok'}
+                    <p class="etat-signature" data-testid="signature-etat">{t('toast.signature')}</p>
+                  {:else if signatures[c.account_id]?.etat === 'tous'}
+                    <p class="etat-signature" data-testid="signature-etat">{t('toast.signatureTous')}</p>
+                  {:else if signatures[c.account_id]?.etat?.erreur}
+                    <p class="erreur-retrait" data-testid="signature-erreur">
+                      {signatures[c.account_id].etat.erreur}</p>
+                  {/if}
+                </div>
+              {/each}
             </div>
           {:else if groupe === 'raccourcis'}
             <p class="section">{t('reglages.sectionRaccourcis')}</p>
@@ -677,6 +845,41 @@
     color:var(--ink); display:inline-flex; flex-wrap:wrap;
     align-items:center; gap:10px; min-width:0;
   }
+
+  /* R1 (PLAN-RETOURS-6) : le groupe Signature — un bloc par compte,
+     éditeur riche réduit aux jetons de la carte. */
+  .desc-groupe {
+    margin:0; padding:0 16px 4px; font-size:12px; line-height:1.5;
+    color:var(--muted);
+  }
+  .bloc-signature {
+    display:flex; flex-direction:column; gap:10px; padding:12px 16px;
+    border:1px solid var(--border); border-radius:8px;
+  }
+  .adresse-signature {
+    display:flex; align-items:center; gap:8px;
+    font-size:13px; font-weight:600; color:var(--ink);
+  }
+  .barre-signature { display:flex; align-items:center; gap:6px; }
+  .bouton-format {
+    height:32px; min-width:32px; padding:0 6px; display:inline-flex;
+    align-items:center; justify-content:center; color:var(--ink2);
+    background:var(--surface); cursor:pointer;
+    border:1px solid var(--border); border-radius:6px;
+  }
+  .bouton-format:hover { background:var(--sel); color:var(--ink); }
+  .editeur-signature {
+    min-height:72px; padding:10px 12px; font-size:13px; line-height:1.6;
+    color:var(--ink); background:var(--surface);
+    border:1px solid var(--border); border-radius:6px; outline:none;
+    overflow-wrap:break-word;
+  }
+  .editeur-signature:focus { border-color:var(--accent); }
+  .editeur-signature:empty::before {
+    content:attr(data-placeholder); color:var(--muted); pointer-events:none;
+  }
+  .boutons-signature { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .etat-signature { margin:0; font-size:12px; line-height:1.4; color:var(--accent); }
 
   .pied {
     flex:none; padding:14px 22px 18px; border-top:1px solid var(--border);

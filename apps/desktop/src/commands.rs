@@ -2509,6 +2509,10 @@ pub struct OutboxEntry {
     /// Combien de pièces le journal porte pour cet envoi (PJ-D2) — la
     /// quarantaine et le refus doivent pouvoir dire ce qui repartirait.
     pub pieces: usize,
+    /// R2 : l'échéance d'un envoi programmé (secondes epoch) — `None`
+    /// pour un envoi ordinaire. L'UI en dérive « programmé pour {h} »
+    /// et le geste d'annulation.
+    pub send_at_epoch: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -2516,6 +2520,13 @@ pub struct OutboxStatus {
     pub queued: usize,
     pub interrupted: usize,
     pub rejected: usize,
+    /// R2 : les envois programmés PAS ENCORE échus — séparés de
+    /// `queued`, sans quoi la barre d'état dirait « en attente » d'un
+    /// envoi qui attend son heure, pas le réseau (mensonge).
+    pub scheduled: usize,
+    /// La plus proche échéance parmi les programmés — la sonde du front
+    /// déclenche la vidange quand elle passe.
+    pub next_scheduled_epoch: Option<i64>,
     /// Tout sauf les envois aboutis, dans l'ordre d'émission.
     pub entries: Vec<OutboxEntry>,
 }
@@ -2758,6 +2769,10 @@ pub async fn queue_send(
     reply_to_mailbox: Option<String>,
     reply_to_uid: Option<u32>,
     draft_id: Option<i64>,
+    important: bool,
+    // R2 : l'échéance (secondes epoch) d'un envoi différé — None =
+    // tout de suite, chemin historique.
+    send_at_epoch: Option<i64>,
 ) -> Result<(), String> {
     hors_pompe(app, move |app| {
         let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
@@ -2789,17 +2804,16 @@ pub async fn queue_send(
         )
         .map_err(|err| err.to_string())?;
         draft.body_html = corps_riche;
-        // Avec un brouillon-ancre, ses pièces rejoignent le journal dans la
-        // MÊME transaction (PJ-D2) ; sans lui (composition jamais sauvée,
-        // donc sans pièce possible), le chemin historique suffit.
-        match draft_id {
-            Some(draft_id) => store
-                .enqueue_outbox_from_draft(account_id, &draft, draft_id)
-                .map_err(|err| err.to_string())?,
-            None => store
-                .enqueue_outbox(account_id, &draft)
-                .map_err(|err| err.to_string())?,
-        };
+        draft.important = important;
+        // Une échéance déjà passée vaut « tout de suite » : la garde vit
+        // ici, pas dans l'UI — un datetime resté ouvert pendant que
+        // l'heure tournait ne doit pas retenir l'envoi pour rien.
+        let echeance = send_at_epoch.filter(|epoch| *epoch > chrono::Utc::now().timestamp());
+        // Brouillon-ancre (pièces dans la MÊME transaction, PJ-D2) et
+        // échéance (R2) passent par LE chemin unique de la mise en file.
+        store
+            .enqueue_outbox_full(account_id, &draft, draft_id, echeance)
+            .map_err(|err| err.to_string())?;
         Ok(())
     })
     .await
@@ -3306,11 +3320,28 @@ pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
             queued: 0,
             interrupted: 0,
             rejected: 0,
+            scheduled: 0,
+            next_scheduled_epoch: None,
             entries: Vec::new(),
         };
+        let maintenant = chrono::Utc::now().timestamp();
         for message in store.outbox().map_err(|err| err.to_string())? {
+            // R2 : programmé pas encore échu — il n'attend pas le
+            // réseau, il attend son heure. Compté à part, et la plus
+            // proche échéance remonte (la sonde déclenchera la vidange).
+            let programme = message.state == OutboxState::Queued
+                && message
+                    .send_at_epoch
+                    .is_some_and(|epoch| epoch > maintenant);
             match message.state {
                 OutboxState::Sent => continue,
+                OutboxState::Queued if programme => {
+                    status.scheduled += 1;
+                    status.next_scheduled_epoch = match status.next_scheduled_epoch {
+                        None => message.send_at_epoch,
+                        Some(connu) => Some(connu.min(message.send_at_epoch.unwrap_or(connu))),
+                    };
+                }
                 OutboxState::Queued | OutboxState::Sending => status.queued += 1,
                 OutboxState::Interrupted => status.interrupted += 1,
                 OutboxState::Rejected => status.rejected += 1,
@@ -3323,6 +3354,7 @@ pub async fn outbox_status(app: AppHandle) -> Result<OutboxStatus, String> {
                 attempts: message.attempts,
                 error: message.last_error,
                 pieces: message.attachments.len(),
+                send_at_epoch: message.send_at_epoch.filter(|epoch| *epoch > maintenant),
             });
         }
         Ok(status)
@@ -3352,6 +3384,83 @@ pub async fn outbox_delete(app: AppHandle, id: i64) -> Result<(), String> {
     .await
 }
 
+/// R2, décision CE D2 : annule un envoi programmé — l'entrée quitte le
+/// journal et un brouillon COMPLET renaît (destinataires, corps,
+/// marquage, pièces). Rend l'id du brouillon recréé, ou `None` si la
+/// vidange l'a pris entre-temps : trop tard, le message part — l'UI le
+/// dit honnêtement plutôt que de promettre un brouillon fantôme.
+#[tauri::command]
+pub async fn outbox_cancel_scheduled(app: AppHandle, id: i64) -> Result<Option<i64>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        store
+            .annuler_envoi_programme(id)
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------
+// Signature par compte (R1, PLAN-RETOURS-6, décisions CE D3/D4).
+// ---------------------------------------------------------------------
+
+/// La signature d'un compte et sa portée — ce que Réglages édite et ce
+/// que le composeur insère à l'ouverture.
+#[derive(Serialize)]
+pub struct SignatureRow {
+    /// HTML assaini (allowlist ammonia) — `None` : pas de signature.
+    pub html: Option<String>,
+    /// D4 : la signature s'insère AUSSI dans réponses et transferts.
+    /// Défaut : nouveaux messages seuls.
+    pub replies: bool,
+}
+
+#[tauri::command]
+pub async fn signature_get(app: AppHandle, account_id: i64) -> Result<SignatureRow, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let html = store
+            .text_pref(&format!("signature.{account_id}"))
+            .map_err(|err| err.to_string())?
+            .filter(|h| !h.trim().is_empty());
+        let replies = store
+            .bool_pref(&format!("signature_replies.{account_id}"), false)
+            .map_err(|err| err.to_string())?;
+        Ok(SignatureRow { html, replies })
+    })
+    .await
+}
+
+/// Enregistre la signature d'un compte. Le HTML passe LA frontière
+/// (`frontiere_corps`, allowlist ammonia) — une signature entre en base
+/// comme tout corps : assainie, jamais crue. Un HTML au rendu texte
+/// vide vaut « signature effacée ».
+#[tauri::command]
+pub async fn signature_set(
+    app: AppHandle,
+    account_id: i64,
+    html: Option<String>,
+    replies: bool,
+) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let propre = html
+            .as_deref()
+            .and_then(|h| frontiere_corps(String::new(), Some(h)).1);
+        store
+            .set_text_pref(
+                &format!("signature.{account_id}"),
+                propre.as_deref().unwrap_or(""),
+            )
+            .map_err(|err| err.to_string())?;
+        store
+            .set_bool_pref(&format!("signature_replies.{account_id}"), replies)
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    })
+    .await
+}
+
 // ---------------------------------------------------------------------
 // Brouillons locaux + reflet Gmail par compte (Phases 2-3).
 // ---------------------------------------------------------------------
@@ -3377,6 +3486,8 @@ pub struct DraftRow {
     /// Le fil auquel ce brouillon répond, résolu par le cœur — `None`
     /// pour une composition libre ou une cible disparue.
     pub thread_id: Option<i64>,
+    /// Marqué « important » (R3) — la reprise restitue l'état du bouton.
+    pub important: bool,
     /// L'éditeur le renvoie à la sauvegarde : c'est ce qui lui permet de
     /// détecter qu'un autre a écrit entre-temps.
     pub updated_epoch: i64,
@@ -3413,6 +3524,10 @@ pub struct DraftContentArg {
     body_html: Option<String>,
     reply_to_uid: Option<u32>,
     reply_to_mailbox: Option<String>,
+    /// Marqué « important » (R3, PLAN-RETOURS-6). `default` : un
+    /// appelant d'avant le champ n'envoie rien — brouillon ordinaire.
+    #[serde(default)]
+    important: bool,
 }
 
 /// LA frontière du corps riche (PLAN-COMPOSITION-HTML) — le point unique
@@ -3476,6 +3591,7 @@ pub async fn save_draft(
                     body: &corps_texte,
                     reply_to_uid: content.reply_to_uid,
                     reply_to_mailbox: content.reply_to_mailbox.as_deref(),
+                    important: content.important,
                 },
             )
             .map_err(|err| err.to_string())?;
@@ -3509,6 +3625,7 @@ pub async fn list_drafts(app: AppHandle) -> Result<Vec<DraftRow>, String> {
                 reply_to_uid: draft.reply_to_uid,
                 reply_to_mailbox: draft.reply_to_mailbox,
                 thread_id: draft.thread_id,
+                important: draft.important,
             })
             .collect())
     })
@@ -3637,6 +3754,7 @@ pub async fn attach_files(
                             body: "",
                             reply_to_uid: None,
                             reply_to_mailbox: None,
+                            important: false,
                         },
                     )
                     .map_err(|err| err.to_string())?
@@ -3763,6 +3881,7 @@ pub async fn fetch_source_attachment(
                         body: "",
                         reply_to_uid: None,
                         reply_to_mailbox: None,
+                        important: false,
                     },
                 )
                 .map_err(|err| err.to_string())?

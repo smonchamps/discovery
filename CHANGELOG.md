@@ -12,6 +12,39 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.4.0] - 2026-08-21
+
+Votre signature, l'envoi à l'heure choisie, et le marquage important.
+
+### Ajouté
+
+- **Signature par compte** (Réglages > Signature) : rédigez une
+  signature — mise en forme comprise — pour chaque compte ; elle
+  s'ajoute d'elle-même au bas de vos nouveaux messages, et, si vous
+  l'activez, à vos réponses et transferts (entre votre texte et le
+  message cité). « Appliquer à tous les comptes » copie la signature
+  et ce choix partout d'un geste. Dans le composeur, changer de compte
+  émetteur recharge la signature correspondante tant que vous n'avez
+  rien écrit — votre texte n'est jamais réécrit.
+- **Envoyer plus tard** : à côté d'« Envoyer », choisissez une date et
+  une heure — le message part à ce moment-là **si Wind est ouvert**
+  (sinon, au prochain lancement ; Wind vous le dit en le programmant).
+  La barre d'état affiche le départ prévu, et un bandeau permet
+  d'**annuler** à tout moment : le message revient alors dans vos
+  brouillons, pièces jointes comprises — rien n'est perdu.
+- **Marquer un message comme important** : un bouton « ! » dans la
+  barre de mise en forme du composeur. Le message part avec les
+  en-têtes de priorité standard (Outlook et Thunderbird affichent le
+  « ! » chez le destinataire ; Gmail web les ignore à l'affichage —
+  c'est son comportement, l'en-tête est bien présent). Le marquage
+  suit vos brouillons.
+
+### Modifié
+
+- **L'entête de la fenêtre « Nouveau message »** porte désormais la
+  même couleur que le pied de page de Wind — la carte s'encadre
+  haut et bas dans la même teinte.
+
 ## [0.3.0] - 2026-08-21
 
 Les adresses se complètent toutes seules, et l'envoi en cours dit vrai.

@@ -119,6 +119,12 @@ pub struct OutboxMessage {
     /// multipart/alternative ; `None` = envoi texte seul (historique).
     pub body_html: Option<String>,
     pub in_reply_to: Option<String>,
+    /// Marqué « important » à la composition (R3) : la remise posera
+    /// les en-têtes de priorité.
+    pub important: bool,
+    /// Envoi différé (R2) : l'époque (secondes) avant laquelle la
+    /// vidange ne prend pas ce message. `None` = tout de suite.
+    pub send_at_epoch: Option<i64>,
     /// Les pièces, dans l'ordre du geste (PJ-D2).
     pub attachments: Vec<OutboxAttachment>,
     pub state: OutboxState,
@@ -129,7 +135,7 @@ pub struct OutboxMessage {
 
 const OUTBOX_SELECT: &str = "SELECT id, account_id, message_id, sender, recipients, subject,
         body_text, in_reply_to, state, attempts, last_error, queued_epoch, cc_addrs, bcc_addrs,
-        body_html
+        body_html, important, send_at_epoch
  FROM outbox";
 
 impl Store {
@@ -140,8 +146,8 @@ impl Store {
         self.conn().execute(
             "INSERT INTO outbox
              (account_id, message_id, sender, recipients, cc_addrs, bcc_addrs, subject, body_text,
-              body_html, in_reply_to, state, queued_epoch)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+              body_html, in_reply_to, important, state, queued_epoch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 account_id,
                 draft.message_id,
@@ -153,6 +159,7 @@ impl Store {
                 draft.body_text,
                 draft.body_html,
                 draft.in_reply_to,
+                draft.important,
                 OutboxState::Queued.as_str(),
                 Utc::now().timestamp(),
             ],
@@ -178,26 +185,116 @@ impl Store {
         draft: &Draft,
         draft_id: i64,
     ) -> Result<i64, Error> {
+        self.enqueue_outbox_full(account_id, draft, Some(draft_id), None)
+    }
+
+    /// Le chemin COMPLET de la mise en file (R2, PLAN-RETOURS-6) :
+    /// brouillon-ancre facultatif, échéance facultative — le tout dans
+    /// UNE transaction. « Jamais d'envoi perdu » couvre aussi l'heure
+    /// choisie : un crash ne laisse jamais un envoi programmé amputé de
+    /// son échéance (il partirait tout de suite, contre l'intention).
+    pub fn enqueue_outbox_full(
+        &self,
+        account_id: i64,
+        draft: &Draft,
+        draft_id: Option<i64>,
+        send_at_epoch: Option<i64>,
+    ) -> Result<i64, Error> {
         let tx = self.conn().unchecked_transaction()?;
         let outbox_id = self.enqueue_outbox(account_id, draft)?;
-        tx.execute(
-            "INSERT INTO outbox_attachments (outbox_id, name, mime, size, bytes)
-             SELECT ?1, name, mime, size, bytes FROM draft_attachments
-             WHERE draft_id = ?2 ORDER BY id",
-            params![outbox_id, draft_id],
-        )?;
+        if let Some(draft_id) = draft_id {
+            tx.execute(
+                "INSERT INTO outbox_attachments (outbox_id, name, mime, size, bytes)
+                 SELECT ?1, name, mime, size, bytes FROM draft_attachments
+                 WHERE draft_id = ?2 ORDER BY id",
+                params![outbox_id, draft_id],
+            )?;
+        }
+        if let Some(send_at) = send_at_epoch {
+            tx.execute(
+                "UPDATE outbox SET send_at_epoch = ?2 WHERE id = ?1",
+                params![outbox_id, send_at],
+            )?;
+        }
         tx.commit()?;
         Ok(outbox_id)
     }
 
+    /// Annule un envoi programmé (R2, décision CE D2) : l'entrée quitte
+    /// le journal et un brouillon COMPLET renaît — destinataires,
+    /// corps, marquage, pièces avec leurs octets. Rien ne se perd, le
+    /// geste est réversible. `None` si l'entrée n'est plus en file (la
+    /// vidange l'a prise entre-temps : trop tard, le message part) —
+    /// l'appelant le dit honnêtement plutôt que de promettre un
+    /// brouillon qui n'existe pas.
+    ///
+    /// Ne vise que les entrées PROGRAMMÉES et pas encore échues : une
+    /// entrée échue peut être en cours de remise par une vidange
+    /// concurrente (hors de la file sérialisée) — l'annuler ici
+    /// recréerait un brouillon d'un message peut-être parti (doublon).
+    /// L'abandon d'un envoi ordinaire reste `delete_outbox`.
+    pub fn annuler_envoi_programme(&self, id: i64) -> Result<Option<i64>, Error> {
+        let tx = self.conn().unchecked_transaction()?;
+        let mut stmt = self.conn().prepare(&format!(
+            "{OUTBOX_SELECT} WHERE id = ?1 AND state = 'queued'
+               AND send_at_epoch IS NOT NULL AND send_at_epoch > ?2"
+        ))?;
+        let Some(message) = stmt
+            .query_map(params![id, Utc::now().timestamp()], row_to_outbox)?
+            .next()
+            .transpose()?
+        else {
+            drop(stmt);
+            tx.commit()?;
+            return Ok(None);
+        };
+        drop(stmt);
+        // Le brouillon renaît dans le format du composeur : adresses
+        // jointes par « , » (le champ tel qu'on le tape), corps et
+        // marquage tels que le journal les porte.
+        let maintenant = Utc::now().timestamp_millis();
+        self.conn().execute(
+            "INSERT INTO drafts (account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, important, updated_epoch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                message.account_id,
+                message.to.join(", "),
+                message.cc.join(", "),
+                message.bcc.join(", "),
+                message.subject,
+                message.body_text,
+                message.body_html,
+                message.important,
+                maintenant,
+            ],
+        )?;
+        let draft_id = self.conn().last_insert_rowid();
+        // Les octets vivent au journal tant que l'envoi n'est pas parti
+        // (PJ-D7) : la copie repart entière vers le brouillon.
+        self.conn().execute(
+            "INSERT INTO draft_attachments (draft_id, name, mime, size, bytes)
+             SELECT ?1, name, mime, size, bytes FROM outbox_attachments
+             WHERE outbox_id = ?2 AND bytes IS NOT NULL ORDER BY id",
+            params![draft_id, id],
+        )?;
+        self.conn()
+            .execute("DELETE FROM outbox WHERE id = ?1", [id])?;
+        tx.commit()?;
+        Ok(Some(draft_id))
+    }
+
     /// La file d'envoi d'UN compte, dans l'ordre d'émission — chaque
-    /// vidange passe par la connexion SMTP de son compte.
+    /// vidange passe par la connexion SMTP de son compte. Un envoi
+    /// programmé (R2) n'y paraît qu'une fois son échéance passée : le
+    /// filtre vit ICI, la porte unique de la vidange — aucun appelant
+    /// ne peut faire partir un programmé en avance.
     pub fn outbox_to_send(&self, account_id: i64) -> Result<Vec<OutboxMessage>, Error> {
         let mut stmt = self.conn().prepare(&format!(
-            "{OUTBOX_SELECT} WHERE account_id = ?1 AND state = 'queued' ORDER BY id"
+            "{OUTBOX_SELECT} WHERE account_id = ?1 AND state = 'queued'
+               AND (send_at_epoch IS NULL OR send_at_epoch <= ?2) ORDER BY id"
         ))?;
         let rows = stmt
-            .query_map([account_id], row_to_outbox)?
+            .query_map(params![account_id, Utc::now().timestamp()], row_to_outbox)?
             .collect::<Result<Vec<_>, _>>()?;
         self.load_outbox_attachments(rows)
     }
@@ -350,6 +447,8 @@ fn row_to_outbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<OutboxMessage> {
         body_text: row.get(6)?,
         body_html: row.get(14)?,
         in_reply_to: row.get(7)?,
+        important: row.get(15)?,
+        send_at_epoch: row.get(16)?,
         // Chargées par `load_outbox_attachments`, jamais ici : une ligne
         // ne connaît pas ses pièces.
         attachments: Vec::new(),
@@ -516,6 +615,22 @@ mod tests {
         assert_eq!(queued[1].body_html, None);
     }
 
+    /// R3 (PLAN-RETOURS-6) : le marquage « important » survit à
+    /// l'enqueue et à la relecture — c'est le journal que la vidange
+    /// remet à mail-smtp, les en-têtes de priorité en dépendent.
+    #[test]
+    fn enqueue_roundtrips_important() {
+        let (store, account) = store();
+        let mut urgent = draft("urgent");
+        urgent.important = true;
+        store.enqueue_outbox(account, &urgent).unwrap();
+        store.enqueue_outbox(account, &draft("ordinaire")).unwrap();
+
+        let queued = store.outbox_to_send(account).unwrap();
+        assert!(queued[0].important, "le journal porte le marquage");
+        assert!(!queued[1].important, "l'envoi ordinaire reste ordinaire");
+    }
+
     /// A54 : Cc/Cci du journal survivent à l'enqueue et à la relecture ;
     /// un envoi sans copie les relit VIDES, jamais un `[""]` fantôme (le
     /// garde de `split_recipients`).
@@ -542,6 +657,38 @@ mod tests {
         let nu = nu_store.outbox_to_send(compte).unwrap();
         assert!(nu[0].cc.is_empty(), "pas de destinataire Cc fantôme");
         assert!(nu[0].bcc.is_empty(), "pas de destinataire Cci fantôme");
+    }
+
+    /// R2 (PLAN-RETOURS-6) : un envoi programmé attend son heure — la
+    /// vidange l'ignore tant que l'échéance n'est pas passée, puis le
+    /// prend comme n'importe quel envoi en file. L'échéance se relit
+    /// (elle survit, règle d'or n°1 étendue à l'heure choisie).
+    #[test]
+    fn scheduled_send_waits_for_its_hour() {
+        let (mut store, account) = store();
+        let futur = Utc::now().timestamp() + 3600;
+        let programme = store
+            .enqueue_outbox_full(account, &draft("plus tard"), None, Some(futur))
+            .unwrap();
+        store
+            .enqueue_outbox_full(
+                account,
+                &draft("échu"),
+                None,
+                Some(Utc::now().timestamp() - 60),
+            )
+            .unwrap();
+        let mut transport = FakeTransport::default();
+
+        let report = flush_outbox(&mut transport, &mut store, account).unwrap();
+
+        assert_eq!(report.sent, 1, "seul l'échu part");
+        let sent = store.outbox_in_state(OutboxState::Sent).unwrap();
+        assert_eq!(sent[0].subject, "échu");
+        let queued = store.outbox_in_state(OutboxState::Queued).unwrap();
+        assert_eq!(queued.len(), 1, "le programmé attend toujours");
+        assert_eq!(queued[0].id, programme);
+        assert_eq!(queued[0].send_at_epoch, Some(futur), "l'échéance se relit");
     }
 
     /// Règle d'or n°1 : l'intention d'envoi survit à l'arrêt du processus.
@@ -818,6 +965,7 @@ mod tests_pieces {
                     body: "corps",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -977,6 +1125,82 @@ mod tests_pieces {
             })
             .unwrap();
         assert_eq!(orphans, 0);
+    }
+
+    /// R2, décision CE D2 : annuler un envoi programmé recrée le
+    /// brouillon ENTIER — destinataires, corps, marquage « important »,
+    /// pièces avec leurs octets — et l'entrée quitte le journal. Rien
+    /// ne se perd, le geste est réversible.
+    #[test]
+    fn annuler_un_programme_recree_le_brouillon() {
+        let (store, account) = store();
+        let draft_id = draft_with_pieces(&store, account);
+        let mut urgent = composed();
+        urgent.important = true;
+        let id = store
+            .enqueue_outbox_full(
+                account,
+                &urgent,
+                Some(draft_id),
+                Some(chrono::Utc::now().timestamp() + 3600),
+            )
+            .unwrap();
+        // Le flux réel supprime le brouillon sitôt l'envoi journalisé.
+        store.delete_draft(draft_id).unwrap();
+
+        let recree = store
+            .annuler_envoi_programme(id)
+            .unwrap()
+            .expect("un brouillon recréé");
+
+        assert!(
+            store.outbox().unwrap().is_empty(),
+            "l'entrée quitte le journal"
+        );
+        let drafts = store.drafts().unwrap();
+        assert_eq!(drafts.len(), 1);
+        let brouillon = &drafts[0];
+        assert_eq!(brouillon.id, recree);
+        assert_eq!(brouillon.to_raw, "vous@exemple.fr");
+        assert_eq!(brouillon.subject, "Photos");
+        assert_eq!(brouillon.body, "corps");
+        assert!(brouillon.important, "le marquage revient");
+        let pieces = store.draft_attachments_full(recree).unwrap();
+        assert_eq!(pieces.len(), 2);
+        assert_eq!(pieces[0].name, "facade.jpg");
+        assert_eq!(
+            pieces[0].bytes,
+            vec![1, 2, 3],
+            "les octets reviennent entiers"
+        );
+    }
+
+    /// D2, l'autre moitié : une entrée déjà PARTIE (la vidange l'a prise
+    /// avant le geste) ne s'annule pas — `None`, et l'historique reste.
+    /// Et une entrée ordinaire (sans échéance) non plus : elle peut être
+    /// en cours de remise par une vidange concurrente — l'abandon d'un
+    /// envoi ordinaire reste `delete_outbox`.
+    #[test]
+    fn annuler_un_envoi_parti_ne_fait_rien() {
+        let (mut store, account) = store();
+        let draft_id = draft_with_pieces(&store, account);
+        let id = store
+            .enqueue_outbox_from_draft(account, &composed(), draft_id)
+            .unwrap();
+        assert_eq!(
+            store.annuler_envoi_programme(id).unwrap(),
+            None,
+            "une entrée SANS échéance ne passe pas par cette voie"
+        );
+        let mut transport = FakeTransport::default();
+        flush_outbox(&mut transport, &mut store, account).unwrap();
+
+        assert_eq!(store.annuler_envoi_programme(id).unwrap(), None);
+        assert_eq!(
+            store.outbox_in_state(OutboxState::Sent).unwrap().len(),
+            1,
+            "l'historique d'envoi ne bouge pas"
+        );
     }
 
     /// Un envoi sans brouillon (composition jamais sauvée) reste

@@ -33,6 +33,8 @@ export const FR = {
   'statut.rattrapageCorpsSeul': 'Rattrapage des messages · {n} restants',
   'statut.rattrapageApercus': 'Rattrapage des aperçus…',
   'statut.envois': "Boîte d'envoi · {n} envoi en attente|Boîte d'envoi · {n} envois en attente",
+  'statut.programmes':
+    "Boîte d'envoi · {n} envoi programmé · départ {quand}|Boîte d'envoi · {n} envois programmés · prochain départ {quand}",
   'statut.synchroImpossible': 'Synchronisation impossible · nouvelle tentative automatique',
   'statut.synchroImpossibleDepuis':
     'Synchronisation impossible · nouvelle tentative automatique · dernière synchronisation {depuis}',
@@ -61,6 +63,7 @@ export const FR = {
   'avis.crash': "Wind a rencontré un problème lors d'une session précédente ({n} rapport(s) en attente). Rien n'est envoyé sans vous.",
   'avis.telemetrie': "Aider à améliorer Wind ? En cas de plantage, un rapport technique serait enregistré sur votre machine, jamais le contenu de vos mails. Vous choisissez ensuite de l'envoyer.",
   'avis.connexion': 'Compte non reconnecté : {details}',
+  'avis.programme': '« {sujet} » partira {quand} — si Wind est ouvert à ce moment-là.',
 
   // --- Actions partagées ------------------------------------------------
   'action.renvoyer': 'Renvoyer',
@@ -89,6 +92,9 @@ export const FR = {
   'action.replier': 'Replier',
   'action.retirer': 'Retirer',
   'action.termine': 'Terminé',
+  'action.annulerEnvoi': "Annuler l'envoi",
+  'action.enregistrer': 'Enregistrer',
+  'action.effacer': 'Effacer',
 
   // --- Toasts -----------------------------------------------------------
   'toast.compteAjoute': 'Compte ajouté.',
@@ -102,6 +108,10 @@ export const FR = {
   'toast.brouillonSupprime': 'Brouillon supprimé.',
   'toast.brouillonFork': 'Ce brouillon avait changé ailleurs ; votre version a été conservée à part.',
   'toast.envoye': 'Message envoyé.',
+  'toast.programme': 'Envoi programmé : départ {quand}.',
+  'toast.envoiAnnule': 'Envoi annulé : le message est revenu dans vos brouillons.',
+  'toast.signature': 'Signature enregistrée.',
+  'toast.signatureTous': 'Signature et choix appliqués à tous les comptes.',
   'toast.echoAttente': 'Copie en cours de synchronisation : réessayez dans un instant.',
 
   // --- Enveloppes d'erreur (le détail du cœur reste verbatim, L-3) -----
@@ -120,6 +130,10 @@ export const FR = {
     "Des pièces du transfert manquent encore : attendez le rapatriement, réessayez, ou retirez-les avant d'envoyer.",
   'erreur.aucunCompte': 'Aucun compte émetteur : ajoutez un compte.',
   'erreur.connexion': 'Connexion impossible : {err}',
+  'erreur.differePasse': 'Choisissez une date à venir.',
+  'erreur.annulerEnvoi': 'Annulation impossible : {err}',
+  'erreur.annulerTard': "Trop tard : l'envoi est déjà parti.",
+  'erreur.signature': 'Signature non enregistrée : {err}',
 
   // --- Liste ------------------------------------------------------------
   'liste.aria': 'Liste des messages',
@@ -208,6 +222,14 @@ export const FR = {
   'compo.enregistrerBrouillon': 'Enregistrer le brouillon',
   'compo.supprimerBrouillon': 'Supprimer le brouillon',
   'compo.supprConfirme': 'Supprimer ce brouillon ? C’est définitif.',
+  // R3 (PLAN-RETOURS-6) : le marquage « important » de l'envoi —
+  // bouton-icône de la barre de mise en forme, l'infobulle dit le geste.
+  'compo.importantTitre': 'Marquer le message comme important',
+  // R2 : l'envoi différé — la carte au-dessus du pied.
+  'compo.plusTard': 'Envoyer plus tard',
+  'compo.differeQuand': 'Départ',
+  'compo.differeNote': 'Le message partira à cette heure si Wind est ouvert — sinon au prochain lancement.',
+  'compo.programmer': 'Programmer',
 
   // --- Écran 01 et guichet de compte ------------------------------------
   'onboarding.titre1': 'Votre adresse.',
@@ -238,6 +260,7 @@ export const FR = {
   'groupe.themes': 'Thèmes',
   'groupe.affichage': 'Affichage',
   'groupe.notifications': 'Notifications',
+  'groupe.signature': 'Signature',
   'groupe.raccourcis': 'Raccourcis',
   'groupe.apropos': 'À propos',
   'reglages.sectionThemes': 'Thème de couleur',
@@ -272,6 +295,13 @@ export const FR = {
   'reglages.majDisponible': 'Version {version} disponible.',
   'reglages.majImpossible': 'Vérification impossible : {err}',
   'reglages.installation': 'Téléchargement et installation…',
+  'reglages.signatureDesc':
+    "Une signature par compte, ajoutée au bas des messages que vous composez. La mise en forme du composeur s'applique.",
+  'reglages.signaturePlaceholder': 'Votre signature…',
+  'reglages.signatureRepliques': 'Aussi dans les réponses et transferts',
+  'reglages.signatureRepliquesDesc':
+    'Sinon, la signature ne s’ajoute qu’aux nouveaux messages.',
+  'reglages.signatureTous': 'Appliquer à tous les comptes',
   'reglages.icones': 'Icônes',
   'reglages.iconesValeur': 'Material Symbols Rounded (Google), licence Apache 2.0 ; police embarquée, aucun réseau.',
 

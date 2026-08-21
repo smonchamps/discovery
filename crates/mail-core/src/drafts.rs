@@ -55,6 +55,9 @@ pub struct DraftContent<'a> {
     /// C'est elle qui permet de relier le brouillon à sa conversation
     /// (PLAN-BROUILLONS, B-D2).
     pub reply_to_mailbox: Option<&'a str>,
+    /// Marqué « important » (R3, PLAN-RETOURS-6) : l'état suit le
+    /// brouillon — une reprise le retrouve, l'envoi le portera.
+    pub important: bool,
 }
 
 /// Ce qu'une sauvegarde a réellement fait.
@@ -94,6 +97,9 @@ pub struct SavedDraft {
     /// Le fil de la conversation à laquelle ce brouillon répond —
     /// résolu à la LECTURE (boîte + UID → enveloppe), jamais stocké :
     /// un fil re-calculé ne peut pas laisser un repère périmé ici.
+    /// Marqué « important » (R3) — `false` sur un brouillon d'avant la
+    /// colonne.
+    pub important: bool,
     /// `None` : composition libre, boîte disparue, message expurgé, ou
     /// brouillon d'avant la colonne.
     pub thread_id: Option<i64>,
@@ -190,6 +196,7 @@ impl Store {
             body_html,
             reply_to_uid,
             reply_to_mailbox,
+            important,
         } = content;
         let now = Utc::now().timestamp_millis();
         match id {
@@ -224,6 +231,7 @@ impl Store {
                         body_html,
                         reply_to_uid,
                         reply_to_mailbox,
+                        important,
                         now,
                     )?;
                     return Ok(DraftSaved {
@@ -240,8 +248,8 @@ impl Store {
                 // chaque fermeture re-pousserait une copie identique vers
                 // Gmail (churn observé en validation terrain).
                 self.conn().execute(
-                    "INSERT INTO drafts (id, account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, updated_epoch)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+                    "INSERT INTO drafts (id, account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, important, updated_epoch)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
                      ON CONFLICT(id) DO UPDATE SET
                        to_raw = excluded.to_raw,
                        cc_raw = excluded.cc_raw,
@@ -251,6 +259,7 @@ impl Store {
                        body_html = excluded.body_html,
                        reply_to_uid = excluded.reply_to_uid,
                        reply_to_mailbox = excluded.reply_to_mailbox,
+                       important = excluded.important,
                        updated_epoch = MAX(excluded.updated_epoch, drafts.updated_epoch + 1)
                      WHERE drafts.to_raw IS NOT excluded.to_raw
                         OR drafts.cc_raw IS NOT excluded.cc_raw
@@ -259,8 +268,9 @@ impl Store {
                         OR drafts.body IS NOT excluded.body
                         OR drafts.body_html IS NOT excluded.body_html
                         OR drafts.reply_to_uid IS NOT excluded.reply_to_uid
-                        OR drafts.reply_to_mailbox IS NOT excluded.reply_to_mailbox",
-                    params![id, account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, now],
+                        OR drafts.reply_to_mailbox IS NOT excluded.reply_to_mailbox
+                        OR drafts.important IS NOT excluded.important",
+                    params![id, account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, important, now],
                 )?;
                 // Relu, et non supposé : le `WHERE` ci-dessus peut avoir
                 // laissé l'horodatage intact (sauvegarde identique), et
@@ -288,6 +298,7 @@ impl Store {
                     body_html,
                     reply_to_uid,
                     reply_to_mailbox,
+                    important,
                     now,
                 )?,
                 updated_epoch: now,
@@ -308,12 +319,13 @@ impl Store {
         body_html: Option<&str>,
         reply_to_uid: Option<Uid>,
         reply_to_mailbox: Option<&str>,
+        important: bool,
         now: i64,
     ) -> Result<i64, Error> {
         self.conn().execute(
-            "INSERT INTO drafts (account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, updated_epoch)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, now],
+            "INSERT INTO drafts (account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, important, updated_epoch)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![account_id, to_raw, cc_raw, bcc_raw, subject, body, body_html, reply_to_uid, reply_to_mailbox, important, now],
         )?;
         Ok(self.conn().last_insert_rowid())
     }
@@ -719,7 +731,7 @@ fn touch_draft(conn: &rusqlite::Connection, draft_id: i64) -> Result<i64, Error>
 const DRAFT_SELECT: &str = "SELECT d.id, d.account_id, d.to_raw, d.subject, d.body,
         d.reply_to_uid, d.reply_to_mailbox, re.thread_id,
         d.updated_epoch, d.remote_uid, d.pushed_epoch, d.cc_raw, d.bcc_raw,
-        d.body_html
+        d.body_html, d.important
  FROM drafts d
  LEFT JOIN mailboxes rm ON rm.account_id = d.account_id AND rm.name = d.reply_to_mailbox
  LEFT JOIN envelopes re ON re.mailbox_id = rm.id AND re.uid = d.reply_to_uid";
@@ -740,6 +752,7 @@ fn row_to_draft(row: &rusqlite::Row<'_>) -> rusqlite::Result<SavedDraft> {
         cc_raw: row.get(11)?,
         bcc_raw: row.get(12)?,
         body_html: row.get(13)?,
+        important: row.get(14)?,
     })
 }
 
@@ -753,6 +766,47 @@ mod tests {
             .adopt_or_create_account("test@exemple.fr", "gmail")
             .unwrap();
         (store, account)
+    }
+
+    /// R3 (PLAN-RETOURS-6) : le marquage « important » suit le
+    /// brouillon — une reprise le retrouve — et le basculer SEUL est
+    /// une vraie modification (l'horodatage avance, le reflet suivra ;
+    /// sans quoi l'anti-churn avalerait le geste).
+    #[test]
+    fn save_draft_roundtrips_important_and_toggling_counts() {
+        let (store, account) = store();
+        let contenu = |important: bool| DraftContent {
+            to_raw: "a@b.fr",
+            cc_raw: "",
+            bcc_raw: "",
+            subject: "Sujet",
+            body: "corps",
+            body_html: None,
+            reply_to_uid: None,
+            reply_to_mailbox: None,
+            important,
+        };
+        let saved = store
+            .save_draft(account, None, None, contenu(true))
+            .unwrap();
+        assert!(
+            store.drafts().unwrap()[0].important,
+            "la reprise retrouve le marquage"
+        );
+
+        let again = store
+            .save_draft(
+                account,
+                Some(saved.id),
+                Some(saved.updated_epoch),
+                contenu(false),
+            )
+            .unwrap();
+        assert!(
+            again.updated_epoch > saved.updated_epoch,
+            "basculer le marquage seul avance l'horodatage"
+        );
+        assert!(!store.drafts().unwrap()[0].important);
     }
 
     #[test]
@@ -772,6 +826,7 @@ mod tests {
                     body: "corps\nsur deux lignes",
                     reply_to_uid: Some(42),
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -807,6 +862,7 @@ mod tests {
                     body_html: Some("<b>gras</b>"),
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -829,6 +885,7 @@ mod tests {
                     body_html: None,
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -868,6 +925,7 @@ mod tests {
             body_html: html,
             reply_to_uid: None,
             reply_to_mailbox: None,
+            important: false,
         };
         let id = store
             .save_draft(account, None, None, contenu(Some("texte")))
@@ -906,6 +964,7 @@ mod tests {
                     body: "corps",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -928,6 +987,7 @@ mod tests {
                     body: "corps",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -953,6 +1013,7 @@ mod tests {
                     body: "texte",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -971,6 +1032,7 @@ mod tests {
                     body: "texte enrichi",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1002,6 +1064,7 @@ mod tests {
                     body: "précieux",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1022,6 +1085,7 @@ mod tests {
                     body: "précieux",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1048,6 +1112,7 @@ mod tests {
                     body: "a",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1065,6 +1130,7 @@ mod tests {
                     body: "b",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1091,6 +1157,7 @@ mod tests {
                     body: "b",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1116,6 +1183,7 @@ mod tests {
                     body: "v1",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1149,6 +1217,7 @@ mod tests {
                     body: "v2",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1179,6 +1248,7 @@ mod tests {
                     body: "texte",
                     reply_to_uid: Some(1),
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1200,6 +1270,7 @@ mod tests {
                     body: "texte",
                     reply_to_uid: Some(1),
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1229,6 +1300,7 @@ mod tests {
                     body: "v1",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1252,6 +1324,7 @@ mod tests {
                     body: "v2 éditée en vol",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1280,6 +1353,7 @@ mod tests {
                     body: "v1",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1310,6 +1384,7 @@ mod tests {
                     body: "b",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1329,6 +1404,7 @@ mod tests {
                     body: "b",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1366,6 +1442,7 @@ mod tests {
                     body: "x",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1384,6 +1461,7 @@ mod tests {
                     body: "y",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1441,6 +1519,7 @@ mod tests {
                     body: "b",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()
@@ -1505,6 +1584,7 @@ mod tests_concurrence {
                     body: "version composeur",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1524,6 +1604,7 @@ mod tests_concurrence {
                     body: "version venue d'ailleurs",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1543,6 +1624,7 @@ mod tests_concurrence {
                     body: "version composeur",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1581,6 +1663,7 @@ mod tests_concurrence {
                     body: "un",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1600,6 +1683,7 @@ mod tests_concurrence {
                         body: texte,
                         reply_to_uid: None,
                         reply_to_mailbox: None,
+                        important: false,
                     },
                 )
                 .unwrap();
@@ -1627,6 +1711,7 @@ mod tests_concurrence {
                     body: "un",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1644,6 +1729,7 @@ mod tests_concurrence {
                     body: "deux",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1679,6 +1765,7 @@ mod tests_concurrence {
                     body: "version composeur",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1704,6 +1791,7 @@ mod tests_concurrence {
                     body: "z",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1746,6 +1834,7 @@ mod tests_concurrence {
                     body: "version composeur",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap();
@@ -1784,6 +1873,7 @@ mod tests_tirage {
             body: "Bonjour".to_string(),
             reply_to_uid: None,
             reply_to_mailbox: None,
+            important: false,
             thread_id: None,
             updated_epoch: updated,
             remote_uid,
@@ -1920,6 +2010,7 @@ mod tests_fil {
             body: "Bonjour Marie,",
             reply_to_uid: uid,
             reply_to_mailbox: boite,
+            important: false,
         }
     }
 
@@ -2043,6 +2134,7 @@ mod tests_pieces {
                     body: "corps",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()

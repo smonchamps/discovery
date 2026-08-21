@@ -148,6 +148,9 @@ CREATE TABLE IF NOT EXISTS drafts (
     -- brouillon -> conversation (PLAN-BROUILLONS, B-D2). NULL avant la
     -- colonne : ces brouillons restent sans fil, jamais mal reliés.
     reply_to_mailbox TEXT,
+    -- Marqué « important » (R3, PLAN-RETOURS-6) : l'état suit le
+    -- brouillon jusqu'à l'envoi.
+    important     INTEGER NOT NULL DEFAULT 0,
     updated_epoch INTEGER NOT NULL,
     remote_uid    INTEGER,
     pushed_epoch  INTEGER
@@ -197,6 +200,13 @@ CREATE TABLE IF NOT EXISTS outbox (
     -- (chemin historique, octet pour octet inchangé).
     body_html    TEXT,
     in_reply_to  TEXT,
+    -- Marqué « important » (R3) : la remise posera les en-têtes de
+    -- priorité (X-Priority + Importance).
+    important    INTEGER NOT NULL DEFAULT 0,
+    -- Envoi différé (R2, PLAN-RETOURS-6) : l'époque (secondes) avant
+    -- laquelle la vidange ne doit PAS prendre ce message. NULL = tout
+    -- de suite (chemin historique).
+    send_at_epoch INTEGER,
     state        TEXT NOT NULL DEFAULT 'queued',
     attempts     INTEGER NOT NULL DEFAULT 0,
     last_error   TEXT,
@@ -2188,6 +2198,21 @@ fn migrate(
     add_missing_columns(conn, "bodies", &[("scanned", "INTEGER NOT NULL DEFAULT 0")])?;
     // Destinataires de l'echo — NULL sur l'existant (PLAN-RETOURS-5).
     add_missing_columns(conn, "echos", &[("to_addrs", "TEXT")])?;
+    // « Important » et envoi différé (PLAN-RETOURS-6) : l'existant
+    // n'est ni marqué ni programmé.
+    add_missing_columns(
+        conn,
+        "drafts",
+        &[("important", "INTEGER NOT NULL DEFAULT 0")],
+    )?;
+    add_missing_columns(
+        conn,
+        "outbox",
+        &[
+            ("important", "INTEGER NOT NULL DEFAULT 0"),
+            ("send_at_epoch", "INTEGER"),
+        ],
+    )?;
     // L'aperçu de liste (écran 02 de la refonte) se calcule à l'ÉCRITURE
     // du corps ; les corps antérieurs le rattrapent PAR LOTS
     // (`preview_catchup`, appelé par le shell au fil du sondage) — jamais
@@ -2749,6 +2774,7 @@ mod tests {
                         body: "brouillon",
                         reply_to_uid: None,
                         reply_to_mailbox: None,
+                        important: false,
                     },
                 )
                 .unwrap();
@@ -2765,6 +2791,7 @@ mod tests {
                         body_text: "corps".to_string(),
                         body_html: None,
                         in_reply_to: None,
+                        important: false,
                     },
                 )
                 .unwrap();

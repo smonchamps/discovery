@@ -735,6 +735,7 @@ mod tests {
                     body: "corps",
                     reply_to_uid: None,
                     reply_to_mailbox: None,
+                    important: false,
                 },
             )
             .unwrap()

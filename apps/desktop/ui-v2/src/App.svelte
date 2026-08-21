@@ -17,7 +17,7 @@
     defautLargeur,
     BORNES,
   } from './lib/largeurs.svelte.js';
-  import { depuis } from './lib/quand.js';
+  import { depuis, quandLong } from './lib/quand.js';
   import Nav from './Nav.svelte';
   import Liste from './Liste.svelte';
   import Lecture from './Lecture.svelte';
@@ -157,10 +157,20 @@
   let avisMaj = $state(null);
   let avisCrash = $state(null);
   let avisTelemetrie = $state(null);
-  const avis = $derived(avisEnvoi ?? avisConnexion ?? avisMaj ?? avisCrash ?? avisTelemetrie);
+  // R2 (PLAN-RETOURS-6, D2) : l'envoi programmé se voit et s'annule
+  // d'ici — informatif, donc DERNIER de la priorité (un incident prime).
+  let avisProgramme = $state(null);
+  const avis = $derived(
+    avisEnvoi ?? avisConnexion ?? avisMaj ?? avisCrash ?? avisTelemetrie ?? avisProgramme,
+  );
 
   // --- Ligne de progression (§6) : au plus UNE ------------------------
   let envoisEnAttente = $state(0);
+  // R2 : les envois programmés pas encore échus, et la plus proche
+  // échéance — séparés des « en attente » (eux n'attendent pas le
+  // réseau, ils attendent leur heure).
+  let envoisProgrammes = $state(0);
+  let prochainProgramme = $state(null);
   let rattrapageApercus = $state(false);
   let rattrapageCorps = $state(null); // restant, ou null si rien à faire
   // R1 (PLAN-RETOURS-3, D1) : le % de corps déjà là sur le corpus en
@@ -297,6 +307,18 @@
       // jusqu'à la vidange. Hors ligne est capté plus haut — le trait ne
       // tourne jamais dans le vide.
       return { texte: t('statut.envois', { n: envoisEnAttente }), fil: true, alerte: false };
+    }
+    if (envoisProgrammes > 0 && prochainProgramme !== null) {
+      // R2 : un programmé n'attend pas le réseau, il attend son heure —
+      // un état de repos daté, pas un trait qui boucle.
+      return {
+        texte: t('statut.programmes', {
+          n: envoisProgrammes,
+          quand: quandLong(prochainProgramme),
+        }),
+        fil: null,
+        alerte: false,
+      };
     }
     // L'horodatage du prototype, enfin : « dernière synchronisation il
     // y a N minutes » — et sur échec, depuis quand on vit sur le stock.
@@ -440,10 +462,64 @@
 
   // 1. Échec d'envoi — corollaire UI des règles d'or : JAMAIS invisible.
   //    L'attente non fautive (queued) vit dans la ligne de progression.
+  // R2 : le départ d'un envoi programmé. La sonde (10 s) réarme cette
+  // minuterie courte quand l'échéance approche (< 60 s) — à l'heure
+  // dite, UNE vidange part. Jamais de minuterie longue : une annulation
+  // entre-temps est vue par la sonde suivante, qui désarme.
+  let minuterieProgramme = null;
+  function armerDepart(echeance) {
+    clearTimeout(minuterieProgramme);
+    minuterieProgramme = null;
+    if (echeance === null) return;
+    const delai = Math.max(0, echeance * 1000 - Date.now()) + 1000;
+    if (delai > 60000) return; // la sonde suivante réarmera, plus près
+    minuterieProgramme = setTimeout(async () => {
+      try {
+        const bilan = await appel('flush_outbox');
+        if (bilan.sent > 0) {
+          // L'écho Envoyés est né à la vidange (E3) — la copie se
+          // montre sans attendre ; la réconciliation suivra au cycle.
+          liste?.recharger();
+          chargerNav();
+        }
+      } catch (err) {
+        console.error('flush_outbox (départ programmé) :', err);
+      }
+      sonderEnvois();
+    }, delai);
+  }
+
   async function sonderEnvois() {
     try {
       const etat = await appel('outbox_status');
       envoisEnAttente = etat.queued;
+      envoisProgrammes = etat.scheduled ?? 0;
+      prochainProgramme = etat.next_scheduled_epoch ?? null;
+      armerDepart(prochainProgramme);
+      // R2/D2 : le plus proche programmé se voit dans la fente, avec
+      // son geste d'annulation (retour en brouillon — réversible).
+      const programme = etat.entries.find((e) => e.send_at_epoch != null);
+      avisProgramme = programme
+        ? {
+            icone: 'schedule_send',
+            texte: t('avis.programme', {
+              sujet: programme.subject,
+              quand: quandLong(programme.send_at_epoch),
+            }),
+            actions: [
+              { libelle: t('action.annulerEnvoi'), principale: true, faire: async () => {
+                try {
+                  const brouillon = await appel('outbox_cancel_scheduled', { id: programme.id });
+                  flash(brouillon !== null ? t('toast.envoiAnnule') : t('erreur.annulerTard'));
+                } catch (err) {
+                  flash(t('erreur.annulerEnvoi', { err }));
+                }
+                sonderBrouillons();
+                sonderEnvois();
+              } },
+            ],
+          }
+        : null;
       const probleme = etat.entries.find(
         (e) => e.state === 'interrupted' || e.state === 'rejected',
       );

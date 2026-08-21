@@ -212,6 +212,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 body: "Le bordereau signé est joint.",
                 reply_to_uid: None,
                 reply_to_mailbox: None,
+                important: false,
             },
         )?
         .id;
@@ -377,6 +378,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                    après un dernier échange avec Sofia.",
             reply_to_uid: Some(17),
             reply_to_mailbox: Some("INBOX"),
+            important: false,
         },
     )?;
     store.align_drafts_uidvalidity(travail, UIDV)?;
@@ -508,6 +510,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                    livraison ce week-end et je te réponds lundi.",
             reply_to_uid: None,
             reply_to_mailbox: None,
+            important: false,
         },
     )?;
     store.align_drafts_uidvalidity(personnel, UIDV)?;

@@ -12,7 +12,12 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
+**Rien n'est cassé, rien n'est à moitié écrit.** Un chantier est en
+fin de course : **[PLAN-RETOURS-6](PLAN-RETOURS-6.md)** (signatures,
+envoi différé, « important », entête du composeur) — implémenté, revue
+faite, gate verte (e2e 99 → 103), **terrain validé en trois passes le
+2026-08-21** ; reste la livraison **0.4.0** (MINEUR, D5) : CI verte
+puis `faire-release.ps1`, puis `/solde`.
 
 **Prochain chantier : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.
@@ -421,6 +426,13 @@ bandeau. La recherche gagne en profondeur à mesure.
   O(offset) d'une page profonde hors réception (~129 ms à l'offset
   80 000 sur 200 k, cœur seul) — une seule vole à la fois, l'écran dit
   le chargement ; à rouvrir si le terrain dépasse ~1 s la page.
+- **Affichage des messages importants REÇUS** (drapeau, tri, filtre) —
+  refus de périmètre explicite de PLAN-RETOURS-6 : le composeur pose
+  les en-têtes de priorité à l'ENVOI ; lire ceux des messages entrants
+  est un chantier à part. Fait d'instruction utile : Gmail web
+  n'affiche AUCUN indicateur pour `X-Priority`/`Importance` (marqueur
+  algorithmique maison) — Outlook/Thunderbird montrent le « ! » ;
+  l'en-tête se vérifie par « Afficher l'original ».
 - **Filtre « a une pièce jointe »**. (L'**envoi de pièces jointes**
   est LIVRÉ — PLAN-PIECES-JOINTES soldé, `38cd812`/`27ed056` ; le
   **`to:` dans la recherche** est LIVRÉ — A49.)

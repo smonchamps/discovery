@@ -31,6 +31,8 @@ export const EN = {
   'statut.rattrapageCorpsSeul': 'Catching up on messages · {n} to go',
   'statut.rattrapageApercus': 'Catching up on previews…',
   'statut.envois': 'Outbox · {n} message waiting|Outbox · {n} messages waiting',
+  'statut.programmes':
+    'Outbox · {n} message scheduled · leaves {quand}|Outbox · {n} messages scheduled · next leaves {quand}',
   'statut.synchroImpossible': 'Sync failed · will retry automatically',
   'statut.synchroImpossibleDepuis':
     'Sync failed · will retry automatically · last synced {depuis}',
@@ -59,6 +61,7 @@ export const EN = {
   'avis.crash': 'Wind ran into a problem during a previous session ({n} report(s) pending). Nothing is sent without you.',
   'avis.telemetrie': 'Help improve Wind? If it crashes, a technical report would be saved on your machine, never the content of your mail. You then choose whether to send it.',
   'avis.connexion': 'Account not reconnected: {details}',
+  'avis.programme': '“{sujet}” will be sent {quand} — if Wind is open at that time.',
 
   // --- Actions partagées ------------------------------------------------
   'action.renvoyer': 'Send again',
@@ -87,6 +90,9 @@ export const EN = {
   'action.replier': 'Collapse',
   'action.retirer': 'Remove',
   'action.termine': 'Done',
+  'action.annulerEnvoi': 'Cancel send',
+  'action.enregistrer': 'Save',
+  'action.effacer': 'Clear',
 
   // --- Toasts -----------------------------------------------------------
   'toast.compteAjoute': 'Account added.',
@@ -100,6 +106,10 @@ export const EN = {
   'toast.brouillonSupprime': 'Draft deleted.',
   'toast.brouillonFork': 'This draft had changed elsewhere; your version was kept separately.',
   'toast.envoye': 'Message sent.',
+  'toast.programme': 'Send scheduled: leaves {quand}.',
+  'toast.envoiAnnule': 'Send cancelled: the message is back in your drafts.',
+  'toast.signature': 'Signature saved.',
+  'toast.signatureTous': 'Signature and choice applied to all accounts.',
   'toast.echoAttente': 'Copy still syncing: try again in a moment.',
 
   // --- Enveloppes d'erreur (le détail du cœur reste verbatim, L-3) -----
@@ -118,6 +128,10 @@ export const EN = {
     'Some forwarded files are still missing: wait for retrieval, try again, or remove them before sending.',
   'erreur.aucunCompte': 'No sending account: add an account.',
   'erreur.connexion': 'Could not connect: {err}',
+  'erreur.differePasse': 'Pick a time in the future.',
+  'erreur.annulerEnvoi': 'Could not cancel: {err}',
+  'erreur.annulerTard': 'Too late: the message already left.',
+  'erreur.signature': 'Signature not saved: {err}',
 
   // --- Liste ------------------------------------------------------------
   'liste.aria': 'Message list',
@@ -206,6 +220,14 @@ export const EN = {
   'compo.enregistrerBrouillon': 'Save draft',
   'compo.supprimerBrouillon': 'Delete draft',
   'compo.supprConfirme': 'Delete this draft? This cannot be undone.',
+  // R3 (PLAN-RETOURS-6) : le marquage « important » de l'envoi —
+  // bouton-icône de la barre de mise en forme, l'infobulle dit le geste.
+  'compo.importantTitre': 'Mark the message as important',
+  // R2 : l'envoi différé — la carte au-dessus du pied.
+  'compo.plusTard': 'Send later',
+  'compo.differeQuand': 'Leaves',
+  'compo.differeNote': 'The message will be sent at that time if Wind is open — otherwise at the next launch.',
+  'compo.programmer': 'Schedule',
 
   // --- Écran 01 et guichet de compte ------------------------------------
   'onboarding.titre1': 'Your address.',
@@ -236,6 +258,7 @@ export const EN = {
   'groupe.themes': 'Themes',
   'groupe.affichage': 'Display',
   'groupe.notifications': 'Notifications',
+  'groupe.signature': 'Signature',
   'groupe.raccourcis': 'Shortcuts',
   'groupe.apropos': 'About',
   'reglages.sectionThemes': 'Color theme',
@@ -270,6 +293,12 @@ export const EN = {
   'reglages.majDisponible': 'Version {version} available.',
   'reglages.majImpossible': 'Check failed: {err}',
   'reglages.installation': 'Downloading and installing…',
+  'reglages.signatureDesc':
+    'One signature per account, added at the bottom of messages you compose. Composer formatting applies.',
+  'reglages.signaturePlaceholder': 'Your signature…',
+  'reglages.signatureRepliques': 'Also in replies and forwards',
+  'reglages.signatureRepliquesDesc': 'Otherwise the signature is only added to new messages.',
+  'reglages.signatureTous': 'Apply to all accounts',
   'reglages.icones': 'Icons',
   'reglages.iconesValeur': 'Material Symbols Rounded (Google), Apache 2.0 license; bundled font, no network.',
 
