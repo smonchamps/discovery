@@ -1,6 +1,6 @@
 # Icônes vendorisées — sous-ensemble Material Symbols Rounded (R0-S3)
 
-**61 glyphes**, **25 564 octets** (25,0 Kio) woff2, servis depuis le dépôt.
+**64 glyphes**, **26 704 octets** (26,1 Kio) woff2, servis depuis le dépôt.
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
@@ -56,15 +56,22 @@ A66-A69 (PLAN-RETOURS-6, 2026-08-21) ajoutent **3 glyphes** :
 `schedule_send` (« Envoyer plus tard » et l'avis d'un envoi programmé,
 R2) et `signature` (groupe Signature des Réglages, R1) ; le
 sous-ensemble passe de 58 à **61**, cache-buster `?v=61`.
+PLAN-RETOURS-7 (2026-08-21) ajoute **3 glyphes** : `download` (le voile
+« Enregistrer » au survol d'une pièce jointe en lecture, R1),
+`keep` (« Épingler », barre du fil, et la marque d'une ligne épinglée,
+R4) et `keep_off` (« Désépingler ») ; le sous-ensemble passe de 61 à
+**64**, cache-buster `?v=64`.
 
 `all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
 `check_circle` `close` `delete` `description` `display_settings`
-`drafts` `edit_note` `edit_square` `error` `format_align_center`
+`download` `drafts` `edit_note` `edit_square` `error`
+`format_align_center`
 `format_align_left` `format_align_right` `format_bold` `format_clear`
 `format_color_text` `format_indent_decrease` `format_indent_increase`
 `format_italic` `format_list_bulleted` `format_list_numbered`
 `format_quote` `format_underlined` `forum` `group_add`
-`hourglass_empty` `inbox` `info` `inventory_2` `keyboard` `link`
+`hourglass_empty` `inbox` `info` `inventory_2` `keep` `keep_off`
+`keyboard` `link`
 `link_off` `mark_email_unread` `menu` `notifications` `open_in_full`
 `open_in_new` `person` `person_add` `priority_high` `reply`
 `reply_all` `report` `schedule_send` `search` `send` `settings`
@@ -134,8 +141,8 @@ curl -s -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?fam
 ## Preuve ([apercu.html](apercu.html))
 
 Page servie localement sous CSP `default-src 'none'; font-src 'self'` :
-**PASS — police locale chargée, 62/62 ligatures repliées** (les 61 glyphes
-+ le témoin FILL 1/600 ; rejouée le 2026-08-21, A66-A69 — 3 glyphes de
-PLAN-RETOURS-6 ajoutés).
+**PASS — police locale chargée, 65/65 ligatures repliées** (les 64 glyphes
++ le témoin FILL 1/600 ; rejouée le 2026-08-21, PLAN-RETOURS-7 — 3
+glyphes ajoutés : `download`, `keep`, `keep_off`).
 Vérification objective : une ligature résolue se replie sur ~1 em ; un
 nom resté en toutes lettres est bien plus large.

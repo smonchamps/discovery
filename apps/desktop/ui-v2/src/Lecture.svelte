@@ -22,6 +22,8 @@
     onnonspam = () => {},
     estIndesirable = false,
     onflash = () => {},
+    epinglable = false,
+    onepingler = () => {},
   } = $props();
 
   export function ouvrir(nouvelle) {
@@ -40,6 +42,7 @@
     <Fil {brouillons} {onreprendre} {onarchiver} {onsupprimer}
          {onrepondre} {onrepondretous} {ontransferer}
          {onspam} {onnonspam} {estIndesirable} {onflash}
+         {epinglable} {onepingler}
          onagrandir={onconversation} />
   {:else if fil.cadre !== 'plein'}
     <p class="vide">{t('lecture.vide')}</p>

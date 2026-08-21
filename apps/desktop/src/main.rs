@@ -185,6 +185,8 @@ fn main() {
             commands::save_attachment,
             commands::mark_seen,
             commands::mark_flagged,
+            commands::toggle_pin,
+            commands::pinned_rows,
             commands::archive_message,
             commands::list_folders,
             commands::move_message,

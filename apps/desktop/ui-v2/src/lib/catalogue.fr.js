@@ -85,6 +85,8 @@ export const FR = {
   'action.supprimer': 'Supprimer',
   'action.signalerSpam': 'Signaler comme spam',
   'action.pasSpam': 'Ce n’est pas un spam',
+  'action.epingler': 'Épingler',
+  'action.desepingler': 'Désépingler',
   'action.envoyer': 'Envoyer',
   'action.annuler': 'Annuler',
   'action.continuer': 'Continuer',
@@ -148,6 +150,7 @@ export const FR = {
   'brouillons.sansObjet': '(sans objet)',
   'puce.messages': '{n} message|{n} messages',
   'puce.fichiers': '{n} fichier|{n} fichiers',
+  'puce.epingle': 'Épinglé',
   'onglet.tous': 'Tous',
   'onglet.nonlus': 'Non lus',
 
@@ -159,6 +162,7 @@ export const FR = {
   'lecture.afficherImages': 'Afficher les images',
   'lecture.corps': 'Contenu du message',
   'lecture.enregistrer': 'Enregistrer…',
+  'lecture.voileEnregistrer': 'Enregistrer',
 
   // --- Conversation (écran 03) ------------------------------------------
   'conv.deplier': 'Tout déplier',

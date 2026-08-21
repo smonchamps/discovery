@@ -40,6 +40,11 @@
     onflash = () => {},
     // Le cadre volet passe le geste d'agrandissement ; l'écran 03, non.
     onagrandir = null,
+    // R4 (PLAN-RETOURS-7, D3/D4) : « Épingler » vit dans la barre du
+    // fil, offert par la seule Réception (les épingles n'apparaissent
+    // qu'en tête de la Réception — D4) ; l'App décide.
+    epinglable = false,
+    onepingler = () => {},
   } = $props();
 
   // Depuis R4 (PLAN-RETOURS-3, D4) Répondre / Répondre à tous /
@@ -166,11 +171,13 @@
 </script>
 
 {#if fil.ligne}
-  <!-- Le cadre volet est À PLAT (terrain A46, dessin du prototype :
-       .voletLecture) : pas d'élévation englobante, pas de filets —
-       seules les cartes de message s'élèvent, et TOUT défile en flot,
-       barre d'actions comprise. L'écran 03 garde sa carte pleine. -->
-  <div class="objet-fil" class:volet={fil.cadre === 'volet'}>
+  <!-- Les DEUX cadres sont À PLAT (terrain A46, étendu à l'écran 03
+       par PLAN-RETOURS-7 R3) : pas d'élévation englobante, pas de
+       filets — seules les cartes de message s'élèvent, et TOUT défile
+       en flot, barre d'actions comprise. « L'écran 03 garde sa carte
+       pleine » (A46) est renversé : le cadre plein est une colonne
+       centrée à plat (Conversation.svelte). -->
+  <div class="objet-fil">
     <div class="tete">
       <h3 class="titre" data-testid="fil-sujet">{fil.ligne.subject}</h3>
       <!-- Le rang de la maquette (terrain A45) : puces d'inventaire à
@@ -224,18 +231,10 @@
               <span class="quand">{quandLong(m.epoch)}</span>
             </div>
             <div class="contenu">
-              {#if (fil.imagesBloquees[k] ?? 0) > 0}
-                <div class="garde-images" data-testid="garde-images">
-                  <span class="ms" aria-hidden="true">visibility_off</span>
-                  <span class="garde-texte">{t('lecture.imagesBloquees', { n: fil.imagesBloquees[k] })}</span>
-                  <button type="button" data-testid="afficher-images"
-                          onclick={() => afficherImages(m)}>
-                    {t('lecture.afficherImages')}</button>
-                </div>
-              {/if}
-              <iframe class="corps" sandbox="allow-same-origin" srcdoc={fil.corps[k] ?? ''}
-                      title={t('lecture.corps')} use:corpsAuto
-                      onload={(ev) => brancherLiens(ev.currentTarget)}></iframe>
+              <!-- R2 (PLAN-RETOURS-7) : les fichiers joints AVANT le
+                   corps — sous la tête du message, où l'œil les attend
+                   sans dérouler le mail ; la garde d'images reste collée
+                   au corps qu'elle concerne. -->
               <!-- Un écho de GESTE n'a pas de métadonnées par pièce
                    (elles meurent avec la source) : la section ne se
                    montre que si des puces existent — jamais un titre
@@ -250,7 +249,8 @@
                   <!-- Les puces d'un écho sont INERTES (PLAN-RETOURS-5,
                        D2) : les octets ont quitté le journal à l'envoi —
                        nom et poids se montrent, rien ne s'enregistre
-                       pendant la fenêtre de réconciliation. -->
+                       pendant la fenêtre de réconciliation — et ne
+                       portent donc AUCUN voile (aucune promesse). -->
                   <div class="puces">
                     {#each fil.pieces[k] ?? [] as piece (piece.index)}
                       <button type="button" class="puce bouton" data-testid="piece-jointe"
@@ -258,11 +258,33 @@
                               onclick={() => !estEcho(m) && enregistrer(m, piece)}
                               title={estEcho(m) ? undefined : t('lecture.enregistrer')}>
                         <span class="ms" aria-hidden="true">description</span>
-                        <span class="nom">{piece.name}</span><span class="taille">{piece.size}</span></button>
+                        <span class="nom">{piece.name}</span><span class="taille">{piece.size}</span>
+                        <!-- R1 (PLAN-RETOURS-7, D1) : au survol comme au
+                             focus clavier, un voile couvre la puce et DIT
+                             l'action — « Enregistrer » (le vocabulaire du
+                             produit : le clic ouvre « Enregistrer sous »).
+                             Même géométrie, la rangée ne reflue pas. -->
+                        {#if !estEcho(m)}
+                          <span class="voile" aria-hidden="true">
+                            <span class="ms">download</span>{t('lecture.voileEnregistrer')}</span>
+                        {/if}
+                      </button>
                     {/each}
                   </div>
                 </div>
               {/if}
+              {#if (fil.imagesBloquees[k] ?? 0) > 0}
+                <div class="garde-images" data-testid="garde-images">
+                  <span class="ms" aria-hidden="true">visibility_off</span>
+                  <span class="garde-texte">{t('lecture.imagesBloquees', { n: fil.imagesBloquees[k] })}</span>
+                  <button type="button" data-testid="afficher-images"
+                          onclick={() => afficherImages(m)}>
+                    {t('lecture.afficherImages')}</button>
+                </div>
+              {/if}
+              <iframe class="corps" sandbox="allow-same-origin" srcdoc={fil.corps[k] ?? ''}
+                      title={t('lecture.corps')} use:corpsAuto
+                      onload={(ev) => brancherLiens(ev.currentTarget)}></iframe>
             </div>
             <!-- R4 (PLAN-RETOURS-3, D4) : les gestes de réponse EN BAS de
                  CHAQUE message, visant CE message — on répond quand on a
@@ -325,24 +347,33 @@
         <button type="button" data-testid="signaler-spam" onclick={() => onspam(fil.ligne)}>
           <span class="ms" aria-hidden="true">report</span>{t('action.signalerSpam')}</button>
       {/if}
+      <!-- R4 (PLAN-RETOURS-7) : épingler LA conversation — bascule
+           dite par son libellé ET aria-pressed ; l'état vient du cœur
+           (pin_state) et suit le geste. Jamais sur un écho. -->
+      {#if epinglable && !estEcho(fil.ligne)}
+        <button type="button" data-testid="epingler" aria-pressed={fil.epingle}
+                onclick={() => onepingler(fil.ligne)}>
+          <span class="ms" aria-hidden="true">{fil.epingle ? 'keep_off' : 'keep'}</span>
+          {fil.epingle ? t('action.desepingler') : t('action.epingler')}</button>
+      {/if}
     </div>
   </div>
 {/if}
 
 <style>
-  /* Géométrie héritée de l'écran 03 (verbatim du prototype) — le même
-     objet dans les deux cadres, seule la largeur disponible change. */
-  .objet-fil { display:flex; flex-direction:column; min-height:0; flex:1; }
-  .tete {
-    padding:22px 26px 16px; border-bottom:1px solid var(--border);
-    display:flex; flex-direction:column; gap:12px; flex:none;
-  }
+  /* La forme À PLAT (A46, les deux cadres depuis PLAN-RETOURS-7 R3) —
+     la géométrie du prototype (.voletLecture / .lecture) : le fil
+     défile en un seul flot dans son cadre (le volet ou la scène de
+     l'écran 03), les filets et l'élévation appartiennent aux seules
+     cartes ; seule la largeur disponible change entre cadres. */
+  .objet-fil { display:flex; flex-direction:column; flex:none; min-height:100%; }
+  .tete { display:flex; flex-direction:column; flex:none; }
   .titre {
-    margin:0; font-size:24px; font-weight:600; line-height:1.2;
+    margin:2px 0 4px; font-size:24px; font-weight:600; line-height:1.2;
     letter-spacing:-.01em; color:var(--ink);
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   }
-  .puces { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .puces { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:0 0 10px; }
   .puce {
     height:32px; padding:0 12px; display:inline-flex; align-items:center;
     gap:8px; font-size:13px; color:var(--ink2); background:var(--surface);
@@ -370,10 +401,10 @@
     font-size:11px; font-weight:600; color:var(--ink2); flex:none;
   }
   .avatar.petit { width:26px; height:26px; }
-  .fil { flex:1; overflow-y:auto; padding:14px 26px; min-height:0; }
+  .fil { flex:none; overflow-y:visible; padding:0; }
   .replie {
     display:flex; align-items:center; gap:10px; padding:12px 20px;
-    margin-bottom:12px; background:var(--surface);
+    margin-top:12px; background:var(--surface);
     border:1px solid var(--border); border-radius:10px; cursor:pointer;
     font-size:13px;
   }
@@ -392,7 +423,7 @@
   .replie.brouillon .reprendre { color:var(--accent); font-weight:600; flex:none; }
   .deplie {
     background:var(--surface); border:1px solid var(--border);
-    border-radius:10px; box-shadow:var(--shadow); margin-bottom:12px;
+    border-radius:10px; box-shadow:var(--shadow); margin-top:12px;
     display:flex; flex-direction:column;
   }
   /* L'en-tête de la maquette : avatar · (nom / adresse · à X) · quand. */
@@ -443,7 +474,7 @@
   .fichiers .puce .nom { color:var(--ink); }
   .fichiers .puce .taille { font-size:12px; color:var(--muted); }
   .actions {
-    flex:none; padding:14px 26px; border-top:1px solid var(--border);
+    flex:none; padding:14px 0 0;
     display:flex; gap:12px; flex-wrap:wrap;
   }
   .actions button {
@@ -472,17 +503,19 @@
   }
   .actions-message .principal:hover { background:var(--accentH); border-color:var(--accentH); }
 
-  /* Le cadre VOLET, à plat (A46) — la géométrie du prototype
-     (.voletLecture / .lecture) : le volet défile en un seul flot, les
-     filets et l'élévation appartiennent aux seules cartes ; le titre
-     colle au dessin (.titreFil margin 2/4, sousTitre à 10 px des
-     cartes), la barre d'actions suit le flot (barreActions, 14 px). */
-  .objet-fil.volet { flex:none; min-height:100%; }
-  .volet .tete { padding:0; border-bottom:none; gap:0; }
-  .volet .titre { margin:2px 0 4px; }
-  .volet .puces { margin:0 0 10px; }
-  .volet .fil { flex:none; overflow-y:visible; padding:0; }
-  .volet .replie, .volet .deplie { margin-bottom:0; margin-top:12px; }
-  .volet .replie.brouillon { margin-top:12px; }
-  .volet .actions { padding:14px 0 0; border-top:none; }
+  /* R1 (PLAN-RETOURS-7, D1) : le voile d'une puce de pièce — même
+     géométrie que la puce (recouvrement absolu, largeur stable, la
+     rangée ne reflue pas), fond --sel opaque (la paire encre/sel est
+     celle du survol existant), glyphe download + « Enregistrer ».
+     Montré au survol ET au focus clavier (A8) ; jamais pendant un
+     enregistrement en vol (:disabled) ni sur un écho (non rendu). */
+  .puce.bouton { position:relative; }
+  .puce .voile {
+    position:absolute; inset:0; display:none; align-items:center;
+    justify-content:center; gap:6px; font-size:12px; font-weight:600;
+    color:var(--ink); background:var(--sel); border-radius:5px;
+    white-space:nowrap; overflow:hidden;
+  }
+  .puce.bouton:hover .voile, .puce.bouton:focus-visible .voile { display:inline-flex; }
+  .puce.bouton:disabled .voile { display:none; }
 </style>

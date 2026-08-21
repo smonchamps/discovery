@@ -29,7 +29,7 @@
   import ModaleMigration from './ModaleMigration.svelte';
   import Toast from './Toast.svelte';
   import Hitofude from './Hitofude.svelte';
-  import { fil, fermerFil, reduireFil, estEcho } from './lib/fil.svelte.js';
+  import { fil, fermerFil, reduireFil, estEcho, cleMsg } from './lib/fil.svelte.js';
 
   let liste = $state(null);
   let lecture = $state(null);
@@ -1003,6 +1003,30 @@
     // agrandir est un changement de taille, jamais un rechargement.
     conversation.ouvrir(ligne);
   }
+  // R4 (PLAN-RETOURS-7) : épingler/désépingler LA conversation ouverte.
+  // Le cœur rend le nouvel état (le fil suit, même si la tête a bougé),
+  // la liste se ressert — la section épinglée et le flot bougent
+  // ensemble (D5 : jamais deux fois la même ligne). Le geste n'est
+  // offert qu'en Réception (D4) et JAMAIS sur une recherche : un
+  // résultat peut vivre hors Réception — l'épingle serait invisible.
+  const epinglable = $derived(categorie === 'reception' && nResultats === null);
+  async function epinglerFil(ligne) {
+    if (gesteSurEcho(ligne)) return;
+    try {
+      const etat = await appel('toggle_pin', {
+        accountId: ligne.account_id,
+        mailbox: ligne.mailbox,
+        uid: ligne.uid,
+      });
+      // La discipline de jeton du store (revue 2026-08-21) : la réponse
+      // n'habille le bouton que si le fil montre TOUJOURS cette
+      // conversation — sinon l'état d'une autre ligne atterrirait ici.
+      if (fil.ligne && cleMsg(fil.ligne) === cleMsg(ligne)) fil.epingle = etat;
+      liste?.recharger();
+    } catch (err) {
+      console.error('toggle_pin :', err);
+    }
+  }
   function retourBoite() {
     reduireFil(volets === 3);
   }
@@ -1272,7 +1296,8 @@
                  onrepondre={repondre} onrepondretous={repondreTous}
                  ontransferer={transferer}
                  onspam={signalerSpam} onnonspam={marquerLegitime}
-                 estIndesirable={categorie === 'indesirables'} onflash={flash} />
+                 estIndesirable={categorie === 'indesirables'} onflash={flash}
+                 {epinglable} onepingler={epinglerFil} />
       {/if}
       <!-- Les poignées (R3) : posées SUR les frontières de la grille,
            hors flux — la grille ne gagne pas de colonne. Le motif ARIA
@@ -1362,7 +1387,8 @@
                   onnonspam={async (l) => { await marquerLegitime(l); retourBoite(); }}
                   estIndesirable={categorie === 'indesirables'}
                   onecrire={ecrire}
-                  onflash={flash} />
+                  onflash={flash}
+                  {epinglable} onepingler={epinglerFil} />
 
     {#if navPrete && comptes.length === 0}
       <Onboarding onajoute={compteAjoute} />

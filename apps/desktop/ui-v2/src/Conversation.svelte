@@ -24,6 +24,8 @@
     estIndesirable = false,
     onecrire = () => {},
     onflash = () => {},
+    epinglable = false,
+    onepingler = () => {},
   } = $props();
 
   export function ouvrir(nouvelle) {
@@ -52,11 +54,16 @@
         <span class="ms" aria-hidden="true">edit_square</span>{t('entete.ecrire')}</button>
     </header>
 
+    <!-- R3 (PLAN-RETOURS-7) : l'écran 03 est À PLAT, comme le volet
+         (A46 étendu) — plus de carte englobante : la scène défile en un
+         seul flot, seules les cartes de message s'élèvent. Colonne de
+         lecture centrée et bornée (D2 : ~960 px). -->
     <div class="scene">
-      <div class="carte">
+      <div class="colonne">
         <Fil {brouillons} {onreprendre} {onarchiver} {onsupprimer}
              {onrepondre} {onrepondretous} {ontransferer}
-             {onspam} {onnonspam} {estIndesirable} {onflash} />
+             {onspam} {onnonspam} {estIndesirable} {onflash}
+             {epinglable} {onepingler} />
       </div>
     </div>
   </div>
@@ -89,10 +96,8 @@
   }
   .principal:hover { background:var(--accentH); border-color:var(--accentH); }
 
-  .scene { flex:1; padding:28px; display:flex; min-height:0; }
-  .carte {
-    flex:1; background:var(--surface); border:1px solid var(--border); border-radius:10px;
-    box-shadow:var(--shadow); display:flex; flex-direction:column;
-    overflow:hidden; min-height:0;
-  }
+  /* La scène est LE flot (R3) : elle seule défile — le fil est à plat
+     dedans, aucune surface, bordure ni ombre englobantes. */
+  .scene { flex:1; padding:18px 28px 28px; overflow-y:auto; min-height:0; }
+  .colonne { max-width:960px; margin:0 auto; min-height:100%; display:flex; flex-direction:column; }
 </style>

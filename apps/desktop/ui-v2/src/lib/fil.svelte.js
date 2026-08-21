@@ -24,6 +24,11 @@ const VIDE = () => ({
   nbPieces: {},
   imagesBloquees: {},
   imagesVoulues: {},
+  // R4 (PLAN-RETOURS-7) : la conversation ouverte est-elle épinglée ?
+  // Lu par le FIL côté cœur (pin_state) à l'ouverture, tenu à jour par
+  // le geste (App.epinglerFil). Faux par défaut — le bouton dit
+  // « Épingler » tant que le cœur n'a pas répondu.
+  epingle: false,
 });
 
 export const fil = $state({
@@ -58,6 +63,14 @@ export async function ouvrirFil(nouvelle, cadre = 'volet') {
   fil.cadre = cadre;
   fil.ligne = nouvelle;
   Object.assign(fil, VIDE());
+  // R4 : l'état d'épingle vient de la LIGNE servie — exact par
+  // construction dans la Réception, la seule à offrir le geste (D4) :
+  // une ligne du flot n'est JAMAIS épinglée (D5, le cœur l'exclut),
+  // une ligne de la section l'est toujours. Aucun aller-retour au cœur
+  // sur le chemin d'ouverture (revue 2026-08-21 : un pin_state par
+  // ouverture, dans la file sérialisée, payait pour un bouton le plus
+  // souvent absent — et l'état mentait pendant l'aller-retour).
+  fil.epingle = nouvelle.pinned ?? false;
   // V-D2 : sans fil — écho compris — le MESSAGE SEUL est le fil.
   if (nouvelle.thread_id == null) {
     fil.messages = [nouvelle];

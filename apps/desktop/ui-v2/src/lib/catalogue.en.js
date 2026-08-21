@@ -82,6 +82,8 @@ export const EN = {
   'action.archiver': 'Archive',
   'action.signalerSpam': 'Report as spam',
   'action.pasSpam': 'Not spam',
+  'action.epingler': 'Pin',
+  'action.desepingler': 'Unpin',
   'action.supprimer': 'Delete',
   'action.envoyer': 'Send',
   'action.annuler': 'Cancel',
@@ -146,6 +148,7 @@ export const EN = {
   'brouillons.sansObjet': '(no subject)',
   'puce.messages': '{n} message|{n} messages',
   'puce.fichiers': '{n} file|{n} files',
+  'puce.epingle': 'Pinned',
   'onglet.tous': 'All',
   'onglet.nonlus': 'Unread',
 
@@ -157,6 +160,7 @@ export const EN = {
   'lecture.afficherImages': 'Show images',
   'lecture.corps': 'Message content',
   'lecture.enregistrer': 'Save…',
+  'lecture.voileEnregistrer': 'Save',
 
   // --- Conversation (écran 03) ------------------------------------------
   'conv.deplier': 'Expand all',

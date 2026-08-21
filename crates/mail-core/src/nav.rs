@@ -18,7 +18,10 @@
 use rusqlite::params;
 
 use crate::error::Error;
-use crate::store::{SELECT_UNIFIED, Store, UnifiedRow, row_to_threaded, unified_page_sql};
+use crate::store::{
+    PINNED_THREADS, SELECT_UNIFIED, Store, THREAD_AGGREGATE, UNIFIED_JOIN_TAIL, UnifiedRow,
+    row_to_threaded, unified_page_sql,
+};
 use crate::thread::RECEIVED_MAILBOX;
 
 /// Les dossiers canoniques d'UN compte, en noms RÉSEAU (`folders.wire`,
@@ -345,14 +348,57 @@ impl Store {
             ""
         };
         let filtre_non_lues = if non_lues { " AND unseen > 0" } else { "" };
+        // R4 (D5) : le total suit le FLOT — les épinglées, servies à
+        // part en tête, n'y comptent pas ; sans cette exclusion, la
+        // barre de défilement réserverait des lignes fantômes et le
+        // total d'une page courte contredirait `category_total`.
         let sql = format!(
-            "SELECT COUNT(*) FROM threads WHERE inbox_size > 0{filtre_compte}{filtre_non_lues}"
+            "SELECT COUNT(*) FROM threads
+              WHERE inbox_size > 0 AND id NOT IN ({PINNED_THREADS}){filtre_compte}{filtre_non_lues}"
         );
         let count: i64 = match account_id {
             None => self.conn().query_row(&sql, [], |row| row.get(0))?,
             Some(id) => self.conn().query_row(&sql, params![id], |row| row.get(0))?,
         };
         Ok(count as u64)
+    }
+
+    /// Les conversations ÉPINGLÉES de la portée (R4) — servies À PART,
+    /// en tête de la page 0 de la Réception (D4 : Réception seule),
+    /// jamais dans le flot paginé (D5). Mêmes colonnes et même queue de
+    /// jointures/tri que la page ([`UNIFIED_JOIN_TAIL`] — les deux
+    /// requêtes ne peuvent pas dériver), ordre de la liste (date
+    /// décroissante, O3). Sans LIMIT : quelques épingles au plus, et la
+    /// jointure sur `envelopes` écarte d'elle-même les épingles
+    /// orphelines d'un message expurgé. LECTURE seule — les écritures
+    /// (`toggle_pin`) vivent au stockage, `store.rs`.
+    pub fn pinned_unified_scoped(
+        &self,
+        account_id: Option<i64>,
+        non_lues: bool,
+    ) -> Result<Vec<UnifiedRow>, Error> {
+        let filtre = if account_id.is_some() {
+            " AND account_id = ?1"
+        } else {
+            ""
+        };
+        let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
+        let sql = format!(
+            "{SELECT_UNIFIED}{THREAD_AGGREGATE}
+             FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
+                     FROM threads
+                    WHERE inbox_size > 0 AND id IN ({PINNED_THREADS}){filtre}{non_lues_seulement}) t{UNIFIED_JOIN_TAIL}"
+        );
+        let mut stmt = self.conn().prepare(&sql)?;
+        let rows = match account_id {
+            None => stmt
+                .query_map([], row_to_threaded)?
+                .collect::<Result<Vec<_>, _>>()?,
+            Some(id) => stmt
+                .query_map(params![id], row_to_threaded)?
+                .collect::<Result<Vec<_>, _>>()?,
+        };
+        Ok(rows)
     }
 
     /// `(total, non lus)` cumulés des boîtes données — le total de la

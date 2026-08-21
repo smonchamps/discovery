@@ -91,8 +91,43 @@
 
   // Deux gabarits (A44, terrain : hauteur au contenu) : h1 la ligne
   // nue, h2 la porteuse — la géométrie corrige la multiplication par
-  // le compte de porteuses AVANT l'index, tenu par page.
-  const aPuces = (l) => l.thread_size > 1 || l.attachment_count > 0;
+  // le compte de porteuses AVANT l'index, tenu par page. `pinned` ne
+  // vient que de la section épinglée (hors fenêtrage) : il rend la
+  // ligne porteuse pour montrer sa marque, sans toucher les pages.
+  const aPuces = (l) => l.thread_size > 1 || l.attachment_count > 0 || l.pinned;
+
+  // R4 (PLAN-RETOURS-7, D4/D5) : les conversations ÉPINGLÉES de la
+  // Réception — servies À PART (`pinned_rows`), préposées au flot dans
+  // le MÊME cadre de défilement ; le flot paginé les exclut côté cœur
+  // (jamais deux fois la même ligne). Leur hauteur MESURÉE recale le
+  // fenêtrage : le flot commence sous la section.
+  let epingles = $state([]);
+  let hautEpinglesMesure = $state(0);
+  // La mesure survit au démontage du bloc : zéro dès qu'il n'y a plus
+  // d'épingle, sans attendre une mesure qui ne viendra pas.
+  const hautEpingles = $derived(epingles.length > 0 ? hautEpinglesMesure : 0);
+  // Le vide ne s'affirme jamais sans preuve (E2) — preuve des DEUX
+  // sources : la page 0 du flot ET la réponse des épingles. Sans ce
+  // drapeau, une boîte entièrement épinglée dirait « Aucun message
+  // ici. » pendant (ou après, sur échec) le vol de `pinned_rows`
+  // (revue 2026-08-21).
+  let epinglesRepondues = $state(false);
+  function lancerEpingles() {
+    if (categorie !== 'reception') {
+      epingles = [];
+      epinglesRepondues = true;
+      return;
+    }
+    const neeSource = source;
+    appel('pinned_rows', { accountId: compte, nonLus: onglet === 'nonlus' })
+      .then((rows) => {
+        if (neeSource === source) epingles = rows;
+      })
+      .catch((err) => console.error('pinned_rows :', err))
+      .finally(() => {
+        if (neeSource === source) epinglesRepondues = true;
+      });
+  }
   const extraPuce = $derived(h2 - h1);
 
   function chipsAvant(i) {
@@ -335,9 +370,24 @@
       // figée à la toute première, `etat().premierePageMs` aurait menti
       // aux bancs — le statut de démarrage, lui, est déjà capturé.
       premierePageMs = null;
+      epingles = [];
+      epinglesRepondues = false;
       if (cadre) cadre.scrollTop = 0;
       version += 1;
       pomper();
+      lancerEpingles();
+    });
+  });
+
+  // La section épinglée change la hauteur AU-DESSUS du flot hors de
+  // tout événement de défilement (mesure asynchrone, pin/désépingle) :
+  // `premier` se recale à chaque mouvement de la mesure, sinon la
+  // fenêtre resterait calée sur l'ancienne origine jusqu'au prochain
+  // pixel de scroll (revue 2026-08-21).
+  $effect(() => {
+    void hautEpingles;
+    untrack(() => {
+      if (cadre) surDefilement();
     });
   });
 
@@ -364,7 +414,9 @@
   });
 
   function surDefilement() {
-    premier = indexPour(cadre.scrollTop);
+    // La section épinglée vit AU-DESSUS du flot dans le même cadre :
+    // le fenêtrage du flot se calcule sous elle.
+    premier = indexPour(Math.max(0, cadre.scrollTop - hautEpingles));
   }
 
   // D1 — recherche (FTS5, `search_messages`) : les résultats prennent la
@@ -445,8 +497,14 @@
     // 2026-08-20) : null tant que le vrai total n'est pas là — le
     // statut ne dira jamais « 0 éléments » sur une boîte qui n'a pas
     // parlé, ni un plancher provisoire comme s'il était le compte.
+    // Les épinglées comptent : elles sont À L'ÉCRAN — sans elles, la
+    // barre dirait « 8 éléments » devant 10 lignes (revue 2026-08-21).
     const n =
-      lignesBrouillons !== null ? lignesBrouillons.length : totalPrecis ? total : null;
+      lignesBrouillons !== null
+        ? lignesBrouillons.length
+        : totalPrecis
+          ? total + epingles.length
+          : null;
     untrack(() => ontotal(n));
   });
 
@@ -500,7 +558,7 @@
 
   // --- API (App, banc P1, e2e) ---------------------------------------
   export function aller(index) {
-    cadre.scrollTop = decalage(index);
+    cadre.scrollTop = decalage(index) + hautEpingles;
     surDefilement();
   }
   export async function allerEtServir(index) {
@@ -539,6 +597,12 @@
       const i = resultats.findIndex((l) => cle(l) === id);
       return i >= 0 && i + 1 < resultats.length ? resultats[i + 1] : null;
     }
+    // Depuis la section épinglée : la suivante y vit, ou la première
+    // ligne du flot en sortant par le bas.
+    const e = epingles.findIndex((l) => cle(l) === id);
+    if (e >= 0) {
+      return e + 1 < epingles.length ? epingles[e + 1] : (ligneA(0) ?? null);
+    }
     for (const [p, rows] of pages) {
       const i = rows.findIndex((l) => cle(l) === id);
       if (i >= 0) return ligneA(p * PAGE + i + 1) ?? null;
@@ -551,6 +615,9 @@
       for (const l of page) {
         if (cle(l) === id) l.thread_unseen = 0;
       }
+    }
+    for (const l of epingles) {
+      if (cle(l) === id) l.thread_unseen = 0;
     }
     version += 1;
   }
@@ -566,6 +633,9 @@
     // puis la page 0 dépareillée (le total frais) ; les vols ouverts
     // gardent leurs places et repompent en se réglant (E1).
     pomper();
+    // R4 : la section épinglée suit chaque recharge — un épinglage
+    // déplace une ligne entre la section et le flot, jamais un doublon.
+    lancerEpingles();
     // Une recherche ACTIVE se resert aussi : archiver un résultat doit
     // le retirer des résultats — la régression #4 de v1, même trou.
     if (resultats !== null) {
@@ -657,6 +727,9 @@
              rattrapage, jamais à tort. -->
         {#if aPuces(ligne)}
           <div class="puces" data-testid="puces-ligne">
+            {#if ligne.pinned}
+              <span class="puce"><span class="ms" aria-hidden="true">keep</span>{t('puce.epingle')}</span>
+            {/if}
             {#if ligne.thread_size > 1}
               <span class="puce"><span class="ms" aria-hidden="true">forum</span>{t('puce.messages', { n: ligne.thread_size })}</span>
             {/if}
@@ -711,11 +784,23 @@
         {/each}
       </div>
     {:else}
-      {#if total === 0 && sourceRepondue}
-        <!-- La page 0 a répondu zéro ligne : le vide est PROUVÉ, sans
-             comptage (une page courte dit le total d'elle-même). -->
+      <!-- R4 : la section ÉPINGLÉE — les mêmes lignes, préposées au
+           flot dans le même défilement ; le flot les exclut (D5). Sa
+           hauteur mesurée recale le fenêtrage dessous. -->
+      {#if epingles.length > 0}
+        <div class="epingles" data-testid="epingles" bind:offsetHeight={hautEpinglesMesure}>
+          {#each epingles as ligne (cle(ligne))}
+            {@render rangee(ligne)}
+          {/each}
+        </div>
+      {/if}
+      {#if total === 0 && sourceRepondue && epinglesRepondues && epingles.length === 0}
+        <!-- Les DEUX sources ont répondu zéro : le vide est PROUVÉ,
+             sans comptage (une page courte dit le total d'elle-même).
+             Tout-épinglé : le flot est vide mais la boîte ne l'est
+             pas — la section seule, rien à affirmer dessous. -->
         <div class="vide"><p>{t('liste.vide')}</p></div>
-      {:else if total === 0}
+      {:else if total === 0 && !(sourceRepondue && epinglesRepondues)}
         <!-- La source courante n'a pas encore répondu : l'attente se
              montre, le vide ne s'affirme jamais sans preuve
              (PLAN-DEFILEMENT-PROFOND E2). -->
@@ -843,6 +928,19 @@
   .ligne.choisie {
     background:var(--sel); border-left-color:var(--accent);
   }
+  /* A73, terrain 2026-08-21 : la ligne ÉPINGLÉE prend le dessin de la
+     tuile de la boîte en cours (nav, W2-D5) — fond --tuile, encre
+     --tuileInk (paire déjà mesurée par la gate) : elle se distingue au
+     premier regard du flot. La teinte tient au survol (la tuile n'a
+     pas d'état de survol) ; la sélection garde son liseré d'accent. */
+  .epingles .ligne,
+  .epingles .ligne:hover,
+  .epingles .ligne.choisie { background:var(--tuile); }
+  .epingles .ligne.choisie { border-left-color:var(--accent); }
+  .epingles .ligne .exp,
+  .epingles .ligne .objet,
+  .epingles .ligne .apercu,
+  .epingles .ligne .heure { color:var(--tuileInk); }
   .l1 { display:flex; align-items:baseline; gap:10px; }
   .exp {
     font-size:14px; color:var(--ink); flex:1; min-width:0;

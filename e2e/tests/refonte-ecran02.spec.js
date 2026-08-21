@@ -515,7 +515,8 @@ test('« Répondre à tous » se tient entre Répondre et Transférer, par messa
   const barreFil = await page
     .locator('[data-testid="volet-lecture"] .actions button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barreFil).toEqual(['archiver', 'supprimer', 'signaler-spam']);
+  // « Épingler » a rejoint la barre du fil en Réception (RETOURS-7, D3).
+  expect(barreFil).toEqual(['archiver', 'supprimer', 'signaler-spam', 'epingler']);
 
   await page.locator('[data-testid="voir-conversation"]').click();
   const barreMsgConv = await page
@@ -527,7 +528,7 @@ test('« Répondre à tous » se tient entre Répondre et Transférer, par messa
   const barreFilConv = await page
     .locator('[data-testid="conversation"] .actions button')
     .evaluateAll((boutons) => boutons.map((bouton) => bouton.dataset.testid));
-  expect(barreFilConv).toEqual(['archiver', 'supprimer', 'signaler-spam']);
+  expect(barreFilConv).toEqual(['archiver', 'supprimer', 'signaler-spam', 'epingler']);
 
   await page.locator('[data-testid="retour-boite"]').click();
   await expect(page.locator('[data-testid="fil-sujet"]')).toHaveText(

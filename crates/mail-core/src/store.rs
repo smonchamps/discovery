@@ -270,6 +270,19 @@ CREATE TABLE IF NOT EXISTS correspondants (
     last_epoch INTEGER NOT NULL DEFAULT 0,
     hits       INTEGER NOT NULL DEFAULT 0
 );
+-- L'epingle LOCALE d'une conversation (PLAN-RETOURS-7, R4) : cle
+-- d'ENVELOPPE, pas de fil — les tables de fils se DROPent a l'adoption
+-- (thread::drop_if_outdated), une epingle portee par `threads` mourrait
+-- a la migration suivante. Le fil se retrouve par jointure. JAMAIS la
+-- colonne `flagged` : elle est ecrasee par la verite serveur a chaque
+-- synchro (upsert_envelopes), et l'etoile IMAP est une autre semantique.
+-- Locale par decision (D-refus) : IMAP n'a pas ce concept.
+CREATE TABLE IF NOT EXISTS pins (
+    mailbox_id INTEGER NOT NULL REFERENCES mailboxes(id) ON DELETE CASCADE,
+    uid        INTEGER NOT NULL,
+    epoch      INTEGER NOT NULL,
+    PRIMARY KEY (mailbox_id, uid)
+);
 ";
 
 /// Avancement de l'adoption d'une base héritée, pour l'affichage.
@@ -366,6 +379,31 @@ pub(crate) const SELECT_UNIFIED: &str = "SELECT a.id, a.email, e.uid, e.subject,
 /// conversation. Vient APRÈS `to_addrs`/`cc_addrs` de [`SELECT_UNIFIED`] :
 /// `t.size`/`t.unseen` sont donc aux index 17/18.
 pub(crate) const THREAD_AGGREGATE: &str = ", t.size, t.unseen";
+
+/// Les fils ÉPINGLÉS (R4, PLAN-RETOURS-7) — la sous-requête partagée
+/// par la page (exclusion, D5), le comptage et le service à part.
+/// Matérialisée UNE fois par requête (LIST SUBQUERY), petite par
+/// construction (quelques épingles au plus) — mais SEULEMENT si `pins`
+/// est la table extérieure : sans `ANALYZE` (jamais exécuté ici),
+/// SQLite choisit `envelopes` en extérieure et paie un scan COMPLET de
+/// la table la plus large sur le chemin le plus chaud (revue
+/// 2026-08-21, mesuré au banc : ~24 ms la page à 200 k). Le
+/// `CROSS JOIN` est la directive d'ordre de SQLite : `pins` se
+/// parcourt, `envelopes` se sonde par sa clé primaire. La garde de
+/// plan `la_boite_unifiee_ne_materialise_pas_son_tri` le prouve.
+pub(crate) const PINNED_THREADS: &str = "SELECT pe.thread_id FROM pins p CROSS JOIN envelopes pe ON pe.mailbox_id = p.mailbox_id AND pe.uid = p.uid WHERE pe.thread_id IS NOT NULL";
+
+/// La queue de la liste unifiée — jointures et tri final — partagée
+/// par la page ([`unified_page_sql`]) et la section épinglée
+/// ([`Store::pinned_unified_scoped`]) : UNE écriture, les deux
+/// requêtes ne peuvent plus dériver (revue 2026-08-21 — la copie du
+/// squelette aurait décalé les colonnes au premier ajout).
+pub(crate) const UNIFIED_JOIN_TAIL: &str = "
+         JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
+         JOIN mailboxes m ON m.id = e.mailbox_id
+         JOIN accounts a ON a.id = t.account_id
+         LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
+         ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id";
 
 pub struct Store(Connection);
 
@@ -1956,15 +1994,80 @@ impl Store {
 
     /// Total de la boîte unifiée — en CONVERSATIONS, puisque c'est ce que
     /// la liste affiche. Compter les messages ferait défiler dans le vide.
+    /// Les fils ÉPINGLÉS n'y comptent pas (R4, D5) — la page les exclut,
+    /// le total DOIT décrire le même ensemble qu'elle (revue 2026-08-21 :
+    /// la paire page/total désaccordée fabriquerait des lignes fantômes).
     //
     // (`unified_page_sql`, plus bas, porte la requête de la page.)
     pub fn unified_count(&self) -> Result<u64, Error> {
         let count: i64 = self.0.query_row(
-            "SELECT COUNT(*) FROM threads WHERE inbox_size > 0",
+            &format!(
+                "SELECT COUNT(*) FROM threads
+                  WHERE inbox_size > 0 AND id NOT IN ({PINNED_THREADS})"
+            ),
             [],
             |row| row.get(0),
         )?;
         Ok(count as u64)
+    }
+
+    /// R4 (PLAN-RETOURS-7) : épingle ou désépingle la CONVERSATION du
+    /// message donné — rend le nouvel état. Poser l'épingle enregistre
+    /// la clé d'enveloppe du geste ; la retirer libère le fil ENTIER
+    /// (toutes les clés qui y mènent), sans quoi une épingle posée hier
+    /// depuis une autre tête du fil resterait accrochée. Le fil se
+    /// résout UNE fois — l'état et l'écriture regardent le même
+    /// (revue 2026-08-21 : deux résolutions pouvaient diverger si une
+    /// synchro re-filait entre elles).
+    pub fn toggle_pin(&self, mailbox_id: i64, uid: Uid, epoch: i64) -> Result<bool, Error> {
+        let fil = thread::thread_of(&self.0, mailbox_id, uid)?;
+        if self.pin_state_du_fil(fil, mailbox_id, uid)? {
+            match fil {
+                Some(fil) => self.0.execute(
+                    "DELETE FROM pins WHERE (mailbox_id, uid) IN
+                       (SELECT mailbox_id, uid FROM envelopes WHERE thread_id = ?1)",
+                    params![fil],
+                )?,
+                None => self.0.execute(
+                    "DELETE FROM pins WHERE mailbox_id = ?1 AND uid = ?2",
+                    params![mailbox_id, uid],
+                )?,
+            };
+            Ok(false)
+        } else {
+            self.0.execute(
+                "INSERT OR REPLACE INTO pins (mailbox_id, uid, epoch) VALUES (?1, ?2, ?3)",
+                params![mailbox_id, uid, epoch],
+            )?;
+            Ok(true)
+        }
+    }
+
+    /// La conversation du message est-elle épinglée ? L'état se lit par
+    /// le FIL : une épingle posée sur n'importe quel message du fil vaut
+    /// pour sa tête courante — la barre du fil dit vrai même quand une
+    /// réponse a déplacé la tête depuis le geste.
+    pub fn pin_state(&self, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
+        let fil = thread::thread_of(&self.0, mailbox_id, uid)?;
+        self.pin_state_du_fil(fil, mailbox_id, uid)
+    }
+
+    fn pin_state_du_fil(&self, fil: Option<i64>, mailbox_id: i64, uid: Uid) -> Result<bool, Error> {
+        let epingle = match fil {
+            Some(fil) => self
+                .0
+                .prepare(
+                    "SELECT 1 FROM pins p JOIN envelopes e
+                       ON e.mailbox_id = p.mailbox_id AND e.uid = p.uid
+                     WHERE e.thread_id = ?1",
+                )?
+                .exists(params![fil])?,
+            None => self
+                .0
+                .prepare("SELECT 1 FROM pins WHERE mailbox_id = ?1 AND uid = ?2")?
+                .exists(params![mailbox_id, uid])?,
+        };
+        Ok(epingle)
     }
 
     /// Les messages d'une conversation, du plus ancien au plus récent —
@@ -2097,18 +2200,18 @@ pub(crate) fn unified_page_sql(par_compte: bool, non_lues: bool) -> String {
         ""
     };
     let non_lues_seulement = if non_lues { " AND unseen > 0" } else { "" };
+    // R4 (PLAN-RETOURS-7, D5) : les conversations ÉPINGLÉES quittent le
+    // flot paginé — elles se servent À PART, en tête de page 0
+    // (`pinned_unified_scoped`) ; la liste ne montre jamais deux fois le
+    // même message. `NOT IN` sur la sous-requête des épingles : liste
+    // matérialisée une fois, minuscule par construction.
     format!(
         "{SELECT_UNIFIED}{THREAD_AGGREGATE}
          FROM (SELECT account_id, last_mailbox_id, last_uid, last_epoch, size, unseen
                  FROM threads
-                WHERE inbox_size > 0{filtre}{non_lues_seulement}
+                WHERE inbox_size > 0 AND id NOT IN ({PINNED_THREADS}){filtre}{non_lues_seulement}
                 ORDER BY last_epoch DESC, last_uid DESC, account_id
-                LIMIT ?1 OFFSET ?2) t
-         JOIN envelopes e ON e.mailbox_id = t.last_mailbox_id AND e.uid = t.last_uid
-         JOIN mailboxes m ON m.id = e.mailbox_id
-         JOIN accounts a ON a.id = t.account_id
-         LEFT JOIN bodies b ON b.mailbox_id = e.mailbox_id AND b.uid = e.uid
-         ORDER BY t.last_epoch DESC, t.last_uid DESC, a.id"
+                LIMIT ?1 OFFSET ?2) t{UNIFIED_JOIN_TAIL}"
     )
 }
 
@@ -5066,5 +5169,102 @@ mod tests {
              redevient proportionnel à la taille de la boîte.\nPlan :\n{}",
             plan.join("\n")
         );
+        // R4 : la sous-requête des épingles (PINNED_THREADS) doit partir
+        // de `pins` (minuscule) et SONDER `envelopes` par sa clé — sans
+        // le CROSS JOIN directif, SQLite (sans ANALYZE, le cas de
+        // production) scanne `envelopes` ENTIÈRE à chaque page : ~24 ms
+        // mesurés à 200 k, sur le chemin le plus chaud (revue
+        // 2026-08-21).
+        assert!(
+            !plan.iter().any(|etape| etape.contains("SCAN pe")),
+            "la sous-requête des épingles scanne `envelopes` — l'ordre \
+             de jointure a perdu sa directive.\nPlan :\n{}",
+            plan.join("\n")
+        );
+        assert!(
+            plan.iter().any(|etape| etape.contains("SCAN p")),
+            "la sous-requête des épingles ne part plus de `pins`.\nPlan :\n{}",
+            plan.join("\n")
+        );
+    }
+
+    /// R4 (PLAN-RETOURS-7) : une conversation épinglée se sert À PART
+    /// (`pinned_unified_scoped`) et QUITTE le flot paginé comme son
+    /// comptage (décision D5 : la liste ne montre jamais deux fois le
+    /// même message). Désépingler la rend au flot. L'épingle est bornée
+    /// au compte et suit l'onglet « Non lus » comme la page.
+    #[test]
+    fn une_epingle_sert_sa_conversation_a_part_et_hors_du_flot() {
+        let (mut store, inbox) = store_with_mailbox();
+        store
+            .upsert_envelopes(
+                inbox,
+                &[
+                    envelope(1, "ancien", 100, true),
+                    envelope(2, "milieu", 200, true),
+                    envelope(3, "récent", 300, true),
+                ],
+            )
+            .unwrap();
+        assert!(store.pinned_unified_scoped(None, false).unwrap().is_empty());
+
+        assert!(store.toggle_pin(inbox, 1, 1_000).unwrap(), "épinglé");
+        let epingles = store.pinned_unified_scoped(None, false).unwrap();
+        assert_eq!(epingles.len(), 1);
+        assert_eq!(epingles[0].envelope.uid, 1);
+        let flot = store.unified_recent_scoped(None, false, 0, 10).unwrap();
+        assert!(
+            flot.iter().all(|row| row.envelope.uid != 1),
+            "la conversation épinglée quitte le flot"
+        );
+        assert_eq!(flot.len(), 2);
+        assert_eq!(store.unified_count_scoped(None, false).unwrap(), 2);
+        // Bornes de la portée : un AUTRE compte n'a pas cette épingle,
+        // et l'onglet « Non lus » ne la montre pas (tout est lu ici).
+        assert!(
+            store
+                .pinned_unified_scoped(Some(999), false)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(store.pinned_unified_scoped(None, true).unwrap().is_empty());
+
+        assert!(!store.toggle_pin(inbox, 1, 1_001).unwrap(), "désépinglé");
+        assert!(store.pinned_unified_scoped(None, false).unwrap().is_empty());
+        assert_eq!(store.unified_count_scoped(None, false).unwrap(), 3);
+    }
+
+    /// R4 : l'épingle suit le FIL — posée sur un message, elle tient
+    /// quand une réponse déplace la tête de la conversation ;
+    /// `pin_state` répond par le fil, et désépingler depuis la tête
+    /// NOUVELLE libère le fil entier.
+    #[test]
+    fn une_epingle_suit_le_fil_et_sa_tete_nouvelle() {
+        let (mut store, inbox) = store_with_mailbox();
+        store
+            .upsert_envelopes(inbox, &[envelope(1, "sujet", 100, true)])
+            .unwrap();
+        assert!(store.toggle_pin(inbox, 1, 1_000).unwrap());
+
+        let mut reponse = envelope(2, "Re: sujet", 400, true);
+        reponse.in_reply_to = Some("<m1@example.com>".to_string());
+        store.upsert_envelopes(inbox, &[reponse]).unwrap();
+
+        let epingles = store.pinned_unified_scoped(None, false).unwrap();
+        assert_eq!(epingles.len(), 1, "un fil épinglé = UNE ligne");
+        assert_eq!(epingles[0].envelope.uid, 2, "la ligne est la tête du fil");
+        assert_eq!(epingles[0].thread_size, 2);
+        assert!(
+            store.pin_state(inbox, 2).unwrap(),
+            "l'état se lit par le fil"
+        );
+
+        assert!(
+            !store.toggle_pin(inbox, 2, 1_001).unwrap(),
+            "désépinglé depuis la tête nouvelle"
+        );
+        assert!(store.pinned_unified_scoped(None, false).unwrap().is_empty());
+        assert!(!store.pin_state(inbox, 1).unwrap());
+        assert_eq!(store.unified_count_scoped(None, false).unwrap(), 1);
     }
 }

@@ -411,3 +411,27 @@ motivée.)
   Piste : une retentative bornée déclenchée à l'établissement des
   sessions (le déclencheur du retour en ligne, R-D3, existe déjà —
   l'y raccorder), jamais un minuteur de martèlement.
+
+### D-28 · L'épingle est portée par la seule enveloppe du geste
+
+- **Fait (revue PLAN-RETOURS-7, 2026-08-21)** : épingler enregistre UNE
+  clé `(mailbox_id, uid)` — celle de la tête du fil au moment du geste.
+  Le fil se retrouve par jointure (`PINNED_THREADS`), et désépingler
+  libère le fil entier ; mais si CE message précis quitte sa boîte
+  (suppression par un autre client, politique de rétention, déplacement
+  partiel du fil), la conversation se désépingle silencieusement et la
+  ligne `pins` orpheline reste en base (pas de FK sur `envelopes` —
+  seule la suppression de la BOÎTE cascade). Un UID réutilisé après un
+  reset d'UIDVALIDITY pourrait épingler un message étranger.
+- **Pourquoi assumé** : le cas exige qu'un tiers supprime exactement le
+  message-clé pendant que le reste du fil demeure en Réception — rare ;
+  la jointure fait qu'une épingle orpheline n'est jamais SERVIE (aucun
+  affichage faux, juste une perte d'épingle et une ligne morte) ; et
+  re-épingler est un clic. Le remède complet (cle par `message_id` de
+  compte, ou re-ancrage à la synchro) est un chantier de robustesse
+  disproportionné pour une v1 locale.
+- **Condition de reprise** : si le terrain (ou la bêta) rapporte des
+  épingles qui « sautent », ou au premier reset d'UIDVALIDITY observé.
+  Piste : ré-ancrer l'épingle sur la tête courante du fil à chaque
+  service (`pinned_rows` sait le faire), et balayer les orphelines à la
+  vidange.

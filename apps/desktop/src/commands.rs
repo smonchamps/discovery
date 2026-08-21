@@ -112,6 +112,12 @@ pub struct MessageRow {
     /// dont l'À n'a pas été stocké).
     pub to_addrs: Vec<String>,
     pub cc_addrs: Vec<String>,
+    /// R4 (PLAN-RETOURS-7) : la ligne vient de la section ÉPINGLÉE de la
+    /// Réception (`pinned_rows`). Toujours faux dans le flot paginé —
+    /// une conversation épinglée en est exclue (D5). Le fil ouvert SÈME
+    /// son état d'épingle de ce champ (fil.svelte.js) : c'est lui qui
+    /// habille « Épingler »/« Désépingler » sans aller-retour.
+    pub pinned: bool,
 }
 
 /// Bilan d'une reconnexion : ce qui est revenu, et POURQUOI le reste ne
@@ -1642,6 +1648,7 @@ fn to_message_row(row: mail_core::UnifiedRow) -> MessageRow {
         thread_id: row.thread_id,
         thread_size: row.thread_size,
         thread_unseen: row.thread_unseen,
+        pinned: false,
     }
 }
 
@@ -2454,6 +2461,60 @@ pub async fn mark_flagged(
                 .map_err(|err| err.to_string())?;
         }
         Ok(())
+    })
+    .await
+}
+
+/// R4 (PLAN-RETOURS-7) : épingle ou désépingle la conversation du
+/// message — donnée LOCALE (IMAP n'a pas ce concept ; `\Flagged` est
+/// l'étoile, une autre sémantique). Rend le nouvel état.
+#[tauri::command]
+pub async fn toggle_pin(
+    app: AppHandle,
+    account_id: i64,
+    mailbox: String,
+    uid: u32,
+) -> Result<bool, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let Some(state) = store
+            .sync_state(account_id, &mailbox)
+            .map_err(|err| err.to_string())?
+        else {
+            return Ok(false);
+        };
+        let epoch = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        store
+            .toggle_pin(state.mailbox_id, uid, epoch)
+            .map_err(|err| err.to_string())
+    })
+    .await
+}
+
+/// Les conversations épinglées de la Réception (D4 : Réception seule),
+/// servies À PART — le front les prépose à la page 0, le flot paginé
+/// les exclut (D5).
+#[tauri::command]
+pub async fn pinned_rows(
+    app: AppHandle,
+    account_id: Option<i64>,
+    non_lus: bool,
+) -> Result<Vec<MessageRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        Ok(store
+            .pinned_unified_scoped(account_id, non_lus)
+            .map_err(|err| err.to_string())?
+            .into_iter()
+            .map(to_message_row)
+            .map(|mut row| {
+                row.pinned = true;
+                row
+            })
+            .collect())
     })
     .await
 }
