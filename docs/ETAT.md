@@ -12,12 +12,7 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Rien n'est cassé, rien n'est à moitié écrit.** Un chantier est en
-fin de course : **[PLAN-RETOURS-6](PLAN-RETOURS-6.md)** (signatures,
-envoi différé, « important », entête du composeur) — implémenté, revue
-faite, gate verte (e2e 99 → 103), **terrain validé en trois passes le
-2026-08-21** ; reste la livraison **0.4.0** (MINEUR, D5) : CI verte
-puis `faire-release.ps1`, puis `/solde`.
+**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
 **Prochain chantier : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.
@@ -30,16 +25,44 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.3.0** (publiée 2026-08-21, release
+**Dernière version livrée : 0.4.0** (publiée 2026-08-21, release
 **vérifiée** STANDARD.md §2.10 : Latest, 3 assets au tag nu,
-`latest.json` sans BOM, URL au tag nu, signature == `.sig`, exe résout
-200 / 5 038 998 octets ; **auto-update 0.2.1 → 0.3.0 confirmé au
-terrain le 2026-08-21** — la chaîne signée ADR 0013 reste prouvée
-vivante). La 0.3.0 porte l'**autocomplétion des adresses** À/Cc/Cci
-(MINEUR, D5) et l'**écho d'envoi qui dit vrai** (PLAN-RETOURS-5,
-ci-dessous).
+`latest.json` sans BOM 876 o, URL au tag nu, signature == `.sig`, exe
+résout 200 / 5 055 194 octets ; **auto-update 0.3.0 → 0.4.0 confirmé
+au terrain le 2026-08-21** — la chaîne signée ADR 0013 reste prouvée
+vivante). La 0.4.0 porte les quatre retours de PLAN-RETOURS-6
+(MINEUR, D5), ci-dessous.
 
-**Dernier chantier soldé : [PLAN-RETOURS-5](PLAN-RETOURS-5.md)**
+**Dernier chantier soldé : [PLAN-RETOURS-6](PLAN-RETOURS-6.md)**
+(2026-08-21, `13d4bed`, A66-A69, **terrain complet en trois passes le
+même jour** — chaque constat corrigé dans la session —, CI verte,
+**livré en 0.4.0**). (1) **Signature par compte** (Réglages >
+Signature) : éditeur riche réduit (G/I/S, allowlist ammonia par LA
+frontière), portée par compte (« aussi réponses/transferts », défaut
+nouveaux seuls), « Appliquer à tous » copie signature ET portée
+visiblement ; au composeur, insertion au gabarit (nouveau : sous deux
+lignes vides ; réponse/transfert : entre amorce et citation) et la
+signature **suit le compte émetteur** (gabarit de corps recomposable —
+citation regarnie à l'identique) ; garde anti-churn `corpsAuto`
+(fermer sans frappe ne sème RIEN). Stockage `prefs`, aucune migration.
+(2) **Envoi différé** : `outbox.send_at_epoch`, filtre échu-seulement
+DANS `outbox_to_send` (porte unique), `enqueue_outbox_full`
+transactionnel ; annulation = brouillon ENTIER recréé (pièces avec
+octets ; entrées programmées non échues seulement — course avec une
+vidange concurrente verrouillée, revue) ; barre d'état « N
+programmé(s) · départ {quand} », fente d'avis « Annuler l'envoi »,
+départ par minuterie courte armée par la sonde 10 s (~1 s). Sémantique
+locale DITE (D1) : part si Wind est ouvert, sinon au prochain
+lancement. (3) **« Important »** : bouton-icône de la barre de mise en
+forme (aria-pressed, infobulle « Marquer le message comme
+important »), colonnes `drafts.important`/`outbox.important` (le
+bascule seul avance l'horodatage), en-têtes SMTP `X-Priority: 1` +
+`Importance: high` (aucun sur l'ordinaire). (4) **Entête du
+composeur** sur `--panel` (le pied de page de Wind). 3 glyphes neufs
+(58 → 61, `?v=61`, preuve 62/62). Report : affichage des importants
+REÇUS (§ reports). e2e : 99 → **103**.
+
+**Le chantier soldé précédent : [PLAN-RETOURS-5](PLAN-RETOURS-5.md)**
 (2026-08-21, `6f94922`, A65, terrain complet — cinq points, le point 2
 instruit puis rejoué —, CI verte, **livré en 0.3.0**). (1) **L'entrée
 temporaire d'Envoyés dit vrai** : l'écho local d'un envoi
@@ -64,6 +87,13 @@ boîte d'envoi ne retente qu'en fin de cycle ou au geste — envois
 jamais perdus, règles d'or tenues). Pièges gravés : STANDARD §9
 (`2> fichier` sur l'exe fenêtré lancé nu ne capte rien — tracer via un
 lanceur qui attend). e2e : 97 → **99**.
+
+**La version précédente, 0.3.0** (publiée 2026-08-21, release
+**vérifiée** §2.10 : Latest, 3 assets au tag nu, `latest.json` sans
+BOM, signature == `.sig`, exe 200 / 5 038 998 octets ; **auto-update
+0.2.1 → 0.3.0 confirmé au terrain le 2026-08-21**). La 0.3.0 porte
+l'**autocomplétion des adresses** À/Cc/Cci et l'**écho d'envoi qui
+dit vrai** (PLAN-RETOURS-5).
 
 **La version précédente, 0.2.1** (publiée 2026-08-20, release
 **vérifiée a posteriori** STANDARD.md §2.10 : Latest, 3 assets au tag

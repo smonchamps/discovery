@@ -1,5 +1,24 @@
 # PLAN-RETOURS-6 — signatures, envoi différé, important, entête du composeur
 
+> **CHANTIER SOLDÉ le 2026-08-21 — terrain complet.** Ouvert, GO CE du
+> plan (STOP 1, D1-D5), implémenté en TDD (5 RED montrés), revue à
+> regard neuf (2 corrigées, 1 assumée), gate verte, **terrain validé
+> en TROIS passes le même jour** (1re : 3 constats corrigés dans la
+> session — placement d'« Important » en barre de style, « appliquer
+> à tous » visible, pied sans repli ; 2e : 2 retouches — infobulle,
+> rechargement de signature étendu aux réponses/transferts par gabarit
+> de corps ; 3e : tout OK), **livré en 0.4.0** (publiée et vérifiée
+> §2.10 le même jour — Latest, 3 assets au tag nu, `latest.json` sans
+> BOM 876 o, signature == `.sig`, exe 200 / 5 055 194 octets ;
+> **auto-update 0.3.0 → 0.4.0 confirmé au terrain** — chaîne signée
+> ADR 0013 prouvée vivante). Commits : `13d4bed` (feat, CI verte run
+> 32498323806), `a2259fa` (release, CI verte run 32501516286).
+> Journal Système **A66-A69**, 3 glyphes neufs (sous-ensemble 58 → 61,
+> preuve apercu 62/62). Tests Rust 353 (+5), e2e 99 → **103**.
+> Reports : affichage des importants REÇUS (refus de périmètre,
+> consigné à ETAT — fait d'instruction : Gmail web n'affiche pas
+> `X-Priority`/`Importance`, marqueur algorithmique maison).
+>
 > Chantier ouvert le 2026-08-21 (`/chantier`), sur quatre retours CE :
 > (1) feature — gestionnaire de signature email ; (2) feature — envoyer
 > un email en différé à une date et heure choisies ; (3) feature —
