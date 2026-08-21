@@ -12,6 +12,32 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.5.0] - 2026-08-21
+
+Épinglez vos conversations, et une lecture plus claire des pièces
+jointes comme des conversations ouvertes.
+
+### Ajouté
+
+- **Épingler une conversation** : dans la Boîte de réception, un bouton
+  « Épingler » dans la barre de la conversation la garde **toujours en
+  haut de la liste**, marquée « Épinglé » et à la teinte de la boîte
+  sélectionnée — elle quitte sa place dans le fil des dates (jamais en
+  double). « Désépingler » l'y ramène. Vos épingles survivent au
+  redémarrage ; elles restent sur votre machine.
+
+### Modifié
+
+- **Les pièces jointes s'affichent en haut du message**, juste sous son
+  entête — plus besoin de dérouler tout le mail pour les trouver.
+- **Survoler une pièce jointe dit l'action** : la puce se couvre d'un
+  voile « Enregistrer » avec sa flèche de téléchargement — vous savez
+  ce qui se passera avant de cliquer.
+- **La conversation ouverte (« Ouvrir ») est désormais à plat**, comme
+  le volet de lecture : chaque message dans sa carte, la page défile
+  d'un seul tenant, dans une colonne de lecture confortable — plus de
+  cadre englobant.
+
 ## [0.4.0] - 2026-08-21
 
 Votre signature, l'envoi à l'heure choisie, et le marquage important.
