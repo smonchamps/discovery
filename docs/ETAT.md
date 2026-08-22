@@ -12,7 +12,16 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
+**Rien n'est cassé, rien n'est à moitié écrit. Un seul geste en
+attente : la release 0.6.0** (la première bi-arch — PLAN-RETOURS-8
+est soldé, CI verte, l'entrée CHANGELOG est écrite) : lancer
+`scripts/faire-release.ps1 0.6.0` (mot de passe de la clé demandé à
+CHAQUE build — deux saisies, invariant ADR 0013), puis
+`scripts/verifier-release.ps1 0.6.0` (§2.10 scripté, deux
+plateformes), puis les preuves terrain PAR CANAL : auto-update
+0.5.0 → 0.6.0 sur ce poste (arm64) et **install 0.6.0 x64 sur le
+second poste** (décision D5 — le premier auto-update x64 ne sera
+constatable qu'à la release suivante).
 
 **Prochain chantier : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.
@@ -33,7 +42,52 @@ confirmé au terrain** — la chaîne signée ADR 0013 reste prouvée
 vivante). La 0.5.0 porte les quatre retours de PLAN-RETOURS-7
 (MINEUR, D6), ci-dessous.
 
-**Dernier chantier soldé : [PLAN-RETOURS-7](PLAN-RETOURS-7.md)**
+**Dernier chantier soldé : [PLAN-RETOURS-8](PLAN-RETOURS-8.md)**
+(2026-08-22, `cbf795a`, A74-A75 + **ADR 0023**, **terrain complet en
+CINQ passes le même jour** — 16 constats R2, chacun corrigé dans la
+session —, CI verte run 32576771340, **à livrer en 0.6.0** — la
+première release bi-arch). (1) **Repère de compte** (icône + teinte) :
+jeu DÉDIÉ de 12 glyphes (sous-ensemble 64 → 76, `?v=76`, preuve
+77/77 ; A3 tenu par réservation) + nuancier mesuré **12 familles × 2
+déclinaisons** (fait mesuré : aucune teinte unique ne tient 3:1 sur
+les fonds clairs ET `-nuit` — bascule `[data-theme$="-nuit"]`, gate
+contraste 2 716 → **3 052 paires**, fonds `tuile` compris, hex et
+encres LUS du CSS expédié) ; choisi dans Réglages > Comptes (l'icône
+de la rangée est la porte, un repère n'existe qu'ENTIER — écriture
+transactionnelle `set_text_prefs`), remplace `person` dans la nav,
+badge sous l'avatar en **boîte unifiée (D3) et en recherche**
+(toujours multi-comptes), dit aux lecteurs d'écran ; les prefs
+suffixées **meurent avec le compte** (`delete_account` — l'id SQLite
+se réutilise, signature comprise) ; gate de cohérence : le jeu dédié,
+UNE liste sur quatre porteurs. (2) **Parcours de premier démarrage**
+en quatre étapes (comptes / disposition / thème / récapitulatif),
+forme arrêtée au terrain en cinq passes : titre → « Étape n/4 » →
+texte, **Continuer jamais grisé** (absent sans compte — D4, masqué
+sous le guichet générique), captures RÉELLES de l'app à l'étape 2
+(`e2e/capture-accueil.mjs`, rejouable), vignettes de thème dans la
+disposition CHOISIE, récapitulatif en cartes-portes côte à côte
+(texte au-dessus des miniatures, voile « Revenir à cette étape » aux
+règles d'A70) ; marques `wind-accueil-fait`/`-commence` (localStorage,
+V-D4) : une installation existante est réputée accueillie, un
+parcours abandonné REPREND, zéro compte → guichet seul ; couture
+`__e2eAccueil` dans `lib/accueil.js` (jamais dans la décision
+produit). (3) **Release bi-arch** (ADR 0023) : le canal x64 REVIENT
+(retiré en 0.1.3) — cross-build local prouvé (1 min 45 s, override
+`lld-link` étendu au triple x64), `faire-release.ps1` à deux builds
+`--target` **tout-ou-rien** (D7), `latest.json` à DEUX clés
+construites par plateforme + garde anti-croisement des signatures
+(la panne silencieuse encodée, jamais laissée à la vigilance),
+5 assets dérivés de `$cibles`, BOM UTF-8 restauré (piège PS 5.1) ;
+**`verifier-release.ps1` neuf** (§2.10 scripté ×2 plateformes,
+contrôles au TAG de la version, échec en verdict — prouvé sur la
+0.5.0) ; STANDARD §2.9 (MAJEUR évalué **par canal**) et §2.10 (cinq
+assets nommés) amendés. Revue à regard neuf 8 angles : 10 trouvailles
+confirmées, toutes corrigées avant le terrain. Reports : D-10
+rouverte-refermée sans solde (ordre A41 vérifié sur pièces,
+l'assertion `prefs.lang` reste à écrire). e2e : 108 → **117** ; tests
+Rust : mail-core 357 → **358**, wind-desktop 18 → **20**.
+
+**Le chantier soldé précédent : [PLAN-RETOURS-7](PLAN-RETOURS-7.md)**
 (2026-08-22, `2cb9460`, A70-A73, **terrain complet en deux passes le
 2026-08-21** — le constat visuel corrigé dans la session —, CI verte,
 **livré en 0.5.0**). (1) **Survol descriptif des pièces jointes** :
@@ -435,8 +489,10 @@ NSIS (**pas MSIX** — il
 virtualiserait `%APPDATA%` et orphelinerait la base) ; updater Tauri
 signé minisign, piloté depuis Rust (capabilities au minimum) ; signature
 de code Windows reportée à la bêta. Publication d'une version :
-`scripts/faire-release.ps1 <version>` prépare le `latest.json`, la
-Release GitHub reste manuelle (tag = version nue).
+`scripts/faire-release.ps1 <version>` fait TOUTE la release — depuis
+PLAN-RETOURS-8/ADR 0023 en **bi-arch** (arm64 natif + x64 cross,
+tout-ou-rien, 5 assets, `latest.json` à deux clés, tag = version
+nue) ; vérification scriptée par `scripts/verifier-release.ps1`.
 
 ### Le chantier fait : télémétrie de crash locale et opt-in (ADR 0014)
 

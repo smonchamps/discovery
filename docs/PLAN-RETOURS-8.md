@@ -12,6 +12,15 @@
 > à partir de cette release, livrer **x64 ET arm64** à chaque release,
 > scripts et processus mis à jour.
 >
+> **CHANTIER SOLDÉ le 2026-08-22 — terrain complet.** Ouvert le
+> 2026-08-22, GO CE du plan le même jour (STOP 1, D1-D8), implémenté
+> en TDD (RED montré sur le cœur), commit `cbf795a` (feat, 37
+> fichiers, **CI verte run 32576771340**). La release **0.6.0** (D8,
+> MINEURE — la première bi-arch) suit le solde : entrée CHANGELOG
+> écrite, `faire-release.ps1 0.6.0` à la main du CE (mot de passe de
+> la clé, deux saisies), vérification `verifier-release.ps1 0.6.0`,
+> install x64 sur le second poste (D5).
+>
 > **Terrain VALIDÉ le 2026-08-22, en CINQ passes le même jour** (1re :
 > R1 validé entièrement + 8 constats R2 ; 2e : tout validé + 4
 > constats ; 3e : 4 constats ; 4e : 1 constat ; 5e : « Tout est

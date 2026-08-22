@@ -12,6 +12,30 @@ Les paquets signés et leurs notes vivent dans les
 [Releases GitHub](https://github.com/smonchamps/wind/releases) ; la mise à
 jour est automatique et signée (minisign, ADR 0013).
 
+## [0.6.0] - 2026-08-22
+
+Un repère par boîte mail, un premier démarrage guidé — et Wind existe
+désormais en deux versions Windows, arm64 et x64.
+
+### Ajouté
+
+- **Un repère pour chaque boîte** : dans Réglages > Comptes, donnez à
+  chaque adresse une icône et une couleur. Le repère s'affiche dans le
+  panneau de navigation à la place de l'icône générique, et — en mode
+  « Toutes les boîtes » comme dans les résultats de recherche — en
+  badge sous l'initiale de chaque message : on voit d'un coup d'œil
+  sur quel compte un message est arrivé ou parti. Douze icônes, douze
+  couleurs, toutes lisibles sur les 28 thèmes, clairs comme sombres.
+- **Un premier démarrage guidé, en quatre étapes** : ajoutez vos
+  adresses, choisissez votre disposition de fenêtre sur de vrais
+  aperçus, choisissez votre thème, vérifiez vos choix — chaque étape
+  s'applique immédiatement, et chaque choix reste modifiable ensuite
+  dans les Réglages. Un parcours interrompu reprend au prochain
+  lancement ; les installations existantes ne le voient jamais.
+- **Wind pour Windows x64** : chaque version est désormais publiée en
+  deux éditions — arm64 (natif Snapdragon) et x64 (PC Intel/AMD) —
+  avec la même mise à jour automatique signée.
+
 ## [0.5.0] - 2026-08-21
 
 Épinglez vos conversations, et une lecture plus claire des pièces
