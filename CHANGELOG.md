@@ -192,8 +192,8 @@ Trois retours du terrain.
 ### Corrigé
 
 - Sur les **thèmes sombres**, le corps des messages s'affiche désormais sur
-  fond clair : le texte des courriels — souvent composé pour un fond blanc,
-  comme les infolettres — redevient lisible, au lieu d'apparaître parfois en
+  fond clair : le texte des courriels (souvent composé pour un fond blanc,
+  comme les infolettres) redevient lisible, au lieu d'apparaître parfois en
   noir sur fond sombre.
 
 ## [0.1.10] - 2026-08-18
@@ -204,14 +204,14 @@ Quatre retours du terrain.
 
 - **Signaler un courrier comme indésirable**, et l'inverse : un bouton
   « Signaler comme spam » déplace la conversation vers le dossier
-  indésirable de votre messagerie — c'est elle qui apprend. Depuis le
+  indésirable de votre messagerie : c'est elle qui apprend. Depuis le
   dossier Indésirables, « Ce n'est pas un spam » la ramène en Réception.
 - **Supprimer un brouillon** directement depuis la fenêtre de composition,
-  d'un seul geste et après confirmation — distinct de « Annuler », qui,
-  lui, conserve le brouillon.
+  d'un seul geste et après confirmation (distinct de « Annuler », qui,
+  lui, conserve le brouillon).
 - **Répondre message par message** : les boutons Répondre, Répondre à tous
   et Transférer sont désormais au bas de chaque message d'une conversation,
-  pour répondre précisément à celui que vous lisez — vos propres messages
+  pour répondre précisément à celui que vous lisez, vos propres messages
   compris, auquel cas la réponse repart vers les destinataires d'origine.
 
 ### Modifié
@@ -235,7 +235,7 @@ Quatre retours du terrain.
 - La **synchronisation Gmail est bien plus légère** : le balayage complet
   des dossiers, qui pouvait durer et se répétait toutes les 5 minutes,
   passe à toutes les 30 minutes. L'arrivée du nouveau courrier, elle,
-  reste **instantanée** — rien ne change à ce que vous recevez, seulement
+  reste **instantanée** : rien ne change à ce que vous recevez, seulement
   au poids de fond.
 - L'**animation de chargement** (le trait) est simplifiée : une animation
   complète et fluide dès qu'une action est en cours, au lieu d'un trait
