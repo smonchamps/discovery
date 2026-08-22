@@ -15,11 +15,15 @@
 > **CHANTIER SOLDÉ le 2026-08-22 — terrain complet.** Ouvert le
 > 2026-08-22, GO CE du plan le même jour (STOP 1, D1-D8), implémenté
 > en TDD (RED montré sur le cœur), commit `cbf795a` (feat, 37
-> fichiers, **CI verte run 32576771340**). La release **0.6.0** (D8,
-> MINEURE — la première bi-arch) suit le solde : entrée CHANGELOG
-> écrite, `faire-release.ps1 0.6.0` à la main du CE (mot de passe de
-> la clé, deux saisies), vérification `verifier-release.ps1 0.6.0`,
-> install x64 sur le second poste (D5).
+> fichiers, **CI verte run 32576771340**). **Livré en 0.6.0** (D8,
+> MINEURE — la PREMIÈRE release bi-arch, publiée le 2026-08-22,
+> `4a72a53`, CI verte run 32584117219) : release **vérifiée** par
+> `verifier-release.ps1 0.6.0` le jour même (**18/18 PASS** — 5
+> assets nommés, deux clés de plateforme, signatures distinctes, exe
+> arm64 200 / 5 504 084 o, exe x64 200 / 6 215 897 o) ; **preuves
+> terrain PAR CANAL : auto-update 0.5.0 → 0.6.0 confirmé (arm64) ET
+> install x64 confirmée sur le second poste (D5)** — la chaîne signée
+> ADR 0013 prouvée vivante sur les deux canaux.
 >
 > **Terrain VALIDÉ le 2026-08-22, en CINQ passes le même jour** (1re :
 > R1 validé entièrement + 8 constats R2 ; 2e : tout validé + 4

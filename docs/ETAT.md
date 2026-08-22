@@ -12,16 +12,7 @@
 
 ## Où on en est, et quoi faire en premier
 
-**Rien n'est cassé, rien n'est à moitié écrit. Un seul geste en
-attente : la release 0.6.0** (la première bi-arch — PLAN-RETOURS-8
-est soldé, CI verte, l'entrée CHANGELOG est écrite) : lancer
-`scripts/faire-release.ps1 0.6.0` (mot de passe de la clé demandé à
-CHAQUE build — deux saisies, invariant ADR 0013), puis
-`scripts/verifier-release.ps1 0.6.0` (§2.10 scripté, deux
-plateformes), puis les preuves terrain PAR CANAL : auto-update
-0.5.0 → 0.6.0 sur ce poste (arm64) et **install 0.6.0 x64 sur le
-second poste** (décision D5 — le premier auto-update x64 ne sera
-constatable qu'à la release suivante).
+**Rien n'est cassé, rien n'est à moitié écrit, rien n'est en vol.**
 
 **Prochain chantier : la bêta fermée 20-50 utilisateurs** ([PLAN.md](PLAN.md)
 §4, dernière étape avant le gate 5) — rien n'est engagé.
@@ -34,19 +25,34 @@ le redit ; le WIP d'alors avait été retiré (décision CE du
 2026-08-20), sa matière reste au § revue de
 [PLAN-COMPOSITION-HTML](PLAN-COMPOSITION-HTML.md).
 
-**Dernière version livrée : 0.5.0** (publiée 2026-08-21, release
+**Dernière version livrée : 0.6.0 — la PREMIÈRE release bi-arch**
+(publiée 2026-08-22, `4a72a53`, CI verte run 32584117219 ; release
+**vérifiée** par `scripts/verifier-release.ps1 0.6.0` le jour même,
+**18/18 PASS** : Latest au tag nu, **5 assets nommés** (2 exe, 2
+`.sig`, `latest.json`), manifeste sans BOM 1 581 o aux **deux clés de
+plateforme**, signatures == `.sig` et **distinctes** (garde
+anti-croisement), exe arm64 résout 200 / 5 504 084 octets, exe x64
+200 / 6 215 897 octets ; **preuves terrain PAR CANAL le 2026-08-22 :
+auto-update 0.5.0 → 0.6.0 confirmé sur ce poste (arm64) ET install
+0.6.0 x64 confirmée sur le second poste** (décision D5) — la chaîne
+signée ADR 0013 reste prouvée vivante, le canal x64 est NÉ prouvé à
+l'install ; son premier auto-update ne sera constatable qu'à la
+release suivante). La 0.6.0 porte les trois retours de PLAN-RETOURS-8
+(MINEUR, D8), ci-dessous.
+
+**La version précédente, 0.5.0** (publiée 2026-08-21, release
 **vérifiée** STANDARD.md §2.10 le 2026-08-22 : Latest, 3 assets au tag
 nu, `latest.json` sans BOM 876 o, URL au tag nu, signature == `.sig`,
 exe résout 200 / 5 066 813 octets ; **auto-update 0.4.0 → 0.5.0
-confirmé au terrain** — la chaîne signée ADR 0013 reste prouvée
-vivante). La 0.5.0 porte les quatre retours de PLAN-RETOURS-7
-(MINEUR, D6), ci-dessous.
+confirmé au terrain**). La 0.5.0 porte les quatre retours de
+PLAN-RETOURS-7 (MINEUR, D6).
 
 **Dernier chantier soldé : [PLAN-RETOURS-8](PLAN-RETOURS-8.md)**
 (2026-08-22, `cbf795a`, A74-A75 + **ADR 0023**, **terrain complet en
 CINQ passes le même jour** — 16 constats R2, chacun corrigé dans la
-session —, CI verte run 32576771340, **à livrer en 0.6.0** — la
-première release bi-arch). (1) **Repère de compte** (icône + teinte) :
+session —, CI verte run 32576771340, **livré en 0.6.0** — la première
+release bi-arch, vérifiée 18/18 et prouvée au terrain sur les DEUX
+canaux, ci-dessus). (1) **Repère de compte** (icône + teinte) :
 jeu DÉDIÉ de 12 glyphes (sous-ensemble 64 → 76, `?v=76`, preuve
 77/77 ; A3 tenu par réservation) + nuancier mesuré **12 familles × 2
 déclinaisons** (fait mesuré : aucune teinte unique ne tient 3:1 sur
