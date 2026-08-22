@@ -738,6 +738,23 @@ l'app de l'utilisateur est du terrain lui aussi ; il se diagnostique en
 regardant les vrais assets publiés (API GitHub), pas en supposant.** Les
 deux sont désormais tenus par `scripts/faire-release.ps1`.
 
+Un troisième piège, même famille (constat CE du 2026-08-22) : les **notes
+de release sont parties en mojibake** (« Ã© » pour « é ») sur neuf
+versions (0.1.10 à 0.6.0). Racine : le script lisait le CHANGELOG UTF-8
+par `Get-Content -Raw` **sans `-Encoding UTF8`** ; invoqué par
+`powershell` (Windows PowerShell 5.1, encodage par défaut cp1252), il
+décodait l'UTF-8 en Latin-1, puis `WriteAllText` le ré-encodait en
+UTF-8 — double encodage. Le code Rust est hors de cause, encore : le
+corps de l'app était propre, seules les notes de la Release GitHub
+étaient touchées — invisibles à la gate, visibles au terrain (ici sur
+la page des Releases). Remède à la racine : `-Encoding UTF8` sur les
+trois lectures de fichiers UTF-8 du script (dont `tauri.conf.json`,
+même piège latent dès qu'un accent y entrerait) ; les neuf Releases
+réparées à la main depuis les sections propres du CHANGELOG, via
+`gh release edit --notes-file` par un chemin qui ne ré-encode pas.
+**Un script de publication qui lit de l'UTF-8 sous PowerShell 5.1 doit
+le dire — le défaut de la coquille n'est pas l'UTF-8.**
+
 ### Le thread d'une commande est une décision, pas un détail
 
 Dans Tauri 2, une commande sans `async` s'exécute sur le thread

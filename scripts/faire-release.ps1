@@ -73,14 +73,14 @@ if ($targets -notcontains "x86_64-pc-windows-msvc") {
     throw "Cible rustup x86_64-pc-windows-msvc absente — « rustup target add x86_64-pc-windows-msvc » (PLAN-RETOURS-8 E1)."
 }
 $changelog = Join-Path $PSScriptRoot "..\CHANGELOG.md"
-if ((Get-Content -Raw $changelog) -notmatch [regex]::Escape("## [$Version]")) {
+if ((Get-Content -Raw -Encoding UTF8 $changelog) -notmatch [regex]::Escape("## [$Version]")) {
     throw "CHANGELOG.md n'a pas d'entree « ## [$Version] » — ecris d'abord les notes utilisateur."
 }
 # Bump de la SEULE ligne de version (regex ciblee : le reste du fichier, sa
 # mise en forme et l'ordre des cles, ne bouge pas ; jamais de BOM que
 # l'updater refuse). On exige exactement une cle « version ».
 $conf = Join-Path $PSScriptRoot "..\apps\desktop\tauri.conf.json"
-$json = Get-Content -Raw $conf
+$json = Get-Content -Raw -Encoding UTF8 $conf
 $pattern = '("version"\s*:\s*")[^"]*(")'
 if (([regex]::Matches($json, $pattern)).Count -ne 1) {
     throw "tauri.conf.json : cle « version » introuvable ou multiple — bump automatique refuse, a faire a la main."
@@ -187,7 +187,12 @@ finally {
 
 # Notes de release = la section CHANGELOG de la version (accents OK ici : ce
 # n'est pas un message de commit). Repli sobre si l'extraction rate.
-$clText = Get-Content -Raw $changelog
+# -Encoding UTF8 IMPERATIF : sans lui, Windows PowerShell 5.1 (invoque par
+# `powershell scripts\faire-release.ps1`) lit le CHANGELOG UTF-8 en cp1252,
+# puis WriteAllText le ré-encode en UTF-8 — double encodage, les accents
+# partent en mojibake (« Ã© » pour « é ») dans les notes de la Release.
+# (Constat terrain 2026-08-22 : 0.1.10 a 0.6.0 reparees a la main.)
+$clText = Get-Content -Raw -Encoding UTF8 $changelog
 $rxSection = "(?sm)^## \[" + [regex]::Escape($Version) + "\].*?(?=^## \[|\z)"
 $section = [regex]::Match($clText, $rxSection)
 $notes = if ($section.Success) { $section.Value.Trim() } else { "Mise a jour signee (ADR 0013)." }
