@@ -22,6 +22,10 @@
   let {
     categorie = 'reception',
     compte = null,
+    // R1 (PLAN-RETOURS-8, A74) : les repères de compte — le badge sous
+    // l'avatar n'apparaît qu'en boîte unifiée (D3 : là où identifier le
+    // compte a un sens), et seulement si le compte a un repère.
+    reperes = {},
     onglet = 'tous',
     recherche = '',
     // PLAN-BROUILLONS : les brouillons locaux (rows de `list_drafts`),
@@ -679,6 +683,10 @@
       </article>
     {/snippet}
     {#snippet rangee(ligne)}
+      <!-- A74 : le badge vit partout où les comptes se MÉLANGENT —
+           boîte unifiée (D3) et recherche (toujours multi-comptes,
+           même depuis la vue d'un seul compte ; revue 2026-08-22). -->
+      {@const repere = (compte === null || resultats !== null) ? reperes[ligne.account_id] : null}
       <div class="ligne"
            class:nonlu={ligne.thread_unseen > 0}
            class:choisie={estChoisie(ligne)}
@@ -697,7 +705,22 @@
              choisir(ligne);
            }}
            onkeydown={activation(() => choisir(ligne))}>
-        <span class="avatar" data-testid="avatar" aria-hidden="true">{initiales(correspondant(ligne))}</span>
+        <!-- A74 : la colonne de l'avatar empile le badge du repère SOUS
+             le rond, sans rang de grille neuf — les deux gabarits de
+             hauteur (h1/h2) ne bougent pas (la pile 28+4+16 px reste
+             sous la hauteur des trois rangs de contenu). Le badge se
+             DIT aux lecteurs d'écran (adresse en aria-label) — la
+             seule information de la ligne qui n'existait qu'en
+             couleur. -->
+        <span class="col-avatar">
+          <span class="avatar" data-testid="avatar" aria-hidden="true">{initiales(correspondant(ligne))}</span>
+          {#if repere}
+            <span class="ms repere repere-liste" data-testid="ligne-repere"
+                  data-teinte={repere.teinte} role="img"
+                  aria-label={ligne.account_email}
+                  title={ligne.account_email}>{repere.icone}</span>
+          {/if}
+        </span>
         <div class="l1">
           <span class="exp">{#if versEnvoi(ligne)}{t('liste.dest', { a: correspondant(ligne) })}{:else}{ligne.sender}{/if}</span>
           <span class="heure">{quand(ligne.epoch)}</span>
@@ -910,6 +933,15 @@
     display:grid; place-items:center;
     font-size:11px; font-weight:600; color:var(--ink2);
   }
+  /* A74 — la colonne de l'avatar : rond + badge du repère empilés.
+     `grid-row` de .avatar est inerte ici (item de flex) ; la pile reste
+     plus courte que les trois rangs — les hauteurs sondées ne bougent
+     pas. */
+  .col-avatar {
+    grid-row:1 / span 3; display:flex; flex-direction:column;
+    align-items:center; gap:4px;
+  }
+  .repere-liste { width:16px; height:16px; font-size:10px; }
   .l1, .objet, .apercu, .puces { grid-column:2; min-width:0; }
   /* Le rang de puces (PLAN-RETOURS-V3 R1) : le gabarit 24 px du
      prototype Classique — présent sur les seules lignes porteuses. */

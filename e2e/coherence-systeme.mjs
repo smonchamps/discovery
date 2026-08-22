@@ -176,6 +176,62 @@ for (const fichier of fichiersUi(srcUi)) {
   }
 }
 
+// --- 7. Le jeu dédié des repères : UNE liste, quatre porteurs --------
+// (PLAN-RETOURS-8, revue 2026-08-22) : l'allowlist Rust (commands.rs,
+// elle fait foi à l'écriture), lib/reperes.js (ce que l'UI propose),
+// les teintes de systeme.css (ce qui se dessine) et les catalogues
+// (libellés). Une dérive = un repère proposé mais refusé, ou stocké
+// mais rendu sans couleur — toujours en silence.
+const commandsRs = readFileSync(
+  path.join(root, 'apps', 'desktop', 'src', 'commands.rs'),
+  'utf8',
+);
+const reperesJs = readFileSync(
+  path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', 'reperes.js'),
+  'utf8',
+);
+const listeRust = (nom) => [
+  ...(commandsRs.match(new RegExp(`const ${nom}[^=]*= \\[([^;]*)\\];`))?.[1] ?? '')
+    .matchAll(/"([a-z_]+)"/g),
+].map(([, v]) => v);
+const listeJs = (nom) => [
+  ...(reperesJs.match(new RegExp(`export const ${nom} = \\[([^\\]]*)\\]`))?.[1] ?? '')
+    .matchAll(/'([a-z_]+)'/g),
+].map(([, v]) => v);
+const compareListes = (quoi, a, aNom, b, bNom) => {
+  if (a.length === 0) echec(`repères : liste ${quoi} introuvable dans ${aNom}`);
+  for (const v of a) {
+    if (!b.includes(v)) echec(`repères : ${quoi} « ${v} » dans ${aNom} mais pas dans ${bNom}`);
+  }
+  for (const v of b) {
+    if (!a.includes(v)) echec(`repères : ${quoi} « ${v} » dans ${bNom} mais pas dans ${aNom}`);
+  }
+};
+const iconesRust = listeRust('REPERE_ICONES');
+const teintesRust = listeRust('REPERE_TEINTES');
+compareListes('icône', iconesRust, 'commands.rs', listeJs('REPERE_ICONES'), 'lib/reperes.js');
+compareListes('teinte', teintesRust, 'commands.rs', listeJs('REPERE_TEINTES'), 'lib/reperes.js');
+const teintesCss = [
+  ...new Set([...css.matchAll(/\.repere\[data-teinte="([a-z]+)"\]/g)].map(([, v]) => v)),
+];
+compareListes('teinte', teintesRust, 'commands.rs', teintesCss, 'systeme.css');
+for (const langue of ['fr', 'en']) {
+  const cat = readFileSync(
+    path.join(root, 'apps', 'desktop', 'ui-v2', 'src', 'lib', `catalogue.${langue}.js`),
+    'utf8',
+  );
+  for (const icone of iconesRust) {
+    if (!cat.includes(`'repere.icone.${icone}'`)) {
+      echec(`catalogue.${langue} : repere.icone.${icone} manquant — la carte du choix afficherait la clé brute en infobulle`);
+    }
+  }
+  for (const teinte of teintesRust) {
+    if (!cat.includes(`'repere.teinte.${teinte}'`)) {
+      echec(`catalogue.${langue} : repere.teinte.${teinte} manquant`);
+    }
+  }
+}
+
 const nbThemes = Object.keys(themesCss).length;
 const nbJetons = Object.values(themesCss).reduce((n, t) => n + Object.keys(t).length, 0);
 console.log(

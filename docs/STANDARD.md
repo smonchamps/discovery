@@ -121,7 +121,12 @@ On descend, on s'arrête au premier « oui » :
 1. **MAJEUR** (`x`+1, puis `y` et `z` → 0) — si **l'un** est vrai :
    - la version **ne s'atteint pas par auto-update** depuis la précédente
      (réinstallation manuelle : rotation de clé de signature, changement
-     d'installeur/format — **c'est arrivé en 0.1.3**) ;
+     d'installeur/format — **c'est arrivé en 0.1.3**). Depuis le retour
+     du canal x64 (PLAN-RETOURS-8, ADR 0023), il y a **deux chaînes
+     d'auto-update** (arm64 et x64) : le critère s'évalue **par
+     canal**, et une rupture sur UN seul canal suffit à déclencher
+     MAJEUR. Ajouter un canal ne casse rien (l'updater de chaque poste
+     ne lit que sa clé `{os}-{arch}`) — retirer ou casser un canal, si ;
    - elle embarque une **migration de données non rembobinable** (contraire
      à l'[ADR 0012](adr/0012-migration-visible-interruptible.md)) ;
    - \+ le passage **unique** `0.x → 1.0.0` au jalon « hors développement
@@ -132,8 +137,11 @@ On descend, on s'arrête au premier « oui » :
    ajustements de l'existant, perf, allègements internes, nettoyages.
 
 La release se publie par `scripts/faire-release.ps1 <version>`
-([ADR 0013](adr/0013-installeur-nsis-maj-signee.md)) ; le tag GitHub reste
-la **version nue**.
+([ADR 0013](adr/0013-installeur-nsis-maj-signee.md), bi-arch depuis
+[ADR 0023](adr/0023-retour-canal-x64.md) : deux builds `--target`,
+arm64 natif + x64 en cross-build local, **tout-ou-rien** — un build en
+échec bloque toute la release, jamais un canal décalé) ; le tag GitHub
+reste la **version nue**.
 
 ⚠️ **Les notes utilisateur D'ABORD, systématiquement** : écrire (et
 committer) l'entrée `## [<version>]` de `CHANGELOG.md` **avant** de
@@ -148,29 +156,50 @@ Depuis la 0.1.10 (2026-08-18), `scripts/faire-release.ps1 <v>` fait
 **toute** la release (validé au terrain) — à condition que l'entrée
 `## [<v>]` du CHANGELOG existe déjà (§2.9, son premier contrôle) :
 bump de la seule ligne
-`version` de `apps/desktop/tauri.conf.json`, build signé (clé au
-**chemin** `C:\Keys\wind.key` — `TAURI_SIGNING_PRIVATE_KEY` accepte un
-chemin ; mot de passe saisi à la main), `latest.json` sans BOM, puis —
-après confirmation `OUI` — commit `release: version <v>`, push (gate
-rejouée), tag NU + Release GitHub `--latest`, notes tirées du
-CHANGELOG. Contrôle **a posteriori**, avant d'annoncer verte :
+`version` de `apps/desktop/tauri.conf.json`, **deux builds signés**
+(arm64 natif + x64 cross, bi-arch depuis PLAN-RETOURS-8/ADR 0023 ;
+clé au **chemin** `C:\Keys\wind.key` — `TAURI_SIGNING_PRIVATE_KEY`
+accepte un chemin ; mot de passe saisi une fois), `latest.json` sans
+BOM à **deux clés de plateforme**, puis — après confirmation `OUI` —
+commit `release: version <v>`, push (gate rejouée), tag NU + Release
+GitHub `--latest` à **cinq assets**, notes tirées du CHANGELOG.
+
+Contrôle **a posteriori**, avant d'annoncer verte :
+**`scripts/verifier-release.ps1 <v>` joue tous les contrôles de forme**
+(la friction est encodée une fois — avec deux plateformes, les
+contrôles manuels doublaient). Ce qu'il vérifie, et qui reste la norme
+si on contrôle à la main :
 
 - **La Release est « Latest »** — l'endpoint updater est
   `…/releases/latest/download/latest.json` :
   `gh api repos/smonchamps/wind/releases/latest --jq '.tag_name'`
   doit rendre la nouvelle version.
-- **Trois assets au tag NU** (jamais `v<x>`) : l'exe setup, son
-  `.sig`, `latest.json`.
+- **Cinq assets au tag NU** (jamais `v<x>`), nommés exactement :
+  `Wind_<v>_arm64-setup.exe` + son `.sig`, `Wind_<v>_x64-setup.exe` +
+  son `.sig`, `latest.json`. (« Cinq » ne suffit pas : deux exe de la
+  même architecture passeraient un simple comptage.)
 - **`latest.json` sans BOM** (premiers octets `7b` = `{`, pas
   `ef bb bf` — serde_json le refuse en silence).
-- **URL du manifeste au tag NU** (`/releases/download/<v>/…` — le
-  piège du 404).
-- **Signature dans `latest.json` == fichier `.sig`** ; l'URL de l'exe
-  résout (302 puis 200, `Content-Length` = taille de l'asset).
+- **Les DEUX clés de plateforme présentes** (`windows-aarch64` ET
+  `windows-x86_64`) : une clé manquante est une **panne silencieuse**
+  — l'updater du canal muet conclut « pas de mise à jour », sans
+  erreur. Même famille que le BOM et le tag `v` (ADR 0013).
+- **Par plateforme** : signature du manifeste == fichier `.sig` de la
+  MÊME architecture ; URL au tag NU (`/releases/download/<v>/…` — le
+  piège du 404) vers l'exe de la MÊME architecture ; l'URL résout
+  (302 puis 200, `Content-Length` = taille de l'asset).
+- **Signatures arm64 et x64 DISTINCTES** (garde anti-croisement) :
+  une signature copiée sous la mauvaise clé passe tous les contrôles
+  de forme et ne casse que chez l'utilisateur.
 - **La crypto minisign n'est PAS vérifiable localement** (pas de
   `minisign` sur ce poste ; `tauri signer` n'a pas de `verify`). Ne
   jamais forger un PASS : la preuve définitive est l'**auto-update
-  `<n-1> → <n>` constaté au terrain**.
+  `<n-1> → <n>` constaté au terrain, PAR CANAL** — arm64 sur ce
+  poste ; x64 sur le second poste x64 (décision CE D5,
+  PLAN-RETOURS-8). Le premier auto-update x64 n'est constatable qu'à
+  la release SUIVANT la première release bi-arch (aucun n-1 x64
+  n'existe avant elle) ; l'install x64, elle, se constate dès la
+  première.
 - `CHANGELOG.md` (racine) porte l'entrée `## [<v>] - <date>` et le
   lien vers la Release en pied.
 
@@ -825,7 +854,8 @@ Payés le même jour (PLAN-COMPOSITION-HTML, e2e du 2026-08-20) :
 | [`apps/desktop/src/commands.rs`](../apps/desktop/src/commands.rs) | Commandes Tauri (IPC), boucle toutes-boîtes, garde disque, avancement |
 | [`apps/desktop/ui-v2/src/App.svelte`](../apps/desktop/ui-v2/src/App.svelte) | L'UI (Svelte 5, seule depuis B2/PLAN-RETRAIT-V1) : écrans 01-04, fente d'avis, cycle de synchro automatique |
 | [`e2e/README.md`](../e2e/README.md) | Harnais E2E déterministe (CDP) |
-| [`scripts/faire-release.ps1`](../scripts/faire-release.ps1) | Prépare le `latest.json` signé d'une version (ADR 0013) — sans BOM, URL au tag nu |
+| [`scripts/faire-release.ps1`](../scripts/faire-release.ps1) | **Toute** la release (ADR 0013, bi-arch ADR 0023) : bump, deux builds signés arm64 + x64 (tout-ou-rien), `latest.json` deux plateformes sans BOM, commit + push + Release Latest au tag nu |
+| [`scripts/verifier-release.ps1`](../scripts/verifier-release.ps1) | La vérification §2.10 scriptée — 5 assets nommés, BOM, deux clés de plateforme, signatures == `.sig` et distinctes, URL qui résolvent |
 | [`crates/mail-core/src/crash.rs`](../crates/mail-core/src/crash.rs) | Rédaction PURE d'un rapport de crash — écarte le message (PII) (ADR 0014) |
 | [`apps/desktop/src/telemetry.rs`](../apps/desktop/src/telemetry.rs) | Panic hook, consentement en fichier, écriture locale du rapport (ADR 0014) |
 | [`spikes/ui-socle-v2/`](../spikes/ui-socle-v2/RAPPORT.md) | Spike de départage du socle UI v2 — preuve de l'ADR 0015, **jetable** |

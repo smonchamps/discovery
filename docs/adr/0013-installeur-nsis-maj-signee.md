@@ -2,6 +2,12 @@
 
 Date : 2026-07-26 · Statut : accepté — **boucle validée au terrain le
 jour même** (0.1.1 → 0.1.2 appliqué sur l'app installée, base intacte)
+· **Amendé par [ADR 0023](0023-retour-canal-x64.md)** (2026-08-22) :
+release **bi-arch** (arm64 + x64, 5 assets, `latest.json` à deux clés)
+et publication **entièrement scriptée** par `faire-release.ps1` depuis
+la 0.1.10 — les mentions « trois assets », « publication manuelle » et
+le nom d'asset `discovery_<v>_x64-setup.exe` ci-dessous sont d'époque
+(le préfixe est `Wind_`, les arch `arm64`/`x64`).
 
 ## Contexte
 

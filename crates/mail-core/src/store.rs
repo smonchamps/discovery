@@ -701,6 +701,24 @@ impl Store {
         Ok(())
     }
 
+    /// Plusieurs préférences texte d'un COUP, transactionnelles : des
+    /// clés qui n'ont de sens qu'ensemble (l'icône ET la teinte d'un
+    /// repère de compte) ne doivent jamais se retrouver à moitié
+    /// écrites — un échec entre les deux laisserait une paire que
+    /// personne n'a choisie (revue PLAN-RETOURS-8, 2026-08-22).
+    pub fn set_text_prefs(&mut self, prefs: &[(&str, &str)]) -> Result<(), Error> {
+        let tx = self.0.transaction()?;
+        for (key, value) in prefs {
+            tx.execute(
+                "INSERT INTO prefs (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn sync_state(&self, account_id: i64, mailbox: &str) -> Result<Option<SyncState>, Error> {
         let state = self
             .0
@@ -1064,6 +1082,21 @@ impl Store {
             [account_id],
         )?;
         tx.execute("DELETE FROM outbox WHERE account_id = ?1", [account_id])?;
+        // Les préférences suffixées par l'id (signature, repère de
+        // compte) meurent avec lui : `accounts.id` est un INTEGER
+        // PRIMARY KEY sans AUTOINCREMENT — SQLite réutilise le plus
+        // grand rowid libéré, et un compte ajouté après le retrait
+        // hériterait sinon de l'identité de l'ancien (revue
+        // PLAN-RETOURS-8, 2026-08-22).
+        tx.execute(
+            "DELETE FROM prefs WHERE key IN (?1, ?2, ?3, ?4)",
+            params![
+                format!("signature.{account_id}"),
+                format!("signature_replies.{account_id}"),
+                format!("repere_icone.{account_id}"),
+                format!("repere_teinte.{account_id}"),
+            ],
+        )?;
         tx.execute("DELETE FROM accounts WHERE id = ?1", [account_id])?;
         tx.commit()?;
         Ok(())
@@ -2785,6 +2818,24 @@ mod tests {
         assert_eq!(store.text_pref("lang").unwrap(), Some("fr".to_string()));
     }
 
+    /// Le lot transactionnel : tout écrit, tout relu — le pendant
+    /// multi-clés de `text_pref_none_then_roundtrip`.
+    #[test]
+    fn set_text_prefs_ecrit_le_lot_entier() {
+        let mut store = Store::open_in_memory().unwrap();
+        store
+            .set_text_prefs(&[("repere_icone.1", "home"), ("repere_teinte.1", "bleu")])
+            .unwrap();
+        assert_eq!(
+            store.text_pref("repere_icone.1").unwrap(),
+            Some("home".to_string())
+        );
+        assert_eq!(
+            store.text_pref("repere_teinte.1").unwrap(),
+            Some("bleu".to_string())
+        );
+    }
+
     #[test]
     fn roundtrips_all_envelope_fields() {
         let (mut store, id) = store_with_mailbox();
@@ -2900,11 +2951,40 @@ mod tests {
                 .unwrap();
         }
 
+        // Les préférences suffixées par l'id (signature, repère) : un id
+        // SQLite réutilisé après retrait ferait sinon hériter au compte
+        // suivant l'identité de l'ancien (revue PLAN-RETOURS-8).
+        for (account, teinte) in [(parti, "rouge"), (voisin, "bleu")] {
+            store
+                .set_text_pref(&format!("signature.{account}"), "<p>sig</p>")
+                .unwrap();
+            store
+                .set_text_pref(&format!("repere_icone.{account}"), "home")
+                .unwrap();
+            store
+                .set_text_pref(&format!("repere_teinte.{account}"), teinte)
+                .unwrap();
+        }
+
         store.delete_account(parti).unwrap();
 
         let comptes = store.accounts().unwrap();
         assert_eq!(comptes.len(), 1);
         assert_eq!(comptes[0].email, "reste@exemple.fr");
+        for cle in ["signature", "repere_icone", "repere_teinte"] {
+            assert_eq!(
+                store.text_pref(&format!("{cle}.{parti}")).unwrap(),
+                None,
+                "{cle} du compte parti : la pref doit mourir avec lui"
+            );
+            assert!(
+                store
+                    .text_pref(&format!("{cle}.{voisin}"))
+                    .unwrap()
+                    .is_some(),
+                "{cle} du voisin : intacte"
+            );
+        }
         for table in [
             "mailboxes",
             "envelopes",

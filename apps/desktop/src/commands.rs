@@ -3523,6 +3523,128 @@ pub async fn signature_set(
 }
 
 // ---------------------------------------------------------------------
+// Repère de compte (PLAN-RETOURS-8 R1) : icône + teinte par compte,
+// pour différencier les boîtes en boîte unifiée. Préférence locale
+// (table `prefs`, patron signature) — le serveur n'a pas ce concept.
+// ---------------------------------------------------------------------
+
+/// Le jeu d'icônes DÉDIÉ aux comptes (D2) : des glyphes neufs du
+/// sous-ensemble, réservés — jamais réemployés ailleurs (A3 « une
+/// icône, un sens »).
+const REPERE_ICONES: [&str; 12] = [
+    "home",
+    "work",
+    "school",
+    "star",
+    "favorite",
+    "flight",
+    "shopping_bag",
+    "account_balance",
+    "sports_esports",
+    "eco",
+    "pets",
+    "music_note",
+];
+
+/// Le nuancier mesuré (D1) : 12 familles, dont les DEUX déclinaisons
+/// (clairs / -nuit) vivent dans `systeme.css` — ici on ne stocke que le
+/// nom de famille, jamais un hex.
+const REPERE_TEINTES: [&str; 12] = [
+    "rouge", "orange", "ocre", "olive", "vert", "sapin", "bleu", "indigo", "violet", "magenta",
+    "rose", "brun",
+];
+
+/// La décision pure : un repère n'existe que dans l'allowlist croisée
+/// (jeu dédié × nuancier). Tout le reste — glyphe du produit, teinte
+/// inconnue, chaîne vide — est refusé, à l'entrée comme au retour.
+pub(crate) fn repere_valide(icone: &str, teinte: &str) -> bool {
+    REPERE_ICONES.contains(&icone) && REPERE_TEINTES.contains(&teinte)
+}
+
+/// Relit le repère d'un compte ; une valeur hors allowlist (base
+/// corrompue, ancienne version) ne sort jamais vers l'UI.
+pub(crate) fn repere_de(
+    store: &Store,
+    account_id: i64,
+) -> Result<Option<(String, String)>, mail_core::Error> {
+    let icone = store.text_pref(&format!("repere_icone.{account_id}"))?;
+    let teinte = store.text_pref(&format!("repere_teinte.{account_id}"))?;
+    Ok(match (icone, teinte) {
+        (Some(i), Some(t)) if repere_valide(&i, &t) => Some((i, t)),
+        _ => None,
+    })
+}
+
+/// Pose ou retire (None) le repère — retirer vide les clés (patron
+/// signature : la pref vide vaut « jamais posée »). Les DEUX clés
+/// partent dans UNE transaction : une paire à moitié écrite serait un
+/// repère que personne n'a choisi (revue 2026-08-22).
+pub(crate) fn poser_repere(
+    store: &mut Store,
+    account_id: i64,
+    repere: Option<(&str, &str)>,
+) -> Result<(), mail_core::Error> {
+    let (icone, teinte) = repere.unwrap_or(("", ""));
+    let cle_icone = format!("repere_icone.{account_id}");
+    let cle_teinte = format!("repere_teinte.{account_id}");
+    store.set_text_prefs(&[(cle_icone.as_str(), icone), (cle_teinte.as_str(), teinte)])
+}
+
+#[derive(Serialize)]
+pub struct RepereRow {
+    pub account_id: i64,
+    pub icone: String,
+    pub teinte: String,
+}
+
+/// Tous les repères posés — l'UI les charge UNE fois (nav + liste) et
+/// les recharge au changement. Un compte sans repère n'a pas de ligne :
+/// son rendu par défaut (`person`, jeton neutre) ne dépend de rien.
+#[tauri::command]
+pub async fn reperes_get(app: AppHandle) -> Result<Vec<RepereRow>, String> {
+    hors_pompe(app, move |app| {
+        let store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        let mut rows = Vec::new();
+        for compte in store.accounts().map_err(|err| err.to_string())? {
+            if let Some((icone, teinte)) =
+                repere_de(&store, compte.id).map_err(|err| err.to_string())?
+            {
+                rows.push(RepereRow {
+                    account_id: compte.id,
+                    icone,
+                    teinte,
+                });
+            }
+        }
+        Ok(rows)
+    })
+    .await
+}
+
+/// Pose (icône + teinte) ou retire (les deux à None) le repère d'un
+/// compte. Une valeur hors allowlist est une erreur franche — l'UI ne
+/// propose que le jeu dédié, tout autre appel est un bug.
+#[tauri::command]
+pub async fn repere_set(
+    app: AppHandle,
+    account_id: i64,
+    icone: Option<String>,
+    teinte: Option<String>,
+) -> Result<(), String> {
+    hors_pompe(app, move |app| {
+        let repere = match (icone.as_deref(), teinte.as_deref()) {
+            (None, None) => None,
+            (Some(i), Some(t)) if repere_valide(i, t) => Some((i, t)),
+            (Some(_), Some(_)) => return Err("repère hors du jeu dédié".to_string()),
+            _ => return Err("icône et teinte vont ensemble".to_string()),
+        };
+        let mut store = Store::open(&db_path(&app)?).map_err(|err| err.to_string())?;
+        poser_repere(&mut store, account_id, repere).map_err(|err| err.to_string())
+    })
+    .await
+}
+
+// ---------------------------------------------------------------------
 // Brouillons locaux + reflet Gmail par compte (Phases 2-3).
 // ---------------------------------------------------------------------
 
@@ -5126,5 +5248,43 @@ mod tests {
             !is_plausible_address("moi@.fr"),
             "domaine commençant par un point"
         );
+    }
+
+    /// R1 (PLAN-RETOURS-8) : le repère d'un compte n'admet que le jeu
+    /// dédié (D2, A3 « une icône, un sens ») et le nuancier mesuré
+    /// (D1) — tout le reste est refusé, y compris une valeur corrompue
+    /// relue de la base.
+    #[test]
+    fn repere_valide_est_une_allowlist() {
+        assert!(repere_valide("home", "rouge"));
+        assert!(repere_valide("music_note", "brun"));
+        assert!(
+            !repere_valide("download", "rouge"),
+            "glyphe du produit, hors jeu dédié (A3)"
+        );
+        assert!(!repere_valide("home", "turquoise"), "teinte inconnue");
+        assert!(!repere_valide("", ""));
+    }
+
+    /// Jamais posé -> None ; posé -> relu ; retiré -> None (les clés se
+    /// vident, patron signature) ; corrompu en base -> None (l'allowlist
+    /// tient aussi au retour).
+    #[test]
+    fn repere_absent_pose_retire_corrompu() {
+        let mut store = Store::open_in_memory().unwrap();
+        assert_eq!(repere_de(&store, 1).unwrap(), None);
+
+        poser_repere(&mut store, 1, Some(("work", "bleu"))).unwrap();
+        assert_eq!(
+            repere_de(&store, 1).unwrap(),
+            Some(("work".to_string(), "bleu".to_string()))
+        );
+
+        poser_repere(&mut store, 1, None).unwrap();
+        assert_eq!(repere_de(&store, 1).unwrap(), None);
+
+        store.set_text_pref("repere_icone.1", "delete").unwrap();
+        store.set_text_pref("repere_teinte.1", "rouge").unwrap();
+        assert_eq!(repere_de(&store, 1).unwrap(), None);
     }
 }

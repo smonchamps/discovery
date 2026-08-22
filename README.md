@@ -4,10 +4,12 @@
 (« ce que le vent porte, le rythme des jours »).
 
 Application de bureau : cœur Rust (IMAP, SMTP, OAuth, rendu des messages)
-et interface Svelte, empaquetée par Tauri. Cible Windows arm64 natif,
-installeur NSIS, mise à jour automatique et signée (minisign, ADR 0013).
+et interface Svelte, empaquetée par Tauri. Cible Windows **arm64 et
+x64** (release bi-arch, ADR 0023), installeur NSIS, mise à jour
+automatique et signée (minisign, ADR 0013).
 
-Dernière version livrée : **0.1.7**. En préparation de bêta fermée.
+La dernière version livrée et l'état courant vivent dans
+[docs/ETAT.md](docs/ETAT.md). En préparation de bêta fermée.
 
 ## Journal des versions
 

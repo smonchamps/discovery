@@ -7,10 +7,26 @@
   //
   // `compact` resserre la géométrie pour vivre dans la surimpression
   // Réglages (entrées 40 px) ; l'écran 01 garde ses 52 px du prototype.
+  // `accueil` (terrain 2026-08-22, constats 1-3 des deux passes) : la
+  // présentation de l'écran 01 refondu — la barre d'adresse (40 px, la
+  // hauteur de son bouton) porte « Ajouter » à sa droite, et le
+  // guichet générique révélé gagne un « Retour » qui replie les champs
+  // serveur. `ajoutPrincipal` : tant que le Continuer de la marche est
+  // grisé (aucun compte), « Ajouter » est LE geste — primaire ; dès
+  // qu'un compte existe, il redevient secondaire. La note « serveur
+  // détecté » ne se montre pas en accueil (2e passe, constat 2).
   import { appel } from './lib/transport.js';
   import { t } from './lib/texte.svelte.js';
 
-  let { onajoute = () => {}, compact = false } = $props();
+  let {
+    onajoute = () => {},
+    compact = false,
+    accueil = false,
+    ajoutPrincipal = false,
+    // 3e passe terrain (constat 2) : l'accueil masque son « Continuer »
+    // quand le guichet générique est révélé — il a besoin de le savoir.
+    ongenerique = () => {},
+  } = $props();
 
   let adresse = $state('');
   let generique = $state(false);
@@ -54,6 +70,7 @@
     if (!generique) {
       // Domaine inconnu : le guichet générique se révèle, rien ne part.
       generique = true;
+      ongenerique(true);
       if (!imapHote) imapHote = `imap.${domaine()}`;
       if (!smtpHote) smtpHote = `smtp.${domaine()}`;
       return;
@@ -82,12 +99,19 @@
   }
 </script>
 
-<div class="guichet" class:compact>
+<div class="guichet" class:compact class:accueil>
   <div class="formulaire">
     <label for="ob-adresse">{t('guichet.adresse')}</label>
-    <input id="ob-adresse" type="email" bind:value={adresse}
-           data-testid="onboarding-adresse"
-           onkeydown={(e) => e.key === 'Enter' && !occupe && continuer()}>
+    <div class="barre">
+      <input id="ob-adresse" type="email" bind:value={adresse}
+             data-testid="onboarding-adresse"
+             onkeydown={(e) => e.key === 'Enter' && !occupe && continuer()}>
+      {#if accueil && !generique}
+        <button type="button" class={ajoutPrincipal ? 'primaire' : 'secondaire'}
+                data-testid="onboarding-continuer"
+                disabled={occupe} onclick={continuer}>{t('accueil.ajouter')}</button>
+      {/if}
+    </div>
     {#if generique}
       <label for="ob-mdp">{t('guichet.mdp')}</label>
       <input id="ob-mdp" type="password" bind:value={motDePasse}>
@@ -112,8 +136,24 @@
         </span>
       </div>
     {/if}
-    <button type="button" class="principal" data-testid="onboarding-continuer"
-            disabled={occupe} onclick={continuer}>{t('action.continuer')}</button>
+    {#if !accueil}
+      <button type="button" class="principal" data-testid="onboarding-continuer"
+              disabled={occupe} onclick={continuer}>{t('action.continuer')}</button>
+    {:else if generique}
+      <!-- Constat 3 : sur le guichet générique révélé, l'action est
+           « Ajouter » (secondaire) et « Retour » replie les champs. -->
+      <!-- 3e passe (constat 2) : sur le guichet générique révélé,
+           « Ajouter » est LE geste — toujours primaire (le Continuer
+           de la marche est masqué pendant ce temps). -->
+      <div class="actions">
+        <button type="button" class="primaire"
+                data-testid="onboarding-continuer"
+                disabled={occupe} onclick={continuer}>{t('accueil.ajouter')}</button>
+        <button type="button" class="secondaire" data-testid="guichet-retour"
+                disabled={occupe}
+                onclick={() => { generique = false; erreur = ''; ongenerique(false); }}>{t('accueil.retour')}</button>
+      </div>
+    {/if}
   </div>
   {#if erreur}
     <p class="erreur" data-testid="onboarding-erreur">{erreur}</p>
@@ -121,7 +161,7 @@
     <p class="note">{attente}</p>
   {:else if generique}
     <p class="note">{t('guichet.noteGenerique')}</p>
-  {:else}
+  {:else if !accueil}
     <p class="note">{t('guichet.noteAuto')}</p>
   {/if}
 </div>
@@ -147,6 +187,30 @@
   }
   .principal:hover { background:var(--accentH); border-color:var(--accentH); }
   .principal:disabled { opacity:.6; cursor:default; }
+  /* La barre : l'entrée + son bouton, sur une même ligne en `accueil` —
+     à la MÊME hauteur (2e passe terrain, constat 2). */
+  .barre { display:flex; gap:12px; }
+  .barre input { flex:1; min-width:0; }
+  .accueil .barre input { height:40px; font-size:14px; }
+  .secondaire, .primaire {
+    height:40px; padding:0 18px; flex:none; align-self:center;
+    font-size:13px; font-weight:600; border-radius:6px; cursor:pointer;
+  }
+  .secondaire {
+    color:var(--ink); background:var(--surface);
+    border:1px solid var(--border);
+  }
+  .secondaire:hover { background:var(--sel); }
+  /* Constat 1 (2e passe) : tant que Continuer est grisé, « Ajouter »
+     est LE geste — il prend le dessin principal. */
+  .primaire {
+    color:var(--onAccent); background:var(--accent);
+    border:1px solid var(--accent);
+  }
+  .primaire:hover { background:var(--accentH); border-color:var(--accentH); }
+  .secondaire:disabled, .primaire:disabled { opacity:.6; cursor:default; }
+  .actions { display:flex; gap:12px; }
+  .actions .secondaire, .actions .primaire { align-self:flex-start; }
   .note { margin:0; font-size:13px; line-height:1.5; color:var(--muted); }
   .erreur { margin:0; font-size:13px; line-height:1.5; color:var(--alert); }
 </style>

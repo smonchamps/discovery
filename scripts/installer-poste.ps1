@@ -23,9 +23,13 @@
      -AvecCargoAudit    installe aussi cargo-audit (joue par la CI, pas le gate local)
      -CrossArm64Check   compile wind-desktop pour arm64 (preuve du cross-build, ~minutes)
 
-  Ce poste est x64. On installe EN PLUS la cible arm64 (cross-compilation)
-  pour pouvoir produire les deux canaux de release. La release bi-arch
-  elle-meme (faire-release.ps1 + latest.json) est un chantier a part.
+  Ce script prepare un poste x64. On installe EN PLUS la cible arm64
+  (cross-compilation) pour pouvoir produire les deux canaux de release.
+  La release bi-arch est FAITE (PLAN-RETOURS-8, ADR 0023) :
+  faire-release.ps1 batit arm64 + x64 et publie 5 assets ; le miroir de
+  ce script sur le poste ARM64 est la cible rustup x86_64-pc-windows-msvc
+  + le composant MSVC x64 (present dans Build Tools par defaut) +
+  l'override lld-link du triple x64 (.cargo/config.toml).
 #>
 param(
     [switch]$SkipBuildTools,
@@ -233,5 +237,6 @@ Write-Host "       cargo clippy --workspace --all-targets -- -D warnings"
 Write-Host "       cargo test --workspace --all-targets ; cargo test --workspace --doc"
 Write-Host "       cd e2e ; npm test ; cd .."
 Write-Host ""
-Write-Host "Release bi-arch (x64 + arm64) : CHANTIER A PART. faire-release.ps1 et le"
-Write-Host "manifeste latest.json ne portent aujourd'hui que windows-aarch64 (ADR 0013)."
+Write-Host "Release bi-arch (x64 + arm64) : FAITE (PLAN-RETOURS-8, ADR 0023)."
+Write-Host "faire-release.ps1 batit les deux canaux et latest.json porte les deux"
+Write-Host "cles de plateforme ; verification scriptee par verifier-release.ps1."

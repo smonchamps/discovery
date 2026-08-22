@@ -96,6 +96,69 @@ for (const [nom, t] of Object.entries(themes)) {
     }
   }
 }
+// --- REPERES (A74, PLAN-RETOURS-8 R1) --------------------------------
+// Le nuancier des repères de compte : 12 familles × 2 déclinaisons
+// (sombre pour les 14 thèmes clairs, claire pour les 14 -nuit). On lit
+// les hex EXPÉDIÉS (les règles .repere[data-teinte] de systeme.css),
+// jamais une copie : chaque déclinaison doit tenir 3:1 (composant) sur
+// les fonds où le repère se pose, et porter son glyphe à 4,5:1.
+const REPERE_FAMILLES = 12;
+// `tuile` en fait partie (revue 2026-08-22) : la pastille du compte EN
+// COURS se pose sur la tuile de nav — l'oublier laissait ce fond-là,
+// précisément, sans mesure.
+const FONDS_REPERE = ['panel', 'bg', 'sel', 'hover', 'surface', 'tuile'];
+function lireReperes(prefixe) {
+  const reperes = {};
+  for (const [, teinte, hex] of css.matchAll(new RegExp(
+    `${prefixe}\\.repere\\[data-teinte="([a-z]+)"\\]\\s*\\{\\s*background:(#[0-9a-fA-F]{6})`,
+    'g',
+  ))) {
+    reperes[teinte] = hex;
+  }
+  return reperes;
+}
+const sombres = lireReperes('(?<!-nuit"\\] )');
+const claires = lireReperes('\\[data-theme\\$="-nuit"\\] ');
+// Les encres des glyphes se LISENT du CSS expédié, comme les fonds —
+// une copie locale mentirait dès que systeme.css bouge (revue).
+const encreSombre = css.match(/\.repere\s*\{[^}]*color:(#[0-9a-fA-F]{6})/)?.[1];
+const encreClaire = css.match(
+  /\[data-theme\$="-nuit"\] \.repere\s*\{[^}]*color:(#[0-9a-fA-F]{6})/,
+)?.[1];
+if (!encreSombre || !encreClaire) {
+  echecs += 1;
+  console.log('ECHEC nuancier des repères : encre de glyphe introuvable dans systeme.css (.repere { color:… })');
+}
+for (const [nom, groupe] of [['sombre', sombres], ['claire', claires]]) {
+  if (Object.keys(groupe).length !== REPERE_FAMILLES) {
+    echecs += 1;
+    console.log(`ECHEC nuancier des repères : ${Object.keys(groupe).length} déclinaison(s) ${nom}(s) extraite(s) de systeme.css — ${REPERE_FAMILLES} attendues`);
+  }
+}
+for (const [nom, t] of Object.entries(themes)) {
+  const nuit = nom.endsWith('-nuit');
+  const groupe = nuit ? claires : sombres;
+  const glyphe = nuit ? encreClaire : encreSombre;
+  if (!glyphe) continue;
+  for (const [teinte, hex] of Object.entries(groupe)) {
+    for (const fond of FONDS_REPERE) {
+      if (!t[fond]) continue;
+      mesures += 1;
+      const r = rapport(hex, t[fond]);
+      if (r < 3) {
+        echecs += 1;
+        console.log(`ECHEC ${nom} · repère ${teinte.padEnd(8)} sur ${fond.padEnd(8)} ${r.toFixed(2).padStart(5)}:1  (seuil 3:1)  nav, badge de liste`);
+      }
+    }
+    mesures += 1;
+    const g = rapport(glyphe, hex);
+    if (g < 4.5) {
+      echecs += 1;
+      console.log(`ECHEC ${nom} · glyphe sur repère ${teinte.padEnd(8)} ${g.toFixed(2).padStart(5)}:1  (seuil 4.5:1)`);
+    }
+  }
+}
+
 console.log(echecs === 0
   ? `Tout passe — ${Object.keys(themes).length} thèmes, ${mesures} paires mesurées.`
   : `${echecs} paire(s) sous le seuil.`);

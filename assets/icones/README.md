@@ -1,6 +1,6 @@
 # Icônes vendorisées — sous-ensemble Material Symbols Rounded (R0-S3)
 
-**64 glyphes**, **26 704 octets** (26,1 Kio) woff2, servis depuis le dépôt.
+**76 glyphes**, **32 656 octets** (31,9 Kio) woff2, servis depuis le dépôt.
 Hors ligne et CSP (`font-src 'self'`) par construction — **aucun CDN**,
 jamais.
 
@@ -61,23 +61,38 @@ PLAN-RETOURS-7 (2026-08-21) ajoute **3 glyphes** : `download` (le voile
 `keep` (« Épingler », barre du fil, et la marque d'une ligne épinglée,
 R4) et `keep_off` (« Désépingler ») ; le sous-ensemble passe de 61 à
 **64**, cache-buster `?v=64`.
+PLAN-RETOURS-8 (2026-08-22, R1) ajoute les **12 glyphes du jeu DÉDIÉ
+aux repères de compte** (D2 : réservés à ce seul usage, jamais
+réemployés ailleurs — A3 tenu par réservation) : `account_balance`,
+`eco`, `favorite`, `flight`, `home`, `music_note`, `pets`, `school`,
+`shopping_bag`, `sports_esports`, `star`, `work` (ce dernier REVIENT —
+retiré à A32 quand la fiction « Travail » est morte, il porte
+désormais le sens unique « repère de compte ») ; le sous-ensemble
+passe de 64 à **76**, cache-buster `?v=76`. Piège appris à la
+régénération : le subsetteur **exige `icon_names` trié** (erreur 400
+sinon — `schedule_send` avant `school`).
 
-`all_inbox` `archive` `arrow_back` `attach_file` `bookmark`
+`account_balance` `all_inbox` `archive` `arrow_back` `attach_file`
+`bookmark`
 `check_circle` `close` `delete` `description` `display_settings`
-`download` `drafts` `edit_note` `edit_square` `error`
+`download` `drafts` `eco` `edit_note` `edit_square` `error`
+`favorite` `flight`
 `format_align_center`
 `format_align_left` `format_align_right` `format_bold` `format_clear`
 `format_color_text` `format_indent_decrease` `format_indent_increase`
 `format_italic` `format_list_bulleted` `format_list_numbered`
-`format_quote` `format_underlined` `forum` `group_add`
+`format_quote` `format_underlined` `forum` `group_add` `home`
 `hourglass_empty` `inbox` `info` `inventory_2` `keep` `keep_off`
 `keyboard` `link`
-`link_off` `mark_email_unread` `menu` `notifications` `open_in_full`
-`open_in_new` `person` `person_add` `priority_high` `reply`
-`reply_all` `report` `schedule_send` `search` `send` `settings`
-`signature` `storage` `strikethrough_s` `sync` `system_update_alt`
+`link_off` `mark_email_unread` `menu` `music_note` `notifications`
+`open_in_full`
+`open_in_new` `person` `person_add` `pets` `priority_high` `reply`
+`reply_all` `report` `schedule_send` `school` `search` `send`
+`settings` `shopping_bag`
+`signature` `sports_esports` `star` `storage` `strikethrough_s`
+`sync` `system_update_alt`
 `unfold_less` `unfold_more` `visibility_off` `volunteer_activism`
-`warning`
+`warning` `work`
 
 Ajouter un glyphe = régénérer le fichier (ci-dessous), tenir cette
 liste à jour — l'inventaire est le contrat — **et** incrémenter le
@@ -141,8 +156,8 @@ curl -s -A "Mozilla/5.0 ... Chrome/126.0" "https://fonts.googleapis.com/css2?fam
 ## Preuve ([apercu.html](apercu.html))
 
 Page servie localement sous CSP `default-src 'none'; font-src 'self'` :
-**PASS — police locale chargée, 65/65 ligatures repliées** (les 64 glyphes
-+ le témoin FILL 1/600 ; rejouée le 2026-08-21, PLAN-RETOURS-7 — 3
-glyphes ajoutés : `download`, `keep`, `keep_off`).
+**PASS — police locale chargée, 77/77 ligatures repliées** (les 76 glyphes
++ le témoin FILL 1/600 ; rejouée le 2026-08-22, PLAN-RETOURS-8 — 12
+glyphes ajoutés : le jeu dédié aux repères de compte).
 Vérification objective : une ligature résolue se replie sur ~1 em ; un
 nom resté en toutes lettres est bien plus large.

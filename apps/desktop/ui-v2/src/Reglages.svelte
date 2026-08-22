@@ -16,6 +16,7 @@
   import { voletsActuels, appliquerVolets } from './lib/volets.svelte.js';
   import { activation } from './lib/clavier.js';
   import { appel } from './lib/transport.js';
+  import { REPERE_ICONES, REPERE_TEINTES } from './lib/reperes.js';
   import GuichetCompte from './GuichetCompte.svelte';
 
   // A11 — la section « Comptes » : v1 offrait l'ajout à tout moment,
@@ -27,6 +28,12 @@
     // Les adresses qui tiennent une session (App.connecter) : un compte
     // du registre absent d'ici a un jeton mort — il se répare sur place.
     connectes = [],
+    // R1 (PLAN-RETOURS-8) : les repères posés (App les charge) ; poser
+    // ou retirer remonte par `onrepere(id, repere|null)` — l'App patche
+    // sa table sur place (revue : jamais un rechargement complet par
+    // clic de teinte).
+    reperes = {},
+    onrepere = () => {},
     onajoute = () => {},
     onsupprime = () => {},
     onreconnecte = () => {},
@@ -106,6 +113,8 @@
     retraitErreur = null;
     reconnexion = null;
     reconnexionErreur = null;
+    repereOuvert = null;
+    repereErreur = null;
     groupe = 'comptes';
     maj = null;
     visible = true;
@@ -129,10 +138,63 @@
     ajoutOuvert = false;
     retrait = null;
     retraitErreur = null;
+    repereOuvert = null;
+    repereErreur = null;
   }
   function demanderRetrait(id) {
     retrait = retrait === id ? null : id;
     retraitErreur = null;
+    // Jamais deux cartes sous la même rangée (revue 2026-08-22).
+    repereOuvert = null;
+    repereErreur = null;
+  }
+  // R1 — le repère : la carte de choix s'ouvre sous la rangée (le
+  // patron du retrait). Un repère n'existe qu'ENTIER (icône + teinte,
+  // l'allowlist Rust fait foi) : le premier choix attend son jumeau,
+  // ensuite chaque clic applique immédiatement — le geste du thème.
+  let repereOuvert = $state(null);
+  let repereChoix = $state({ icone: null, teinte: null });
+  let repereErreur = $state(null);
+  function ouvrirRepere(id) {
+    if (repereOuvert === id) {
+      repereOuvert = null;
+      return;
+    }
+    repereOuvert = id;
+    // Jamais deux cartes sous la même rangée (revue 2026-08-22).
+    retrait = null;
+    retraitErreur = null;
+    const r = reperes[id];
+    repereChoix = { icone: r?.icone ?? null, teinte: r?.teinte ?? null };
+    repereErreur = null;
+  }
+  async function choisirRepere(id, champ, valeur) {
+    repereChoix = { ...repereChoix, [champ]: valeur };
+    if (!repereChoix.icone || !repereChoix.teinte) return;
+    repereErreur = null;
+    try {
+      await appel('repere_set', {
+        accountId: id,
+        icone: repereChoix.icone,
+        teinte: repereChoix.teinte,
+      });
+      onrepere(id, { icone: repereChoix.icone, teinte: repereChoix.teinte });
+    } catch (err) {
+      // La base n'a pas pris le choix : l'erreur se dit sur place et le
+      // geste se rejoue — la pastille de la rangée, elle, ne ment pas
+      // (elle suit `reperes`, l'état réellement persisté).
+      repereErreur = t('reglages.repereImpossible', { err });
+    }
+  }
+  async function retirerRepere(id) {
+    repereErreur = null;
+    try {
+      await appel('repere_set', { accountId: id, icone: null, teinte: null });
+      repereChoix = { icone: null, teinte: null };
+      onrepere(id, null);
+    } catch (err) {
+      repereErreur = t('reglages.repereImpossible', { err });
+    }
   }
   // Reconnexion d'un compte au jeton mort (constat terrain 2026-08-20) :
   // le consentement navigateur se rejoue depuis la rangée — l'échec se
@@ -344,7 +406,21 @@
             <div class="rangees" data-testid="reglages-comptes">
               {#each comptes as c (c.account_id)}
                 <div class="compte">
-                  <span class="ms" aria-hidden="true">person</span>
+                  <!-- A74 : l'icône de la rangée devient LA porte du
+                       repère — elle montre l'état persisté (pastille ou
+                       `person` neutre) et ouvre la carte de choix. -->
+                  <button type="button" class="btn-repere" data-testid="compte-repere"
+                          aria-expanded={repereOuvert === c.account_id}
+                          aria-label={t('reglages.repereCompte', { email: c.email })}
+                          onclick={() => ouvrirRepere(c.account_id)}>
+                    {#if reperes[c.account_id]}
+                      <span class="ms repere repere-rangee"
+                            data-teinte={reperes[c.account_id].teinte}
+                            aria-hidden="true">{reperes[c.account_id].icone}</span>
+                    {:else}
+                      <span class="ms" aria-hidden="true">person</span>
+                    {/if}
+                  </button>
                   <span class="adresse">{c.email}</span>
                   {#if estDeconnecte(c)}
                     <!-- Jeton mort : l'état se DIT (link_off, le glyphe de
@@ -368,6 +444,46 @@
                 {#if reconnexionErreur?.id === c.account_id}
                   <p class="erreur-reconnexion" data-testid="reconnexion-erreur">
                     {reconnexionErreur.texte}</p>
+                {/if}
+                {#if repereOuvert === c.account_id}
+                  <!-- A74 : la carte du repère, sous la rangée (le
+                       patron du retrait). Icônes puis teintes ; le
+                       premier choix attend son jumeau, ensuite chaque
+                       clic applique immédiatement (le geste du thème). -->
+                  <div class="carte-repere" data-testid="reglages-repere">
+                    <p class="titre-repere">{t('reglages.repereTitre')}</p>
+                    <div class="choix-repere" role="group" aria-label={t('reglages.repereIcones')}>
+                      {#each REPERE_ICONES as ic (ic)}
+                        <button type="button" class="choix" class:choisi={repereChoix.icone === ic}
+                                data-testid="repere-icone" data-icone={ic}
+                                aria-pressed={repereChoix.icone === ic}
+                                title={t(`repere.icone.${ic}`)}
+                                aria-label={t(`repere.icone.${ic}`)}
+                                onclick={() => choisirRepere(c.account_id, 'icone', ic)}>
+                          <span class="ms" aria-hidden="true">{ic}</span></button>
+                      {/each}
+                    </div>
+                    <div class="choix-repere" role="group" aria-label={t('reglages.repereTeintes')}>
+                      {#each REPERE_TEINTES as te (te)}
+                        <button type="button" class="choix" class:choisi={repereChoix.teinte === te}
+                                data-testid="repere-teinte" data-couleur={te}
+                                aria-pressed={repereChoix.teinte === te}
+                                title={t(`repere.teinte.${te}`)}
+                                aria-label={t(`repere.teinte.${te}`)}
+                                onclick={() => choisirRepere(c.account_id, 'teinte', te)}>
+                          <span class="repere pastille-teinte" data-teinte={te}
+                                aria-hidden="true"></span></button>
+                      {/each}
+                    </div>
+                    {#if repereErreur}
+                      <p class="erreur-repere" data-testid="repere-erreur">{repereErreur}</p>
+                    {/if}
+                    {#if reperes[c.account_id]}
+                      <button type="button" class="ajouter" data-testid="repere-retirer"
+                              onclick={() => retirerRepere(c.account_id)}>
+                        {t('reglages.repereRetirer')}</button>
+                    {/if}
+                  </div>
                 {/if}
                 {#if retrait === c.account_id}
                   <!-- La confirmation vit SOUS la rangée, dans la carte
@@ -709,7 +825,12 @@
     display:flex; align-items:center; gap:12px; padding:10px 16px;
     font-size:13px; color:var(--ink2);
   }
-  .compte .ms { color:var(--muted); }
+  /* A74 : la pastille du repère garde son encre propre (nuancier
+     mesuré) — seuls les glyphes neutres de la rangée sont en muted.
+     `:where(…)` : spécificité NULLE pour l'exclusion — sinon la règle
+     passerait devant `.deconnecte .ms` et éteindrait le glyphe
+     d'alerte link_off (revue 2026-08-22). */
+  .compte .ms:where(:not(.repere)) { color:var(--muted); }
   .adresse {
     color:var(--ink); overflow:hidden; text-overflow:ellipsis;
     white-space:nowrap;
@@ -760,11 +881,36 @@
   .retirer:hover {
     color:var(--alert); background:var(--sel); border-color:var(--border);
   }
-  .carte-retrait {
+  /* La « carte sous la rangée » — UNE règle pour retrait, repère et
+     ajout (revue 2026-08-22 : trois copies identiques dérivaient). */
+  .carte-retrait, .carte-repere, .carte-ajout {
     border:1px solid var(--border);
     border-radius:10px; padding:14px 16px 16px;
     display:flex; flex-direction:column; gap:12px;
   }
+  /* A74 — le repère : la porte est l'icône de la rangée (bouton
+     discret, le dessin du retrait), la carte de choix suit le patron
+     de la carte de retrait — le MÊME bloc de règles, pas une copie. */
+  .btn-repere {
+    height:28px; width:28px; padding:0; flex:none;
+    display:inline-flex; align-items:center; justify-content:center;
+    background:transparent; border:1px solid transparent;
+    border-radius:6px; cursor:pointer;
+  }
+  .btn-repere:hover { background:var(--sel); border-color:var(--border); }
+  .repere-rangee { width:20px; height:20px; font-size:12px; }
+  .titre-repere { margin:0; font-size:13px; font-weight:600; color:var(--ink); }
+  .choix-repere { display:flex; flex-wrap:wrap; gap:6px; }
+  .choix {
+    height:32px; width:32px; padding:0; display:inline-flex;
+    align-items:center; justify-content:center; color:var(--ink2);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:6px; cursor:pointer;
+  }
+  .choix:hover { background:var(--sel); }
+  .choix.choisi { border-color:var(--accent); background:var(--sel); }
+  .pastille-teinte { width:18px; height:18px; }
+  .erreur-repere { margin:0; font-size:12px; line-height:1.4; color:var(--alert); }
   .avertissement { margin:0; font-size:13px; line-height:1.5; color:var(--ink2); }
   .erreur-retrait { margin:0; font-size:12px; line-height:1.4; color:var(--alert); }
   .boutons-retrait { display:flex; align-items:center; gap:10px; }
@@ -775,11 +921,6 @@
     border-radius:6px; cursor:pointer;
   }
   .danger:disabled { opacity:.6; cursor:default; }
-  .carte-ajout {
-    border:1px solid var(--border);
-    border-radius:10px; padding:14px 16px 16px;
-    display:flex; flex-direction:column; gap:12px;
-  }
   .tete-ajout { display:flex; align-items:center; gap:14px; }
   .titre-ajout { flex:1; font-size:14px; font-weight:600; color:var(--ink); }
 

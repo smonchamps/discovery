@@ -9,6 +9,7 @@
   import { appel } from './lib/transport.js';
   import { t, poserLangueDetectee } from './lib/texte.svelte.js';
   import { voletsActuels } from './lib/volets.svelte.js';
+  import { accueilFait, marquerAccueilFait, accueilCommence } from './lib/accueil.js';
   import {
     largeurActuelle,
     reglerLargeur,
@@ -55,6 +56,14 @@
   // pendant le premier chargement, sinon il clignoterait à chaque
   // démarrage.
   let navPrete = $state(false);
+  // R2 (PLAN-RETOURS-8, A75) : le parcours de premier démarrage —
+  // null = pas encore décidé (un seul état, revue 2026-08-22), décidé
+  // une fois au premier instantané de nav, éteint au Terminer.
+  let accueilAJouer = $state(null);
+  // R1 (PLAN-RETOURS-8) : les repères de compte (icône + teinte),
+  // indexés par account_id — la nav et la liste les LISENT, Réglages
+  // les pose. Un compte absent de la table n'a pas de repère.
+  let reperes = $state({});
   let categorie = $state('reception');
   let compte = $state(null);
   let onglet = $state('tous');
@@ -372,9 +381,44 @@
       if (jeton !== jetonNav) return;
       comptes = instantane;
       navPrete = true;
+      // R2 (A75) : la décision « accueil à jouer » se prend UNE fois,
+      // au premier instantané. Une installation existante (des comptes
+      // déjà là SANS parcours commencé) est réputée accueillie — la
+      // clé se pose sans parcours ; un parcours COMMENCÉ puis
+      // abandonné (compte ajouté à l'étape 1, app quittée avant
+      // Terminer) reprend, lui, au prochain lancement (revue
+      // 2026-08-22) ; une base vierge joue le parcours entier. La
+      // couture e2e vit dans lib/accueil.js, pas ici.
+      if (accueilAJouer === null) {
+        if (comptes.length > 0 && !accueilFait() && !accueilCommence()) {
+          marquerAccueilFait();
+        }
+        accueilAJouer = !accueilFait();
+      }
     } catch (err) {
       console.error('nav_snapshot :', err);
     }
+  }
+
+  // R1 : les repères, chargés UNE fois au démarrage — jamais sondés
+  // (une préférence ne bouge que par un geste local) ; un changement
+  // depuis Réglages PATCHE la table sur place (revue 2026-08-22 :
+  // jamais un rechargement complet par clic de teinte).
+  async function chargerReperes() {
+    try {
+      const lignes = await appel('reperes_get');
+      const map = {};
+      for (const l of lignes) map[l.account_id] = { icone: l.icone, teinte: l.teinte };
+      reperes = map;
+    } catch (err) {
+      console.error('reperes_get :', err);
+    }
+  }
+  function patcherRepere(id, repere) {
+    const map = { ...reperes };
+    if (repere) map[id] = repere;
+    else delete map[id];
+    reperes = map;
   }
 
   // Rattrapage des aperçus pour les corps écrits avant la colonne
@@ -832,6 +876,7 @@
     if (baseClaire) await poserLangueDetectee();
     prete = true;
     chargerNav();
+    chargerReperes();
     setInterval(chargerNav, 10000);
     sonderSynchro();
     setInterval(sonderSynchro, 5000);
@@ -1073,6 +1118,10 @@
   // l'écran 01 revient de lui-même (navPrete && comptes.length === 0).
   function compteRetire(id) {
     flash(t('toast.compteRetire'));
+    // Le repère du compte meurt avec lui (le shell purge ses prefs) —
+    // la table locale suit, sinon un id SQLite réutilisé hériterait de
+    // la pastille (revue 2026-08-22).
+    patcherRepere(id, null);
     if (compte === id) compte = null;
     selectionnee = null;
     fermerFil();
@@ -1282,9 +1331,9 @@
          class:colonnes--1={volets === 1}
          style="--l-nav:{lNav}px; --l-liste:{lListe}px">
       {#if volets !== 1}
-        <Nav {comptes} {categorie} {compte} onchoisir={choisir} />
+        <Nav {comptes} {reperes} {categorie} {compte} onchoisir={choisir} />
       {/if}
-      <Liste bind:this={liste} {categorie} {compte} {onglet} {recherche}
+      <Liste bind:this={liste} {categorie} {compte} {reperes} {onglet} {recherche}
              {brouillons} onreprendre={reprendreBrouillon}
              onselect={surSelection} ononglet={surOnglet}
              ontotal={(t) => (totalListe = t)}
@@ -1373,7 +1422,7 @@
                   onclick={() => (tiroirOuvert = false)}>
             <span class="ms" aria-hidden="true">close</span></button>
         </div>
-        <Nav {comptes} {categorie} {compte} onchoisir={choisirDuTiroir} />
+        <Nav {comptes} {reperes} {categorie} {compte} onchoisir={choisirDuTiroir} />
       </div>
     {/if}
 
@@ -1390,15 +1439,21 @@
                   onflash={flash}
                   {epinglable} onepingler={epinglerFil} />
 
-    {#if navPrete && comptes.length === 0}
-      <Onboarding onajoute={compteAjoute} />
+    <!-- R2 (A75) : le parcours complet (`accueilAJouer`, première
+         installation — il TIENT à travers ses quatre étapes, comptes
+         ajoutés ou non) ; sinon le guichet seul d'origine, à zéro
+         compte, qui s'efface au premier ajout. -->
+    {#if navPrete && (accueilAJouer || comptes.length === 0)}
+      <Onboarding complet={accueilAJouer} {comptes} onajoute={compteAjoute}
+                  onfini={() => (accueilAJouer = false)} />
     {/if}
 
     <Composition bind:this={composition} {comptes} {compte}
                  onflash={flash} onenvoye={apresEnvoi}
                  oncourrier={apresCourrierEnvoye}
                  onbrouillon={sonderBrouillons} />
-    <Reglages bind:this={reglages} {comptes} {connectes} onajoute={compteAjoute}
+    <Reglages bind:this={reglages} {comptes} {connectes} {reperes}
+              onrepere={patcherRepere} onajoute={compteAjoute}
               onsupprime={compteRetire}
               onreconnecte={async () => { await connecter(); synchroniser(); }} />
   {/if}

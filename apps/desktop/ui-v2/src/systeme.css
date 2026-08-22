@@ -297,7 +297,7 @@
      un poste pourrait servir l'ANCIEN sous-ensemble à la version neuve
      et rendre une ligature nouvelle en toutes lettres. À incrémenter à
      CHAQUE régénération, avec l'inventaire (assets/icones/README.md). */
-  src: url('/icones/material-symbols-rounded.subset.woff2?v=64') format('woff2');
+  src: url('/icones/material-symbols-rounded.subset.woff2?v=76') format('woff2');
 }
 .ms {
   font-family:'Material Symbols Rounded'; font-weight:300; font-size:16px;
@@ -306,6 +306,45 @@
 /* A12 — « Transférer » porte la flèche de « Répondre » en symétrie
    verticale (verdict terrain) : le glyphe `reply`, retourné. */
 .ms.miroir { transform:scaleX(-1); }
+
+/* A74 (PLAN-RETOURS-8 R1) — le nuancier des repères de compte : des
+   couleurs de CONTENU (comme le nuancier du composeur), pas des jetons
+   de thème. Fait mesuré (banc sur les jetons réels) : aucune teinte
+   unique ne tient 3:1 sur les fonds clairs ET sur les fonds -nuit —
+   chaque famille vit donc en DEUX déclinaisons, la sombre servie aux
+   14 thèmes clairs (glyphe blanc), la claire aux 14 -nuit (glyphe
+   #1c1b1b), bascule par [data-theme$="-nuit"]. Les 24 hex sont
+   mesurés par e2e/contraste.mjs (section REPERES) : >= 3:1 sur
+   panel/bg/sel/hover/surface de leur famille, glyphe >= 4,5:1. */
+.repere {
+  display:inline-flex; align-items:center; justify-content:center;
+  border-radius:50%; flex:none; color:#ffffff;
+}
+[data-theme$="-nuit"] .repere { color:#1c1b1b; }
+.repere[data-teinte="rouge"]   { background:#a93226; }
+.repere[data-teinte="orange"]  { background:#9c4a06; }
+.repere[data-teinte="ocre"]    { background:#7a5c00; }
+.repere[data-teinte="olive"]   { background:#556000; }
+.repere[data-teinte="vert"]    { background:#186a2b; }
+.repere[data-teinte="sapin"]   { background:#0b635d; }
+.repere[data-teinte="bleu"]    { background:#0a5a8f; }
+.repere[data-teinte="indigo"]  { background:#3f4dbb; }
+.repere[data-teinte="violet"]  { background:#712cb0; }
+.repere[data-teinte="magenta"] { background:#991d7c; }
+.repere[data-teinte="rose"]    { background:#ad204c; }
+.repere[data-teinte="brun"]    { background:#7a4a1b; }
+[data-theme$="-nuit"] .repere[data-teinte="rouge"]   { background:#f1998e; }
+[data-theme$="-nuit"] .repere[data-teinte="orange"]  { background:#f2a76c; }
+[data-theme$="-nuit"] .repere[data-teinte="ocre"]    { background:#e5c04b; }
+[data-theme$="-nuit"] .repere[data-teinte="olive"]   { background:#c3cc4e; }
+[data-theme$="-nuit"] .repere[data-teinte="vert"]    { background:#7fd18c; }
+[data-theme$="-nuit"] .repere[data-teinte="sapin"]   { background:#5ecec4; }
+[data-theme$="-nuit"] .repere[data-teinte="bleu"]    { background:#72bdf0; }
+[data-theme$="-nuit"] .repere[data-teinte="indigo"]  { background:#aab4fa; }
+[data-theme$="-nuit"] .repere[data-teinte="violet"]  { background:#cba4f5; }
+[data-theme$="-nuit"] .repere[data-teinte="magenta"] { background:#f095d8; }
+[data-theme$="-nuit"] .repere[data-teinte="rose"]    { background:#f79ab4; }
+[data-theme$="-nuit"] .repere[data-teinte="brun"]    { background:#dcab7c; }
 
 /* A8 — le focus est VISIBLE, partout, au clavier seulement : anneau
    accent 2 px décalé de 2 px. Jamais supprimé sans remplacement. */

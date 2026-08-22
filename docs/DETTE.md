@@ -75,6 +75,13 @@ motivée.)
   après démarrage, et absente si `migration_check` échoue.
 - **Rouvre si** : un refactor d'`onMount` touche à l'ordre de
   démarrage.
+- **Rouverte et refermée sans solde (2026-08-22, PLAN-RETOURS-8)** :
+  le parcours d'accueil (A75) touche l'ordre du démarrage — vérifié
+  sur pièces : la décision d'accueil vit dans `chargerNav`, APRÈS
+  `assurer()` et `poserLangueDetectee()` ; l'ordre A41 est intact.
+  Les e2e jouent désormais le premier lancement sur base vierge
+  (parcours complet), mais l'assertion `prefs.lang` de la piste
+  ci-dessus reste à écrire — la dette demeure.
 
 ### D-11 · Le banc de bascule de thème est resté calibré à 7 thèmes
 

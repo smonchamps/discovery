@@ -1,7 +1,10 @@
 // L'écran 01 de la refonte (PLAN-UI-V2 §P4, D4) : à ZÉRO compte,
-// l'application accueille par « Votre adresse. C'est tout. » — base
-// vierge, aucun compte factice. Lancement séparé : l'état zéro compte
-// ne peut pas se jouer sur le décor Clarity.
+// l'application accueille — depuis PLAN-RETOURS-8 (A75), c'est le
+// PARCOURS en quatre étapes qui s'ouvre sur une base vierge (la clé
+// `wind-accueil-fait` absente) ; l'étape 1 porte le guichet d'A11
+// inchangé — les parcours de porte (Microsoft, IMAP générique, contrat
+// IPC) se jouent dedans tels quels. Lancement séparé : l'état zéro
+// compte ne peut pas se jouer sur le décor Clarity.
 import { test, expect } from '@playwright/test';
 import { launchAppV2, closeApp } from '../launch.mjs';
 
@@ -13,20 +16,51 @@ test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
   ({ app, browser, page } = await launchAppV2({ vierge: true }));
+  // Le profil WebView2 est partagé : une suite précédente a pu poser
+  // les marques d'accueil — les retirer pour jouer le VRAI premier
+  // lancement.
+  await page.evaluate(() => {
+    localStorage.removeItem('wind-accueil-fait');
+    localStorage.removeItem('wind-accueil-commence');
+  });
+  await page.reload();
 });
 
 test.afterAll(async () => {
+  await page
+    .evaluate(() => {
+      localStorage.removeItem('wind-accueil-fait');
+      localStorage.removeItem('wind-accueil-commence');
+    })
+    .catch(() => { /* fenêtre déjà morte */ });
   await closeApp({ app, browser });
 });
 
-test("à zéro compte, l'écran 01 accueille", async () => {
+test("à zéro compte, le parcours accueille — étape 1, le guichet", async () => {
   await expect(page.locator('[data-testid="onboarding"]')).toBeVisible();
+  // Terrain 2026-08-22 (constat 1) : « Bienvenue dans Wind », puis
+  // « Étape 1/4 », puis l'invite d'ajout.
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
-    'Votre adresse.',
+    'Bienvenue dans Wind',
+  );
+  await expect(page.locator('[data-testid="accueil-progression"]')).toHaveText(
+    'Étape 1/4',
   );
   await expect(page.locator('[data-testid="onboarding"]')).toContainText(
+    'Pour commencer, ajoutez une adresse email.',
+  );
+  // 2e passe terrain (constat 2) : la note « serveur détecté » a
+  // quitté l'accueil ; (constat 1) : sans compte, « Ajouter » est LE
+  // geste — primaire.
+  await expect(page.locator('[data-testid="onboarding"]')).not.toContainText(
     'Le serveur est détecté automatiquement.',
   );
+});
+
+test('sans compte ajouté, Continuer est ABSENT (D4, 3e passe terrain)', async () => {
+  // Jamais un bouton grisé : tant qu'aucun compte n'existe, la marche
+  // ne montre pas Continuer — « Ajouter » est le geste primaire.
+  await expect(page.locator('[data-testid="accueil-continuer"]')).toHaveCount(0);
 });
 
 test("au repos, la ligne de progression dit que tout est à jour", async () => {
@@ -87,4 +121,30 @@ test("compte générique : le formulaire atteint la connexion (contrat IPC)", as
   // La régression d'origine, nommée : elle ne doit jamais revenir.
   await expect(erreur).not.toContainText('invalid args');
   await expect(erreur).not.toContainText('missing required key');
+});
+
+// Terrain 2026-08-22 (constat 3) : le guichet générique révélé porte un
+// « Retour » qui REPLIE les champs serveur — rien ne part, l'adresse
+// reste.
+test('le guichet générique se replie par « Retour »', async () => {
+  await expect(page.locator('#ob-imap')).toHaveCount(1);
+  await page.locator('[data-testid="guichet-retour"]').click();
+  await expect(page.locator('#ob-imap')).toHaveCount(0);
+  await expect(page.locator('[data-testid="onboarding-adresse"]')).toHaveValue(
+    'paul@exemple.fr',
+  );
+});
+
+// EN DERNIER (le reload remet le guichet à zéro, les tests d'avant sont
+// statefuls) : le second régime de l'écran 01 — un poste déjà accueilli
+// revenu à zéro compte retrouve le guichet SEUL, sans étapes (A75).
+test('déjà accueilli, zéro compte : le guichet seul, sans parcours', async () => {
+  await page.evaluate(() => localStorage.setItem('wind-accueil-fait', '1'));
+  await page.reload();
+  await expect(page.locator('[data-testid="onboarding"]')).toBeVisible();
+  await expect(page.locator('[data-testid="onboarding"]')).toContainText(
+    'Bienvenue dans Wind',
+  );
+  await expect(page.locator('[data-testid="accueil-progression"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="accueil-continuer"]')).toHaveCount(0);
 });

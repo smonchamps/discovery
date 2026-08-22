@@ -14,3 +14,10 @@
 # x86_64 ni sur la CI GitHub hebergee (x64).
 [target.aarch64-pc-windows-msvc]
 linker = "lld-link"
+
+# Meme remede pour la cible x64 (release bi-arch, PLAN-RETOURS-8) : le
+# cross-build x64 lance depuis Git Bash retomberait sinon sur le meme
+# mauvais `link.exe`. Sans effet sur la CI hebergee (elle ne bundle pas
+# et son PATH ne porte pas l'homonyme GNU avant MSVC).
+[target.x86_64-pc-windows-msvc]
+linker = "lld-link"

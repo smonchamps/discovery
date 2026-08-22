@@ -10,7 +10,10 @@
   import { activation } from './lib/clavier.js';
   import { t } from './lib/texte.svelte.js';
 
-  let { comptes = [], categorie, compte, onchoisir = () => {} } = $props();
+  // R1 (PLAN-RETOURS-8, A74) : un compte peut porter un repère (icône
+  // du jeu dédié + teinte du nuancier) — il remplace `person` par une
+  // pastille. Sans repère, le rendu D7 d'origine ne change pas.
+  let { comptes = [], reperes = {}, categorie, compte, onchoisir = () => {} } = $props();
 
   const somme = (champ) => comptes.reduce((n, c) => n + c[champ], 0);
 
@@ -42,6 +45,7 @@
     { id: null, icone: 'all_inbox', libelle: t('nav.toutes') },
     ...comptes.map((c) => ({
       id: c.account_id, icone: 'person', libelle: c.email,
+      repere: reperes[c.account_id] ?? null,
     })),
   ]);
 </script>
@@ -71,7 +75,12 @@
              role="button" tabindex="0" aria-current="true"
              onclick={() => onchoisir({ compte: b.id })}
              onkeydown={activation(() => onchoisir({ compte: b.id }))}>
-          <span class="ms icone-tuile" aria-hidden="true">{b.icone}</span>
+          {#if b.repere}
+            <span class="ms repere repere-nav" data-testid="nav-repere"
+                  data-teinte={b.repere.teinte} aria-hidden="true">{b.repere.icone}</span>
+          {:else}
+            <span class="ms icone-tuile" aria-hidden="true">{b.icone}</span>
+          {/if}
           <span class="titre-tuile">{b.libelle}</span>
         </div>
       {:else}
@@ -79,7 +88,12 @@
              role="button" tabindex="0" aria-current="false"
              onclick={() => onchoisir({ compte: b.id })}
              onkeydown={activation(() => onchoisir({ compte: b.id }))}>
-          <span class="ms icone" aria-hidden="true">{b.icone}</span>
+          {#if b.repere}
+            <span class="ms repere repere-nav" data-testid="nav-repere"
+                  data-teinte={b.repere.teinte} aria-hidden="true">{b.repere.icone}</span>
+          {:else}
+            <span class="ms icone" aria-hidden="true">{b.icone}</span>
+          {/if}
           <span class="libelle">{b.libelle}</span>
         </div>
       {/if}
@@ -129,6 +143,9 @@
     border:1px solid var(--border);
   }
   .icone-tuile { color:var(--tuileInk); }
+  /* A74 — la pastille du repère : 20 px, glyphe 12 px. La couleur et
+     l'encre viennent de systeme.css (.repere, nuancier mesuré). */
+  .repere-nav { width:20px; height:20px; font-size:12px; }
   .titre-tuile {
     font-size:13px; font-weight:600; min-width:0;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;

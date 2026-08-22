@@ -208,6 +208,8 @@ fn main() {
             commands::outbox_cancel_scheduled,
             commands::signature_get,
             commands::signature_set,
+            commands::reperes_get,
+            commands::repere_set,
             commands::save_draft,
             commands::list_drafts,
             commands::delete_draft,
