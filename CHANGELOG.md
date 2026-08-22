@@ -14,26 +14,26 @@ jour est automatique et signée (minisign, ADR 0013).
 
 ## [0.6.0] - 2026-08-22
 
-Un repère par boîte mail, un premier démarrage guidé — et Wind existe
+Un repère par boîte mail, un premier démarrage guidé, et Wind existe
 désormais en deux versions Windows, arm64 et x64.
 
 ### Ajouté
 
 - **Un repère pour chaque boîte** : dans Réglages > Comptes, donnez à
   chaque adresse une icône et une couleur. Le repère s'affiche dans le
-  panneau de navigation à la place de l'icône générique, et — en mode
-  « Toutes les boîtes » comme dans les résultats de recherche — en
+  panneau de navigation à la place de l'icône générique, et, en mode
+  « Toutes les boîtes » comme dans les résultats de recherche, en
   badge sous l'initiale de chaque message : on voit d'un coup d'œil
   sur quel compte un message est arrivé ou parti. Douze icônes, douze
   couleurs, toutes lisibles sur les 28 thèmes, clairs comme sombres.
 - **Un premier démarrage guidé, en quatre étapes** : ajoutez vos
   adresses, choisissez votre disposition de fenêtre sur de vrais
-  aperçus, choisissez votre thème, vérifiez vos choix — chaque étape
+  aperçus, choisissez votre thème, vérifiez vos choix. Chaque étape
   s'applique immédiatement, et chaque choix reste modifiable ensuite
   dans les Réglages. Un parcours interrompu reprend au prochain
   lancement ; les installations existantes ne le voient jamais.
 - **Wind pour Windows x64** : chaque version est désormais publiée en
-  deux éditions — arm64 (natif Snapdragon) et x64 (PC Intel/AMD) —
+  deux éditions : arm64 (natif Snapdragon) et x64 (PC Intel/AMD),
   avec la même mise à jour automatique signée.
 
 ## [0.5.0] - 2026-08-21
@@ -46,20 +46,20 @@ jointes comme des conversations ouvertes.
 - **Épingler une conversation** : dans la Boîte de réception, un bouton
   « Épingler » dans la barre de la conversation la garde **toujours en
   haut de la liste**, marquée « Épinglé » et à la teinte de la boîte
-  sélectionnée — elle quitte sa place dans le fil des dates (jamais en
+  sélectionnée. Elle quitte sa place dans le fil des dates (jamais en
   double). « Désépingler » l'y ramène. Vos épingles survivent au
   redémarrage ; elles restent sur votre machine.
 
 ### Modifié
 
 - **Les pièces jointes s'affichent en haut du message**, juste sous son
-  entête — plus besoin de dérouler tout le mail pour les trouver.
+  entête : plus besoin de dérouler tout le mail pour les trouver.
 - **Survoler une pièce jointe dit l'action** : la puce se couvre d'un
-  voile « Enregistrer » avec sa flèche de téléchargement — vous savez
+  voile « Enregistrer » avec sa flèche de téléchargement : vous savez
   ce qui se passera avant de cliquer.
 - **La conversation ouverte (« Ouvrir ») est désormais à plat**, comme
   le volet de lecture : chaque message dans sa carte, la page défile
-  d'un seul tenant, dans une colonne de lecture confortable — plus de
+  d'un seul tenant, dans une colonne de lecture confortable : plus de
   cadre englobant.
 
 ## [0.4.0] - 2026-08-21
@@ -69,30 +69,30 @@ Votre signature, l'envoi à l'heure choisie, et le marquage important.
 ### Ajouté
 
 - **Signature par compte** (Réglages > Signature) : rédigez une
-  signature — mise en forme comprise — pour chaque compte ; elle
+  signature (mise en forme comprise) pour chaque compte ; elle
   s'ajoute d'elle-même au bas de vos nouveaux messages, et, si vous
   l'activez, à vos réponses et transferts (entre votre texte et le
   message cité). « Appliquer à tous les comptes » copie la signature
   et ce choix partout d'un geste. Dans le composeur, changer de compte
   émetteur recharge la signature correspondante tant que vous n'avez
-  rien écrit — votre texte n'est jamais réécrit.
+  rien écrit : votre texte n'est jamais réécrit.
 - **Envoyer plus tard** : à côté d'« Envoyer », choisissez une date et
-  une heure — le message part à ce moment-là **si Wind est ouvert**
+  une heure : le message part à ce moment-là **si Wind est ouvert**
   (sinon, au prochain lancement ; Wind vous le dit en le programmant).
   La barre d'état affiche le départ prévu, et un bandeau permet
   d'**annuler** à tout moment : le message revient alors dans vos
-  brouillons, pièces jointes comprises — rien n'est perdu.
+  brouillons, pièces jointes comprises : rien n'est perdu.
 - **Marquer un message comme important** : un bouton « ! » dans la
   barre de mise en forme du composeur. Le message part avec les
   en-têtes de priorité standard (Outlook et Thunderbird affichent le
-  « ! » chez le destinataire ; Gmail web les ignore à l'affichage —
+  « ! » chez le destinataire ; Gmail web les ignore à l'affichage :
   c'est son comportement, l'en-tête est bien présent). Le marquage
   suit vos brouillons.
 
 ### Modifié
 
 - **L'entête de la fenêtre « Nouveau message »** porte désormais la
-  même couleur que le pied de page de Wind — la carte s'encadre
+  même couleur que le pied de page de Wind : la carte s'encadre
   haut et bas dans la même teinte.
 
 ## [0.3.0] - 2026-08-21
@@ -102,9 +102,9 @@ Les adresses se complètent toutes seules, et l'envoi en cours dit vrai.
 ### Ajouté
 
 - **Autocomplétion des adresses** dans les champs À, Cc et Cci : dès
-  deux lettres tapées, Wind suggère les adresses qu'il connaît — les
+  deux lettres tapées, Wind suggère les adresses qu'il connaît, les
   gens qui vous écrivent (avec leur nom) et ceux à qui vous avez
-  écrit — classées des plus récentes et fréquentes aux autres. Flèches
+  écrit, classées des plus récentes et fréquentes aux autres. Flèches
   puis Entrée, ou un clic, insèrent l'adresse ; Échap ferme le menu.
   Les expéditeurs de vos Indésirables et de la Corbeille ne sont
   jamais proposés.
@@ -117,7 +117,7 @@ Les adresses se complètent toutes seules, et l'envoi en cours dit vrai.
   « À : envoyes » et montrait une section « Fichiers joints » vide.
   Elle dit désormais le vrai destinataire et le nom et le poids de
   chaque pièce envoyée (non téléchargeables pendant cette courte
-  attente — la vraie copie prend le relais quelques instants plus
+  attente : la vraie copie prend le relais quelques instants plus
   tard).
 
 ## [0.2.1] - 2026-08-20
@@ -134,14 +134,14 @@ La liste ne se fige plus, et tout s'affiche plus vite.
   du geste, les messages apparaissent aussitôt, et changer de dossier
   répond immédiatement.
 - **L'écran vide ne ment plus** : « Aucun message ici. » ne s'affiche
-  qu'une fois la boîte réellement consultée — pendant le chargement,
+  qu'une fois la boîte réellement consultée ; pendant le chargement,
   des lignes d'attente le disent honnêtement.
 
 ### Modifié
 
 - **Le démarrage et le premier affichage d'un dossier sont
   immédiats** : les comptages internes (dont le plus coûteux, celui des
-  Archives Gmail) ne retardent plus l'affichage des messages — le
+  Archives Gmail) ne retardent plus l'affichage des messages : le
   nombre d'éléments et la barre de défilement s'ajustent juste après,
   d'eux-mêmes.
 
@@ -161,12 +161,12 @@ La mise en forme arrive dans le composeur.
   automatique** : les destinataires voient votre mise en forme, et les
   clients texte reçoivent toujours une version lisible.
 - **La citation d'une réponse** apparaît dans un bloc au filet gauche,
-  comme dans les clients mûrs — votre réponse s'écrit au-dessus.
+  comme dans les clients mûrs ; votre réponse s'écrit au-dessus.
 - **Les brouillons conservent la mise en forme**, y compris après un
   aller-retour avec le dossier Brouillons de votre messagerie.
 - **Reconnecter un compte** : quand la connexion d'un compte expire ou
   est révoquée, Réglages > Comptes le signale (« Déconnecté ») et un
-  bouton « Reconnecter » relance l'autorisation dans le navigateur —
+  bouton « Reconnecter » relance l'autorisation dans le navigateur,
   sans rien perdre ni re-synchroniser. L'avis d'accueil mène
   directement à cette page.
 
